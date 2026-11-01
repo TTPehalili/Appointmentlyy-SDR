@@ -65,6 +65,7 @@ import {
 
 interface ARMRebuttal {
   id: string;
+  shortLabel: string;
   category: string;
   trigger: string;
   acknowledge: string;
@@ -76,6 +77,7 @@ interface ARMRebuttal {
 const PRESET_REBUTTALS: ARMRebuttal[] = [
   {
     id: 'OBJ_SEND_EMAIL',
+    shortLabel: 'Send Email / Busy',
     category: 'Brush-Off',
     trigger: 'Just send me an email / I am busy right now',
     acknowledge: '100% fair, {{first_name}}. I know I caught you in the middle of your day and want to protect your inbox.',
@@ -85,6 +87,7 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_HAVE_TEAM',
+    shortLabel: 'Have Internal Team',
     category: 'Internal Team',
     trigger: 'We already have an internal SDR team / agency',
     acknowledge: 'That makes total sense, {{first_name}}—most established BPOs at your scale already have experienced callers on the floor.',
@@ -94,6 +97,7 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_PRICING',
+    shortLabel: 'How Much / Price?',
     category: 'Pricing',
     trigger: 'How much does this cost? Just tell me the price.',
     acknowledge: 'I completely respect that, {{first_name}}—you need to know if the unit economics make sense before spending a single minute on this.',
@@ -103,6 +107,7 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_NO_BUDGET',
+    shortLabel: 'No Budget',
     category: 'Budget',
     trigger: 'We don\'t have budget for new software right now',
     acknowledge: 'I hear you loud and clear. Running a competitive BPO means keeping margins tight and eliminating software bloat.',
@@ -112,6 +117,7 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_SHARED_LEADS_OA',
+    shortLabel: 'Use Lead Brokers',
     category: 'Lead Vendors',
     trigger: 'We already buy our leads from Outsource Accelerator / brokers',
     acknowledge: 'That makes total sense—they do a solid job driving inbound list volume.',
@@ -121,6 +127,7 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_HOW_DID_YOU_GET_NUMBER',
+    shortLabel: 'Got My Number?',
     category: 'Compliance',
     trigger: 'How did you get my direct phone number?',
     acknowledge: 'Completely fair question, {{first_name}}—I would wonder the same thing if someone reached my desk direct.',
@@ -135,8 +142,8 @@ export default function BorisCallingCockpit() {
   const repName = sessionRep || 'Emil Halili';
   const adminClearance = isRoleAdmin(role);
 
-  // Tab State for Right Column: 'notes' | 'footprint' | 'objections'
-  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'footprint' | 'objections'>('notes');
+  // Tab State for Right Column: 'notes' | 'footprint'
+  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'footprint'>('notes');
 
   // Direct Lead Notes State (For non-CRM paying clients)
   const [leadNoteInput, setLeadNoteInput] = useState<string>('');
@@ -183,7 +190,7 @@ export default function BorisCallingCockpit() {
 
   // Script & Objections State
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [selectedRebuttalId, setSelectedRebuttalId] = useState<string>('OBJ_SEND_EMAIL');
+  const [selectedRebuttalId, setSelectedRebuttalId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null);
 
@@ -231,28 +238,28 @@ export default function BorisCallingCockpit() {
   const DEFAULT_SCRIPT_STEPS = [
     {
       step: 1,
-      name: '1. The Opener',
+      name: '1. Opener',
       goal: 'Get permission & reference yesterday\'s email to immediately eliminate cold call resistance.',
       spokenText: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced—do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps burning paid client leads. Did that cross your screen, or do your reps somehow hit production on Day 3 without burning leads?"`,
       deliveryTip: 'Calm, confident, unhurried peer-to-peer tone. Do not apologize for calling.'
     },
     {
       step: 2,
-      name: '2. The Shared Lead Trap',
+      name: '2. Problem',
       goal: 'Expose the commodity broker trap: 3-5 rival BPOs pitching the exact same lead list.',
       spokenText: `"Most BPO operations leaders we speak with tell us their biggest leak is buying shared leads from Outsource Accelerator or brokers, only to find out 3 to 5 rival BPOs got the identical list 10 minutes earlier. Junior reps stumble in the first 20 seconds and get chopped down on price. Are your callers dealing with that same price pressure right now?"`,
       deliveryTip: 'Stop talking immediately after the question. Let the prospect vent about their lead quality.'
     },
     {
       step: 3,
-      name: '3. The 72-Hour Solution',
+      name: '3. Solution',
       goal: 'Position private enriched lists + 150ms live objection sparring.',
       spokenText: `"That's exactly why we built Appointmentlyy. Instead of letting reps practice on live, expensive client leads, we feed real-time consultative rebuttals in 150 milliseconds live on the dial, and spar them against hostile AI buyer personas before Day 1. It cuts ramp time from 4 weeks down to 72 hours."`,
       deliveryTip: 'Keep it focused on floor economics and rep confidence—not technical jargon.'
     },
     {
       step: 4,
-      name: '4. The 20-Min Close',
+      name: '4. Close',
       goal: 'Lock a 15-20 min executive screen share with Founder Emil.',
       spokenText: `"{{first_name}}, I want to show you how our BPO client acquisition engine works in a 15-minute screen share with Emil, our founder. No generic pitch deck, just live numbers on your floor scale and how BPOs are eliminating the rookie lead tax. How does Thursday at 2:00 PM look, or does Friday morning work better?"`,
       deliveryTip: 'Offer a binary time choice (Thursday 2pm vs Friday morning) to make scheduling effortless.'
@@ -429,6 +436,7 @@ export default function BorisCallingCockpit() {
     setLeadLinkedinUrl(lead.linkedinUrl || '');
     setDisposition(null);
     setCurrentStep(1);
+    setSelectedRebuttalId(null);
     setIsCallingActive(false);
 
     // Reset Telemetry for New Lead
@@ -635,7 +643,8 @@ export default function BorisCallingCockpit() {
 
   // Selected Rebuttal Object
   const activeRebuttal = useMemo(() => {
-    return PRESET_REBUTTALS.find(r => r.id === selectedRebuttalId) || PRESET_REBUTTALS[0];
+    if (!selectedRebuttalId) return null;
+    return PRESET_REBUTTALS.find(r => r.id === selectedRebuttalId) || null;
   }, [selectedRebuttalId]);
 
   // Save Direct Note on Lead Record (For Non-CRM Customers)
@@ -793,53 +802,52 @@ export default function BorisCallingCockpit() {
           
           {/* TOP FLOOR HEADER & UTILITY BAR */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-zinc-200">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                  📞
-                </div>
-                <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-                  Calling Floor & Priority Dial Queue
-                </h1>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
-                  {partnerName}
-                </span>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                📞
               </div>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                Live teleprompter, 1-click objection shields, and global prospect contact sync.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-bold tracking-tight text-zinc-950">
+                    Calling Floor
+                  </h1>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
+                    {partnerName}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Link
                 href="/contacts"
-                className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
                 title="View all tenant contacts & multi-touch footprints"
               >
                 <Users className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Global Contacts</span>
+                <span>Contacts</span>
               </Link>
 
               {adminClearance && (
                 <button
                   type="button"
                   onClick={() => setIsCsvModalOpen(true)}
-                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                   title="Upload custom .csv file of leads (Admin only)"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-zinc-600" />
-                  <span>Upload CSV Leads</span>
+                  <span>Import CSV</span>
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={() => setIsDailyReportOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
               >
                 <BarChart3 className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Activity Report</span>
+                <span>Activity</span>
                 <span className="px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-900 text-[10px] font-mono font-bold border border-zinc-200">
                   {completedActivityCount}
                 </span>
@@ -848,26 +856,26 @@ export default function BorisCallingCockpit() {
               <button
                 type="button"
                 onClick={() => setIsCadenceModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
               >
                 <Clock className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Cadence Schedule</span>
+                <span>Cadence</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowCalendlyModal(true)}
-                className="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <Calendar className="w-3.5 h-3.5 text-white/80" />
-                <span>Book on Calendly</span>
+                <span>Calendly</span>
               </button>
             </div>
           </div>
 
           {/* ACTIVITY BANNER NOTIFICATION */}
           {activityToast && (
-            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
+            <div className="p-2.5 px-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>{activityToast}</span>
@@ -883,105 +891,63 @@ export default function BorisCallingCockpit() {
           )}
 
           {/* ========================================================================= */}
-          {/* SECTION 1: PROSPECT DOSSIER BANNER & CONFIRMED EMAIL GLOBAL SYNC         */}
+          {/* SECTION 1: UNIFIED LEAD HEADER, INLINE DIALER & 1-CLICK DISPOSITIONS      */}
           {/* ========================================================================= */}
-          <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3">
             
-            {/* Top Queue Bar & Step Gating */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-500">
-                  Lead {currentLeadIndex + 1} of {leadsQueue.length}
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
-                  Day 2 Phone Outreach
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                  Active Priority Queue
-                </span>
-              </div>
-
-              {/* Prev / Next Lead Controls */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => selectLeadAtIndex((currentLeadIndex - 1 + leadsQueue.length) % leadsQueue.length)}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-700 border border-zinc-200 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Previous</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleProceedToNextLead}
-                  className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                >
-                  <span>Next Lead ({nextLeadCandidate.name})</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Prospect Profile & Action Strip */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+            {/* Main Unified Lead & Dialer Row */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               
-              {/* Prospect Identity (5 cols) */}
-              <div className="lg:col-span-5 space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-full bg-zinc-900 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+              {/* LEFT: Prospect Identity + Inline Click-to-Call right next to Lead Info */}
+              <div className="flex flex-wrap items-center gap-4 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-11 w-11 rounded-xl bg-zinc-900 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
                     {customerName.charAt(0)}
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-lg font-black text-zinc-950 tracking-tight truncate">
-                      {customerName}
-                    </h2>
-                    <p className="text-xs text-zinc-600 truncate">
-                      {title} • <strong className="text-zinc-900 font-bold">{partnerName}</strong>
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base sm:text-lg font-black text-zinc-950 tracking-tight truncate">
+                        {customerName}
+                      </h2>
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
+                        {headcount}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-500">
+                        #{currentLeadIndex + 1}/{leadsQueue.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-zinc-600 mt-0.5">
+                      <span className="truncate">
+                        {title} at <strong className="text-zinc-900 font-bold">{partnerName}</strong>
+                      </span>
+                      {leadWebsite && (
+                        <a
+                          href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5"
+                        >
+                          <Globe className="w-3 h-3" />
+                          <span>Web</span>
+                        </a>
+                      )}
+                      {leadLinkedinUrl && (
+                        <a
+                          href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] font-medium text-[#0077b5] hover:underline flex items-center gap-0.5"
+                        >
+                          <LinkedinIcon className="w-3 h-3" />
+                          <span>LinkedIn</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap pt-1">
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
-                    👥 {headcount}
-                  </span>
-                  {leadWebsite && (
-                    <a
-                      href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
-                    >
-                      <Globe className="w-3 h-3" />
-                      <span>Website ↗</span>
-                    </a>
-                  )}
-                  {leadLinkedinUrl && (
-                    <a
-                      href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-medium text-[#0077b5] hover:underline flex items-center gap-1 bg-sky-50 px-2 py-0.5 rounded border border-sky-200"
-                    >
-                      <LinkedinIcon className="w-3 h-3" />
-                      <span>LinkedIn ↗</span>
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Dialer Strip (3 cols) */}
-              <div className="lg:col-span-3 bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex flex-col justify-between gap-2">
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
-                    DIRECT PHONE LINE
-                  </span>
-                  <span className="text-sm font-mono font-bold text-zinc-900 mt-0.5 block truncate">
-                    {phone || 'No phone on file'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
+                {/* INLINE CLICK-TO-CALL PILL (Right beside Lead Identity) */}
+                <div className="flex items-center gap-1.5 pl-0 sm:pl-3 sm:border-l border-zinc-200">
                   <a
                     href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
                     onClick={() => {
@@ -991,21 +957,24 @@ export default function BorisCallingCockpit() {
                       }
                       setIsCallingActive(true);
                     }}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
                       isCallingActive
                         ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     }`}
                   >
-                    <PhoneCall className="w-3.5 h-3.5" />
-                    <span>{isCallingActive ? `In Call (${callTimerSeconds}s)` : 'Click to Call'}</span>
+                    <PhoneCall className="w-3.5 h-3.5 shrink-0" />
+                    <span>{isCallingActive ? `Calling (${callTimerSeconds}s)` : 'Call'}</span>
+                    <span className="font-mono text-[11px] opacity-90 border-l border-white/25 pl-2">
+                      {phone || 'No Phone'}
+                    </span>
                   </a>
 
                   {isCallingActive && (
                     <button
                       type="button"
                       onClick={() => setIsCallingActive(false)}
-                      className="p-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer"
+                      className="p-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer shadow-xs"
                       title="Hang up"
                     >
                       <PhoneOff className="w-3.5 h-3.5" />
@@ -1014,240 +983,325 @@ export default function BorisCallingCockpit() {
                 </div>
               </div>
 
-              {/* Confirmed Email Global Sync Field (4 cols) */}
-              <div className="lg:col-span-4 bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono font-bold text-zinc-700 uppercase tracking-wider flex items-center gap-1">
-                    <Mail className="w-3 h-3 text-zinc-600" />
-                    <span>CONFIRMED EMAIL (GLOBAL SYNC)</span>
-                  </span>
-                  {emailSavedToast && (
-                    <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 animate-in fade-in">
-                      <Check className="w-3 h-3" /> Saved Globally
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="email"
-                    value={directEmail}
-                    onChange={(e) => handleConfirmedEmailChange(e.target.value)}
-                    placeholder="prospect@company.com"
-                    className="flex-1 bg-white border border-zinc-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900"
-                    title="Edit email on call to update file globally"
-                  />
+              {/* RIGHT: Compact Email Input + Send Invite + Prev/Next Lead */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center bg-zinc-50 border border-zinc-200 rounded-xl p-1 gap-1">
+                  <div className="relative flex items-center">
+                    <Mail className="w-3.5 h-3.5 text-zinc-400 ml-2 mr-1.5 shrink-0" />
+                    <input
+                      type="email"
+                      value={directEmail}
+                      onChange={(e) => handleConfirmedEmailChange(e.target.value)}
+                      placeholder="prospect@company.com"
+                      className="w-44 sm:w-52 bg-transparent py-1 pr-2 text-xs font-mono font-semibold text-zinc-900 focus:outline-none"
+                      title="Edit email to sync globally across Cold Email Studio, Inbox & Calendly"
+                    />
+                    {emailSavedToast && (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 mr-1.5 shrink-0" />
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={handleOpenQuickEmail}
-                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
-                    title="Send follow-up invite or deck right now"
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
+                    title="Send follow-up invite or deck"
                   >
                     <Send className="w-3 h-3" />
-                    <span>Send Email</span>
+                    <span>Email</span>
                   </button>
                 </div>
-                
-                <p className="text-[10px] text-zinc-500 leading-tight">
-                  Rep Tip: Ask <em>"What's the best email for the calendar invite?"</em> and edit here. Updates Cold Email Studio & Inbox instantly.
-                </p>
+
+                {/* Lead Queue Navigation */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => selectLeadAtIndex((currentLeadIndex - 1 + leadsQueue.length) % leadsQueue.length)}
+                    className="p-2 rounded-xl bg-zinc-50 hover:bg-zinc-100 text-zinc-700 border border-zinc-200 text-xs font-medium cursor-pointer transition-colors"
+                    title="Previous Lead"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleProceedToNextLead}
+                    className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    title={`Next Lead: ${nextLeadCandidate.name}`}
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
             </div>
 
-            {/* CALL DISPOSITION DROPDOWN & PROGRESSION BAR */}
-            <div className="pt-3 border-t border-zinc-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-50/80 -mx-5 -mb-5 px-5 py-3 rounded-b-2xl">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-zinc-700 flex items-center gap-1.5">
-                  <span>📋 Call Disposition:</span>
+            {/* 1-CLICK CALL DISPOSITION BAR */}
+            <div className="pt-2.5 border-t border-zinc-100 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mr-1">
+                  Outcome:
                 </span>
-                {disposition ? (
-                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1 shadow-2xs">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Logged: {disposition}</span>
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-zinc-500 italic">
-                    Select outcome below to log call &amp; update footprint
-                  </span>
-                )}
+                {[
+                  { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-emerald-600 text-white border-emerald-600', idleClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' },
+                  { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-amber-600 text-white border-amber-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-blue-600 text-white border-blue-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                  { label: 'No Answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-zinc-800 text-white border-zinc-800', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-purple-600 text-white border-purple-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                  { label: 'Not Interested', value: 'Not Interested / Quarantine', activeClass: 'bg-rose-600 text-white border-rose-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                ].map((item) => {
+                  const isSelected = disposition === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => handleSelectDisposition(item.value)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                        isSelected ? item.activeClass : item.idleClass
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3" />}
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="flex items-center gap-2 flex-1 max-w-xl justify-end">
-                <div className="relative flex-1 max-w-sm">
-                  <select
-                    value={disposition || ''}
-                    onChange={(e) => {
-                      if (e.target.value) handleSelectDisposition(e.target.value);
-                    }}
-                    className="w-full bg-white border border-zinc-300 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 cursor-pointer shadow-2xs"
-                  >
-                    <option value="" disabled>-- Select Call Disposition Dropdown --</option>
-                    <option value="Meeting Booked">🟢 Meeting Booked (Qualified Demo)</option>
-                    <option value="Call Back Later">🟡 Call Back Later (Scheduled Redial)</option>
-                    <option value="Left Voicemail">🔵 Left Voicemail (Drop Cadence VM)</option>
-                    <option value="No Answer / Gatekeeper">🔴 No Answer / Gatekeeper</option>
-                    <option value="Not Interested / Quarantine">⚪ Not Interested / Quarantine</option>
-                    <option value="Referral / Update Contact">🔄 Referral / Update Contact</option>
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleProceedToNextLead}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0 ${
-                    disposition
-                      ? 'bg-zinc-950 hover:bg-zinc-800 text-white'
-                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700'
-                  }`}
-                  title="Advance to next queued prospect"
-                >
-                  <span>Next Lead ({nextLeadCandidate.name.split(' ')[0]})</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {disposition && (
+                <span className="text-[11px] font-mono font-bold text-emerald-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Logged: {disposition}</span>
+                </span>
+              )}
             </div>
 
           </div>
 
           {/* ========================================================================= */}
-          {/* SECTION 2: CALLING FLOOR WORKSPACE (SCRIPT VS REBUTTALS)                  */}
+          {/* SECTION 2: CALLING FLOOR WORKSPACE (TELEPROMPTER + EYE-LEVEL REBUTTALS)   */}
           {/* ========================================================================= */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             
-            {/* LEFT: STEP-BY-STEP SPOKEN TELEPROMPTER (7 cols) */}
+            {/* LEFT: STEP-BY-STEP SPOKEN TELEPROMPTER & EYE-LEVEL REBUTTALS (7 cols) */}
             <div className="lg:col-span-7 bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs space-y-4">
               
-              {/* Step Navigation Tabs */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-100 gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 font-mono">
-                    SPOKEN CALL FLOW
-                  </span>
-                  <Link
-                    href="/admin/frameworks"
-                    className="text-[10px] font-mono font-semibold text-[#0a66c2] hover:underline flex items-center gap-1 bg-sky-50 px-2 py-0.5 rounded border border-sky-200"
-                    title="Upload custom sales playbook to personalize this teleprompter"
-                  >
-                    <UploadCloud className="h-3 w-3 text-sky-600" />
-                    <span>Upload/Edit Playbook ↗</span>
-                  </Link>
+              {/* Top Row: Step Navigation Pills */}
+              <div className="flex flex-wrap items-center justify-between pb-3 border-b border-zinc-100 gap-2">
+                <div className="flex items-center gap-1 flex-wrap">
+                  {scriptSteps.map((st) => {
+                    const isStepActive = !activeRebuttal && currentStep === st.step;
+                    return (
+                      <button
+                        key={st.step}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRebuttalId(null);
+                          setCurrentStep(st.step);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          isStepActive
+                            ? 'bg-zinc-900 text-white shadow-xs'
+                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                        }`}
+                      >
+                        {st.name}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-1">
-                  {scriptSteps.map((st) => (
+
+                <Link
+                  href="/admin/frameworks"
+                  className="text-[11px] font-mono font-semibold text-[#0a66c2] hover:underline flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200"
+                  title="Upload custom sales playbook to personalize this teleprompter"
+                >
+                  <UploadCloud className="h-3 w-3 text-sky-600" />
+                  <span>Edit Playbook</span>
+                </Link>
+              </div>
+
+              {/* Instant 1-Click Rebuttal Trigger Bar (Eye-Level) */}
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-2.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-600" />
+                    <span>Live Objection Rebuttals (Click to View on Teleprompter):</span>
+                  </span>
+                  {activeRebuttal && (
                     <button
-                      key={st.step}
                       type="button"
-                      onClick={() => setCurrentStep(st.step)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentStep === st.step
-                          ? 'bg-zinc-900 text-white shadow-xs'
-                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
-                      }`}
+                      onClick={() => setSelectedRebuttalId(null)}
+                      className="text-[11px] font-bold text-amber-900 hover:text-zinc-950 bg-white px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1 cursor-pointer"
                     >
-                      {st.name}
+                      <X className="w-3 h-3" />
+                      <span>Back to Script</span>
                     </button>
-                  ))}
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {PRESET_REBUTTALS.map((reb) => {
+                    const isSelected = selectedRebuttalId === reb.id;
+                    return (
+                      <button
+                        key={reb.id}
+                        type="button"
+                        onClick={() => setSelectedRebuttalId(isSelected ? null : reb.id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-amber-500 text-zinc-950 border-amber-600 shadow-xs'
+                            : 'bg-white hover:bg-amber-100/70 text-zinc-800 border-amber-300/80'
+                        }`}
+                      >
+                        🛡️ {reb.shortLabel}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Active Step Details */}
-              <div className="space-y-3">
-                <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-zinc-900 font-mono">
-                      {activeStepData.name}
-                    </span>
-                    <span className="text-[11px] font-mono text-zinc-500">
-                      Step {currentStep} of {scriptSteps.length}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-600 mt-1">
-                    <strong>Goal:</strong> {activeStepData.goal}
-                  </p>
-                </div>
-
-                {/* The Spoken Script (Large, Readable, Variable-Interpolated) */}
-                <div className="p-5 rounded-2xl bg-zinc-950 text-white font-sans text-base sm:text-lg leading-relaxed shadow-xs relative">
-                  <p className="select-text">
-                    {interpolate(activeStepData.spokenText)}
-                  </p>
-                  
-                  <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between">
-                    <span className="text-xs text-zinc-400 italic">
-                      💡 {activeStepData.deliveryTip}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => copyText(interpolate(activeStepData.spokenText), `step_${currentStep}`)}
-                      className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      {copiedKey === `step_${currentStep}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>Copy Line</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* STEP 1 QUALIFICATION CHECKPOINTS */}
-                {currentStep === 1 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Step 1 Qualification: Role &amp; Contact Gate</span>
+              {/* MAIN TELEPROMPTER DISPLAY: Shows Active Rebuttal at Eye-Level OR Active Script Step */}
+              {activeRebuttal ? (
+                <div className="p-5 rounded-2xl bg-zinc-950 text-white font-sans space-y-4 shadow-md border-2 border-amber-500/80 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-amber-500 text-zinc-950 font-mono text-[10px] font-black uppercase">
+                        REBUTTAL • {activeRebuttal.category}
                       </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        Auto-updates CRM notes
+                      <span className="text-xs font-bold text-amber-300">
+                        &ldquo;{activeRebuttal.trigger}&rdquo;
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => copyText(interpolate(activeRebuttal.fullSpoken), 'reb_copy')}
+                        className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'reb_copy' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRebuttalId(null)}
+                        className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Resume Script</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Large Eye-Level ARM Breakdown */}
+                  <div className="space-y-3 text-base sm:text-lg leading-relaxed select-text">
+                    <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 block mb-1">
+                        1. Acknowledge
+                      </span>
+                      <p className="text-zinc-100">{interpolate(activeRebuttal.acknowledge)}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-400 block mb-1">
+                        2. Respond
+                      </span>
+                      <p className="text-white">{interpolate(activeRebuttal.respond)}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-700/60">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                        3. Move (Ask for the Close)
+                      </span>
+                      <p className="text-emerald-100 font-semibold">{interpolate(activeRebuttal.move)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* The Spoken Script (Large, Readable, Variable-Interpolated) */}
+                  <div className="p-5 rounded-2xl bg-zinc-950 text-white font-sans text-base sm:text-lg leading-relaxed shadow-xs relative">
+                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800/80 text-xs">
+                      <span className="font-mono font-bold text-zinc-300">
+                        {activeStepData.name} — <span className="text-zinc-400 font-normal">{activeStepData.goal}</span>
+                      </span>
+                      <span className="text-[11px] font-mono text-zinc-500 shrink-0 ml-2">
+                        Step {currentStep}/{scriptSteps.length}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <p className="select-text">
+                      {interpolate(activeStepData.spokenText)}
+                    </p>
+                    
+                    <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2">
+                      <span className="text-xs text-zinc-400 italic">
+                        💡 {activeStepData.deliveryTip}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(interpolate(activeStepData.spokenText), `step_${currentStep}`)}
+                        className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      >
+                        {copiedKey === `step_${currentStep}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* COMPACT QUALIFICATION CHECKPOINTS */}
+              <div className="space-y-3">
+                {currentStep === 1 && (
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
+                      Quick Qualify: Role Verification
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => handleSetRole('confirmed')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${
                           roleStatus === 'confirmed'
-                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-600'
                         }`}
                       >
                         <Check className="h-3.5 w-3.5" />
-                        <span>Still in Role</span>
+                        <span>Active Role</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetRole('promoted')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${
                           roleStatus === 'promoted'
-                            ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                            ? 'bg-blue-600 border-blue-600 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-blue-600'
                         }`}
                       >
-                        <span>Promoted / New Title</span>
+                        <span>New Title</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetRole('changed')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${
                           roleStatus === 'changed'
-                            ? 'bg-zinc-800 border-zinc-800 text-white shadow-xs'
+                            ? 'bg-zinc-800 border-zinc-800 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-800'
                         }`}
                       >
                         <X className="h-3.5 w-3.5" />
-                        <span>Left Role / Referral</span>
+                        <span>Referral</span>
                       </button>
                     </div>
 
                     {roleStatus === 'promoted' && (
-                      <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                      <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
                         <input
                           type="text"
                           value={promotedTitleInput}
                           onChange={(e) => setPromotedTitleInput(e.target.value)}
-                          placeholder="Enter new promoted title (e.g. VP Global Operations)"
+                          placeholder="New title (e.g. VP Operations)"
                           className="flex-1 bg-white border border-blue-300 rounded px-2.5 py-1 text-xs text-zinc-900"
                         />
                         <button
@@ -1268,12 +1322,12 @@ export default function BorisCallingCockpit() {
                     )}
 
                     {roleStatus === 'changed' && (
-                      <div className="p-2.5 bg-zinc-100 border border-zinc-300 rounded-lg flex items-center gap-2">
+                      <div className="p-2 bg-zinc-100 border border-zinc-300 rounded-lg flex items-center gap-2">
                         <input
                           type="text"
                           value={referralContactInput}
                           onChange={(e) => setReferralContactInput(e.target.value)}
-                          placeholder="Referral contact name & email/phone"
+                          placeholder="Referral name & contact"
                           className="flex-1 bg-white border border-zinc-300 rounded px-2.5 py-1 text-xs text-zinc-900"
                         />
                         <button
@@ -1285,152 +1339,120 @@ export default function BorisCallingCockpit() {
                           }}
                           className="px-3 py-1 rounded bg-zinc-800 text-white text-xs font-bold cursor-pointer"
                         >
-                          Log Referral
+                          Save
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* STEP 2 QUALIFICATION CHECKPOINTS */}
                 {currentStep === 2 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Step 2 Qualification: Lead Sourcing &amp; Broker Audit</span>
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        Auto-updates Section 2 of CRM notes
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
+                      Quick Qualify: Lead Source
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => handleSetOA(!recognizedOA)}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${
                           recognizedOA
-                            ? 'bg-purple-600 border-purple-600 text-white shadow-xs'
+                            ? 'bg-purple-600 border-purple-600 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-purple-600'
                         }`}
                       >
-                        <span>📦 Outsource Accelerator Aware</span>
+                        <span>Uses Lead Brokers</span>
                         {recognizedOA ? <Check className="h-3.5 w-3.5" /> : null}
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetPriceTrap(priceTrapStatus === 'confirmed' ? 'denial' : 'confirmed')}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${
                           priceTrapStatus === 'confirmed'
-                            ? 'bg-red-600 border-red-600 text-white shadow-xs'
+                            ? 'bg-red-600 border-red-600 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-red-600'
                         }`}
                       >
-                        <span>🔥 Competing on Shared Lists ($8/hr Trap)</span>
+                        <span>Shared Lead Pain</span>
                         {priceTrapStatus === 'confirmed' ? <Check className="h-3.5 w-3.5" /> : null}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* STEP 3 QUALIFICATION CHECKPOINTS */}
                 {currentStep === 3 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-2.5">
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Step 3 Qualification: Revenue Drivers &amp; Solution Fit</span>
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500">
+                        Quick Qualify: Core Service &amp; Pitch
                       </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        Auto-updates Section 3 of CRM notes
-                      </span>
+                      <button
+                        type="button"
+                        onClick={handleToggleProblemFix}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border flex items-center gap-1 transition-colors cursor-pointer ${
+                          telemetry.problemFixDiscussed
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
+                        }`}
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>Value Pitched</span>
+                      </button>
                     </div>
 
-                    <div>
-                      <span className="text-[10px] font-bold text-zinc-500 block mb-1">
-                        PRIMARY REVENUE DRIVER (CORE SERVICE):
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                        {['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office'].map((serv) => (
-                          <button
-                            key={serv}
-                            type="button"
-                            onClick={() => handleSetService(serv)}
-                            className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                              telemetry.primaryService === serv
-                                ? 'bg-zinc-900 border-zinc-900 text-white shadow-xs'
-                                : 'bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400'
-                            }`}
-                          >
-                            {serv}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office'].map((serv) => (
+                        <button
+                          key={serv}
+                          type="button"
+                          onClick={() => handleSetService(serv)}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                            telemetry.primaryService === serv
+                              ? 'bg-zinc-900 border-zinc-900 text-white'
+                              : 'bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400'
+                          }`}
+                        >
+                          {serv}
+                        </button>
+                      ))}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={handleToggleProblemFix}
-                      className={`w-full py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-between transition-colors cursor-pointer ${
-                        telemetry.problemFixDiscussed
-                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                          : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
-                      }`}
-                    >
-                      <span>🎯 Pitched 150ms Objection Cues &amp; Pre-Call Voice Sparring</span>
-                      {telemetry.problemFixDiscussed ? <Check className="h-4 w-4" /> : <span className="text-[10px] text-zinc-400">Click to log pitch</span>}
-                    </button>
                   </div>
                 )}
 
-                {/* STEP 4 QUALIFICATION CHECKPOINTS */}
                 {currentStep === 4 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Step 4 Qualification: Screen Share Slot &amp; Attendance</span>
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-mono">
-                        Auto-updates Section 4 of CRM notes
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] font-bold text-zinc-500 block mb-1">
-                        CONFIRMED 20-MIN SCREEN SHARE SLOT:
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {['Thursday 2:00 PM', 'Friday 10:30 AM', 'Tuesday 2:00 PM'].map((slot) => (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => handleSelectSlot(slot)}
-                            className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                              bookingSlot === slot
-                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                                : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
-                            }`}
-                          >
-                            {slot} {bookingSlot === slot ? '✓' : ''}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
+                      Quick Qualify: Lock Demo Slot
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM'].map((slot) => (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => handleSelectSlot(slot)}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                            bookingSlot === slot
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
+                          }`}
+                        >
+                          {slot} {bookingSlot === slot ? '✓' : ''}
+                        </button>
+                      ))}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                       <button
                         type="button"
                         onClick={handleToggleAttendance}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-bold border flex items-center justify-between transition-colors cursor-pointer ${
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors cursor-pointer ${
                           telemetry.attendanceVerified
-                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
                             : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
                         }`}
                       >
-                        <span>💻 Laptop Confirmed (Zero Prep)</span>
+                        <span>Calendar Confirmed</span>
                         {telemetry.attendanceVerified ? <Check className="h-3.5 w-3.5" /> : null}
                       </button>
 
@@ -1438,40 +1460,47 @@ export default function BorisCallingCockpit() {
                         type="tel"
                         value={directMobileInput}
                         onChange={(e) => handleUpdateDirectMobile(e.target.value)}
-                        placeholder="Direct Mobile for 10-min SMS"
-                        className="bg-white border border-zinc-300 rounded-xl px-2.5 py-1.5 text-xs text-zinc-900 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                        placeholder="SMS Mobile #"
+                        className="bg-white border border-zinc-300 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-900"
                       />
                     </div>
                   </div>
                 )}
 
-                {/* Step Navigation Button */}
+                {/* Step Navigation Footer */}
                 <div className="flex items-center justify-between pt-1">
                   <button
                     type="button"
                     disabled={currentStep === 1}
-                    onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}
+                    onClick={() => {
+                      setSelectedRebuttalId(null);
+                      setCurrentStep(prev => Math.max(1, prev - 1));
+                    }}
                     className="px-3 py-1.5 rounded-lg border border-zinc-200 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    ← Previous Step
+                    ← Back
                   </button>
 
                   {currentStep < scriptSteps.length ? (
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(prev => Math.min(scriptSteps.length, prev + 1))}
-                      className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      onClick={() => {
+                        setSelectedRebuttalId(null);
+                        setCurrentStep(prev => Math.min(scriptSteps.length, prev + 1));
+                      }}
+                      className="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
                     >
-                      <span>Next Step: {scriptSteps[currentStep].name}</span>
+                      <span>Next Step</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => handleSelectDisposition('Meeting Booked')}
-                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
                     >
-                      <span>Lock & Book Screen Share ✓</span>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Book Meeting</span>
                     </button>
                   )}
                 </div>
@@ -1479,7 +1508,7 @@ export default function BorisCallingCockpit() {
 
             </div>
 
-            {/* RIGHT: TABBED INTELLIGENCE & FOOTPRINT (5 cols) */}
+            {/* RIGHT: NOTES & HISTORICAL FOOTPRINT (5 cols) */}
             <div className="lg:col-span-5 space-y-3">
               
               {/* Tab Navigation Segmented Control */}
@@ -1507,25 +1536,12 @@ export default function BorisCallingCockpit() {
                   }`}
                 >
                   <Clock className="w-3.5 h-3.5" />
-                  <span>Footprint</span>
+                  <span>History</span>
                   {activeContact?.footprint && activeContact.footprint.length > 0 && (
                     <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-zinc-900 text-white">
                       {activeContact.footprint.length}
                     </span>
                   )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveRightTab('objections')}
-                  className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    activeRightTab === 'objections'
-                      ? 'bg-white text-zinc-950 shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-950'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Objection Shields</span>
                 </button>
               </div>
 
@@ -1534,34 +1550,27 @@ export default function BorisCallingCockpit() {
                 <div className="space-y-3 animate-in fade-in duration-150">
                   
                   {/* DIRECT LEAD NOTES (FOR NON-CRM CUSTOMERS) */}
-                  <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-2.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                  <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm">📌</span>
                         <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                          Direct Lead Notes
+                          Lead Notes
                         </h3>
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold">
-                          Non-CRM Storage
-                        </span>
                       </div>
                       {leadNoteSavedToast && (
                         <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 animate-in fade-in">
-                          <Check className="w-3 h-3" /> Saved on Lead!
+                          <Check className="w-3 h-3" /> Saved!
                         </span>
                       )}
                     </div>
 
-                    <p className="text-[11px] text-zinc-500 leading-tight">
-                      For paying clients without CRM. Notes persist permanently on this lead and appear in the footprint audit &amp; CSV export.
-                    </p>
-
                     <div className="space-y-2">
                       <textarea
-                        rows={3}
+                        rows={2}
                         value={leadNoteInput}
                         onChange={(e) => setLeadNoteInput(e.target.value)}
-                        placeholder="Write direct notes on this lead (e.g. decision maker role, budget timeline, pain points, next steps)..."
+                        placeholder="Add quick note on this lead..."
                         className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 font-sans"
                       />
                       <div className="flex items-center justify-between">
@@ -1572,10 +1581,10 @@ export default function BorisCallingCockpit() {
                           type="button"
                           onClick={handleSaveLeadNote}
                           disabled={!leadNoteInput.trim()}
-                          className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                          className="px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                         >
-                          <span>Save Note to Lead</span>
                           <Check className="w-3.5 h-3.5" />
+                          <span>Save Note</span>
                         </button>
                       </div>
                     </div>
@@ -1584,7 +1593,7 @@ export default function BorisCallingCockpit() {
                     {activeContact?.leadNotes && (
                       <div className="mt-2 pt-2 border-t border-zinc-100">
                         <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block mb-1">
-                          Existing Notes on File:
+                          Saved Notes:
                         </span>
                         <div className="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-xs text-zinc-800 leading-relaxed font-sans whitespace-pre-wrap max-h-36 overflow-y-auto">
                           {activeContact.leadNotes}
@@ -1595,52 +1604,48 @@ export default function BorisCallingCockpit() {
 
                   {/* AUTO-UPDATING CRM CALL NOTES CARD */}
                   <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-2.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm">📝</span>
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                            Live CRM Call Notes
-                          </h3>
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold animate-pulse">
-                            Live Auto-Sync
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-zinc-500 mt-0.5">
-                          Auto-synthesizes in real time as you click qualification checkboxes.
-                        </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">📝</span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
+                          CRM Call Summary
+                        </h3>
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                          Auto-Sync
+                        </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleResetTelemetry}
-                        className="text-[10px] text-zinc-400 hover:text-zinc-700 flex items-center gap-1 cursor-pointer"
-                        title="Reset qualification boxes for new call"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>Reset</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetTelemetry}
+                          className="text-[11px] text-zinc-400 hover:text-zinc-700 flex items-center gap-1 cursor-pointer"
+                          title="Reset qualification boxes"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyText(notesDraft, 'notes_copy')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                            copiedKey === 'notes_copy'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-zinc-900 hover:bg-zinc-800 text-white'
+                          }`}
+                        >
+                          {copiedKey === 'notes_copy' ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedKey === 'notes_copy' ? 'Copied' : 'Copy CRM'}</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => copyText(notesDraft, 'notes_copy')}
-                      className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-                        copiedKey === 'notes_copy'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-zinc-950 hover:bg-zinc-800 text-white'
-                      }`}
-                    >
-                      {copiedKey === 'notes_copy' ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedKey === 'notes_copy' ? '✓ Copied to Clipboard!' : '📋 Copy CRM Notes'}</span>
-                    </button>
-
                     <textarea
-                      rows={6}
+                      rows={7}
                       value={notesDraft}
                       onChange={(e) => setNotesDraft(e.target.value)}
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-[11px] leading-relaxed text-zinc-900 font-mono focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 select-text"
-                      placeholder="CRM call notes will auto-populate here as you click qualification checkpoints..."
+                      placeholder="CRM call notes auto-populate here..."
                     />
                   </div>
 
@@ -1651,19 +1656,14 @@ export default function BorisCallingCockpit() {
               {activeRightTab === 'footprint' && (
                 <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3 animate-in fade-in duration-150">
                   <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-4 h-4 text-zinc-900" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                          Communication Footprint
-                        </h3>
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-100 text-zinc-800 font-bold border border-zinc-200">
-                          {activeContact?.footprint?.length || 0} Touches
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        Chronological history of emails sent, calls made, and rep notes for {customerName}.
-                      </p>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-zinc-900" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
+                        Touch History
+                      </h3>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-100 text-zinc-800 font-bold border border-zinc-200">
+                        {activeContact?.footprint?.length || 0}
+                      </span>
                     </div>
 
                     <Link
@@ -1671,7 +1671,7 @@ export default function BorisCallingCockpit() {
                       className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
                       title="Open full Global Contacts directory"
                     >
-                      <span>Contacts View</span>
+                      <span>All Contacts</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </Link>
                   </div>
@@ -1738,104 +1738,10 @@ export default function BorisCallingCockpit() {
                     ) : (
                       <div className="py-8 text-center text-zinc-400 space-y-1">
                         <Clock className="w-6 h-6 mx-auto opacity-40" />
-                        <p className="text-xs font-medium">No prior communication footprint recorded yet.</p>
-                        <p className="text-[10px] text-zinc-400">First touch in progress. Log call or add note above.</p>
+                        <p className="text-xs font-medium">No history yet.</p>
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* TAB 3: 1-CLICK OBJECTION SHIELDS (ARM) */}
-              {activeRightTab === 'objections' && (
-                <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3 animate-in fade-in duration-150">
-                  <div className="pb-2 border-b border-zinc-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-700 font-mono flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        <span>1-Click Objection Shields (ARM)</span>
-                      </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">
-                        Acknowledge • Respond • Move
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      Prospect gave pushback? Click to see the exact battle-tested response:
-                    </p>
-                  </div>
-
-                  {/* Clickable Objection Chips */}
-                  <div className="flex flex-col gap-1.5">
-                    {PRESET_REBUTTALS.map((reb) => {
-                      const isSelected = selectedRebuttalId === reb.id;
-                      return (
-                        <button
-                          key={reb.id}
-                          type="button"
-                          onClick={() => setSelectedRebuttalId(reb.id)}
-                          className={`text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-between border ${
-                            isSelected
-                              ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
-                              : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border-zinc-200'
-                          }`}
-                        >
-                          <span className="truncate">🛡️ "{reb.trigger}"</span>
-                          <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded shrink-0 ml-2 ${
-                            isSelected ? 'bg-zinc-800 text-zinc-300' : 'bg-white text-zinc-500 border border-zinc-200'
-                          }`}>
-                            {reb.category}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Active Objection Rebuttal Card */}
-                  <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-zinc-900 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-amber-900 font-mono truncate max-w-[240px]">
-                        ARM: "{activeRebuttal.trigger}"
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copyText(interpolate(activeRebuttal.fullSpoken), 'reb_copy')}
-                        className="px-2 py-1 rounded bg-white border border-amber-300 text-[11px] font-semibold text-zinc-800 hover:bg-amber-100 flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        {copiedKey === 'reb_copy' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        <span>Copy</span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 text-xs leading-relaxed">
-                      <div>
-                        <span className="font-bold text-amber-950 uppercase text-[10px] font-mono block">
-                          1. Acknowledge (Validate, Don't Argue):
-                        </span>
-                        <p className="text-zinc-800 mt-0.5">
-                          {interpolate(activeRebuttal.acknowledge)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="font-bold text-amber-950 uppercase text-[10px] font-mono block">
-                          2. Respond (Re-frame the Friction):
-                        </span>
-                        <p className="text-zinc-800 mt-0.5">
-                          {interpolate(activeRebuttal.respond)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="font-bold text-amber-950 uppercase text-[10px] font-mono block">
-                          3. Move (Low-Friction Closing Question):
-                        </span>
-                        <p className="text-zinc-900 font-bold mt-0.5">
-                          {interpolate(activeRebuttal.move)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
                 </div>
               )}
 
