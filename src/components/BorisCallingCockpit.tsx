@@ -820,27 +820,6 @@ export default function BorisCallingCockpit() {
 
             {/* Quick Action Buttons */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Link
-                href="/contacts"
-                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
-                title="View all tenant contacts & multi-touch footprints"
-              >
-                <Users className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Contacts</span>
-              </Link>
-
-              {adminClearance && (
-                <button
-                  type="button"
-                  onClick={() => setIsCsvModalOpen(true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                  title="Upload custom .csv file of leads (Admin only)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-zinc-600" />
-                  <span>Import CSV</span>
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => setIsDailyReportOpen(true)}
