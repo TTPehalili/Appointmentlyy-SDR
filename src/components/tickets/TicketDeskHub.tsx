@@ -28,11 +28,14 @@ import {
   Radio,
   Eye,
   Shield,
-  HelpCircle
+  HelpCircle,
+  CreditCard
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { TroubleTicket, TicketMessage, TicketPriority, TicketStatus, TicketCategory, TICKET_CATEGORIES } from '@/lib/ticketTypes';
 import NewTicketModal from '@/components/tickets/NewTicketModal';
+import QuotaTopUpModal from '@/components/icp/QuotaTopUpModal';
+import { creditTenantRecords, normalizeTenantKey, WISE_PAYMENT_LINK, WISE_QR_PATH } from '@/lib/icpQuotaStore';
 
 export default function TicketDeskHub() {
   const { session, role, isAdmin, tenantName, repName, email } = useSession();
@@ -53,6 +56,8 @@ export default function TicketDeskHub() {
 
   // Modal State
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
+  const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
+  const [creditApprovedToast, setCreditApprovedToast] = useState<string | null>(null);
 
   // Communication Composer State
   const [replyContent, setReplyContent] = useState('');
@@ -357,10 +362,19 @@ export default function TicketDeskHub() {
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
 
+          {/* Tap Up Lead Quota Button */}
+          <button
+            onClick={() => setIsTopUpModalOpen(true)}
+            className="px-3.5 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <CreditCard className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Tap Up ICP Lead Quota</span>
+          </button>
+
           {/* New Trouble Ticket Button */}
           <button
             onClick={() => setIsNewTicketModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>New Trouble Ticket</span>
@@ -625,7 +639,55 @@ export default function TicketDeskHub() {
 
               {/* Conversation Feed */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-zinc-50/20">
-                
+
+                {/* Billing / ICP Quota Tap-Up Action Card */}
+                {selectedTicket.category === 'account_billing' && (
+                  <div className="p-4 rounded-xl bg-zinc-950 text-white border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                          WISE BILLING &amp; QUOTA PROVISIONING
+                        </span>
+                        <span className="font-mono text-zinc-400">@emilhalilih</span>
+                      </div>
+                      <p className="text-zinc-300">
+                        Complete transfer via Wise (<a href={WISE_PAYMENT_LINK} target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline font-mono">wise.com/pay/me/emilhalilih</a>) or scan the official QR code.
+                      </p>
+                      {role === 'Super Admin' && (
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-zinc-400 font-semibold">Super Admin 1-Click Credit:</span>
+                          {[2000, 5000, 10000].map((amt) => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => {
+                                creditTenantRecords(
+                                  normalizeTenantKey(selectedTicket.tenantCode || selectedTicket.tenantName),
+                                  amt
+                                );
+                                handleUpdateStatus('resolved');
+                                setCreditApprovedToast(`Credited +${amt.toLocaleString()} records to ${selectedTicket.tenantName}`);
+                                setTimeout(() => setCreditApprovedToast(null), 3500);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer"
+                            >
+                              Approve +{amt.toLocaleString()} Records
+                            </button>
+                          ))}
+                          {creditApprovedToast && (
+                            <span className="text-emerald-400 font-bold">{creditApprovedToast}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <img
+                      src={WISE_QR_PATH}
+                      alt="Wise QR @emilhalilih"
+                      className="w-20 h-20 object-contain rounded-lg border border-zinc-700 shrink-0"
+                    />
+                  </div>
+                )}
+
                 {/* Initial Description Card */}
                 <div className="p-4 rounded-xl bg-white border border-zinc-200 shadow-xs space-y-2">
                   <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
@@ -856,6 +918,20 @@ export default function TicketDeskHub() {
         onTicketCreated={(newTicket) => {
           setTickets(prev => [newTicket, ...prev]);
           setSelectedTicketId(newTicket.id);
+        }}
+      />
+
+      {/* Tap Up ICP Lead Quota Modal */}
+      <QuotaTopUpModal
+        isOpen={isTopUpModalOpen}
+        onClose={() => setIsTopUpModalOpen(false)}
+        tenantCode={session.tenantCode || 'APEX-GLOBAL'}
+        tenantName={tenantName}
+        clientContactName={repName}
+        clientEmail={email}
+        onInvoiceGenerated={(_, newTicketId) => {
+          fetchTickets(true);
+          if (newTicketId) setSelectedTicketId(newTicketId);
         }}
       />
     </div>

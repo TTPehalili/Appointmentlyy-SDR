@@ -21,7 +21,8 @@ import {
   Inbox,
   Users,
   UploadCloud,
-  LifeBuoy
+  LifeBuoy,
+  FolderKanban
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
@@ -50,6 +51,7 @@ export default function AppSidebar() {
   const frontlineItems = [
     { label: 'Calling Floor', href: '/cockpit', icon: Swords },
     { label: 'Global Contacts', href: '/contacts', icon: Users },
+    { label: 'ICP List Builder', href: '/icp-builder', icon: FolderKanban },
     { label: 'Sparring Arena', href: '/sparring', icon: Headphones },
     { label: 'LinkedIn Studio', href: '/linkedin', icon: LinkedinIcon },
     { label: 'Cold Email Studio', href: '/email', icon: Mail },

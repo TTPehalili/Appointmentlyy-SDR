@@ -24,7 +24,8 @@ import {
   Copy, 
   ChevronRight, 
   PlusCircle, 
-  Send
+  Send,
+  FolderKanban
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import AppSidebar from '@/components/AppSidebar';
@@ -32,11 +33,14 @@ import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession, isRoleAdmin } from '@/lib/session';
 import { 
   ContactRecord, 
+  IcpFolder,
   LeadFootprintItem, 
   getStoredContacts, 
+  getStoredFolders,
   saveStoredContacts, 
   addContactNote, 
   exportContactsToCsv, 
+  canUserExportCsv,
   subscribeToContacts 
 } from '@/lib/leadStore';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
@@ -44,11 +48,14 @@ import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, tenantName, repName } = useSession();
   const adminClearance = isRoleAdmin(role);
+  const canExportCsv = canUserExportCsv(role);
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
+  const [folders, setFolders] = useState<IcpFolder[]>(() => getStoredFolders());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
+  const [selectedFolderFilter, setSelectedFolderFilter] = useState<string>('all');
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   
@@ -60,8 +67,10 @@ export default function GlobalContactsManager() {
   // Subscribe to real-time updates
   useEffect(() => {
     setContacts(getStoredContacts());
+    setFolders(getStoredFolders());
     const unsubscribe = subscribeToContacts((updated) => {
       setContacts(updated);
+      setFolders(getStoredFolders());
       if (selectedContact) {
         const fresh = updated.find(c => c.id === selectedContact.id);
         if (fresh) setSelectedContact(fresh);
@@ -79,28 +88,32 @@ export default function GlobalContactsManager() {
     return Array.from(set);
   }, [contacts]);
 
-  // Filtered Contacts (Enforcing Rep Visibility Rules)
+  // Filtered Contacts (Enforcing Strict Rep Visibility & Anti-Leak Rules)
   const filteredContacts = useMemo(() => {
     return contacts.filter(contact => {
-      // 1. Role-based scoping: If Rep role, restrict to their assigned leads or global tenant leads
-      if (!adminClearance && contact.assignedRep && contact.assignedRep !== repName) {
-        // Allow if not explicitly assigned or matches rep name
-        if (contact.assignedRep !== 'Emil Halili' && contact.assignedRep !== repName) {
+      // 1. Strict Rep-level isolation: Reps ONLY see leads explicitly distributed/assigned to them
+      if (role === 'Rep') {
+        if (!contact.assignedRep || contact.assignedRep.toLowerCase() !== repName.toLowerCase()) {
           return false;
         }
       }
 
-      // 2. Rep filter (Admin only)
+      // 2. Folder filter
+      if (selectedFolderFilter !== 'all' && contact.folderId !== selectedFolderFilter) {
+        return false;
+      }
+
+      // 3. Rep filter (Admin only)
       if (adminClearance && selectedRepFilter !== 'all' && contact.assignedRep !== selectedRepFilter) {
         return false;
       }
 
-      // 3. Status filter
+      // 4. Status filter
       if (selectedStatus !== 'all' && contact.status.toLowerCase() !== selectedStatus.toLowerCase()) {
         return false;
       }
 
-      // 4. Search query
+      // 5. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = contact.name.toLowerCase().includes(q);
@@ -108,14 +121,15 @@ export default function GlobalContactsManager() {
         const matchEmail = contact.email.toLowerCase().includes(q);
         const matchPhone = contact.phone.toLowerCase().includes(q);
         const matchTitle = contact.title.toLowerCase().includes(q);
-        if (!matchName && !matchCompany && !matchEmail && !matchPhone && !matchTitle) {
+        const matchFolder = (contact.folderName || '').toLowerCase().includes(q);
+        if (!matchName && !matchCompany && !matchEmail && !matchPhone && !matchTitle && !matchFolder) {
           return false;
         }
       }
 
       return true;
     });
-  }, [contacts, searchQuery, selectedStatus, selectedRepFilter, adminClearance, repName]);
+  }, [contacts, searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter, adminClearance, role, repName]);
 
   // Copy helper
   const copyText = (txt: string, key: string) => {
@@ -196,7 +210,15 @@ export default function GlobalContactsManager() {
 
             {/* Role-Gated Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              {adminClearance ? (
+              <Link
+                href="/icp-builder"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-2xs"
+              >
+                <FolderKanban className="w-3.5 h-3.5" />
+                <span>ICP List Builder &amp; Folders</span>
+              </Link>
+
+              {canExportCsv ? (
                 <>
                   <button
                     type="button"
@@ -221,7 +243,7 @@ export default function GlobalContactsManager() {
               ) : (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 border border-zinc-200 text-zinc-500 select-none">
                   <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>CSV Export & Upload restricted to Admins</span>
+                  <span>CSV Download Locked (Admin Only)</span>
                 </div>
               )}
             </div>
@@ -237,7 +259,7 @@ export default function GlobalContactsManager() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by prospect name, company, email, phone, or title..."
+                placeholder="Search by prospect name, company, email, phone, title, or folder..."
                 className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 font-medium"
               />
               {searchQuery && (
@@ -253,6 +275,20 @@ export default function GlobalContactsManager() {
 
             {/* Filter Dropdowns */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* ICP Folder Filter */}
+              <select
+                value={selectedFolderFilter}
+                onChange={(e) => setSelectedFolderFilter(e.target.value)}
+                className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+              >
+                <option value="all">📁 All ICP Folders ({folders.length})</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    📁 {f.name} ({f.totalLeads})
+                  </option>
+                ))}
+              </select>
+
               {/* Status Filter */}
               <select
                 value={selectedStatus}
@@ -284,8 +320,8 @@ export default function GlobalContactsManager() {
             </div>
           </div>
 
-          {/* Contacts Table View */}
-          <div className="bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden">
+          {/* Contacts Table View (With Anti-Copy Protection for Non-Admins) */}
+          <div className={`bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden ${!canExportCsv ? 'select-none' : ''}`}>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>

@@ -495,3 +495,235 @@ Emil Halili & The Appointmentlyy Engineering Team
     return { success: false, error: errorMsg };
   }
 }
+
+/**
+ * 4. Send Ultra-Minimalist Appointmentlyy System Invoice Email to Client
+ *    Supports:
+ *    - Month 1 Onboarding ($2,500 Setup + Included Month 1 BYOK + Included 8,000 ICP Credits)
+ *    - Month 2+ Renewal ($249 BYOK + Chosen ICP Volume Pack)
+ *    - On-Demand ICP Quota Tap-Up ($50/2k, $75/5k, $150/10k)
+ */
+export async function sendAppointmentlyySystemInvoiceEmail(params: {
+  invoiceNumber: string;
+  tenantName: string;
+  clientContactName: string;
+  clientEmail: string;
+  issueDate: string;
+  dueDate: string;
+  totalAmountUsd: number;
+  lineItems: { description: string; subtext?: string; amountUsd: number }[];
+  ticketId?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const apiKey = getResendApiKey();
+  if (!apiKey) {
+    console.warn('[TicketEmailer] No Resend API key configured. Invoice email simulated.');
+    return { success: false, error: 'Resend API key not configured (Invoice logged in system)' };
+  }
+
+  const fromEmail = getResendFromEmail();
+  const inboundEmail = getResendInboundEmail();
+  const wiseUrl = 'https://wise.com/pay/me/emilhalilih';
+
+  const subject = `Invoice ${params.invoiceNumber} from Appointmentlyy ($${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)`;
+
+  const rowsText = params.lineItems
+    .map(
+      (item) =>
+        `- ${item.description}${item.subtext ? ` (${item.subtext})` : ''}: $${item.amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+    )
+    .join('\n');
+
+  const textBody = `
+Appointmentlyy — Official Invoice ${params.invoiceNumber}
+Issued: ${params.issueDate}
+
+Billed To:
+${params.tenantName}
+${params.clientContactName} (${params.clientEmail})
+
+Amount Due: $${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+
+Line Items:
+${rowsText}
+
+Total Due: $${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+
+Pay via Wise:
+${wiseUrl}
+Wise Tag: @emilhalilih
+Please reference ${params.invoiceNumber} in your transfer note.
+
+Refund & Cancellation Policy:
+- Setup & Infrastructure: Initial workspace deployment, configuration, and setup fees ($2,500) are non-refundable once resource provisioning has begun.
+- Monthly Subscriptions: Recurring monthly charges ($249/mo BYOK) operate on a flexible 30-day model with zero multi-year lock-in and are non-refundable once a billing cycle commences; cancel anytime prior to the next billing date.
+- Data Credits & Consumables: Contact enrichment batches and ICP Data Cloud record allocations are non-refundable once provisioned or processed.
+Inquiries: Admin@appointmentlyy.com
+`.trim();
+
+  const rowsHtml = params.lineItems
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding: 14px 16px 14px 0; border-bottom: 1px solid #f4f4f5; vertical-align: top;">
+          <div style="font-size: 13px; font-weight: 500; color: #18181b;">${escapeHtml(item.description)}</div>
+          ${
+            item.subtext
+              ? `<div style="font-size: 12px; color: #a1a1aa; margin-top: 2px;">${escapeHtml(item.subtext)}</div>`
+              : ''
+          }
+        </td>
+        <td style="padding: 14px 0; border-bottom: 1px solid #f4f4f5; text-align: right; font-family: monospace; font-size: 13px; color: ${
+          item.amountUsd === 0 ? '#a1a1aa' : '#18181b'
+        }; vertical-align: top;">
+          $${item.amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </td>
+      </tr>`
+    )
+    .join('');
+
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invoice ${escapeHtml(params.invoiceNumber)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #18181b;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fafafa; padding: 36px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e4e4e7;">
+          
+          <!-- Solid Black Minimalist Header -->
+          <tr>
+            <td style="background-color: #09090b; padding: 24px 36px; color: #ffffff;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td valign="middle">
+                    <div style="display: inline-block; background-color: #ED1C24; color: #09090b; font-weight: 900; font-size: 15px; padding: 4px 12px; border-radius: 6px; letter-spacing: -0.3px;">Appointmently</div>
+                    <div style="font-size: 12px; color: #a1a1aa; margin-top: 6px;">emil@appointmentlyy.com</div>
+                  </td>
+                  <td align="right" valign="middle">
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #a1a1aa;">Invoice</div>
+                    <div style="font-family: monospace; font-size: 13px; font-weight: 600; color: #ffffff; margin-top: 4px;">${escapeHtml(params.invoiceNumber)}</div>
+                    <div style="font-size: 12px; color: #a1a1aa; margin-top: 2px;">${escapeHtml(params.issueDate)}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Minimalist Body -->
+          <tr>
+            <td style="padding: 36px;">
+              
+              <!-- Billed To & Amount Due -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding-bottom: 24px; border-bottom: 1px solid #f4f4f5;">
+                <tr>
+                  <td valign="bottom">
+                    <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 4px;">Billed to</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #18181b;">${escapeHtml(params.tenantName)}</div>
+                    <div style="font-size: 12px; color: #71717a; margin-top: 2px;">${escapeHtml(params.clientContactName)} &bull; ${escapeHtml(params.clientEmail)}</div>
+                  </td>
+                  <td align="right" valign="bottom">
+                    <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 2px;">Amount due</div>
+                    <div style="font-family: monospace; font-size: 24px; font-weight: 600; color: #09090b;">
+                      $${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style="font-size: 12px; font-weight: 400; color: #a1a1aa;">USD</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Line Items Table -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 16px;">
+                <thead>
+                  <tr>
+                    <th align="left" style="padding: 10px 0; border-bottom: 1px solid #f4f4f5; font-size: 12px; font-weight: 400; color: #a1a1aa;">Description</th>
+                    <th align="right" style="padding: 10px 0; border-bottom: 1px solid #f4f4f5; font-size: 12px; font-weight: 400; color: #a1a1aa; width: 110px;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+
+              <!-- Total Due Row -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding-top: 16px; padding-bottom: 28px; border-top: 1px solid #e4e4e7;">
+                <tr>
+                  <td style="font-size: 12px; font-weight: 500; color: #71717a;">Total due</td>
+                  <td align="right" style="font-family: monospace; font-size: 14px; font-weight: 600; color: #09090b;">
+                    $${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Pay via Wise Block -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding-top: 24px; border-top: 1px solid #f4f4f5;">
+                <tr>
+                  <td>
+                    <div style="font-size: 12px; font-weight: 600; color: #18181b; margin-bottom: 6px;">Pay via Wise</div>
+                    <div style="font-size: 12px; color: #71717a; line-height: 1.6; margin-bottom: 14px;">
+                      Transfer via Wise using the link below (Tag: <strong style="font-family: monospace; color: #18181b;">@emilhalilih</strong>). Please reference <strong style="font-family: monospace; color: #18181b;">${escapeHtml(params.invoiceNumber)}</strong> in your payment note.
+                    </div>
+                    <a href="${wiseUrl}" style="display: inline-block; background-color: #09090b; color: #ffffff; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 12px; font-weight: 500;">
+                      wise.com/pay/me/emilhalilih &nearr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Refund & Cancellation Policy -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #f4f4f5;">
+                <tr>
+                  <td style="font-size: 11px; color: #a1a1aa; line-height: 1.6;">
+                    <div style="font-weight: 600; color: #52525b; margin-bottom: 4px;">Refund &amp; Cancellation Policy</div>
+                    <strong>Setup &amp; Infrastructure:</strong> Initial workspace deployment, configuration, and setup fees ($2,500) are non-refundable once resource provisioning has begun.
+                    <strong>Monthly Subscriptions:</strong> Recurring monthly charges ($249/mo BYOK) operate on a flexible 30-day model with zero multi-year lock-in and are non-refundable once a billing cycle commences; cancel anytime prior to the next billing date.
+                    <strong>Data Credits &amp; Consumables:</strong> Contact enrichment batches and ICP Data Cloud record allocations are non-refundable once provisioned or processed.
+                    Inquiries: <span style="font-family: monospace; color: #52525b;">Admin@appointmentlyy.com</span>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+  try {
+    const recipients = [params.clientEmail.trim()];
+    if (!recipients.includes('emil@appointmentlyy.com')) {
+      recipients.push('emil@appointmentlyy.com');
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: recipients,
+        subject,
+        text: textBody,
+        html: htmlBody,
+        reply_to: [inboundEmail, 'emil@appointmentlyy.com'],
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, messageId: data.id };
+    }
+    return { success: false, error: await res.text() };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: errorMsg };
+  }
+}
