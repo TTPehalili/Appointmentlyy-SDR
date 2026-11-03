@@ -22,10 +22,18 @@ import {
   BarChart3,
   Check,
   UploadCloud,
-  LifeBuoy
+  LifeBuoy,
+  Globe
 } from 'lucide-react';
 import { useSession, UserRole } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import {
+  getSimulatedCustomHost,
+  resolveTenantByHostname,
+  subscribeToCustomDomains,
+  TenantCustomDomainConfig,
+  PRIMARY_PLATFORM_HOST,
+} from '@/lib/customDomainStore';
 
 interface NavCommand {
   title: string;
@@ -35,6 +43,7 @@ interface NavCommand {
 }
 
 const COMMANDS: NavCommand[] = [
+  { title: 'Custom Domains & White-Label DNS Setup', category: 'Administration', href: '/settings/domains', icon: Globe },
   { title: 'Playbook Ingestion & Script Customizer (AI)', category: 'Administration', href: '/admin/frameworks', icon: UploadCloud },
   { title: 'AI Boris Calling Cockpit', category: 'Calling Floor', href: '/cockpit', icon: Swords },
   { title: 'AI Sparring Arena', category: 'Training', href: '/sparring', icon: Headphones },
@@ -66,6 +75,22 @@ export default function GlobalTopHeader() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
+  const [activeDomainConfig, setActiveDomainConfig] =
+    useState<TenantCustomDomainConfig | null>(null);
+
+  useEffect(() => {
+    const syncHost = () => {
+      const sim = getSimulatedCustomHost();
+      const host =
+        sim ||
+        (typeof window !== 'undefined' ? window.location.hostname : '');
+      const resolved = resolveTenantByHostname(host);
+      setActiveDomainConfig(resolved);
+    };
+    syncHost();
+    const unsub = subscribeToCustomDomains(syncHost);
+    return () => unsub();
+  }, []);
 
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const tenantMenuRef = useRef<HTMLDivElement | null>(null);
@@ -151,13 +176,38 @@ export default function GlobalTopHeader() {
       <header className="h-13 bg-white border-b border-zinc-200 px-4 sm:px-6 flex items-center justify-between shrink-0 select-none z-30">
         {/* Left: Brand & Tenant Switcher */}
         <div className="flex items-center gap-3">
-          {/* Logo */}
+          {/* Logo & White-Label Custom Domain Brand */}
           <Link href="/" className="flex items-center gap-2 group">
             <div className="h-7 w-7 rounded-md bg-zinc-900 text-white flex items-center justify-center font-black text-xs tracking-tighter">
-              A
+              {activeDomainConfig?.branding.logoInitials || 'A'}
             </div>
             <span className="font-bold text-xs tracking-tight text-zinc-900 hidden md:inline">
-              APPOINTMENTLYY <span className="font-normal text-zinc-400">SDR</span>
+              {activeDomainConfig ? (
+                <>
+                  {activeDomainConfig.branding.workspaceDisplayName}{' '}
+                  {!activeDomainConfig.branding.hidePoweredByBadge && (
+                    <span className="font-normal text-zinc-400">
+                      • Powered by Appointmentlyy
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  APPOINTMENTLYY{' '}
+                  <span className="font-normal text-zinc-400">SDR</span>
+                </>
+              )}
+            </span>
+          </Link>
+
+          <Link
+            href="/settings/domains"
+            title="Configure Custom Domain (e.g. app.customerwebsiteurl.com)"
+            className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono text-[10px] font-semibold transition"
+          >
+            <Globe className="w-2.5 h-2.5 text-emerald-600" />
+            <span>
+              {activeDomainConfig?.customDomain || PRIMARY_PLATFORM_HOST}
             </span>
           </Link>
 

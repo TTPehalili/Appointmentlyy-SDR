@@ -23,10 +23,17 @@ import {
   UploadCloud,
   LifeBuoy,
   FolderKanban,
-  Kanban
+  Kanban,
+  Globe
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import {
+  getSimulatedCustomHost,
+  resolveTenantByHostname,
+  subscribeToCustomDomains,
+  TenantCustomDomainConfig,
+} from '@/lib/customDomainStore';
 
 export default function AppSidebar() {
   const pathname = usePathname();
@@ -34,12 +41,27 @@ export default function AppSidebar() {
 
   // State: 'expanded' (w-56) or 'icons' (w-14)
   const [collapsed, setCollapsed] = useState(false);
+  const [activeDomainConfig, setActiveDomainConfig] =
+    useState<TenantCustomDomainConfig | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('sdr_sidebar_collapsed');
     if (saved === 'true') {
       setCollapsed(true);
     }
+
+    const syncDomainBranding = () => {
+      const sim = getSimulatedCustomHost();
+      const host =
+        sim ||
+        (typeof window !== 'undefined' ? window.location.hostname : '');
+      const resolved = resolveTenantByHostname(host);
+      setActiveDomainConfig(resolved);
+    };
+
+    syncDomainBranding();
+    const unsub = subscribeToCustomDomains(syncDomainBranding);
+    return () => unsub();
   }, []);
 
   const toggleCollapsed = () => {
@@ -63,6 +85,7 @@ export default function AppSidebar() {
   ];
 
   const managementItems = [
+    { label: 'Custom Domains', href: '/settings/domains', icon: Globe },
     { label: 'Support Tickets', href: '/tickets', icon: LifeBuoy },
     { label: 'Upload Playbook', href: '/admin/frameworks', icon: UploadCloud },
     { label: 'Floor Monitor', href: '/monitoring', icon: Radio },
@@ -88,15 +111,17 @@ export default function AppSidebar() {
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between px-1'}`}>
           <Link href="/" className="flex items-center gap-2 group overflow-hidden">
             <div className="h-7 w-7 rounded-md bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
-              A
+              {activeDomainConfig?.branding.logoInitials || 'A'}
             </div>
             {!collapsed && (
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-xs text-zinc-900 truncate tracking-tight">
-                  {tenantName}
+                  {activeDomainConfig?.branding.workspaceDisplayName || tenantName}
                 </span>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  SDR Workspace
+                <span className="text-[10px] text-zinc-400 font-mono truncate">
+                  {activeDomainConfig
+                    ? activeDomainConfig.customDomain
+                    : 'SDR Workspace'}
                 </span>
               </div>
             )}
