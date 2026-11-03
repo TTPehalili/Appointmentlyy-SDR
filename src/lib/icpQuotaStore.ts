@@ -615,3 +615,4 @@ export function subscribeToQuotaStore(callback: () => void): () => void {
     if (channel) channel.close();
   };
 }
+

@@ -235,3 +235,4 @@ export default function MinimalistInvoiceCard({
     </div>
   );
 }
+
