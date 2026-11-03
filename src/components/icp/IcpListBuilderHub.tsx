@@ -373,20 +373,26 @@ export default function IcpListBuilderHub() {
   const [enrichedSingleProspect, setEnrichedSingleProspect] =
     useState<SanitizedIcpProspect | null>(null);
 
-  // Live Market Sizing & Preview state
+  // Live Market Sizing & Preview state (with 25-per-page cursor pagination)
   const [sizingLoading, setSizingLoading] = useState(false);
   const [totalMatching, setTotalMatching] = useState<number>(12600);
   const [previewProspects, setPreviewProspects] = useState<SanitizedIcpProspect[]>([]);
+  const [previewPage, setPreviewPage] = useState<number>(1);
+  const [cursorHistory, setCursorHistory] = useState<string[]>(['']); // index 0 = '' (page 1)
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [breakdowns, setBreakdowns] = useState<{
     byIndustry: { label: string; count: number; pct: number }[];
     byHeadcount: { label: string; count: number; pct: number }[];
   } | null>(null);
 
+  // Saved Folder 25-per-page pagination map (folderId -> pageNumber)
+  const [folderPageMap, setFolderPageMap] = useState<Record<string, number>>({});
+
   // Pull & Folder Distribution state
   const [folderNameInput, setFolderNameInput] = useState(
     'Outsource Accelerator BPO & Virtual Assistant Leaders'
   );
-  const [pullCount, setPullCount] = useState<number>(20);
+  const [pullCount, setPullCount] = useState<number>(25);
   const [selectedRepsForPull, setSelectedRepsForPull] = useState<string[]>([]);
   const [pullingList, setPullingList] = useState(false);
   const [pullBanner, setPullBanner] = useState<{
@@ -462,8 +468,12 @@ export default function IcpListBuilderHub() {
     setNewRepInput('');
   };
 
-  // Free Market Sizing (0 credits)
-  const handleCalculateMarketSize = async (advanceStep = true) => {
+  // Free Market Sizing (0 credits) with 25-per-page cursor pagination
+  const handleCalculateMarketSize = async (
+    advanceStep = true,
+    targetPage = 1,
+    cursorToken = ''
+  ) => {
     setSizingLoading(true);
     setPullBanner(null);
     try {
@@ -474,6 +484,7 @@ export default function IcpListBuilderHub() {
           mode: 'size',
           tenantCode: activeQuota.tenantCode,
           pullCount: 25,
+          cursor: cursorToken || undefined,
           masterKeyOverride: getSuperAdminMasterDataKey(),
           filters: {
             titles,
@@ -497,6 +508,11 @@ export default function IcpListBuilderHub() {
         setTotalMatching(data.totalMatching || 0);
         setPreviewProspects(data.prospects || []);
         setBreakdowns(data.breakdowns || null);
+        setPreviewPage(targetPage);
+        setNextCursor(data.nextCursor || null);
+        if (targetPage === 1) {
+          setCursorHistory(['']);
+        }
         if (advanceStep) {
           setActiveWizardStep(2);
         }
@@ -506,6 +522,24 @@ export default function IcpListBuilderHub() {
     } finally {
       setSizingLoading(false);
     }
+  };
+
+  const handleNextPreviewPage = () => {
+    if (!nextCursor || sizingLoading) return;
+    const nextPageNum = previewPage + 1;
+    setCursorHistory((prev) => {
+      const copy = [...prev];
+      copy[nextPageNum - 1] = nextCursor;
+      return copy;
+    });
+    handleCalculateMarketSize(false, nextPageNum, nextCursor);
+  };
+
+  const handlePrevPreviewPage = () => {
+    if (previewPage <= 1 || sizingLoading) return;
+    const prevPageNum = previewPage - 1;
+    const prevCursor = cursorHistory[prevPageNum - 1] || '';
+    handleCalculateMarketSize(false, prevPageNum, prevCursor);
   };
 
   // Single LinkedIn URL Instant Enrichment (POST /v1/enrich)
@@ -1685,24 +1719,48 @@ export default function IcpListBuilderHub() {
                       </div>
                     )}
 
-                    {/* Compact Sample Preview Table */}
+                    {/* 25-Per-Page Paginated Preview Table */}
                     <div className="border border-zinc-200/80 rounded-xl overflow-hidden select-none">
-                      <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/80 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-zinc-700">
-                          Sample Matching Profiles (Phone &amp; Email Unlocked in Step 3)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setActiveWizardStep(3)}
-                          className="font-semibold text-zinc-950 hover:underline cursor-pointer"
-                        >
-                          Proceed to Step 3 &darr;
-                        </button>
+                      <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-zinc-700">
+                            Matching Profiles — Page {previewPage} ({previewProspects.length} of 25 per page)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={previewPage <= 1 || sizingLoading}
+                            onClick={handlePrevPreviewPage}
+                            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
+                          >
+                            &larr; Prev 25
+                          </button>
+                          <span className="font-mono text-zinc-500">
+                            Page {previewPage}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!nextCursor || sizingLoading}
+                            onClick={handleNextPreviewPage}
+                            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-900 font-semibold disabled:opacity-40 cursor-pointer"
+                          >
+                            Next 25 &rarr;
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveWizardStep(3)}
+                            className="ml-2 font-semibold text-zinc-950 hover:underline cursor-pointer"
+                          >
+                            Proceed to Step 3 &darr;
+                          </button>
+                        </div>
                       </div>
-                      <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                      <div className="overflow-x-auto max-h-96 overflow-y-auto">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
                             <tr className="border-b border-zinc-100 text-zinc-400 font-normal">
+                              <th className="py-2.5 px-4 font-normal">#</th>
                               <th className="py-2.5 px-4 font-normal">
                                 Decision Maker &amp; LinkedIn
                               </th>
@@ -1716,8 +1774,11 @@ export default function IcpListBuilderHub() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-zinc-100">
-                            {previewProspects.slice(0, 10).map((p) => (
+                            {previewProspects.slice(0, 25).map((p, idx) => (
                               <tr key={p.id} className="hover:bg-zinc-50/60">
+                                <td className="py-2.5 px-4 font-mono text-zinc-400">
+                                  {(previewPage - 1) * 25 + idx + 1}
+                                </td>
                                 <td className="py-2.5 px-4">
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-semibold text-zinc-900">
@@ -1778,6 +1839,31 @@ export default function IcpListBuilderHub() {
                           </tbody>
                         </table>
                       </div>
+                      {/* Bottom Pagination Bar (25 Results Per Page) */}
+                      <div className="bg-zinc-50 px-4 py-2.5 border-t border-zinc-200/80 flex items-center justify-between text-xs">
+                        <span className="text-zinc-500 font-mono">
+                          Showing rows {(previewPage - 1) * 25 + 1}–
+                          {(previewPage - 1) * 25 + previewProspects.slice(0, 25).length} (25 per page)
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={previewPage <= 1 || sizingLoading}
+                            onClick={handlePrevPreviewPage}
+                            className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
+                          >
+                            &larr; Previous 25
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!nextCursor || sizingLoading}
+                            onClick={handleNextPreviewPage}
+                            className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
+                          >
+                            Next 25 Results &rarr;
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1833,9 +1919,9 @@ export default function IcpListBuilderHub() {
                               onChange={(e) => setPullCount(Number(e.target.value))}
                               className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 text-zinc-950 font-mono font-bold bg-white focus:outline-none focus:border-zinc-950"
                             >
-                              <option value={20}>20 Records</option>
-                              <option value={50}>50 Records</option>
-                              <option value={100}>100 Records</option>
+                              <option value={25}>25 Records (1 Page)</option>
+                              <option value={50}>50 Records (2 Pages)</option>
+                              <option value={100}>100 Records (4 Pages)</option>
                               <option value={250}>250 Records</option>
                               <option value={500}>500 Records</option>
                               <option value={1000}>1,000 Records</option>
@@ -2138,113 +2224,177 @@ export default function IcpListBuilderHub() {
                         </div>
                       </div>
 
-                      {isExpanded && (
-                        <div
-                          className={`border-t border-zinc-100 overflow-x-auto ${
-                            !canExport ? 'select-none' : ''
-                          }`}
-                        >
-                          <table className="w-full text-left border-collapse text-xs">
-                            <thead>
-                              <tr className="bg-zinc-50/70 border-b border-zinc-100 text-zinc-400 font-normal">
-                                <th className="py-2.5 px-5 font-normal">ID</th>
-                                <th className="py-2.5 px-5 font-normal">
-                                  Decision Maker &amp; LinkedIn
-                                </th>
-                                <th className="py-2.5 px-5 font-normal">
-                                  Company &amp; Website
-                                </th>
-                                <th className="py-2.5 px-5 font-normal">
-                                  Direct Phone &amp; Email
-                                </th>
-                                <th className="py-2.5 px-5 font-normal">
-                                  Assigned Rep
-                                </th>
-                                <th className="py-2.5 px-5 font-normal text-right">
-                                  Calling Floor
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100">
-                              {folderContacts.map((lead) => (
-                                <tr key={lead.id} className="hover:bg-zinc-50/60">
-                                  <td className="py-3 px-5 font-mono text-zinc-400">
-                                    {lead.id}
-                                  </td>
-                                  <td className="py-3 px-5">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-semibold text-zinc-900">
-                                        {lead.name}
-                                      </span>
-                                      {lead.linkedinUrl && (
-                                        <a
-                                          href={lead.linkedinUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          title={`Open ${lead.name}'s LinkedIn Profile`}
-                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-mono text-[10px]"
-                                        >
-                                          <span>LinkedIn</span>
-                                          <ExternalLink className="w-2.5 h-2.5" />
-                                        </a>
-                                      )}
-                                    </div>
-                                    <div className="text-zinc-500">{lead.title}</div>
-                                  </td>
-                                  <td className="py-3 px-5">
-                                    <div className="font-medium text-zinc-800">
-                                      {lead.company}
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {lead.website ? (
-                                        <a
-                                          href={
-                                            lead.website.startsWith('http')
-                                              ? lead.website
-                                              : `https://${lead.website}`
-                                          }
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1 text-zinc-600 hover:text-zinc-950 font-mono text-[11px] underline decoration-zinc-300"
-                                        >
-                                          <Globe className="w-3 h-3 text-zinc-400" />
-                                          <span>
-                                            {lead.website.replace(/^https?:\/\//, '')}
-                                          </span>
-                                        </a>
-                                      ) : (
-                                        <span className="text-zinc-400">
-                                          {lead.industry || lead.headcount}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-5 font-mono">
-                                    <div className="text-zinc-900 font-medium">
-                                      {lead.phone}
-                                    </div>
-                                    <div className="text-zinc-500">{lead.email}</div>
-                                  </td>
-                                  <td className="py-3 px-5">
-                                    <span className="px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-800 font-medium">
-                                      {lead.assignedRep}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-5 text-right">
-                                    <Link
-                                      href="/cockpit"
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold hover:bg-zinc-800"
-                                    >
-                                      <PhoneCall className="w-3 h-3 text-emerald-400" />
-                                      <span>Dial Now</span>
-                                    </Link>
-                                  </td>
+                      {isExpanded && (() => {
+                        const PAGE_SIZE = 25;
+                        const currentFolderPage = folderPageMap[folder.id] || 1;
+                        const totalFolderPages = Math.max(
+                          1,
+                          Math.ceil(folderContacts.length / PAGE_SIZE)
+                        );
+                        const safePage = Math.min(
+                          currentFolderPage,
+                          totalFolderPages
+                        );
+                        const pageSlice = folderContacts.slice(
+                          (safePage - 1) * PAGE_SIZE,
+                          safePage * PAGE_SIZE
+                        );
+
+                        return (
+                          <div
+                            className={`border-t border-zinc-100 overflow-x-auto ${
+                              !canExport ? 'select-none' : ''
+                            }`}
+                          >
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="bg-zinc-50/70 border-b border-zinc-100 text-zinc-400 font-normal">
+                                  <th className="py-2.5 px-5 font-normal">#</th>
+                                  <th className="py-2.5 px-5 font-normal">ID</th>
+                                  <th className="py-2.5 px-5 font-normal">
+                                    Decision Maker &amp; LinkedIn
+                                  </th>
+                                  <th className="py-2.5 px-5 font-normal">
+                                    Company &amp; Website
+                                  </th>
+                                  <th className="py-2.5 px-5 font-normal">
+                                    Direct Phone &amp; Email
+                                  </th>
+                                  <th className="py-2.5 px-5 font-normal">
+                                    Assigned Rep
+                                  </th>
+                                  <th className="py-2.5 px-5 font-normal text-right">
+                                    Calling Floor
+                                  </th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100">
+                                {pageSlice.map((lead, idx) => (
+                                  <tr key={lead.id} className="hover:bg-zinc-50/60">
+                                    <td className="py-3 px-5 font-mono text-zinc-400">
+                                      {(safePage - 1) * PAGE_SIZE + idx + 1}
+                                    </td>
+                                    <td className="py-3 px-5 font-mono text-zinc-400">
+                                      {lead.id}
+                                    </td>
+                                    <td className="py-3 px-5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-semibold text-zinc-900">
+                                          {lead.name}
+                                        </span>
+                                        {lead.linkedinUrl && (
+                                          <a
+                                            href={lead.linkedinUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`Open ${lead.name}'s LinkedIn Profile`}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-mono text-[10px]"
+                                          >
+                                            <span>LinkedIn</span>
+                                            <ExternalLink className="w-2.5 h-2.5" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      <div className="text-zinc-500">{lead.title}</div>
+                                    </td>
+                                    <td className="py-3 px-5">
+                                      <div className="font-medium text-zinc-800">
+                                        {lead.company}
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        {lead.website ? (
+                                          <a
+                                            href={
+                                              lead.website.startsWith('http')
+                                                ? lead.website
+                                                : `https://${lead.website}`
+                                            }
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-zinc-600 hover:text-zinc-950 font-mono text-[11px] underline decoration-zinc-300"
+                                          >
+                                            <Globe className="w-3 h-3 text-zinc-400" />
+                                            <span>
+                                              {lead.website.replace(/^https?:\/\//, '')}
+                                            </span>
+                                          </a>
+                                        ) : (
+                                          <span className="text-zinc-400">
+                                            {lead.industry || lead.headcount}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-5 font-mono">
+                                      <div className="text-zinc-900 font-medium">
+                                        {lead.phone}
+                                      </div>
+                                      <div className="text-zinc-500">{lead.email}</div>
+                                    </td>
+                                    <td className="py-3 px-5">
+                                      <span className="px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-800 font-medium">
+                                        {lead.assignedRep}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-5 text-right">
+                                      <Link
+                                        href="/cockpit"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold hover:bg-zinc-800"
+                                      >
+                                        <PhoneCall className="w-3 h-3 text-emerald-400" />
+                                        <span>Dial Now</span>
+                                      </Link>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {/* 25-Per-Page Folder Footer Pagination */}
+                            <div className="bg-zinc-50/80 px-5 py-3 border-t border-zinc-100 flex items-center justify-between text-xs">
+                              <span className="text-zinc-500 font-mono">
+                                Showing {(safePage - 1) * PAGE_SIZE + 1}–
+                                {(safePage - 1) * PAGE_SIZE + pageSlice.length} of{' '}
+                                {folderContacts.length} leads (25 per page)
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={safePage <= 1}
+                                  onClick={() =>
+                                    setFolderPageMap((prev) => ({
+                                      ...prev,
+                                      [folder.id]: Math.max(1, safePage - 1),
+                                    }))
+                                  }
+                                  className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
+                                >
+                                  &larr; Prev 25
+                                </button>
+                                <span className="font-mono text-zinc-600">
+                                  Page {safePage} of {totalFolderPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={safePage >= totalFolderPages}
+                                  onClick={() =>
+                                    setFolderPageMap((prev) => ({
+                                      ...prev,
+                                      [folder.id]: Math.min(
+                                        totalFolderPages,
+                                        safePage + 1
+                                      ),
+                                    }))
+                                  }
+                                  className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
+                                >
+                                  Next 25 &rarr;
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })

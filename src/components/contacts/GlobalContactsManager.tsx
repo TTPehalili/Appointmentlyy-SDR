@@ -64,6 +64,10 @@ export default function GlobalContactsManager() {
   const [noteSavedToast, setNoteSavedToast] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // 25 Results Per Page Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 25;
+
   // Subscribe to real-time updates
   useEffect(() => {
     setContacts(getStoredContacts());
@@ -130,6 +134,18 @@ export default function GlobalContactsManager() {
       return true;
     });
   }, [contacts, searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter, adminClearance, role, repName]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredContacts.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedContacts = useMemo(() => {
+    const start = (safeCurrentPage - 1) * PAGE_SIZE;
+    return filteredContacts.slice(start, start + PAGE_SIZE);
+  }, [filteredContacts, safeCurrentPage]);
 
   // Copy helper
   const copyText = (txt: string, key: string) => {
@@ -345,7 +361,7 @@ export default function GlobalContactsManager() {
                       </td>
                     </tr>
                   ) : (
-                    filteredContacts.map((c) => {
+                    paginatedContacts.map((c) => {
                       const touchCount = c.footprint ? c.footprint.length : 0;
                       const latestTouch = c.footprint && c.footprint.length > 0 ? c.footprint[0] : null;
 
@@ -454,6 +470,40 @@ export default function GlobalContactsManager() {
                 </tbody>
               </table>
             </div>
+
+            {/* 25 Results Per Page Footer Bar */}
+            {filteredContacts.length > 0 && (
+              <div className="bg-zinc-50 px-5 py-3 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="font-mono text-zinc-500">
+                  Showing {(safeCurrentPage - 1) * PAGE_SIZE + 1}–
+                  {(safeCurrentPage - 1) * PAGE_SIZE + paginatedContacts.length} of{' '}
+                  {filteredContacts.length.toLocaleString()} contacts (25 per page)
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
+                  >
+                    &larr; Prev 25
+                  </button>
+                  <span className="font-mono text-zinc-600">
+                    Page {safeCurrentPage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
+                  >
+                    Next 25 &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
         </main>

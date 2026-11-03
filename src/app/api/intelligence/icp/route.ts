@@ -18,6 +18,7 @@ export interface IcpSearchRequestPayload {
   mode: 'size' | 'pull' | 'enrich_url';
   tenantCode: string;
   pullCount?: number;
+  cursor?: string; // LeadOcean pagination cursor for 25-per-page navigation
   linkedinUrlToEnrich?: string;
   masterKeyOverride?: string;
   filters: {
@@ -204,7 +205,51 @@ const OA_DIRECTORY_BPO_DOMAINS = [
   'hammerjack.com.au',
   'somewhere.com',
   'emapta.com',
-];
+  'concentrix.com',
+  'foundever.com',
+  'teleperformance.com',
+  'alorica.com',
+  ' Sutherlandglobal.com',
+  'probe-group.com',
+  'probecx.com',
+  'connectos.co',
+  'penbrothers.com',
+  'filtaglobal.com',
+  'diversifyoss.com',
+  'eastvantage.com',
+  'fullscale.io',
+  'coopsys.com',
+  'superstaff.com',
+  'infinit-o.com',
+  'magellan-solutions.com',
+  'piton-global.com',
+  'openaccessbpo.com',
+  'helpware.com',
+  '247-inc.com',
+  'startek.com',
+  'vxi.com',
+  'ibex.co',
+  'tdcx.com',
+  'everise.com',
+  'connext.solutions',
+  'connextglobal.com',
+  'beepo.com.au',
+  'teamglobal.com.au',
+  'offshorly.com',
+  'scalableos.com',
+  'smartoutsourcing.co.uk',
+  'deployed.co',
+  'kamelbpo.com',
+  'selectvoicecom.com',
+  'philippinecompanies.com',
+  'virtuallyincredible.com',
+  'outsourcey.com',
+  'ClearSourceBPO.com',
+  'optimbpo.com',
+  'personiv.com',
+  ' Hugoinc.com',
+  'intelepeer.com',
+].map((d) => d.trim().toLowerCase());
 
 function buildUpstreamFilterObject(
   filters: IcpSearchRequestPayload['filters'],
@@ -219,7 +264,7 @@ function buildUpstreamFilterObject(
     indLower.includes('bpo & virtual assistant');
 
   if (isOaBpoDirectory) {
-    payload.domain = OA_DIRECTORY_BPO_DOMAINS;
+    payload.domain = OA_DIRECTORY_BPO_DOMAINS.slice(0, 50);
     payload.seniority = normalizeSeniorityEnum(filters.seniority);
   } else {
     if (filters.titles?.trim()) {
@@ -459,6 +504,7 @@ export async function POST(req: NextRequest) {
       mode = 'size',
       tenantCode = 'APEX-GLOBAL',
       pullCount = 25,
+      cursor,
       linkedinUrlToEnrich,
       masterKeyOverride,
       filters = {},
@@ -518,6 +564,14 @@ export async function POST(req: NextRequest) {
     const safeCount = Math.min(Math.max(1, Number(pullCount) || 25), 100);
     const upstreamFilter = buildUpstreamFilterObject(filters, tenantCode);
 
+    const searchPayload: Record<string, unknown> = {
+      ...upstreamFilter,
+      limit: mode === 'size' ? 25 : safeCount,
+    };
+    if (cursor && cursor.trim()) {
+      searchPayload.cursor = cursor.trim();
+    }
+
     const searchRes = await fetch(
       `${UPSTREAM_BASE_URL}/v1/people/search?count=true`,
       {
@@ -526,10 +580,7 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
         },
-        body: JSON.stringify({
-          ...upstreamFilter,
-          limit: mode === 'size' ? 15 : safeCount,
-        }),
+        body: JSON.stringify(searchPayload),
       }
     );
 
@@ -538,6 +589,7 @@ export async function POST(req: NextRequest) {
       const rawRows: Record<string, any>[] = Array.isArray(searchJson.data)
         ? searchJson.data
         : [];
+      const nextCursor: string | null = searchJson.meta?.nextCursor || null;
 
       const totalMatching: number =
         typeof searchJson.meta?.total === 'number' && searchJson.meta.total > 0
@@ -648,6 +700,7 @@ export async function POST(req: NextRequest) {
         mode,
         totalMatching,
         returnedCount: sanitizedProspects.length,
+        nextCursor,
         prospects: sanitizedProspects,
         breakdowns: {
           byIndustry:

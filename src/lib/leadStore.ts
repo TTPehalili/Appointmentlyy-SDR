@@ -8,6 +8,7 @@
  */
 
 import { getStoredSession, normalizeUserRole } from './session';
+import liveBpo1000Raw from './liveBpo1000Data.json';
 
 export interface LeadFootprintItem {
   id: string;
@@ -68,9 +69,119 @@ export interface IcpFolder {
   distributedReps: IcpFolderRepSlice[];
 }
 
-const CONTACTS_STORAGE_KEY = 'appointmentlyy_sdr_global_contacts_v3';
-const FOLDERS_STORAGE_KEY = 'appointmentlyy_sdr_icp_folders_v3';
+export interface PipelineStageConfig {
+  id: string;
+  statusValue: string;
+  label: string;
+  subtitle: string;
+  dotColor: string;
+  badgeStyle: string;
+  dealProbability: number; // 0 to 1 (e.g., 0.25 = 25% weight)
+}
+
+const CONTACTS_STORAGE_KEY = 'appointmentlyy_sdr_global_contacts_v4';
+const FOLDERS_STORAGE_KEY = 'appointmentlyy_sdr_icp_folders_v4';
+const PIPELINE_STAGES_STORAGE_KEY = 'appointmentlyy_sdr_pipeline_stages_v1';
 const CONTACTS_BROADCAST = 'appointmentlyy_contacts_sync';
+
+export const STAGE_COLOR_PALETTE: {
+  name: string;
+  dotColor: string;
+  badgeStyle: string;
+}[] = [
+  {
+    name: 'Zinc (Neutral)',
+    dotColor: 'bg-zinc-400',
+    badgeStyle: 'bg-zinc-100 text-zinc-800 border-zinc-200',
+  },
+  {
+    name: 'Sky (Active)',
+    dotColor: 'bg-sky-500',
+    badgeStyle: 'bg-sky-50 text-sky-800 border-sky-200',
+  },
+  {
+    name: 'Amber (Follow-Up)',
+    dotColor: 'bg-amber-500',
+    badgeStyle: 'bg-amber-50 text-amber-800 border-amber-200',
+  },
+  {
+    name: 'Violet (Warm)',
+    dotColor: 'bg-violet-500',
+    badgeStyle: 'bg-violet-50 text-violet-800 border-violet-200',
+  },
+  {
+    name: 'Indigo (Proposal)',
+    dotColor: 'bg-indigo-500',
+    badgeStyle: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+  },
+  {
+    name: 'Emerald (Won / Booked)',
+    dotColor: 'bg-emerald-500',
+    badgeStyle: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  },
+  {
+    name: 'Rose (At Risk / Closed)',
+    dotColor: 'bg-rose-500',
+    badgeStyle: 'bg-rose-50 text-rose-800 border-rose-200',
+  },
+];
+
+export const DEFAULT_PIPELINE_STAGES: PipelineStageConfig[] = [
+  {
+    id: 'col_new',
+    statusValue: 'New Lead',
+    label: 'New Lead',
+    subtitle: 'Pulled from ICP Cloud • Awaiting Touch #1',
+    dotColor: 'bg-zinc-400',
+    badgeStyle: 'bg-zinc-100 text-zinc-800 border-zinc-200',
+    dealProbability: 0.1,
+  },
+  {
+    id: 'col_cadence',
+    statusValue: 'In Cadence',
+    label: 'In Cadence',
+    subtitle: 'Active multi-channel outbound sequence',
+    dotColor: 'bg-sky-500',
+    badgeStyle: 'bg-sky-50 text-sky-800 border-sky-200',
+    dealProbability: 0.25,
+  },
+  {
+    id: 'col_voicemail',
+    statusValue: 'Left Voicemail',
+    label: 'Left Voicemail',
+    subtitle: 'Voicemail dropped • Follow-up queued',
+    dotColor: 'bg-amber-500',
+    badgeStyle: 'bg-amber-50 text-amber-800 border-amber-200',
+    dealProbability: 0.3,
+  },
+  {
+    id: 'col_callback',
+    statusValue: 'Call Back Later',
+    label: 'Call Back Later',
+    subtitle: 'Warm connect • Scheduled callback window',
+    dotColor: 'bg-violet-500',
+    badgeStyle: 'bg-violet-50 text-violet-800 border-violet-200',
+    dealProbability: 0.55,
+  },
+  {
+    id: 'col_booked',
+    statusValue: 'Meeting Booked',
+    label: 'Meeting Booked',
+    subtitle: 'Qualified calendar invite confirmed',
+    dotColor: 'bg-emerald-500',
+    badgeStyle: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    dealProbability: 1.0,
+  },
+  {
+    id: 'col_disqualified',
+    statusValue: 'Disqualified',
+    label: 'Disqualified / Nurture',
+    subtitle: 'Not a fit right now or paused',
+    dotColor: 'bg-zinc-300',
+    badgeStyle: 'bg-zinc-100 text-zinc-500 border-zinc-200',
+    dealProbability: 0,
+  },
+];
 
 /**
  * Security Guardrail: Strictly Super Admin and Admin roles can export CSVs.
@@ -86,25 +197,25 @@ export function canUserExportCsv(roleInput?: string): boolean {
 export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
   {
     id: 'folder_oa_bpo_va_live',
-    name: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
+    name: 'Outsource Accelerator BPO & Virtual Assistant Leaders (1,000 Live)',
     tenantCode: 'APEX-GLOBAL',
     tenantName: 'Apex Global BPO',
     createdBy: 'Emil Halili',
-    createdAt: '2026-11-03T06:00:00.000Z',
+    createdAt: '2026-11-03T07:00:00.000Z',
     filtersSummary: {
-      titles: 'CEO, Founder, Co-Founder, COO, Managing Director, VP Sales, Chief Growth Officer',
-      seniority: 'C-Suite, VP, Director, Owner',
+      titles: 'CEO, Founder, Co-Founder, COO, Managing Director, VP Sales, Chief Growth Officer, Director',
+      seniority: 'C-Suite, VP, Director, Owner, Partner',
       industry: 'Outsource Accelerator BPO & Virtual Assistant Agencies',
       headcount: '51-5,000 employees',
       location: 'US, PH, AU, GB, CA',
-      technologies: 'outsourceaccelerator.com, Cloudstaff, Staff Domain, KMC, TaskUs',
+      technologies: 'outsourceaccelerator.com, Cloudstaff, Staff Domain, KMC, TaskUs, Athena, Wing, MicroSourcing',
     },
-    totalLeads: 16,
+    totalLeads: 1000,
     distributedReps: [
-      { repName: 'Emil Halili', leadCount: 4 },
-      { repName: 'Julian Vance', leadCount: 4 },
-      { repName: 'Marcus Brody', leadCount: 4 },
-      { repName: 'Elena Rostova', leadCount: 4 },
+      { repName: 'Emil Halili', leadCount: 250 },
+      { repName: 'Julian Vance', leadCount: 250 },
+      { repName: 'Marcus Brody', leadCount: 250 },
+      { repName: 'Elena Rostova', leadCount: 250 },
     ],
   },
   {
@@ -129,376 +240,9 @@ export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
   },
 ];
 
-// Default starter contacts with real live-pulled Outsource Accelerator BPO & Virtual Assistant leaders
+// Default starter contacts with 1,000 real live-pulled Outsource Accelerator BPO & Virtual Assistant leaders
 export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
-  {
-    id: 'APLY-52548269',
-    name: 'Derek Gallimore',
-    company: 'Outsource Accelerator',
-    title: 'CEO & Founder',
-    department: 'Executive Leadership',
-    email: 'derek@outsourceaccelerator.com',
-    phone: '+61 405 106 893',
-    headcount: '51-200 employees',
-    website: 'https://outsourceaccelerator.com',
-    linkedinUrl: 'https://www.linkedin.com/in/derek-gallimore',
-    assignedRep: 'Emil Halili',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Pasig, NCR, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Directory Founder & CEO • Website: https://outsourceaccelerator.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-75151747',
-    name: 'Arnold San Miguel',
-    company: 'Outsource Accelerator',
-    title: 'Chief Operations Officer',
-    department: 'Executive Leadership',
-    email: 'arnold@outsourceaccelerator.com',
-    phone: '+63 917 852 9749',
-    headcount: '51-200 employees',
-    website: 'https://outsourceaccelerator.com',
-    linkedinUrl: 'https://www.linkedin.com/in/arnoldsanmiguel',
-    assignedRep: 'Julian Vance',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Pasig, NCR, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator COO • Website: https://outsourceaccelerator.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-85923331',
-    name: 'Justin Pavsic',
-    company: 'Staff Domain',
-    title: 'CEO & Co-founder',
-    department: 'Executive Leadership',
-    email: 'justinp@staffdomain.com',
-    phone: '+61 447 572 653',
-    headcount: '201-500 employees',
-    website: 'https://staffdomain.com',
-    linkedinUrl: 'https://www.linkedin.com/in/justinpavsic',
-    assignedRep: 'Marcus Brody',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Sydney, NSW, AU',
-    status: 'Meeting Booked',
-    cadenceDay: 3,
-    touchNumber: 4,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://staffdomain.com • Booked executive discovery call for outbound SDR seat expansion.',
-    footprint: []
-  },
-  {
-    id: 'APLY-88175026',
-    name: 'Ben Rajah',
-    company: 'Staff Domain',
-    title: 'Chief Financial Officer',
-    department: 'Executive Leadership',
-    email: 'benr@staffdomain.com',
-    phone: '+61 417 208 159',
-    headcount: '201-500 employees',
-    website: 'https://staffdomain.com',
-    linkedinUrl: 'https://www.linkedin.com/in/ben-rajah-0470b042',
-    assignedRep: 'Elena Rostova',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Sydney, NSW, AU',
-    status: 'In Cadence',
-    cadenceDay: 2,
-    touchNumber: 2,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://staffdomain.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-53162054',
-    name: 'Jose de Soto Garcia',
-    company: 'Cloudstaff',
-    title: 'Vice President Of Sales',
-    department: 'Executive Leadership',
-    email: 'jose.desoto@emapta.com',
-    phone: '+1 (619) 651-6916',
-    headcount: '1001-5000 employees',
-    website: 'https://cloudstaff.com',
-    linkedinUrl: 'https://www.linkedin.com/in/desotogarcia',
-    assignedRep: 'Emil Halili',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Charlotte, NC, US',
-    status: 'Call Back Later',
-    cadenceDay: 4,
-    touchNumber: 3,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://cloudstaff.com • Spoke with Jose; asked to reconnect Thursday afternoon.',
-    footprint: []
-  },
-  {
-    id: 'APLY-51123778',
-    name: 'James Braatvedt',
-    company: 'Cloudstaff',
-    title: 'Chief Growth Officer',
-    department: 'Executive Leadership',
-    email: 'james.braatvedt@geodigital.com',
-    phone: '+61 401 372 292',
-    headcount: '1001-5000 employees',
-    website: 'https://cloudstaff.com',
-    linkedinUrl: 'https://www.linkedin.com/in/jbraatvedt',
-    assignedRep: 'Julian Vance',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Auckland, NZ',
-    status: 'Left Voicemail',
-    cadenceDay: 2,
-    touchNumber: 2,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://cloudstaff.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-50569561',
-    name: 'Amanda Carpo',
-    company: 'KMC Solutions',
-    title: 'Co-founder, Chief Legal Counsel',
-    department: 'Executive Leadership',
-    email: 'amanda@kmc.solutions',
-    phone: '+63 920 972 6294',
-    headcount: '1001-5000 employees',
-    website: 'https://kmc.solutions',
-    linkedinUrl: 'https://www.linkedin.com/in/amanda-carpo-441b573',
-    assignedRep: 'Marcus Brody',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing & Offshoring',
-    location: 'Manila, PH',
-    status: 'In Cadence',
-    cadenceDay: 3,
-    touchNumber: 2,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://kmc.solutions',
-    footprint: []
-  },
-  {
-    id: 'APLY-96449761',
-    name: 'Nancy Martinez-Arce',
-    company: 'KMC Solutions',
-    title: 'Vice President for Legal & Administration',
-    department: 'Executive Leadership',
-    email: 'nancy.martinez-arce@kmcsolutions.us',
-    phone: '+63 917 851 5251',
-    headcount: '1001-5000 employees',
-    website: 'https://kmc.solutions',
-    linkedinUrl: 'https://www.linkedin.com/in/nancy-martinez-arce-a3424b79',
-    assignedRep: 'Elena Rostova',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing & Offshoring',
-    location: 'Manila, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://kmc.solutions',
-    footprint: []
-  },
-  {
-    id: 'APLY-30079925',
-    name: 'Adam Warner',
-    company: 'TaskUs',
-    title: 'Vice President Client Services',
-    department: 'Executive Leadership',
-    email: 'awarner@everdriven.com',
-    phone: '+1 (407) 319-3078',
-    headcount: '10001+ employees',
-    website: 'https://taskus.com',
-    linkedinUrl: 'https://www.linkedin.com/in/adam-c-warner',
-    assignedRep: 'Emil Halili',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Atlanta, GA, US',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator BPO Directory • Website: https://taskus.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-59975548',
-    name: 'Andrew Buggy',
-    company: 'TaskUs',
-    title: 'Vice President, Business Development EMEA',
-    department: 'Executive Leadership',
-    email: 'andrew.buggy@concentrix.com',
-    phone: '+44 7801 136739',
-    headcount: '10001+ employees',
-    website: 'https://taskus.com',
-    linkedinUrl: 'https://www.linkedin.com/in/andrew-buggy-bb836412',
-    assignedRep: 'Julian Vance',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Winchester, GB',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator BPO Directory • Website: https://taskus.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-60612881',
-    name: 'Dondi Alentajan',
-    company: 'Kinetic Innovative Staffing',
-    title: 'VP - Sales & Marketing',
-    department: 'Executive Leadership',
-    email: 'dondi@kineticstaff.com',
-    phone: '+63 917 807 4797',
-    headcount: '51-200 employees',
-    website: 'https://kineticstaff.com',
-    linkedinUrl: 'https://www.linkedin.com/in/dondi-alentajan',
-    assignedRep: 'Marcus Brody',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Virtual Assistant & Remote Staffing',
-    location: 'Brisbane, QLD, AU',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Virtual Assistant & Remote Staffing BPO • Website: https://kineticstaff.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-24476316',
-    name: 'Paul Kamper',
-    company: 'Hammerjack',
-    title: 'Managing Director',
-    department: 'Executive Leadership',
-    email: 'pkamper@kamper.com.au',
-    phone: '+61 418 497 749',
-    headcount: '201-500 employees',
-    website: 'https://hammerjack.com.au',
-    linkedinUrl: 'https://www.linkedin.com/in/paul-kamper-439bb63',
-    assignedRep: 'Elena Rostova',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Sydney, NSW, AU',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://hammerjack.com.au',
-    footprint: []
-  },
-  {
-    id: 'APLY-10934914',
-    name: 'Elaine McAnally',
-    company: 'Booth & Partners',
-    title: 'Chief People Officer',
-    department: 'Executive Leadership',
-    email: 'emcanally@puresunfarms.com',
-    phone: '+1 (778) 322-6835',
-    headcount: '501-1000 employees',
-    website: 'https://boothandpartners.com',
-    linkedinUrl: 'https://www.linkedin.com/in/laielaine',
-    assignedRep: 'Emil Halili',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Vancouver, BC, CA',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://boothandpartners.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-26018360',
-    name: 'Liza Inciong',
-    company: 'MicroSourcing',
-    title: 'Vice President - Human Resources',
-    department: 'Executive Leadership',
-    email: 'liza.inciong@microsourcing.com',
-    phone: '+63 922 827 3660',
-    headcount: '1001-5000 employees',
-    website: 'https://microsourcing.com',
-    linkedinUrl: 'https://www.linkedin.com/in/liza-inciong-80463922',
-    assignedRep: 'Julian Vance',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Outsourcing and Offshoring Consulting',
-    location: 'Manila, NCR, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO • Website: https://microsourcing.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-44711086',
-    name: 'David Ford',
-    company: 'Athena Executive Assistants',
-    title: 'Vice President Of Capital Investment',
-    department: 'Executive Leadership',
-    email: 'david@taskus.com',
-    phone: '+1 (206) 696-3701',
-    headcount: '1001-5000 employees',
-    website: 'https://athena.com',
-    linkedinUrl: 'https://www.linkedin.com/in/david-ford-080a1951',
-    assignedRep: 'Marcus Brody',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Virtual Assistant & Executive Delegation',
-    location: 'Manila, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Premier Virtual Assistant Agency • Website: https://athena.com',
-    footprint: []
-  },
-  {
-    id: 'APLY-31266847',
-    name: 'Lucilen Breen',
-    company: 'Virtually Incredible',
-    title: 'Outsourcing Director',
-    department: 'Executive Leadership',
-    email: 'lucilen@virtuallyincredible.com',
-    phone: '+63 993 077 1691',
-    headcount: '51-200 employees',
-    website: 'https://virtuallyincredible.com',
-    linkedinUrl: 'https://www.linkedin.com/in/lucilen-breen-046b9354',
-    assignedRep: 'Elena Rostova',
-    tenantId: 'APEX-GLOBAL',
-    folderId: 'folder_oa_bpo_va_live',
-    folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
-    industry: 'Virtual Assistant Agency',
-    location: 'Calabarzon, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Virtual Assistant Staffing Agency • Website: https://virtuallyincredible.com',
-    footprint: []
-  },
+  ...(liveBpo1000Raw as ContactRecord[]),
   {
     id: 'lead_fresh_d2',
     name: 'Julian Vance',
@@ -761,6 +505,212 @@ export function saveStoredFolders(folders: IcpFolder[]): void {
   } catch (err) {
     console.warn('[LeadStore] Failed to save folders:', err);
   }
+}
+
+/**
+ * Get all stored Pipeline Kanban Stages
+ */
+export function getStoredPipelineStages(): PipelineStageConfig[] {
+  if (typeof window === 'undefined') {
+    return DEFAULT_PIPELINE_STAGES;
+  }
+  try {
+    const raw = localStorage.getItem(PIPELINE_STAGES_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(
+        PIPELINE_STAGES_STORAGE_KEY,
+        JSON.stringify(DEFAULT_PIPELINE_STAGES)
+      );
+      return DEFAULT_PIPELINE_STAGES;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0
+      ? parsed
+      : DEFAULT_PIPELINE_STAGES;
+  } catch {
+    return DEFAULT_PIPELINE_STAGES;
+  }
+}
+
+/**
+ * Save Pipeline Kanban Stages and broadcast update
+ */
+export function saveStoredPipelineStages(stages: PipelineStageConfig[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PIPELINE_STAGES_STORAGE_KEY, JSON.stringify(stages));
+    if (typeof BroadcastChannel !== 'undefined') {
+      const ch = new BroadcastChannel(CONTACTS_BROADCAST);
+      ch.postMessage({ type: 'STAGES_UPDATED', stages });
+      ch.close();
+    }
+  } catch (err) {
+    console.warn('[LeadStore] Failed to save pipeline stages:', err);
+  }
+}
+
+/**
+ * Rename/update an existing Pipeline Kanban Stage and migrate contacts currently in that stage
+ */
+export function updatePipelineStageConfig(
+  stageId: string,
+  updates: {
+    label: string;
+    subtitle?: string;
+    dotColor?: string;
+    badgeStyle?: string;
+    dealProbability?: number;
+  }
+): PipelineStageConfig[] {
+  const stages = getStoredPipelineStages();
+  const idx = stages.findIndex((s) => s.id === stageId);
+  if (idx === -1) return stages;
+
+  const oldStage = stages[idx];
+  const cleanLabel = updates.label.trim() || oldStage.label;
+  const newStatusValue = cleanLabel;
+
+  const updatedStage: PipelineStageConfig = {
+    ...oldStage,
+    label: cleanLabel,
+    statusValue: newStatusValue,
+    subtitle:
+      updates.subtitle !== undefined ? updates.subtitle : oldStage.subtitle,
+    dotColor: updates.dotColor || oldStage.dotColor,
+    badgeStyle: updates.badgeStyle || oldStage.badgeStyle,
+    dealProbability:
+      updates.dealProbability !== undefined
+        ? updates.dealProbability
+        : oldStage.dealProbability,
+  };
+
+  stages[idx] = updatedStage;
+  saveStoredPipelineStages(stages);
+
+  // If the stage label/statusValue changed, migrate all contacts that were on the old statusValue
+  if (oldStage.statusValue !== newStatusValue) {
+    const contacts = getStoredContacts();
+    let changed = false;
+    const migrated = contacts.map((c) => {
+      if (
+        (c.status || '').toLowerCase() === oldStage.statusValue.toLowerCase() ||
+        (c.status || '').toLowerCase() === oldStage.label.toLowerCase()
+      ) {
+        changed = true;
+        return { ...c, status: newStatusValue };
+      }
+      return c;
+    });
+    if (changed) {
+      saveStoredContacts(migrated);
+    }
+  }
+
+  return stages;
+}
+
+/**
+ * Add a brand new Pipeline Kanban Stage at a specific position (or before Disqualified)
+ */
+export function addCustomPipelineStage(params: {
+  label: string;
+  subtitle?: string;
+  dotColor?: string;
+  badgeStyle?: string;
+  dealProbability?: number;
+}): PipelineStageConfig[] {
+  const stages = getStoredPipelineStages();
+  const cleanLabel = params.label.trim();
+  if (!cleanLabel) return stages;
+
+  const newStage: PipelineStageConfig = {
+    id: `col_custom_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+    statusValue: cleanLabel,
+    label: cleanLabel,
+    subtitle: params.subtitle?.trim() || 'Custom outbound pipeline stage',
+    dotColor: params.dotColor || 'bg-indigo-500',
+    badgeStyle:
+      params.badgeStyle || 'bg-indigo-50 text-indigo-800 border-indigo-200',
+    dealProbability:
+      params.dealProbability !== undefined ? params.dealProbability : 0.5,
+  };
+
+  // Insert right before 'Disqualified' if present, else append
+  const disqIdx = stages.findIndex((s) =>
+    s.statusValue.toLowerCase().includes('disqual')
+  );
+  const nextStages = [...stages];
+  if (disqIdx !== -1) {
+    nextStages.splice(disqIdx, 0, newStage);
+  } else {
+    nextStages.push(newStage);
+  }
+
+  saveStoredPipelineStages(nextStages);
+  return nextStages;
+}
+
+/**
+ * Reorder a Pipeline Kanban Stage left (-1) or right (+1)
+ */
+export function movePipelineStageOrder(
+  stageId: string,
+  direction: 'left' | 'right'
+): PipelineStageConfig[] {
+  const stages = [...getStoredPipelineStages()];
+  const idx = stages.findIndex((s) => s.id === stageId);
+  if (idx === -1) return stages;
+
+  const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= stages.length) return stages;
+
+  const temp = stages[idx];
+  stages[idx] = stages[targetIdx];
+  stages[targetIdx] = temp;
+
+  saveStoredPipelineStages(stages);
+  return stages;
+}
+
+/**
+ * Delete a Pipeline Kanban Stage and move any contacts in it to the first stage
+ */
+export function deletePipelineStage(stageId: string): PipelineStageConfig[] {
+  const stages = getStoredPipelineStages();
+  if (stages.length <= 2) return stages; // Keep at least 2 columns
+
+  const target = stages.find((s) => s.id === stageId);
+  const remaining = stages.filter((s) => s.id !== stageId);
+  saveStoredPipelineStages(remaining);
+
+  if (target && remaining.length > 0) {
+    const fallbackStatus = remaining[0].statusValue;
+    const contacts = getStoredContacts();
+    let changed = false;
+    const migrated = contacts.map((c) => {
+      if (
+        (c.status || '').toLowerCase() === target.statusValue.toLowerCase() ||
+        (c.status || '').toLowerCase() === target.label.toLowerCase()
+      ) {
+        changed = true;
+        return { ...c, status: fallbackStatus };
+      }
+      return c;
+    });
+    if (changed) {
+      saveStoredContacts(migrated);
+    }
+  }
+
+  return remaining;
+}
+
+/**
+ * Reset Pipeline Kanban Stages back to default
+ */
+export function resetPipelineStagesToDefault(): PipelineStageConfig[] {
+  saveStoredPipelineStages(DEFAULT_PIPELINE_STAGES);
+  return DEFAULT_PIPELINE_STAGES;
 }
 
 /**
@@ -1152,7 +1102,11 @@ export function subscribeToContacts(callback: (contacts: ContactRecord[]) => voi
   if (typeof window === 'undefined') return () => {};
 
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === CONTACTS_STORAGE_KEY || e.key === FOLDERS_STORAGE_KEY) {
+    if (
+      e.key === CONTACTS_STORAGE_KEY ||
+      e.key === FOLDERS_STORAGE_KEY ||
+      e.key === PIPELINE_STAGES_STORAGE_KEY
+    ) {
       callback(getStoredContacts());
     }
   };
@@ -1163,7 +1117,11 @@ export function subscribeToContacts(callback: (contacts: ContactRecord[]) => voi
   if (typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel(CONTACTS_BROADCAST);
     channel.onmessage = (event) => {
-      if (event.data?.type === 'CONTACTS_UPDATED' || event.data?.type === 'FOLDERS_UPDATED') {
+      if (
+        event.data?.type === 'CONTACTS_UPDATED' ||
+        event.data?.type === 'FOLDERS_UPDATED' ||
+        event.data?.type === 'STAGES_UPDATED'
+      ) {
         callback(event.data.contacts || getStoredContacts());
       }
     };
