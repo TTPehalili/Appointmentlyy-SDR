@@ -23,7 +23,144 @@ export const SDR_SESSION_STORAGE_KEYS = {
   HEADCOUNT: 'sdr_tenant_headcount',
   AUTH_FLAG: 'sdr_is_authenticated',
   PASSWORD_STORE: 'appointmentlyy_user_passwords_v1',
+  ROLE_PERMISSIONS: 'appointmentlyy_role_permissions_v1',
 };
+
+export const ROLE_PERMISSIONS_UPDATED_EVENT = 'appointmentlyy_role_permissions_updated';
+
+export interface RolePermissionMatrixItem {
+  id: string;
+  name: string;
+  desc: string;
+  sdr: boolean;
+  closer: boolean;
+  manager: boolean;
+  director: boolean;
+}
+
+export const DEFAULT_ROLE_PERMISSION_MATRIX: RolePermissionMatrixItem[] = [
+  {
+    id: 'icp_builder',
+    name: 'ICP List Builder & Folders',
+    desc: 'Filter 690M+ B2B decision-makers, pull contacts, and distribute lead folders to reps',
+    sdr: false, // strictly restricted for Reps / SDRs by default
+    closer: false,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'cockpit',
+    name: 'AI Boris Calling Cockpit',
+    desc: 'Sub-second audio interception & ARM talk tracks',
+    sdr: true,
+    closer: true,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'sparring',
+    name: 'AI Sparring Simulator',
+    desc: 'Simulated voice buyer pushback trials',
+    sdr: true,
+    closer: true,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'dialer',
+    name: 'Softphone Dialer & Calling',
+    desc: 'WebRTC / SIP live dialer connection',
+    sdr: true,
+    closer: true,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'leads_crm',
+    name: 'Leads & Cadence CRM',
+    desc: 'Ingest CSV accounts and generate 7-touch cadences',
+    sdr: true,
+    closer: true,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'qa_scorecards',
+    name: 'QA Audio Auditing & Scorecards',
+    desc: 'Review acoustic hold scores and rep performance',
+    sdr: false,
+    closer: false,
+    manager: true,
+    director: true,
+  },
+  {
+    id: 'certificates',
+    name: 'Certificate Issuance & Revocation',
+    desc: 'Authorize credentials for calling floor access',
+    sdr: false,
+    closer: false,
+    manager: true,
+    director: true,
+  },
+];
+
+/**
+ * Retrieve saved role permission matrix from localStorage
+ */
+export function getStoredRolePermissions(): RolePermissionMatrixItem[] {
+  if (typeof window === 'undefined') return DEFAULT_ROLE_PERMISSION_MATRIX;
+  try {
+    const raw = localStorage.getItem(SDR_SESSION_STORAGE_KEYS.ROLE_PERMISSIONS);
+    if (!raw) return DEFAULT_ROLE_PERMISSION_MATRIX;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_ROLE_PERMISSION_MATRIX;
+    
+    // Ensure all default tool rows exist
+    const merged = DEFAULT_ROLE_PERMISSION_MATRIX.map((def) => {
+      const match = parsed.find((p: RolePermissionMatrixItem) => p.id === def.id || p.name === def.name);
+      return match ? { ...def, ...match } : def;
+    });
+    return merged;
+  } catch {
+    return DEFAULT_ROLE_PERMISSION_MATRIX;
+  }
+}
+
+/**
+ * Save updated role permissions to localStorage and broadcast change
+ */
+export function saveStoredRolePermissions(matrix: RolePermissionMatrixItem[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SDR_SESSION_STORAGE_KEYS.ROLE_PERMISSIONS, JSON.stringify(matrix));
+    window.dispatchEvent(new CustomEvent(ROLE_PERMISSIONS_UPDATED_EVENT, { detail: matrix }));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.warn('[Session] Failed to save role permissions matrix:', err);
+  }
+}
+
+/**
+ * Check if a specific role is allowed to access the ICP List Builder tool.
+ * - Super Admin & Admin (Directors/Owners/Tenants): ALWAYS allowed (full authority).
+ * - Manager & Supervisor: allowed if manager permission is enabled.
+ * - Rep (SDR): only allowed if the Admin explicitly ticked the SDR box for ICP List Builder in the Role Permission Matrix.
+ */
+export function canUserAccessIcpBuilder(role?: UserRole | string | null): boolean {
+  const activeRole = role ? normalizeUserRole(role) : getStoredSession().role;
+  if (activeRole === 'Super Admin' || activeRole === 'Admin') return true;
+
+  const matrix = getStoredRolePermissions();
+  const icpTool = matrix.find((t) => t.id === 'icp_builder' || t.name.toLowerCase().includes('icp'));
+  if (!icpTool) return false;
+
+  if (activeRole === 'Manager' || activeRole === 'Supervisor') {
+    return Boolean(icpTool.manager);
+  }
+
+  // Rep level: checks the SDR column
+  return Boolean(icpTool.sdr);
+}
 
 export interface UserPasswordRecord {
   password: string;
@@ -367,25 +504,37 @@ export function syncSessionFromUrl(): SdrSession {
  */
 export function useSession() {
   const [session, setSession] = useState<SdrSession>(() => getStoredSession());
+  const [canAccessIcp, setCanAccessIcp] = useState<boolean>(() => canUserAccessIcpBuilder(getStoredSession().role));
 
   useEffect(() => {
     // Initial sync from URL search params if present
     const synced = syncSessionFromUrl();
     setSession(synced);
+    setCanAccessIcp(canUserAccessIcpBuilder(synced.role));
 
     const handleUpdate = (e: Event) => {
       if (e instanceof CustomEvent && e.detail) {
-        setSession(e.detail as SdrSession);
+        const next = e.detail as SdrSession;
+        setSession(next);
+        setCanAccessIcp(canUserAccessIcpBuilder(next.role));
       } else {
-        setSession(getStoredSession());
+        const cur = getStoredSession();
+        setSession(cur);
+        setCanAccessIcp(canUserAccessIcpBuilder(cur.role));
       }
     };
 
+    const handlePermissionsUpdate = () => {
+      setCanAccessIcp(canUserAccessIcpBuilder(getStoredSession().role));
+    };
+
     window.addEventListener(SDR_SESSION_EVENT, handleUpdate);
+    window.addEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionsUpdate);
     window.addEventListener('storage', handleUpdate);
 
     return () => {
       window.removeEventListener(SDR_SESSION_EVENT, handleUpdate);
+      window.removeEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionsUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);
@@ -410,6 +559,7 @@ export function useSession() {
     repName: session.repName,
     isAuthenticated: session.isAuthenticated,
     isAdmin: isRoleAdmin(session.role),
+    canAccessIcp,
     updateSession,
     logout,
   };

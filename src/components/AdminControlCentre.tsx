@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Search, 
@@ -43,7 +43,13 @@ import {
 } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession } from '@/lib/session';
+import {
+  useSession,
+  getStoredRolePermissions,
+  saveStoredRolePermissions,
+  RolePermissionMatrixItem,
+  DEFAULT_ROLE_PERMISSION_MATRIX,
+} from '@/lib/session';
 import ByokVaultManager from './admin/ByokVaultManager';
 import UniversalCrmStudio from './admin/UniversalCrmStudio';
 import BillingInvoiceManager from './admin/BillingInvoiceManager';
@@ -98,6 +104,33 @@ interface TenantRecord {
 export default function AdminControlCentre() {
   const { role, isAdmin, updateSession } = useSession();
   const [activeTab, setActiveTab] = useState<'tenants' | 'dispositions' | 'byok' | 'crm' | 'invoicing' | 'mcp' | 'people' | 'modules' | 'access' | 'leads' | 'reps' | 'feedback' | 'audit'>('tenants');
+
+  // Role Permission Matrix State with persistence & live sync
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionMatrixItem[]>(() =>
+    getStoredRolePermissions()
+  );
+  const [permissionSavedToast, setPermissionSavedToast] = useState(false);
+
+  useEffect(() => {
+    setRolePermissions(getStoredRolePermissions());
+  }, []);
+
+  const handleTogglePermission = (
+    toolId: string,
+    roleCol: 'sdr' | 'closer' | 'manager' | 'director'
+  ) => {
+    setRolePermissions((prev) =>
+      prev.map((item) =>
+        item.id === toolId ? { ...item, [roleCol]: !item[roleCol] } : item
+      )
+    );
+  };
+
+  const handleSavePermissionMatrix = () => {
+    saveStoredRolePermissions(rolePermissions);
+    setPermissionSavedToast(true);
+    setTimeout(() => setPermissionSavedToast(false), 2500);
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [tenantFilter, setTenantFilter] = useState('all');
@@ -970,51 +1003,98 @@ export default function AdminControlCentre() {
           {/* TAB 3: MODULE ACCESS */}
           {activeTab === 'access' && (
             <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-5">
-              <div>
-                <h3 className="text-base font-extrabold text-[#222021]">Role Permission Matrix</h3>
-                <p className="text-xs text-[#6b6968] mt-0.5">Control feature visibility and administrative authority across SDRs, Closers, and Directors.</p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-[#222021]">Role Permission Matrix</h3>
+                  <p className="text-xs text-[#6b6968] mt-0.5">Control feature visibility and administrative authority across SDRs, Closers, Managers, and Directors/Admins.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {permissionSavedToast && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Permissions Saved &amp; Enforced Live</span>
+                    </span>
+                  )}
+                  <button 
+                    onClick={handleSavePermissionMatrix}
+                    className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Save Access Matrix
+                  </button>
+                </div>
               </div>
 
               <div className="divide-y divide-[#222021]/10 text-xs">
-                {[
-                  { name: 'AI Boris Calling Cockpit', desc: 'Sub-second audio interception & ARM talk tracks' },
-                  { name: 'AI Sparring Simulator', desc: 'Simulated voice buyer pushback trials' },
-                  { name: 'Softphone Dialer & Calling', desc: 'WebRTC / SIP live dialer connection' },
-                  { name: 'Leads & Cadence CRM', desc: 'Ingest CSV accounts and generate 7-touch cadences' },
-                  { name: 'QA Audio Auditing & Scorecards', desc: 'Review acoustic hold scores and rep performance' },
-                  { name: 'Certificate Issuance & Revocation', desc: 'Authorize credentials for calling floor access' },
-                ].map((tool) => (
-                  <div key={tool.name} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <span className="font-bold text-[#222021] text-xs block">{tool.name}</span>
+                {rolePermissions.map((tool) => (
+                  <div key={tool.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="max-w-md">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[#222021] text-xs block">{tool.name}</span>
+                        {tool.id === 'icp_builder' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 text-white font-bold">
+                            NEW ACCESS GATE
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[11px] text-[#6b6968]">{tool.desc}</span>
                     </div>
                     <div className="flex items-center gap-5 shrink-0 pt-1 sm:pt-0">
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer">
-                        <input type="checkbox" defaultChecked className="accent-[#ED1C24] h-4 w-4 rounded" />
-                        <span>SDR</span>
+                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={tool.sdr}
+                          onChange={() => handleTogglePermission(tool.id, 'sdr')}
+                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
+                        />
+                        <span className={tool.sdr ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
+                          SDR
+                        </span>
                       </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer">
-                        <input type="checkbox" defaultChecked className="accent-[#ED1C24] h-4 w-4 rounded" />
-                        <span>Closer</span>
+                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={tool.closer}
+                          onChange={() => handleTogglePermission(tool.id, 'closer')}
+                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
+                        />
+                        <span className={tool.closer ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
+                          Closer
+                        </span>
                       </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer">
-                        <input type="checkbox" defaultChecked className="accent-[#ED1C24] h-4 w-4 rounded" />
-                        <span>Manager</span>
+                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={tool.manager}
+                          onChange={() => handleTogglePermission(tool.id, 'manager')}
+                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
+                        />
+                        <span className={tool.manager ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
+                          Manager
+                        </span>
                       </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer">
-                        <input type="checkbox" defaultChecked className="accent-[#ED1C24] h-4 w-4 rounded" />
-                        <span>Director</span>
+                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={tool.director}
+                          onChange={() => handleTogglePermission(tool.id, 'director')}
+                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
+                        />
+                        <span className={tool.director ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
+                          Director / Admin
+                        </span>
                       </label>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-3 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
+                <span className="text-[11px] font-mono">
+                  Admins &amp; workspace customers can untick the SDR box above to immediately restrict rep-level access.
+                </span>
                 <button 
-                  onClick={() => alert('Permissions updated successfully!')}
-                  className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors"
+                  onClick={handleSavePermissionMatrix}
+                  className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
                 >
                   Save Access Matrix
                 </button>

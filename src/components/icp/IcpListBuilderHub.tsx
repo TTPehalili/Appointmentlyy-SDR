@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession, canUserReassignLeads } from '@/lib/session';
+import { useSession, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import {
   ContactRecord,
   IcpFolder,
@@ -282,7 +282,7 @@ const TRAINING_FAQS = [
 ];
 
 export default function IcpListBuilderHub() {
-  const { session, role, tenantName, repName, email } = useSession();
+  const { session, role, canAccessIcp, tenantName, repName, email } = useSession();
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canBuildAndDistribute = canUserReassignLeads(role);
@@ -847,7 +847,41 @@ export default function IcpListBuilderHub() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <GlobalTopHeader />
 
-        <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-[1440px] w-full mx-auto">
+        {!canAccessIcp ? (
+          <main className="flex-1 overflow-y-auto px-6 py-12 max-w-2xl w-full mx-auto flex items-center justify-center">
+            <div className="bg-white border border-zinc-200/90 rounded-2xl p-8 text-center space-y-4 shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-500 flex items-center justify-center mx-auto">
+                <Lock className="w-6 h-6 text-zinc-700" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+                  PERMISSION_RESTRICTED // ROLE_GATE
+                </div>
+                <h2 className="text-xl font-bold tracking-tight text-zinc-950">
+                  ICP List Builder is Restricted for Your Role ({role})
+                </h2>
+                <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
+                  Only workspace Administrators, Customers, and Tenants are authorized to run ICP queries, pull prospect batches, and distribute lists. SDR reps can access leads already assigned to them on the Calling Floor and Global Contacts.
+                </p>
+              </div>
+              <div className="pt-2 flex items-center justify-center gap-3">
+                <Link
+                  href="/cockpit"
+                  className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-semibold text-xs transition shadow-xs"
+                >
+                  Return to Calling Floor
+                </Link>
+                <Link
+                  href="/contacts"
+                  className="px-4 py-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-medium text-xs transition"
+                >
+                  View My Assigned Leads
+                </Link>
+              </div>
+            </div>
+          </main>
+        ) : (
+          <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-[1440px] w-full mx-auto">
           {/* 1. SUPER ADMIN PROVISIONING BAR */}
           {isSuperAdmin && (
             <div className="bg-zinc-950 text-white rounded-2xl px-5 py-3.5 border border-zinc-800/80 shadow-xs">
@@ -2733,6 +2767,7 @@ export default function IcpListBuilderHub() {
             </div>
           )}
         </main>
+        )}
       </div>
 
       {/* Modal: Re-Distribute Folder Equally Across X Reps */}

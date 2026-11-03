@@ -28,7 +28,8 @@ import {
   Mail,
   Eye,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  FolderKanban
 } from 'lucide-react';
 import { useSession, UserRole, changeUserPassword } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
@@ -49,6 +50,7 @@ interface NavCommand {
 
 const COMMANDS: NavCommand[] = [
   { title: 'Custom Domains & White-Label DNS Setup', category: 'Administration', href: '/settings/domains', icon: Globe },
+  { title: 'ICP List Builder & Data Cloud', category: 'Outbound Data', href: '/icp-builder', icon: FolderKanban },
   { title: 'Playbook Ingestion & Script Customizer (AI)', category: 'Administration', href: '/admin/frameworks', icon: UploadCloud },
   { title: 'AI Boris Calling Cockpit', category: 'Calling Floor', href: '/cockpit', icon: Swords },
   { title: 'AI Sparring Arena', category: 'Training', href: '/sparring', icon: Headphones },
@@ -72,7 +74,7 @@ const TENANTS_LIST = [
 export default function GlobalTopHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { session, role, tenantName, repName, email, updateSession, logout } = useSession();
+  const { session, role, canAccessIcp, tenantName, repName, email, updateSession, logout } = useSession();
 
   const [bneTime, setBneTime] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -202,9 +204,10 @@ export default function GlobalTopHeader() {
     router.push('/login');
   };
 
-  const filteredCommands = COMMANDS.filter((cmd) =>
-    `${cmd.title} ${cmd.category}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCommands = COMMANDS.filter((cmd) => {
+    if (cmd.href === '/icp-builder' && !canAccessIcp) return false;
+    return `${cmd.title} ${cmd.category}`.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <>

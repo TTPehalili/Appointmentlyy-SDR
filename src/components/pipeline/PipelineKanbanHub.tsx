@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession, canUserReassignLeads } from '@/lib/session';
+import { useSession, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import {
   ContactRecord,
   IcpFolder,
@@ -126,7 +126,7 @@ function resolveStageForContact(
 }
 
 export default function PipelineKanbanHub() {
-  const { session, role, tenantName, repName } = useSession();
+  const { session, role, canAccessIcp, tenantName, repName } = useSession();
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canReassign = canUserReassignLeads(role);
@@ -564,12 +564,22 @@ export default function PipelineKanbanHub() {
                     <span className="text-xs font-normal text-zinc-400">prospects</span>
                   </div>
                 </div>
-                <Link
-                  href="/icp-builder"
-                  className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-900 text-zinc-900 font-semibold text-[11px]"
-                >
-                  + Pull ICP List
-                </Link>
+                {canAccessIcp ? (
+                  <Link
+                    href="/icp-builder"
+                    className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-900 text-zinc-900 font-semibold text-[11px]"
+                  >
+                    + Pull ICP List
+                  </Link>
+                ) : (
+                  <span
+                    title="ICP List Builder is restricted to Admin/Customers by your organization."
+                    className="px-2 py-0.5 rounded-lg bg-zinc-100 border border-dashed border-zinc-300 text-zinc-400 font-medium text-[10px] cursor-not-allowed select-none opacity-60 flex items-center gap-1"
+                  >
+                    <Lock className="w-2.5 h-2.5" />
+                    <span>ICP Locked</span>
+                  </span>
+                )}
               </div>
 
               <div className="px-6 py-3 flex items-center justify-between">

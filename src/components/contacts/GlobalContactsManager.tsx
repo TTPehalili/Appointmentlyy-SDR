@@ -30,7 +30,7 @@ import {
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession, isRoleAdmin, canUserReassignLeads } from '@/lib/session';
+import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import { 
   ContactRecord, 
   IcpFolder,
@@ -58,7 +58,7 @@ import {
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 
 export default function GlobalContactsManager() {
-  const { session, role, isAdmin, tenantName, repName } = useSession();
+  const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
   const adminClearance = isRoleAdmin(role);
   const canReassign = canUserReassignLeads(role);
   const canExportCsv = canUserExportCsv(role);
@@ -448,13 +448,23 @@ export default function GlobalContactsManager() {
 
             {/* Role-Gated Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              <Link
-                href="/icp-builder"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-2xs"
-              >
-                <FolderKanban className="w-3.5 h-3.5" />
-                <span>ICP List Builder &amp; Folders</span>
-              </Link>
+              {canAccessIcp ? (
+                <Link
+                  href="/icp-builder"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-2xs"
+                >
+                  <FolderKanban className="w-3.5 h-3.5" />
+                  <span>ICP List Builder &amp; Folders</span>
+                </Link>
+              ) : (
+                <div
+                  title="ICP List Builder is restricted to Admin/Customers by your organization."
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-400 border border-dashed border-zinc-300 cursor-not-allowed select-none opacity-60"
+                >
+                  <Lock className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>ICP List Builder (Admin Only)</span>
+                </div>
+              )}
 
               {canExportCsv ? (
                 <>

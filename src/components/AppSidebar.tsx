@@ -37,7 +37,7 @@ import {
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { session, role, isAdmin, tenantName, repName } = useSession();
+  const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
 
   // State: 'expanded' (w-56) or 'icons' (w-14)
   const [collapsed, setCollapsed] = useState(false);
@@ -160,6 +160,38 @@ export default function AppSidebar() {
           {frontlineItems.map((item) => {
             const Icon = item.icon;
             const active = isItemActive(item.href);
+            const isIcpTool = item.href === '/icp-builder';
+            const isLocked = isIcpTool && !canAccessIcp;
+
+            if (isLocked) {
+              return (
+                <div
+                  key={item.href}
+                  title={
+                    collapsed
+                      ? `${item.label} (Restricted by Admin)`
+                      : 'ICP List Builder is restricted to Admin/Customers by your organization.'
+                  }
+                  className={`flex items-center rounded-lg text-xs font-medium cursor-not-allowed select-none opacity-45 bg-zinc-100/60 text-zinc-400 border border-dashed border-zinc-300/80 ${
+                    collapsed
+                      ? 'justify-center h-9 w-9 mx-auto'
+                      : 'gap-2 px-2.5 py-2 justify-between'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </div>
+                  {!collapsed && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-200/80 text-zinc-600 font-semibold shrink-0">
+                      <Lock className="w-2.5 h-2.5 text-zinc-500" />
+                      <span>Admin</span>
+                    </span>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <Link
                 key={item.href}
