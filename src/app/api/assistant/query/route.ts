@@ -99,9 +99,62 @@ const CALL_DRIVERS_ANALYSIS = {
 };
 
 /**
+ * Renders the client-supplied live workspace snapshot (real contacts, folders, pipeline) as prompt context
+ */
+interface LiveSnapshot {
+  tenantName?: string;
+  role?: string;
+  totals?: {
+    contacts: number;
+    folders: number;
+    pipelineValueUsd: number;
+    bookedCount: number;
+    bookedValueUsd: number;
+    withWebsite: number;
+    withLinkedin: number;
+  };
+  folders?: { name: string; totalLeads: number; createdAt: string; reps: { repName: string; leadCount: number }[] }[];
+  stages?: { label: string; statusValue: string; count: number; valueUsd: number }[];
+  reps?: { repName: string; leads: number; valueUsd: number }[];
+  sampleLeads?: { name: string; title: string; company: string; status: string; rep: string; dealValueUsd: number; folder: string }[];
+}
+
+const usd = (n: number) => `$${Math.round(n || 0).toLocaleString()}`;
+
+function renderSnapshot(s?: LiveSnapshot | null): string {
+  if (!s || !s.totals) return '';
+  const folders = (s.folders || [])
+    .map((f) => `• "${f.name}": ${f.totalLeads} leads (reps: ${f.reps.map((r) => `${r.repName} ${r.leadCount}`).join(', ') || 'n/a'})`)
+    .join('\n');
+  const stages = (s.stages || [])
+    .map((st) => `• ${st.label}: ${st.count} leads, ${usd(st.valueUsd)}`)
+    .join('\n');
+  const reps = (s.reps || [])
+    .map((r) => `• ${r.repName}: ${r.leads} leads, ${usd(r.valueUsd)} pipeline`)
+    .join('\n');
+  const sample = (s.sampleLeads || [])
+    .map((l) => `• ${l.name} (${l.title}, ${l.company}) - ${l.status} - rep ${l.rep} - ${usd(l.dealValueUsd)} - folder ${l.folder}`)
+    .join('\n');
+  return `
+[LIVE WORKSPACE DATA - authoritative, real data for ${s.tenantName || 'this workspace'}; always prefer this for questions about lists, folders, contacts, leads, pipeline stages, deal values and reps]
+- Total contacts: ${s.totals.contacts.toLocaleString()} | ICP contact lists (folders): ${s.totals.folders}
+- Total pipeline value: ${usd(s.totals.pipelineValueUsd)} | Meetings booked: ${s.totals.bookedCount} (${usd(s.totals.bookedValueUsd)})
+- Contacts with company website: ${s.totals.withWebsite} | with LinkedIn: ${s.totals.withLinkedin}
+Contact lists (ICP folders):
+${folders || '• none yet'}
+Pipeline stages:
+${stages || '• none'}
+Leads per rep:
+${reps || '• none'}
+Sample leads:
+${sample || '• none'}
+`;
+}
+
+/**
  * Builds live operational system context from platform stores
  */
-function compileLiveSystemContext(): string {
+function compileLiveSystemContext(snapshot?: LiveSnapshot | null): string {
   // 1. Recent Activities & Call Notes
   const recentActivitySummaries = INITIAL_DEMO_ACTIVITIES.slice(0, 10).map((act) => 
     `• [${act.timestamp}] Rep ${act.repName} reached ${act.prospectName} (${act.companyName}) via ${act.channel} (Day ${act.cadenceDay}, Touch #${act.touchNumber}). Disposition: "${act.disposition}". Note: "${act.notesSnippet}"`
@@ -129,8 +182,8 @@ function compileLiveSystemContext(): string {
 
   return `
 --- LIVE SYSTEM TELEMETRY & KNOWLEDGE REPOSITORY ---
-
-[CURRENT FLOOR PERFORMANCE BENCHMARKS]:
+${renderSnapshot(snapshot)}
+[CURRENT FLOOR PERFORMANCE BENCHMARKS (calling-floor telemetry)]:
 - Today's Output: 284 Dials, 32.7% Connect Rate, 9 Appointments Booked, 4 DNC Quarantined. Top Rep: Alex Mercer.
 - Yesterday's Output: 310 Dials, 34.1% Connect Rate, 11 Appointments Booked. Top Rep: Sarah Jenkins.
 - Last Week Aggregate: 1,402 Dials, 51 Bookings, 88.9% Calendar Hold Rate, 78.5% Quota Attainment.
@@ -173,20 +226,21 @@ function callGemini(model: string, apiKey: string, prompt: string): Promise<stri
         ],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 1400
+          maxOutputTokens: 4096
         }
       });
 
       const req = https.request(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload)
+            'Content-Length': Buffer.byteLength(payload),
+            'x-goog-api-key': apiKey
           },
           family: 4,
-          timeout: 2500
+          timeout: 18000
         },
         (res) => {
           let rawData = '';
@@ -197,7 +251,9 @@ function callGemini(model: string, apiKey: string, prompt: string): Promise<stri
             try {
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                 const parsed = JSON.parse(rawData);
-                const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                const text = (parsed.candidates?.[0]?.content?.parts || [])
+                  .map((p: { text?: string }) => p.text || '')
+                  .join('');
                 resolve(text || null);
               } else {
                 console.warn(`[Gemini ${model}] Status:`, res.statusCode, rawData.substring(0, 120));
@@ -237,7 +293,8 @@ export async function POST(req: NextRequest) {
     }
 
     const qLower = question.toLowerCase();
-    const systemContext = compileLiveSystemContext();
+    const snapshot: LiveSnapshot | null = context?.snapshot || null;
+    const systemContext = compileLiveSystemContext(snapshot);
     const googleApiKey = process.env.GOOGLE_API_KEY;
 
     // --- TIER 1: LIVE AI INFERENCE (Gemini Flash Model) ---
@@ -258,23 +315,81 @@ OUTPUT GUIDELINES:
 3. If asked about performance, stats, drivers, objections, or reps, include root-cause telemetry and actionable operational recommendations.
 4. Keep the tone sharp, executive, and operationally rigorous.`;
 
-      const candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
+      const candidateModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'];
       const fullPrompt = `${systemPrompt}\n\nUSER QUESTION:\n${question}`;
 
-      for (const model of candidateModels) {
-        const answerText = await callGemini(model, googleApiKey, fullPrompt);
-        if (answerText && answerText.trim().length > 0) {
-          return NextResponse.json({
-            answer: answerText.trim(),
-            category: 'live_ai_intelligence',
-            source: `gemini_rag_${model}`,
-            timestamp: new Date().toISOString()
+      // Race all candidate models in parallel; the first non-empty answer wins (keeps demo latency low)
+      const winner = await new Promise<{ model: string; text: string } | null>((resolve) => {
+        let pending = candidateModels.length;
+        candidateModels.forEach((model) => {
+          callGemini(model, googleApiKey, fullPrompt).then((text) => {
+            if (text && text.trim().length > 0) {
+              resolve({ model, text: text.trim() });
+            } else if (--pending === 0) {
+              resolve(null);
+            }
           });
-        }
+        });
+      });
+
+      if (winner) {
+        return NextResponse.json({
+          answer: winner.text,
+          category: 'live_ai_intelligence',
+          source: `gemini_rag_${winner.model}`,
+          timestamp: new Date().toISOString()
+        });
       }
     }
 
-    // --- TIER 2: HIGH-FIDELITY DETERMINISTIC FALLBACK (If LLM is offline or no API key) ---
+    // --- TIER 2: DETERMINISTIC FALLBACK (If LLM is offline or no API key) ---
+    // 0. LIVE WORKSPACE DATA INQUIRY (lists, folders, contacts, pipeline, deal value) answered from real snapshot
+    if (
+      snapshot?.totals &&
+      /(list|folder|contact|lead|pipeline|deal|value|stage|how many|kanban)/.test(qLower) &&
+      !/(driver|objection|rebuttal|quota|leaderboard|yesterday|last week|next week|last month)/.test(qLower)
+    ) {
+      const t = snapshot.totals;
+      const folderLines = (snapshot.folders || [])
+        .map((f) => `| ${f.name} | ${f.totalLeads.toLocaleString()} | ${f.reps.map((r) => `${r.repName} (${r.leadCount})`).join(', ') || '-'} |`)
+        .join('\n');
+      const stageLines = (snapshot.stages || [])
+        .map((st) => `| ${st.label} | ${st.count.toLocaleString()} | ${usd(st.valueUsd)} |`)
+        .join('\n');
+      const repLines = (snapshot.reps || [])
+        .map((r) => `| ${r.repName} | ${r.leads.toLocaleString()} | ${usd(r.valueUsd)} |`)
+        .join('\n');
+      const md = `### 📇 Live Workspace Snapshot${snapshot.tenantName ? ` — ${snapshot.tenantName}` : ''}
+
+You currently have **${t.folders} contact list${t.folders === 1 ? '' : 's'}** holding **${t.contacts.toLocaleString()} contacts**, with **${usd(t.pipelineValueUsd)}** total pipeline value and **${t.bookedCount} meeting${t.bookedCount === 1 ? '' : 's'} booked** (${usd(t.bookedValueUsd)}).
+
+**Contact Lists (ICP Folders)**
+
+| List | Leads | Rep Split |
+| :--- | :--- | :--- |
+${folderLines || '| _No lists yet_ | 0 | - |'}
+
+**Pipeline Stages**
+
+| Stage | Leads | Deal Value |
+| :--- | :--- | :--- |
+${stageLines || '| _No stages_ | 0 | - |'}
+
+**Leads per Rep**
+
+| Rep | Leads | Pipeline Value |
+| :--- | :--- | :--- |
+${repLines || '| _None_ | 0 | - |'}
+
+> **Data Coverage:** ${t.withWebsite.toLocaleString()} contacts have a company website and ${t.withLinkedin.toLocaleString()} have a LinkedIn profile.`;
+
+      return NextResponse.json({
+        answer: md,
+        category: 'workspace_snapshot',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // 1. STATS INQUIRY (today, yesterday, last week, next week, last month)
     if (
       qLower.includes('stat') ||

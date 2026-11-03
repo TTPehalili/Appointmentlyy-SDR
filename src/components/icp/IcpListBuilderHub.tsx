@@ -367,6 +367,15 @@ export default function IcpListBuilderHub() {
   const [requireVerifiedEmail, setRequireVerifiedEmail] = useState(true);
   const [excludePreviouslyPulled, setExcludePreviouslyPulled] = useState(true);
 
+  // AI Prompt-to-ICP state
+  const [aiPromptInput, setAiPromptInput] = useState('');
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiInterpretation, setAiInterpretation] = useState<{
+    text: string;
+    source: 'gemini' | 'keyword';
+  } | null>(null);
+
   // Instant Single LinkedIn URL Enrichment Bar state
   const [linkedinUrlInput, setLinkedinUrlInput] = useState('');
   const [enrichingSingleUrl, setEnrichingSingleUrl] = useState(false);
@@ -466,6 +475,48 @@ export default function IcpListBuilderHub() {
       setRedistributeReps((prev) => Array.from(new Set([...prev, clean])));
     }
     setNewRepInput('');
+  };
+
+  // AI Prompt -> Filters (Gemini). Fills filters only; user reviews before any credits are spent.
+  const handleAiPromptParse = async () => {
+    if (!aiPromptInput.trim() || aiParsing) return;
+    setAiParsing(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/intelligence/icp/ai-parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPromptInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Could not interpret that prompt.');
+      }
+      const f = data.filters;
+      setActiveBlueprintId('');
+      setTitles(f.titles);
+      setExcludeTitles(f.excludeTitles);
+      setSelectedSeniorities(f.seniority);
+      if (f.industry) setIndustry(f.industry);
+      setHeadcountRange(f.headcountRange);
+      setCountry(f.country);
+      setState(f.state);
+      setCity(f.city);
+      setTechnologies(f.technologies);
+      setRequirePhone(f.requirePhone);
+      setRequireVerifiedEmail(f.requireVerifiedEmail);
+      if (f.suggestedFolderName) setFolderNameInput(f.suggestedFolderName);
+      setAiInterpretation({
+        text: f.interpretation,
+        source: f.source,
+      });
+    } catch (err: unknown) {
+      setAiError(
+        err instanceof Error ? err.message : 'Could not interpret that prompt.'
+      );
+    } finally {
+      setAiParsing(false);
+    }
   };
 
   // Free Market Sizing (0 credits) with 25-per-page cursor pagination
@@ -1245,6 +1296,90 @@ export default function IcpListBuilderHub() {
                     </button>
                   );
                 })}
+              </div>
+
+              {/* AI Prompt-to-ICP Builder (Gemini) */}
+              <div className="bg-zinc-950 text-white rounded-2xl p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold">
+                    Describe your ideal customer (AI)
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    AI fills the filters below. Nothing is pulled or charged until you confirm.
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={aiPromptInput}
+                    onChange={(e) => setAiPromptInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAiPromptParse();
+                    }}
+                    maxLength={1000}
+                    placeholder='e.g. "CEOs and founders of 50-200 seat BPOs in the Philippines and Australia, phone + verified email"'
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAiPromptParse}
+                    disabled={aiParsing || !aiPromptInput.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-zinc-950 text-xs font-bold cursor-pointer shrink-0"
+                  >
+                    {aiParsing ? 'Interpreting...' : 'Build Filters with AI'}
+                  </button>
+                </div>
+                {aiError && (
+                  <div className="text-xs text-red-400">{aiError}</div>
+                )}
+                {aiInterpretation && (
+                  <div className="space-y-2">
+                    <div className="text-xs text-zinc-300 leading-relaxed">
+                      <span className="text-emerald-400 font-semibold">
+                        {aiInterpretation.source === 'gemini'
+                          ? 'Gemini understood: '
+                          : 'Keyword parser understood: '}
+                      </span>
+                      {aiInterpretation.text}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {[
+                        titles && `Titles: ${titles}`,
+                        industry && `Industry: ${industry}`,
+                        `Size: ${headcountRange}`,
+                        country && `Location: ${[country, state, city].filter(Boolean).join(', ')}`,
+                        `Seniority: ${selectedSeniorities.join(', ')}`,
+                        requirePhone && 'Direct phone',
+                        requireVerifiedEmail && 'Verified email',
+                      ]
+                        .filter(Boolean)
+                        .map((chip, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-200"
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCalculateMarketSize(true)}
+                        disabled={sizingLoading}
+                        className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        {sizingLoading
+                          ? 'Sizing market...'
+                          : 'Preview Audience (0 credits)'}
+                      </button>
+                      <span className="text-[11px] text-zinc-500">
+                        Review or edit the filters below first. You can adjust anything.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 1-Click Smart ICP Blueprints Strip */}

@@ -23,6 +23,7 @@ import BorisOperationsIcon from '@/components/icons/BorisOperationsIcon';
 import ExecutiveReportRenderer from '@/components/assistant/ExecutiveReportRenderer';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
+import { buildOpsSnapshot } from '@/lib/opsSnapshot';
 
 interface ChatMessage {
   id: string;
@@ -102,7 +103,10 @@ Select a prompt below or type your question:`,
       const res = await fetch('/api/assistant/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: query.trim() })
+        body: JSON.stringify({
+          question: query.trim(),
+          context: { snapshot: buildOpsSnapshot() }
+        })
       });
 
       const data = await res.json();
