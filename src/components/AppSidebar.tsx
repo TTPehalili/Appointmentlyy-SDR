@@ -101,7 +101,7 @@ export default function AppSidebar() {
 
   return (
     <aside
-      className={`bg-zinc-50/90 border-r border-zinc-200 shrink-0 select-none z-40 flex flex-col justify-between py-3 transition-all duration-150 ease-in-out ${
+      className={`bg-[#36454F] border-r border-[#2A3740] shrink-0 select-none z-40 flex flex-col justify-between py-3 transition-all duration-150 ease-in-out text-white ${
         collapsed ? 'w-15 px-2' : 'w-56 px-3'
       }`}
     >
@@ -110,15 +110,15 @@ export default function AppSidebar() {
         {/* Workspace Brand / Header */}
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between px-1'}`}>
           <Link href="/" className="flex items-center gap-2 group overflow-hidden">
-            <div className="h-7 w-7 rounded-md bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
+            <div className="h-7 w-7 rounded-md bg-white text-[#36454F] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
               {activeDomainConfig?.branding.logoInitials || 'A'}
             </div>
             {!collapsed && (
               <div className="flex flex-col min-w-0">
-                <span className="font-bold text-xs text-zinc-900 truncate tracking-tight">
+                <span className="font-bold text-xs text-white truncate tracking-tight">
                   {activeDomainConfig?.branding.workspaceDisplayName || tenantName}
                 </span>
-                <span className="text-[10px] text-zinc-400 font-mono truncate">
+                <span className="text-[10px] text-zinc-300/80 font-mono truncate">
                   {activeDomainConfig
                     ? activeDomainConfig.customDomain
                     : 'SDR Workspace'}
@@ -130,7 +130,7 @@ export default function AppSidebar() {
           {!collapsed && (
             <button
               onClick={toggleCollapsed}
-              className="p-1 rounded text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60 transition-colors"
+              className="p-1 rounded text-zinc-300 hover:text-white hover:bg-white/10 transition-colors"
               title="Collapse sidebar"
             >
               <PanelLeftClose className="h-3.5 w-3.5" />
@@ -142,7 +142,7 @@ export default function AppSidebar() {
           <div className="flex justify-center">
             <button
               onClick={toggleCollapsed}
-              className="p-1 rounded text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60 transition-colors"
+              className="p-1 rounded text-zinc-300 hover:text-white hover:bg-white/10 transition-colors"
               title="Expand sidebar"
             >
               <ChevronRight className="h-3.5 w-3.5" />
@@ -153,7 +153,7 @@ export default function AppSidebar() {
         {/* Frontline Navigation */}
         <nav className="flex flex-col gap-0.5">
           {!collapsed && (
-            <div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+            <div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-300/70">
               Tools
             </div>
           )}
@@ -172,19 +172,19 @@ export default function AppSidebar() {
                       ? `${item.label} (Restricted by Admin)`
                       : 'ICP List Builder is restricted to Admin/Customers by your organization.'
                   }
-                  className={`flex items-center rounded-lg text-xs font-medium cursor-not-allowed select-none opacity-45 bg-zinc-100/60 text-zinc-400 border border-dashed border-zinc-300/80 ${
+                  className={`flex items-center rounded-lg text-xs font-medium cursor-not-allowed select-none opacity-40 bg-black/20 text-zinc-300 border border-dashed border-white/20 ${
                     collapsed
                       ? 'justify-center h-9 w-9 mx-auto'
                       : 'gap-2 px-2.5 py-2 justify-between'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
+                    <Icon className="h-4 w-4 shrink-0 text-white" />
                     {!collapsed && <span className="truncate">{item.label}</span>}
                   </div>
                   {!collapsed && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-200/80 text-zinc-600 font-semibold shrink-0">
-                      <Lock className="w-2.5 h-2.5 text-zinc-500" />
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-black/40 text-zinc-200 font-semibold shrink-0">
+                      <Lock className="w-2.5 h-2.5 text-zinc-300" />
                       <span>Admin</span>
                     </span>
                   )}
@@ -203,11 +203,11 @@ export default function AppSidebar() {
                     : 'gap-2.5 px-2.5 py-2'
                 } ${
                   active
-                    ? 'bg-zinc-900 text-white font-semibold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-200/50'
+                    ? 'bg-black/35 text-white font-bold shadow-xs border border-white/15'
+                    : 'text-zinc-200 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <Icon className="h-4 w-4 shrink-0 text-white" />
                 {!collapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
@@ -216,9 +216,9 @@ export default function AppSidebar() {
 
         {/* Management Navigation (Admin & Manager) */}
         {isAdmin && (
-          <nav className="flex flex-col gap-0.5 pt-2 border-t border-zinc-200/60">
+          <nav className="flex flex-col gap-0.5 pt-2 border-t border-white/15">
             {!collapsed && (
-              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+              <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-300/70">
                 Management
               </div>
             )}
@@ -236,11 +236,11 @@ export default function AppSidebar() {
                       : 'gap-2.5 px-2.5 py-2'
                   } ${
                     active
-                      ? 'bg-zinc-900 text-white font-semibold shadow-xs'
-                      : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-200/50'
+                      ? 'bg-black/35 text-white font-bold shadow-xs border border-white/15'
+                      : 'text-zinc-200 hover:text-white hover:bg-white/10'
                   }`}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className="h-4 w-4 shrink-0 text-white" />
                   {!collapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               );
@@ -250,23 +250,23 @@ export default function AppSidebar() {
       </div>
 
       {/* Bottom User Capsule */}
-      <div className={`pt-2 border-t border-zinc-200/80 ${collapsed ? 'flex justify-center' : 'px-1'}`}>
+      <div className={`pt-2 border-t border-white/15 ${collapsed ? 'flex justify-center' : 'px-1'}`}>
         {!collapsed ? (
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="h-6 w-6 rounded bg-zinc-200 text-zinc-800 flex items-center justify-center font-bold text-[10px] shrink-0">
+              <div className="h-6 w-6 rounded bg-black/30 text-white border border-white/20 flex items-center justify-center font-bold text-[10px] shrink-0">
                 {repName.charAt(0)}
               </div>
               <div className="flex flex-col min-w-0 leading-tight">
-                <span className="font-semibold text-zinc-900 truncate text-[11px]">{repName}</span>
-                <span className="text-[10px] text-zinc-400 font-mono truncate">{role}</span>
+                <span className="font-semibold text-white truncate text-[11px]">{repName}</span>
+                <span className="text-[10px] text-zinc-300/70 font-mono truncate">{role}</span>
               </div>
             </div>
           </div>
         ) : (
           <div
             title={`${repName} (${role})`}
-            className="h-6 w-6 rounded bg-zinc-200 text-zinc-800 flex items-center justify-center font-bold text-[10px]"
+            className="h-6 w-6 rounded bg-black/30 text-white border border-white/20 flex items-center justify-center font-bold text-[10px]"
           >
             {repName.charAt(0)}
           </div>
