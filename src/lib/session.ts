@@ -22,7 +22,127 @@ export const SDR_SESSION_STORAGE_KEYS = {
   TENANT_CODE: 'sdr_tenant_code',
   HEADCOUNT: 'sdr_tenant_headcount',
   AUTH_FLAG: 'sdr_is_authenticated',
+  PASSWORD_STORE: 'appointmentlyy_user_passwords_v1',
 };
+
+export interface UserPasswordRecord {
+  password: string;
+  updatedAt: string;
+}
+
+const DEFAULT_DEMO_PASSWORDS: Record<string, string> = {
+  'emil@appointmentlyy.com': 'Appointmentlyy2026!',
+  'julian.vance@apexglobalbpo.ph': 'ApexGlobal2026!',
+};
+
+/**
+ * Retrieve stored custom password map from localStorage
+ */
+export function getStoredPasswordMap(): Record<string, UserPasswordRecord> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(SDR_SESSION_STORAGE_KEYS.PASSWORD_STORE);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, UserPasswordRecord>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Verify a user's password.
+ * If the user has explicitly set/changed their password, we validate against that stored password
+ * (while still allowing the demo masked placeholder '••••••••••••' only if they haven't set a custom password yet).
+ */
+export function verifyUserPassword(
+  email: string,
+  inputPassword: string
+): { valid: boolean; error?: string; hasCustomPassword?: boolean } {
+  const cleanEmail = email.trim().toLowerCase();
+  const trimmedPassword = inputPassword.trim();
+  if (!trimmedPassword) {
+    return { valid: false, error: 'Please enter your password.' };
+  }
+
+  const map = getStoredPasswordMap();
+  const customRecord = map[cleanEmail];
+
+  if (customRecord) {
+    if (inputPassword === customRecord.password) {
+      return { valid: true, hasCustomPassword: true };
+    }
+    return {
+      valid: false,
+      hasCustomPassword: true,
+      error: 'Incorrect password. Please enter the updated password you configured.',
+    };
+  }
+
+  // Default behavior before a custom password is set: allow the default demo password or standard non-empty input
+  return { valid: true, hasCustomPassword: false };
+}
+
+/**
+ * Change / update the password for a user account and persist in localStorage.
+ */
+export function changeUserPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): { ok: boolean; error?: string; updatedAt?: string } {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { ok: false, error: 'Please enter a valid work email address.' };
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: 'New password must be at least 8 characters long.' };
+  }
+  if (newPassword !== confirmPassword) {
+    return { ok: false, error: 'New password and confirmation do not match.' };
+  }
+
+  const map = getStoredPasswordMap();
+  const existing = map[cleanEmail];
+
+  // If the user previously set a custom password and provided a non-empty current password that doesn't match
+  if (
+    existing &&
+    currentPassword.trim() !== '' &&
+    currentPassword !== '••••••••••••' &&
+    currentPassword !== existing.password
+  ) {
+    return { ok: false, error: 'Your current password does not match our records.' };
+  }
+
+  if (existing && existing.password === newPassword) {
+    return { ok: false, error: 'New password must be different from your current password.' };
+  }
+
+  const updatedAt = new Date().toISOString();
+  map[cleanEmail] = {
+    password: newPassword,
+    updatedAt,
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(SDR_SESSION_STORAGE_KEYS.PASSWORD_STORE, JSON.stringify(map));
+    } catch (err) {
+      console.warn('[Session] Failed to persist password update:', err);
+      return { ok: false, error: 'Could not save password in browser storage.' };
+    }
+  }
+
+  return { ok: true, updatedAt };
+}
+
+export function getDefaultDemoPassword(email: string): string {
+  const clean = email.trim().toLowerCase();
+  const map = getStoredPasswordMap();
+  if (map[clean]?.password) return map[clean].password;
+  return DEFAULT_DEMO_PASSWORDS[clean] || 'Appointmentlyy2026!';
+}
 
 export const SDR_SESSION_EVENT = 'appointmentlyy_sdr_session_updated';
 

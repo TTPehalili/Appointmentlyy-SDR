@@ -10,3 +10,4 @@ export const metadata = {
 export default function PipelinePage() {
   return <PipelineKanbanHub />;
 }
+

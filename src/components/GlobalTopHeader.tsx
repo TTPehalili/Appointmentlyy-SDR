@@ -23,9 +23,14 @@ import {
   Check,
   UploadCloud,
   LifeBuoy,
-  Globe
+  Globe,
+  KeyRound,
+  Mail,
+  Eye,
+  EyeOff,
+  AlertCircle
 } from 'lucide-react';
-import { useSession, UserRole } from '@/lib/session';
+import { useSession, UserRole, changeUserPassword } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
   getSimulatedCustomHost,
@@ -77,6 +82,36 @@ export default function GlobalTopHeader() {
   const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
   const [activeDomainConfig, setActiveDomainConfig] =
     useState<TenantCustomDomainConfig | null>(null);
+
+  // Change Password Modal State
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
+
+  const handlePasswordChangeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError(null);
+    setPwdSuccess(null);
+
+    const res = changeUserPassword(email, currentPassword, newPassword, confirmPassword);
+    if (!res.ok) {
+      setPwdError(res.error || 'Could not update password.');
+      return;
+    }
+
+    setPwdSuccess(`Password updated for ${email}.`);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setTimeout(() => {
+      setPasswordModalOpen(false);
+      setPwdSuccess(null);
+    }, 1100);
+  };
 
   useEffect(() => {
     const syncHost = () => {
@@ -395,10 +430,32 @@ export default function GlobalTopHeader() {
                   </button>
                 ))}
 
-                <div className="mt-1.5 pt-1.5 border-t border-zinc-100">
+                <div className="mt-1.5 pt-1.5 border-t border-zinc-100 space-y-0.5">
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setPwdError(null);
+                      setPwdSuccess(null);
+                      setPasswordModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 hover:bg-zinc-100 transition-colors cursor-pointer"
+                  >
+                    <KeyRound className="h-3.5 w-3.5 text-zinc-500" />
+                    <span>Change Password</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      router.push('/login?tab=email');
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 hover:bg-zinc-100 transition-colors cursor-pointer"
+                  >
+                    <Mail className="h-3.5 w-3.5 text-zinc-500" />
+                    <span>Send User Login Email</span>
+                  </button>
                   <button
                     onClick={handleSignOut}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50 transition-colors"
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                   >
                     <LogOut className="h-3.5 w-3.5" />
                     <span>Sign Out</span>
@@ -477,6 +534,120 @@ export default function GlobalTopHeader() {
               <span>Navigation Shortcut</span>
               <span>ESC to close</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {passwordModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+          onClick={() => setPasswordModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl border border-zinc-200 shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+                  SECURITY_SETTINGS
+                </div>
+                <h2 className="text-base font-bold text-zinc-950">Change Account Password</h2>
+                <p className="text-xs text-zinc-500 mt-0.5">{email}</p>
+              </div>
+              <button
+                onClick={() => setPasswordModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-700 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePasswordChangeSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Current Password{' '}
+                  <span className="text-zinc-400 font-normal">(optional for initial setup)</span>
+                </label>
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-900 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  New Password <span className="text-zinc-400 font-normal">(min. 8 characters)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPwd ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new strong password"
+                    className="w-full pl-3 pr-9 py-2 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-900 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd(!showPwd)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 p-0.5 cursor-pointer"
+                  >
+                    {showPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-900 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                />
+              </div>
+
+              {pwdError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{pwdError}</span>
+                </div>
+              )}
+
+              {pwdSuccess && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{pwdSuccess}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-xs font-medium text-zinc-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold cursor-pointer"
+                >
+                  Update Password
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
