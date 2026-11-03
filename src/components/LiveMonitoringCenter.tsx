@@ -27,24 +27,19 @@ import {
   Loader2
 } from 'lucide-react';
 import { PERSONA_VOICE_MAP, SparringCountry } from '@/lib/personas';
+import {
+  REP_VOICE_REGISTRY,
+  RepAccentKey,
+  getRepVoice,
+  RepVoiceProfile,
+} from '@/lib/repVoices';
 
 const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
-// Dedicated Filipino BPO SDR Voice Profiles (Authentic neutral Philippine English phone call voices)
-export const FILIPINO_REP_VOICES = {
-  male: {
-    voiceId: 'qh4NDtUSop0caPSI9C7m', // Jo - Articulate, confident Filipino male SDR phone delivery
-    label: 'Filipino Male SDR (Paolo)',
-    hub: 'Ortigas BPO Floor',
-    accentBadge: '🇵🇭 Filipino BPO Accent (Ortigas Hub)'
-  },
-  female: {
-    voiceId: '4IYgKf4EiI6yTfzwgjC2', // Lovely - MGC x CallView (Authentic Filipino BPO Female SDR)
-    label: 'Filipino Female SDR (Lovely)',
-    hub: 'Manila Outbound Floor',
-    accentBadge: '🇵🇭 Filipino BPO Accent (Manila Floor)'
-  }
-};
+// Rep Voice Profiles (Arabic Accent & Filipino Accent)
+export const REP_VOICES = REP_VOICE_REGISTRY;
+export const FILIPINO_REP_VOICES = REP_VOICE_REGISTRY.filipino;
+export const ARABIC_REP_VOICES = REP_VOICE_REGISTRY.arabic;
 
 export interface DialogueTurn {
   id: string;
@@ -89,6 +84,9 @@ export default function LiveMonitoringCenter() {
   
   // Dynamic Customer Voice Accent State (USA, Australia, UK)
   const [selectedCustomerAccent, setSelectedCustomerAccent] = useState<SparringCountry>('Australia');
+
+  // Rep Voice Accent Toggle (Arabic vs Filipino)
+  const [selectedRepAccent, setSelectedRepAccent] = useState<RepAccentKey>('arabic');
 
   // Audio playback state
   const [activeListeningSession, setActiveListeningSession] = useState<ActiveSparringSession | null>(null);
@@ -143,248 +141,258 @@ export default function LiveMonitoringCenter() {
     return 'cjVigY5qzO86Huf0OWal';
   };
 
-  // Raw mock definitions with Filipino SDRs and target buyer personas
-  const rawSessionsConfig: ActiveSparringSession[] = [
-    {
-      id: 'sess-1',
-      line: 'LINE 01',
-      repName: 'Paolo Reyes',
-      repEmail: 'paolo.reyes@apexglobal.ph',
-      repGender: 'male',
-      repAccent: '🇵🇭 Filipino Neutral (Manila BPO Floor)',
-      avatar: 'PR',
-      tenant: 'Apex Global BPO (Manila)',
-      personaId: 'bpo-directory-buyer',
-      personaName: 'Julian Vance',
-      personaRole: 'Managing Director & Outbound Head (Apex BPO)',
-      personaDifficulty: 'High',
-      countryAccent: selectedCustomerAccent,
-      initialSeconds: 228,
-      currentObjection: '“We already buy shared leads from Outsource Accelerator. Why pay for private data?”',
-      score: 88,
-      sentiment: 'Engaged',
-      wpm: 142,
-      armStatus: { acknowledge: true, respond: true, move: false },
-      recentTranscript: [
-        {
-          id: 'turn-1-1',
-          speaker: 'Julian Vance',
-          role: 'prospect',
-          text: 'We already buy shared lead packs from Outsource Accelerator, Paolo. Why on earth would I pay for additional software?',
-          time: '03:15',
-          voiceId: getCustomerVoiceId('bpo-directory-buyer', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-1-2',
-          speaker: 'Paolo Reyes (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'Totally fair, Julian. But OA sells those identical leads to 3 to 5 other BPOs simultaneously, so you end up in eight dollar per hour price wars.',
-          time: '03:26',
-          voiceId: FILIPINO_REP_VOICES.male.voiceId
-        },
-        {
-          id: 'turn-1-3',
-          speaker: 'Julian Vance',
-          role: 'prospect',
-          text: 'That is actually true. Our margins have taken a beating on those directory accounts. What are you doing differently?',
-          time: '03:38',
-          voiceId: getCustomerVoiceId('bpo-directory-buyer', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-1-4',
-          speaker: 'Paolo Reyes (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'We give you exclusive, verified tech-founder triggers before OA even lists them. Can I show you three live accounts right now?',
-          time: '03:49',
-          voiceId: FILIPINO_REP_VOICES.male.voiceId
-        },
-        {
-          id: 'turn-1-5',
-          speaker: 'Julian Vance',
-          role: 'prospect',
-          text: 'Alright Paolo, pull them up on screen. If they are genuinely exclusive, you have got my attention.',
-          time: '04:01',
-          voiceId: getCustomerVoiceId('bpo-directory-buyer', selectedCustomerAccent)
-        }
-      ]
-    },
-    {
-      id: 'sess-2',
-      line: 'LINE 02',
-      repName: 'Maria Santos',
-      repEmail: 'maria.santos@fintechscaleups.ph',
-      repGender: 'female',
-      repAccent: '🇵🇭 Filipino Neutral (Cebu Tech Floor)',
-      avatar: 'MS',
-      tenant: 'Fintech Scaleups (Cebu)',
-      personaId: 'rushed-vp',
-      personaName: 'David M.',
-      personaRole: 'VP of Sales (Acme Cloud Tech)',
-      personaDifficulty: 'High',
-      countryAccent: selectedCustomerAccent,
-      initialSeconds: 142,
-      currentObjection: '“Our reps ramp in 4 weeks, we already have internal enablement training.”',
-      score: 84,
-      sentiment: 'Skeptical',
-      wpm: 136,
-      armStatus: { acknowledge: true, respond: false, move: false },
-      recentTranscript: [
-        {
-          id: 'turn-2-1',
-          speaker: 'David M.',
-          role: 'prospect',
-          text: 'We already have an internal enablement manager, Maria. Our reps ramp fine without extra tools.',
-          time: '01:55',
-          voiceId: getCustomerVoiceId('rushed-vp', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-2-2',
-          speaker: 'Maria Santos (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'Understood, David. But does your enablement team drill 40 unscripted voice objection scenarios before their first live dial?',
-          time: '02:08',
-          voiceId: FILIPINO_REP_VOICES.female.voiceId
-        },
-        {
-          id: 'turn-2-3',
-          speaker: 'David M.',
-          role: 'prospect',
-          text: 'No, they mostly read slide decks and shadow top performers on Gong.',
-          time: '02:18',
-          voiceId: getCustomerVoiceId('rushed-vp', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-2-4',
-          speaker: 'Maria Santos (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'Shadowing is passive. When reps spar daily against our AI buyer personas, they hit quota in 12 days instead of 4 weeks.',
-          time: '02:29',
-          voiceId: FILIPINO_REP_VOICES.female.voiceId
-        },
-        {
-          id: 'turn-2-5',
-          speaker: 'David M.',
-          role: 'prospect',
-          text: 'Twelve days? That would save us thirty thousand a month in ramp burn. Show me how it works.',
-          time: '02:40',
-          voiceId: getCustomerVoiceId('rushed-vp', selectedCustomerAccent)
-        }
-      ]
-    },
-    {
-      id: 'sess-3',
-      line: 'LINE 03',
-      repName: 'Angelo Cruz',
-      repEmail: 'angelo.cruz@horizonsolar.ph',
-      repGender: 'male',
-      repAccent: '🇵🇭 Filipino Neutral (Ortigas Outbound Floor)',
-      avatar: 'AC',
-      tenant: 'Horizon Solar Outbound Floor',
-      personaId: 'frugal-cfo',
-      personaName: 'Rick Henderson',
-      personaRole: 'Skeptical Homeowner ($450+ Power Bill)',
-      personaDifficulty: 'Extreme',
-      countryAccent: selectedCustomerAccent,
-      initialSeconds: 254,
-      currentObjection: '“Take me off your list! You guys call every Tuesday with fake utility rebates!”',
-      score: 79,
-      sentiment: 'Hostile',
-      wpm: 155,
-      armStatus: { acknowledge: true, respond: false, move: false },
-      recentTranscript: [
-        {
-          id: 'turn-3-1',
-          speaker: 'Rick Henderson',
-          role: 'prospect',
-          text: 'Take me off your list! You guys call every Tuesday with fake utility rebates and I am sick of it!',
-          time: '03:45',
-          voiceId: getCustomerVoiceId('frugal-cfo', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-3-2',
-          speaker: 'Angelo Cruz (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'I completely hear your frustration Rick, I hate spam calls too. I am only calling because our team verified your substation rate rose 24% last month.',
-          time: '03:56',
-          voiceId: FILIPINO_REP_VOICES.male.voiceId
-        },
-        {
-          id: 'turn-3-3',
-          speaker: 'Rick Henderson',
-          role: 'prospect',
-          text: 'Twenty four percent? Wait, is that why my bill jumped to four hundred and fifty dollars?',
-          time: '04:09',
-          voiceId: getCustomerVoiceId('frugal-cfo', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-3-4',
-          speaker: 'Angelo Cruz (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'Spot on Rick. If you have two minutes, I will show you the exact rate lock that protects your bill from the next rate hike.',
-          time: '04:20',
-          voiceId: FILIPINO_REP_VOICES.male.voiceId
-        }
-      ]
-    },
-    {
-      id: 'sess-4',
-      line: 'LINE 04',
-      repName: 'Nicole Bautista',
-      repEmail: 'nicole.b@oa-partner.ph',
-      repGender: 'female',
-      repAccent: '🇵🇭 Filipino Neutral (BGC Taguig Hub)',
-      avatar: 'NB',
-      tenant: 'Outsource Accelerator Partner Hub',
-      personaId: 'burned-director',
-      personaName: 'Sarah Jenkins',
-      personaRole: 'VP Operations (Global Contact Center)',
-      personaDifficulty: 'Medium',
-      countryAccent: selectedCustomerAccent,
-      initialSeconds: 118,
-      currentObjection: '“Send me an email first, I am in back-to-back executive meetings.”',
-      score: 91,
-      sentiment: 'Skeptical',
-      wpm: 140,
-      armStatus: { acknowledge: true, respond: true, move: true },
-      recentTranscript: [
-        {
-          id: 'turn-4-1',
-          speaker: 'Sarah Jenkins',
-          role: 'prospect',
-          text: 'Can you just shoot over an email? I am walking into an executive board session right now.',
-          time: '01:32',
-          voiceId: getCustomerVoiceId('burned-director', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-4-2',
-          speaker: 'Nicole Bautista (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'Happy to send an email Sarah, but without knowing whether your priority this quarter is CS headcount or outbound retention, it will just be spam.',
-          time: '01:44',
-          voiceId: FILIPINO_REP_VOICES.female.voiceId
-        },
-        {
-          id: 'turn-4-3',
-          speaker: 'Sarah Jenkins',
-          role: 'prospect',
-          text: 'Fair point. We are bleeding tier two reps right now. What specifically can you do for retention?',
-          time: '01:55',
-          voiceId: getCustomerVoiceId('burned-director', selectedCustomerAccent)
-        },
-        {
-          id: 'turn-4-4',
-          speaker: 'Nicole Bautista (🇵🇭 Filipino SDR)',
-          role: 'rep',
-          text: 'We drill live escalations so reps do not burn out on hostile calls. Let us carve out 7 minutes on Thursday morning. Does 9:30 AM work?',
-          time: '02:08',
-          voiceId: FILIPINO_REP_VOICES.female.voiceId
-        }
-      ]
-    }
-  ];
+  // Builder for mock sessions supporting Arabic and Filipino Rep Accents
+  const buildSessions = (repAccent: RepAccentKey, customerAccent: SparringCountry): ActiveSparringSession[] => {
+    const arabicMale = REP_VOICE_REGISTRY.arabic.male;
+    const arabicFemale = REP_VOICE_REGISTRY.arabic.female;
+    const filipinoMale = REP_VOICE_REGISTRY.filipino.male;
+    const filipinoFemale = REP_VOICE_REGISTRY.filipino.female;
+    const isArabic = repAccent === 'arabic';
+
+    return [
+      {
+        id: 'sess-1',
+        line: 'LINE 01',
+        repName: isArabic ? arabicMale.name : filipinoMale.name,
+        repEmail: isArabic ? 'tariq.mansoor@apexglobal.ae' : 'paolo.reyes@apexglobal.ph',
+        repGender: 'male',
+        repAccent: isArabic ? `${arabicMale.flag} ${arabicMale.accentBadge}` : `${filipinoMale.flag} ${filipinoMale.accentBadge}`,
+        avatar: isArabic ? 'TA' : 'PR',
+        tenant: isArabic ? 'Apex Global Outbound (Dubai)' : 'Apex Global BPO (Manila)',
+        personaId: 'bpo-directory-buyer',
+        personaName: 'Julian Vance',
+        personaRole: 'Managing Director & Outbound Head (Apex BPO)',
+        personaDifficulty: 'High',
+        countryAccent: customerAccent,
+        initialSeconds: 228,
+        currentObjection: '“We already buy shared leads from Outsource Accelerator. Why pay for private data?”',
+        score: 88,
+        sentiment: 'Engaged',
+        wpm: 142,
+        armStatus: { acknowledge: true, respond: true, move: false },
+        recentTranscript: [
+          {
+            id: 'turn-1-1',
+            speaker: 'Julian Vance',
+            role: 'prospect',
+            text: `We already buy shared lead packs from Outsource Accelerator, ${isArabic ? 'Tariq' : 'Paolo'}. Why on earth would I pay for additional software?`,
+            time: '03:15',
+            voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
+          },
+          {
+            id: 'turn-1-2',
+            speaker: `${isArabic ? arabicMale.name : filipinoMale.name} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'Totally fair, Julian. But OA sells those identical leads to 3 to 5 other BPOs simultaneously, so you end up in eight dollar per hour price wars.',
+            time: '03:26',
+            voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
+          },
+          {
+            id: 'turn-1-3',
+            speaker: 'Julian Vance',
+            role: 'prospect',
+            text: 'That is actually true. Our margins have taken a beating on those directory accounts. What are you doing differently?',
+            time: '03:38',
+            voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
+          },
+          {
+            id: 'turn-1-4',
+            speaker: `${isArabic ? arabicMale.name : filipinoMale.name} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'We give you exclusive, verified tech-founder triggers before OA even lists them. Can I show you three live accounts right now?',
+            time: '03:49',
+            voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
+          },
+          {
+            id: 'turn-1-5',
+            speaker: 'Julian Vance',
+            role: 'prospect',
+            text: `Alright ${isArabic ? 'Tariq' : 'Paolo'}, pull them up on screen. If they are genuinely exclusive, you have got my attention.`,
+            time: '04:01',
+            voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
+          }
+        ]
+      },
+      {
+        id: 'sess-2',
+        line: 'LINE 02',
+        repName: isArabic ? arabicFemale.name : 'Maria Santos',
+        repEmail: isArabic ? 'noor.hassan@fintechscaleups.ae' : 'maria.santos@fintechscaleups.ph',
+        repGender: 'female',
+        repAccent: isArabic ? `${arabicFemale.flag} ${arabicFemale.accentBadge}` : `${filipinoFemale.flag} ${filipinoFemale.accentBadge}`,
+        avatar: isArabic ? 'NA' : 'MS',
+        tenant: isArabic ? 'Fintech Scaleups (Dubai DIFC)' : 'Fintech Scaleups (Cebu)',
+        personaId: 'rushed-vp',
+        personaName: 'David M.',
+        personaRole: 'VP of Sales (Acme Cloud Tech)',
+        personaDifficulty: 'High',
+        countryAccent: customerAccent,
+        initialSeconds: 142,
+        currentObjection: '“Our reps ramp in 4 weeks, we already have internal enablement training.”',
+        score: 84,
+        sentiment: 'Skeptical',
+        wpm: 136,
+        armStatus: { acknowledge: true, respond: false, move: false },
+        recentTranscript: [
+          {
+            id: 'turn-2-1',
+            speaker: 'David M.',
+            role: 'prospect',
+            text: `We already have an internal enablement manager, ${isArabic ? 'Noor' : 'Maria'}. Our reps ramp fine without extra tools.`,
+            time: '01:55',
+            voiceId: getCustomerVoiceId('rushed-vp', customerAccent)
+          },
+          {
+            id: 'turn-2-2',
+            speaker: `${isArabic ? arabicFemale.name : 'Maria Santos'} (${isArabic ? arabicFemale.flag : filipinoFemale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'Understood, David. But does your enablement team drill 40 unscripted voice objection scenarios before their first live dial?',
+            time: '02:08',
+            voiceId: isArabic ? arabicFemale.voiceId : filipinoFemale.voiceId
+          },
+          {
+            id: 'turn-2-3',
+            speaker: 'David M.',
+            role: 'prospect',
+            text: 'No, they mostly read slide decks and shadow top performers on Gong.',
+            time: '02:18',
+            voiceId: getCustomerVoiceId('rushed-vp', customerAccent)
+          },
+          {
+            id: 'turn-2-4',
+            speaker: `${isArabic ? arabicFemale.name : 'Maria Santos'} (${isArabic ? arabicFemale.flag : filipinoFemale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'Shadowing is passive. When reps spar daily against our AI buyer personas, they hit quota in 12 days instead of 4 weeks.',
+            time: '02:29',
+            voiceId: isArabic ? arabicFemale.voiceId : filipinoFemale.voiceId
+          },
+          {
+            id: 'turn-2-5',
+            speaker: 'David M.',
+            role: 'prospect',
+            text: 'Twelve days? That would save us thirty thousand a month in ramp burn. Show me how it works.',
+            time: '02:40',
+            voiceId: getCustomerVoiceId('rushed-vp', customerAccent)
+          }
+        ]
+      },
+      {
+        id: 'sess-3',
+        line: 'LINE 03',
+        repName: isArabic ? arabicMale.name : 'Angelo Cruz',
+        repEmail: isArabic ? 'tariq.mansoor@horizonenergy.ae' : 'angelo.cruz@horizonsolar.ph',
+        repGender: 'male',
+        repAccent: isArabic ? `${arabicMale.flag} ${arabicMale.accentBadge}` : `${filipinoMale.flag} ${filipinoMale.accentBadge}`,
+        avatar: isArabic ? 'TA' : 'AC',
+        tenant: isArabic ? 'Horizon Energy Outbound Hub (Riyadh)' : 'Horizon Solar Outbound Floor',
+        personaId: 'frugal-cfo',
+        personaName: 'Rick Henderson',
+        personaRole: 'Skeptical Homeowner ($450+ Power Bill)',
+        personaDifficulty: 'Extreme',
+        countryAccent: customerAccent,
+        initialSeconds: 254,
+        currentObjection: '“Take me off your list! You guys call every Tuesday with fake utility rebates!”',
+        score: 79,
+        sentiment: 'Hostile',
+        wpm: 155,
+        armStatus: { acknowledge: true, respond: false, move: false },
+        recentTranscript: [
+          {
+            id: 'turn-3-1',
+            speaker: 'Rick Henderson',
+            role: 'prospect',
+            text: 'Take me off your list! You guys call every Tuesday with fake utility rebates and I am sick of it!',
+            time: '03:45',
+            voiceId: getCustomerVoiceId('frugal-cfo', customerAccent)
+          },
+          {
+            id: 'turn-3-2',
+            speaker: `${isArabic ? arabicMale.name : 'Angelo Cruz'} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'I completely hear your frustration Rick, I hate spam calls too. I am only calling because our team verified your substation rate rose 24% last month.',
+            time: '03:56',
+            voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
+          },
+          {
+            id: 'turn-3-3',
+            speaker: 'Rick Henderson',
+            role: 'prospect',
+            text: 'Twenty four percent? Wait, is that why my bill jumped to four hundred and fifty dollars?',
+            time: '04:09',
+            voiceId: getCustomerVoiceId('frugal-cfo', customerAccent)
+          },
+          {
+            id: 'turn-3-4',
+            speaker: `${isArabic ? arabicMale.name : 'Angelo Cruz'} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'Spot on Rick. If you have two minutes, I will show you the exact rate lock that protects your bill from the next rate hike.',
+            time: '04:20',
+            voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
+          }
+        ]
+      },
+      {
+        id: 'sess-4',
+        line: 'LINE 04',
+        repName: isArabic ? arabicFemale.name : 'Nicole Bautista',
+        repEmail: isArabic ? 'noor.hassan@gulfcontact.ae' : 'nicole.b@oa-partner.ph',
+        repGender: 'female',
+        repAccent: isArabic ? `${arabicFemale.flag} ${arabicFemale.accentBadge}` : `${filipinoFemale.flag} ${filipinoFemale.accentBadge}`,
+        avatar: isArabic ? 'NA' : 'NB',
+        tenant: isArabic ? 'Gulf Contact Partner Hub (Dubai)' : 'Outsource Accelerator Partner Hub',
+        personaId: 'burned-director',
+        personaName: 'Sarah Jenkins',
+        personaRole: 'VP Operations (Global Contact Center)',
+        personaDifficulty: 'Medium',
+        countryAccent: customerAccent,
+        initialSeconds: 118,
+        currentObjection: '“Send me an email first, I am in back-to-back executive meetings.”',
+        score: 91,
+        sentiment: 'Skeptical',
+        wpm: 140,
+        armStatus: { acknowledge: true, respond: true, move: true },
+        recentTranscript: [
+          {
+            id: 'turn-4-1',
+            speaker: 'Sarah Jenkins',
+            role: 'prospect',
+            text: 'Can you just shoot over an email? I am walking into an executive board session right now.',
+            time: '01:32',
+            voiceId: getCustomerVoiceId('burned-director', customerAccent)
+          },
+          {
+            id: 'turn-4-2',
+            speaker: `${isArabic ? arabicFemale.name : 'Nicole Bautista'} (${isArabic ? arabicFemale.flag : filipinoFemale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'Happy to send an email Sarah, but without knowing whether your priority this quarter is CS headcount or outbound retention, it will just be spam.',
+            time: '01:44',
+            voiceId: isArabic ? arabicFemale.voiceId : filipinoFemale.voiceId
+          },
+          {
+            id: 'turn-4-3',
+            speaker: 'Sarah Jenkins',
+            role: 'prospect',
+            text: 'Fair point. We are bleeding tier two reps right now. What specifically can you do for retention?',
+            time: '01:55',
+            voiceId: getCustomerVoiceId('burned-director', customerAccent)
+          },
+          {
+            id: 'turn-4-4',
+            speaker: `${isArabic ? arabicFemale.name : 'Nicole Bautista'} (${isArabic ? arabicFemale.flag : filipinoFemale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
+            role: 'rep',
+            text: 'We drill live escalations so reps do not burn out on hostile calls. Let us carve out 7 minutes on Thursday morning. Does 9:30 AM work?',
+            time: '02:08',
+            voiceId: isArabic ? arabicFemale.voiceId : filipinoFemale.voiceId
+          }
+        ]
+      }
+    ];
+  };
 
   // Active Sparring Lines on Floor
-  const [sessions, setSessions] = useState<ActiveSparringSession[]>(rawSessionsConfig);
+  const [sessions, setSessions] = useState<ActiveSparringSession[]>(() =>
+    buildSessions(selectedRepAccent, selectedCustomerAccent)
+  );
 
   // Sync sessions when customer accent changes dynamically
   const handleCustomerAccentChange = (newCountry: SparringCountry) => {
@@ -435,6 +443,48 @@ export default function LiveMonitoringCenter() {
       // If playing, immediately re-synthesize this turn with the newly selected accent!
       if (isAudioPlaying && currentTurnIndex !== null) {
         playTurn(updatedActiveSession, currentTurnIndex);
+      }
+    }
+  };
+
+  // Switch Rep Accent Voice Dynamically (Arabic vs Filipino)
+  const handleRepAccentChange = (accent: RepAccentKey) => {
+    setSelectedRepAccent(accent);
+
+    setSessions(prev =>
+      prev.map((s, idx) => {
+        const fresh = buildSessions(accent, s.countryAccent)[idx];
+        return {
+          ...s,
+          repName: fresh.repName,
+          repEmail: fresh.repEmail,
+          repAccent: fresh.repAccent,
+          avatar: fresh.avatar,
+          tenant: fresh.tenant,
+          recentTranscript: fresh.recentTranscript
+        };
+      })
+    );
+
+    if (activeListeningSession) {
+      const freshActive = buildSessions(accent, activeListeningSession.countryAccent).find(
+        s => s.id === activeListeningSession.id
+      );
+      if (freshActive) {
+        const updatedActive = {
+          ...activeListeningSession,
+          repName: freshActive.repName,
+          repEmail: freshActive.repEmail,
+          repAccent: freshActive.repAccent,
+          avatar: freshActive.avatar,
+          tenant: freshActive.tenant,
+          recentTranscript: freshActive.recentTranscript
+        };
+        setActiveListeningSession(updatedActive);
+
+        if (isAudioPlaying && currentTurnIndex !== null) {
+          playTurn(updatedActive, currentTurnIndex);
+        }
       }
     }
   };
@@ -702,18 +752,16 @@ export default function LiveMonitoringCenter() {
       osc.stop(audioCtx.currentTime + 0.25);
     } catch {}
 
-    // Coached response voiced by Filipino SDR
-    const repVoiceId = activeListeningSession.repGender === 'female' 
-      ? FILIPINO_REP_VOICES.female.voiceId
-      : FILIPINO_REP_VOICES.male.voiceId;
+    // Coached response voiced by selected Rep Accent
+    const currentRepProfile = getRepVoice(selectedRepAccent, activeListeningSession.repGender);
 
     const coachedTurn: DialogueTurn = {
       id: `whisper-${Date.now()}`,
-      speaker: `${activeListeningSession.repName} (🇵🇭 Filipino SDR - HUD Coached)`,
+      speaker: `${activeListeningSession.repName} (${currentRepProfile.flag} ${currentRepProfile.accentLabel} - HUD Coached)`,
       role: 'rep',
       text: `“Understood ${activeListeningSession.personaName.split(' ')[0]}. My supervisor just alerted my cockpit—${coachingText}”`,
       time: 'LIVE NOW',
-      voiceId: repVoiceId
+      voiceId: currentRepProfile.voiceId
     };
 
     const updatedTranscript = [...activeListeningSession.recentTranscript, coachedTurn];
@@ -754,8 +802,10 @@ export default function LiveMonitoringCenter() {
 
             {/* Rep Voice Identity Badge */}
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-mono font-bold">
-              <span>🇵🇭</span>
-              <span>REP VOICE: FILIPINO PHONE ACCENT (LOVELY & PAOLO • V4 TURBO)</span>
+              <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
+              <span>
+                REP VOICE: {selectedRepAccent === 'arabic' ? 'ARABIC ACCENT (NOOR & TARIQ • V4 TURBO)' : 'FILIPINO BPO ACCENT (LOVELY & PAOLO • V4 TURBO)'}
+              </span>
             </div>
           </div>
 
@@ -763,12 +813,45 @@ export default function LiveMonitoringCenter() {
             Live Sparring Floor Monitor
           </h1>
           <p className="text-xs text-[#6b6968] mt-1 max-w-2xl leading-relaxed">
-            Real-time supervisor console. Demonstrate how our <strong>Filipino BPO SDR reps</strong> sound over the phone handling live objections against <strong>global customer accents</strong> (US, Australian, and British buyers).
+            Real-time supervisor console. Demonstrate how our <strong>{selectedRepAccent === 'arabic' ? 'Arabic Accent SDR reps' : 'Filipino BPO SDR reps'}</strong> sound over the phone handling live objections against <strong>global customer accents</strong> (US, Australian, and British buyers).
           </p>
         </div>
 
-        {/* Global Customer Accent Switcher & Action Links */}
+        {/* Rep Accent & Customer Accent Switchers */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {/* Rep Voice Switcher Pill Bar (Arabic vs Filipino) */}
+          <div className="flex items-center gap-1 p-1 bg-white border border-[#222021]/15 rounded-xl shadow-2xs">
+            <div className="flex items-center gap-1 pl-2.5 pr-1.5 text-[11px] font-mono font-bold text-[#6b6968]">
+              <Users className="h-3.5 w-3.5 text-[#ED1C24]" />
+              <span className="hidden sm:inline">REP ACCENT:</span>
+            </div>
+
+            <button
+              onClick={() => handleRepAccentChange('arabic')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedRepAccent === 'arabic'
+                  ? 'bg-[#ED1C24] text-white shadow-2xs'
+                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
+              }`}
+              title="Switch Rep Voice to Arabic Accent (Dubai / Middle East Hub)"
+            >
+              <span>🇦🇪</span>
+              <span>Arabic</span>
+            </button>
+
+            <button
+              onClick={() => handleRepAccentChange('filipino')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedRepAccent === 'filipino'
+                  ? 'bg-[#ED1C24] text-white shadow-2xs'
+                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
+              }`}
+              title="Switch Rep Voice to Filipino Accent (Manila / Ortigas Hub)"
+            >
+              <span>🇵🇭</span>
+              <span>Filipino</span>
+            </button>
+          </div>
           {/* Customer Accent Selector Pill Bar */}
           <div className="flex items-center gap-1 p-1 bg-white border border-[#222021]/15 rounded-xl shadow-2xs">
             <div className="flex items-center gap-1 pl-2.5 pr-1.5 text-[11px] font-mono font-bold text-[#6b6968]">
@@ -843,7 +926,9 @@ export default function LiveMonitoringCenter() {
           <span className="text-2xl font-black text-emerald-600 font-mono">
             {sessions.length} Live Calls
           </span>
-          <p className="text-[11px] text-[#6b6968]">🇵🇭 Filipino SDRs Sparring</p>
+          <p className="text-[11px] text-[#6b6968]">
+            {selectedRepAccent === 'arabic' ? '🇦🇪 Arabic Accent SDR Pod' : '🇵🇭 Filipino SDRs Sparring'}
+          </p>
         </div>
 
         <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
@@ -916,9 +1001,11 @@ export default function LiveMonitoringCenter() {
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs font-mono text-[#6b6968]">
           <span className="font-bold text-[#222021]">
-            SHOWING {filteredSessions.length} FILIPINO REPS IN ACTIVE SPARRING CALLS
+            SHOWING {filteredSessions.length} {selectedRepAccent === 'arabic' ? 'ARABIC ACCENT' : 'FILIPINO'} REPS IN ACTIVE SPARRING CALLS
           </span>
-          <span className="hidden sm:inline">CLICK "🎧 LISTEN LIVE" TO HEAR FILIPINO SDR VS {selectedCustomerAccent.toUpperCase()} BUYER</span>
+          <span className="hidden sm:inline">
+            CLICK "🎧 LISTEN LIVE" TO HEAR {selectedRepAccent === 'arabic' ? 'ARABIC' : 'FILIPINO'} SDR VS {selectedCustomerAccent.toUpperCase()} BUYER
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -951,8 +1038,8 @@ export default function LiveMonitoringCenter() {
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-extrabold text-[#222021]">{session.repName}</h3>
                         <span className="text-[10px] font-mono text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-bold flex items-center gap-1">
-                          <span>🇵🇭</span>
-                          <span>Filipino SDR</span>
+                          <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
+                          <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'}</span>
                         </span>
                       </div>
                       <p className="text-[11px] text-[#6b6968] mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -1076,8 +1163,8 @@ export default function LiveMonitoringCenter() {
                   
                   {/* Real-time accent badges */}
                   <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800 flex items-center gap-1">
-                    <span>🇵🇭</span>
-                    <span>Filipino SDR Voice</span>
+                    <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
+                    <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR Voice' : 'Filipino SDR Voice'}</span>
                   </span>
 
                   <span className="text-xs font-mono px-2 py-0.5 rounded bg-stone-800 text-stone-300 border border-stone-700 flex items-center gap-1">
@@ -1093,7 +1180,7 @@ export default function LiveMonitoringCenter() {
                   )}
                 </div>
                 <h3 className="text-base font-extrabold text-white mt-1">
-                  {activeListeningSession.repName} (🇵🇭 Filipino SDR) &harr; {activeListeningSession.personaName} ({activeListeningSession.personaRole})
+                  {activeListeningSession.repName} ({selectedRepAccent === 'arabic' ? '🇦🇪 Arabic SDR' : '🇵🇭 Filipino SDR'}) &harr; {activeListeningSession.personaName} ({activeListeningSession.personaRole})
                 </h3>
               </div>
             </div>
@@ -1101,9 +1188,38 @@ export default function LiveMonitoringCenter() {
             {/* Audio Playback Controls, Accent Quick-Toggle & Volume */}
             <div className="flex flex-wrap items-center gap-2.5">
               
+              {/* Quick Switch Rep Voice inside Docked Bus */}
+              <div className="flex items-center bg-stone-900 border border-stone-800 rounded-xl p-1">
+                <span className="text-[10px] font-mono text-stone-400 px-2 font-bold hidden sm:inline">REP VOICE:</span>
+                <button
+                  onClick={() => handleRepAccentChange('arabic')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    selectedRepAccent === 'arabic'
+                      ? 'bg-[#ED1C24] text-white shadow-xs'
+                      : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                  }`}
+                  title="Arabic Accent SDR Rep (Dubai / Riyadh Hub)"
+                >
+                  <span>🇦🇪</span>
+                  <span>Arabic</span>
+                </button>
+                <button
+                  onClick={() => handleRepAccentChange('filipino')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    selectedRepAccent === 'filipino'
+                      ? 'bg-[#ED1C24] text-white shadow-xs'
+                      : 'text-stone-400 hover:text-white hover:bg-stone-800'
+                  }`}
+                  title="Filipino Accent SDR Rep (Manila / Ortigas Hub)"
+                >
+                  <span>🇵🇭</span>
+                  <span>Filipino</span>
+                </button>
+              </div>
+
               {/* Quick Switch Customer Accent inside Docked Bus */}
               <div className="flex items-center bg-stone-900 border border-stone-800 rounded-xl p-1">
-                <span className="text-[10px] font-mono text-stone-400 px-2 font-bold hidden sm:inline">ACCENT:</span>
+                <span className="text-[10px] font-mono text-stone-400 px-2 font-bold hidden sm:inline">BUYER:</span>
                 {(['USA', 'Australia', 'UK'] as SparringCountry[]).map((c) => (
                   <button
                     key={c}
@@ -1187,7 +1303,7 @@ export default function LiveMonitoringCenter() {
             <div className="lg:col-span-8 bg-stone-900/90 rounded-2xl p-4 border border-stone-800 space-y-3 max-h-84 overflow-y-auto">
               <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase text-stone-400 tracking-wider">
                 <span className="flex items-center gap-1.5">
-                  <span className="text-blue-400">🇵🇭 FILIPINO SDR</span>
+                  <span className="text-blue-400">{selectedRepAccent === 'arabic' ? '🇦🇪 ARABIC SDR' : '🇵🇭 FILIPINO SDR'}</span>
                   <span>&harr;</span>
                   <span className="text-red-400">
                     {activeListeningSession.countryAccent === 'USA' ? '🇺🇸 US BUYER' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺 AUSTRALIAN BUYER' : '🇬🇧 UK BUYER'}
@@ -1222,8 +1338,8 @@ export default function LiveMonitoringCenter() {
                           }`}>
                             {isRep ? (
                               <>
-                                <span>🇵🇭</span>
-                                <span>FILIPINO SDR</span>
+                                <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
+                                <span>{selectedRepAccent === 'arabic' ? 'ARABIC SDR' : 'FILIPINO SDR'}</span>
                               </>
                             ) : (
                               <>
@@ -1264,7 +1380,7 @@ export default function LiveMonitoringCenter() {
                   Supervisor Whisper (Live HUD Injection):
                 </span>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  Inject coaching cues into {activeListeningSession.repName}’s cockpit. The Filipino SDR will immediately voice the coached rebuttal!
+                  Inject coaching cues into {activeListeningSession.repName}’s cockpit. The {selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'} will immediately voice the coached rebuttal!
                 </p>
               </div>
 
@@ -1281,7 +1397,7 @@ export default function LiveMonitoringCenter() {
                   {whisperFeedbackSent ? (
                     <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 font-bold">
                       <CheckCircle2 className="h-3 w-3" />
-                      <span>Voiced in Filipino Accent!</span>
+                      <span>Voiced in {selectedRepAccent === 'arabic' ? 'Arabic' : 'Filipino'} Accent!</span>
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono text-stone-500">Live Teleprompter Bus</span>
@@ -1303,10 +1419,17 @@ export default function LiveMonitoringCenter() {
                   <span>VOICE CHANNELS:</span>
                   <span className="text-emerald-400 font-bold">ACTIVE</span>
                 </div>
-                <div className="text-stone-300 flex items-center gap-1.5">
-                  <span>🇵🇭</span>
-                  <span>Rep: <strong className="text-white">{activeListeningSession.repName} ({activeListeningSession.repGender === 'female' ? FILIPINO_REP_VOICES.female.label : FILIPINO_REP_VOICES.male.label})</strong></span>
-                </div>
+                {(() => {
+                  const repVoice = getRepVoice(selectedRepAccent, activeListeningSession.repGender);
+                  return (
+                    <div className="text-stone-300 flex items-center gap-1.5">
+                      <span>{repVoice.flag}</span>
+                      <span>
+                        Rep: <strong className="text-white">{activeListeningSession.repName} ({repVoice.accentLabel})</strong>
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="text-stone-300 flex items-center gap-1.5">
                   <span>{activeListeningSession.countryAccent === 'USA' ? '🇺🇸' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺' : '🇬🇧'}</span>
                   <span>Customer: <strong className="text-white">{activeListeningSession.personaName} ({activeListeningSession.countryAccent} Accent)</strong></span>
