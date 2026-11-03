@@ -55,6 +55,7 @@ import UniversalCrmStudio from './admin/UniversalCrmStudio';
 import BillingInvoiceManager from './admin/BillingInvoiceManager';
 import McpDeveloperGateway from './admin/McpDeveloperGateway';
 import CallDispositionManager from './admin/CallDispositionManager';
+import JobRadarManager from './admin/JobRadarManager';
 
 interface UserRecord {
   id: string;
@@ -103,7 +104,7 @@ interface TenantRecord {
 
 export default function AdminControlCentre() {
   const { role, isAdmin, updateSession } = useSession();
-  const [activeTab, setActiveTab] = useState<'tenants' | 'dispositions' | 'byok' | 'crm' | 'invoicing' | 'mcp' | 'people' | 'modules' | 'access' | 'leads' | 'reps' | 'feedback' | 'audit'>('tenants');
+  const [activeTab, setActiveTab] = useState<'jobradar' | 'tenants' | 'dispositions' | 'byok' | 'crm' | 'invoicing' | 'mcp' | 'people' | 'modules' | 'access' | 'leads' | 'reps' | 'feedback' | 'audit'>('jobradar');
 
   // Role Permission Matrix State with persistence & live sync
   const [rolePermissions, setRolePermissions] = useState<RolePermissionMatrixItem[]>(() =>
@@ -555,6 +556,7 @@ export default function AdminControlCentre() {
           {/* Navigation Sub-Tabs */}
           <div className="flex items-center gap-6 border-b border-[#222021]/10 text-sm font-semibold overflow-x-auto scrollbar-none">
             {[
+              { id: 'jobradar', label: '⚡ Job Signals Radar (US & AU)' },
               { id: 'tenants', label: 'Tenants & Client Access' },
               { id: 'playbooks', label: 'Playbook Ingestion & AI' },
               { id: 'dispositions', label: 'Call Dispositions' },
@@ -596,6 +598,11 @@ export default function AdminControlCentre() {
               )
             ))}
           </div>
+
+          {/* TAB: JOB SIGNALS RADAR (Super Admin Exclusive) */}
+          {activeTab === 'jobradar' && (
+            <JobRadarManager />
+          )}
 
           {/* TAB 0: TENANTS & CLIENT ACCESS */}
           {activeTab === 'tenants' && (
