@@ -73,7 +73,7 @@ export default function AppSidebar() {
   // Nav Groups
   const frontlineItems = [
     { label: 'Calling Floor', href: '/cockpit', icon: Swords },
-    { label: 'Pipeline Kanban', href: '/pipeline', icon: Kanban },
+    { label: 'Pipeline', href: '/pipeline', icon: Kanban },
     { label: 'Global Contacts', href: '/contacts', icon: Users },
     { label: 'ICP List Builder', href: '/icp-builder', icon: FolderKanban },
     { label: 'Sparring Arena', href: '/sparring', icon: Headphones },

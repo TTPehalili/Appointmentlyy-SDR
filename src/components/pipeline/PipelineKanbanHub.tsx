@@ -457,7 +457,7 @@ export default function PipelineKanbanHub() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white text-[10px] font-mono font-semibold tracking-wider uppercase">
                     <Kanban className="w-3 h-3 text-emerald-400" />
-                    <span>LIVE OUTBOUND PIPELINE KANBAN</span>
+                    <span>LIVE OUTBOUND PIPELINE</span>
                   </span>
                   <span className="text-xs font-mono text-zinc-400">
                     {tenantName}
@@ -467,7 +467,7 @@ export default function PipelineKanbanHub() {
                   </span>
                 </div>
                 <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-                  Pipeline Dashboard &amp; Deal Stage Board
+                  Pipeline
                 </h1>
               </div>
 
@@ -564,22 +564,6 @@ export default function PipelineKanbanHub() {
                     <span className="text-xs font-normal text-zinc-400">prospects</span>
                   </div>
                 </div>
-                {canAccessIcp ? (
-                  <Link
-                    href="/icp-builder"
-                    className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-900 text-zinc-900 font-semibold text-[11px]"
-                  >
-                    + Pull ICP List
-                  </Link>
-                ) : (
-                  <span
-                    title="ICP List Builder is restricted to Admin/Customers by your organization."
-                    className="px-2 py-0.5 rounded-lg bg-zinc-100 border border-dashed border-zinc-300 text-zinc-400 font-medium text-[10px] cursor-not-allowed select-none opacity-60 flex items-center gap-1"
-                  >
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>ICP Locked</span>
-                  </span>
-                )}
               </div>
 
               <div className="px-6 py-3 flex items-center justify-between">
