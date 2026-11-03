@@ -447,3 +447,4 @@ export default function JobRadarManager() {
     </div>
   );
 }
+

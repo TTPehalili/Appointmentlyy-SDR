@@ -247,3 +247,4 @@ export const INITIAL_CURATED_JOB_SIGNALS: JobSignalRecord[] = [
     },
   },
 ];
+

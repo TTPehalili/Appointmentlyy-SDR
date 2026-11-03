@@ -41,3 +41,4 @@ export interface JobSignalRecord {
   decisionMaker: DecisionMakerContact;
   pushedToLeads?: boolean;
 }
+
