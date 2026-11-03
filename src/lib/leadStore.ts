@@ -7,7 +7,7 @@
  * Enforces strict Admin-only CSV export and Rep-level row isolation.
  */
 
-import { getStoredSession, normalizeUserRole } from './session';
+import { getStoredSession, normalizeUserRole, canUserReassignLeads } from './session';
 import liveBpo1000Raw from './liveBpo1000Data.json';
 
 export interface LeadFootprintItem {
@@ -39,6 +39,7 @@ export interface ContactRecord {
   industry?: string;
   location?: string;
   status: string; // 'New Lead' | 'In Cadence' | 'Meeting Booked' | 'Call Back Later' | 'Left Voicemail' | 'Disqualified'
+  dealValue?: number; // Custom or estimated deal value in USD (defaults to $3,500 if not set)
   cadenceDay: number;
   touchNumber: number;
   leadNotes: string; // Direct notes on the lead for non-CRM users
@@ -1010,6 +1011,229 @@ export function updateContactPipelineStage(
   return updatedContact;
 }
 
+export const DEFAULT_LEAD_DEAL_VALUE_USD = 3500;
+
+export function getContactDealValue(contact: ContactRecord): number {
+  if (typeof contact.dealValue === 'number' && !isNaN(contact.dealValue)) {
+    return Math.max(0, contact.dealValue);
+  }
+  return DEFAULT_LEAD_DEAL_VALUE_USD;
+}
+
+/**
+ * Manually update a lead's Deal Value (USD) and log the change in the lead's footprint.
+ * Available to all administrative users (Super Admin, Admin / Client Admin, Manager, Supervisor) and assigned reps.
+ */
+export function updateContactDealValue(
+  contactId: string,
+  newDealValue: number,
+  actorName: string = 'Admin'
+): ContactRecord | null {
+  if (!contactId || isNaN(newDealValue) || newDealValue < 0) return null;
+
+  const contacts = getStoredContacts();
+  const index = contacts.findIndex((c) => c.id === contactId);
+  if (index === -1) return null;
+
+  const cleanValue = Math.round(newDealValue);
+  const prevValue = getContactDealValue(contacts[index]);
+  if (prevValue === cleanValue && contacts[index].dealValue !== undefined) {
+    return contacts[index];
+  }
+
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const timestampStr = `${formattedDate} • ${formattedTime}`;
+
+  const valueFootprint: LeadFootprintItem = {
+    id: `fp_val_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: timestampStr,
+    isoDate: now.toISOString(),
+    type: 'note',
+    title: `Deal Value Updated → $${cleanValue.toLocaleString()}`,
+    summary: `Deal value updated from $${prevValue.toLocaleString()} to $${cleanValue.toLocaleString()} by ${actorName}.`,
+    repName: actorName,
+  };
+
+  const updatedContact: ContactRecord = {
+    ...contacts[index],
+    dealValue: cleanValue,
+    footprint: [valueFootprint, ...(contacts[index].footprint || [])],
+  };
+
+  contacts[index] = updatedContact;
+  saveStoredContacts(contacts);
+  return updatedContact;
+}
+
+/**
+ * Reassign a single lead to another SDR Rep / Agent.
+ * Strictly gated to Super Admin, Admin (Client Admin), Manager, and Supervisor roles.
+ */
+export function reassignContactToRep(
+  contactId: string,
+  newRepName: string,
+  actorName: string = 'Admin',
+  actorRole?: string
+): ContactRecord | null {
+  if (!canUserReassignLeads(actorRole)) {
+    console.warn(
+      '[Security Policy] Lead reassignment requires Supervisor, Manager, Admin, or Super Admin clearance.'
+    );
+    return null;
+  }
+  const cleanRep = (newRepName || '').trim();
+  if (!contactId || !cleanRep) return null;
+
+  const contacts = getStoredContacts();
+  const index = contacts.findIndex((c) => c.id === contactId);
+  if (index === -1) return null;
+
+  const prevRep = contacts[index].assignedRep || 'Unassigned';
+  if (prevRep === cleanRep) return contacts[index];
+
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const timestampStr = `${formattedDate} • ${formattedTime}`;
+
+  const assignFootprint: LeadFootprintItem = {
+    id: `fp_assign_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: timestampStr,
+    isoDate: now.toISOString(),
+    type: 'status',
+    title: `Lead Reassigned → ${cleanRep}`,
+    summary: `Reassigned from ${prevRep} to ${cleanRep} by ${actorName}.`,
+    repName: actorName,
+  };
+
+  const updatedContact: ContactRecord = {
+    ...contacts[index],
+    assignedRep: cleanRep,
+    footprint: [assignFootprint, ...(contacts[index].footprint || [])],
+  };
+
+  contacts[index] = updatedContact;
+  saveStoredContacts(contacts);
+  syncFolderRepCounts(contacts);
+  return updatedContact;
+}
+
+/**
+ * Bulk reassign multiple selected leads to a single target Rep OR split equally across multiple target Reps.
+ * Strictly gated to Super Admin, Admin (Client Admin), Manager, and Supervisor roles.
+ */
+export function bulkReassignContactsToReps(
+  contactIds: string[],
+  targetReps: string[],
+  actorName: string = 'Admin',
+  actorRole?: string
+): number {
+  if (!canUserReassignLeads(actorRole)) {
+    console.warn(
+      '[Security Policy] Bulk lead reassignment requires Supervisor, Manager, Admin, or Super Admin clearance.'
+    );
+    return 0;
+  }
+  const cleanReps = targetReps.map((r) => r.trim()).filter(Boolean);
+  if (!contactIds || contactIds.length === 0 || cleanReps.length === 0) return 0;
+
+  const idSet = new Set(contactIds);
+  const contacts = getStoredContacts();
+  let updatedCount = 0;
+
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const timestampStr = `${formattedDate} • ${formattedTime}`;
+
+  const updatedContacts = contacts.map((contact) => {
+    if (!idSet.has(contact.id)) return contact;
+    const prevRep = contact.assignedRep || 'Unassigned';
+    const nextRep = cleanReps[updatedCount % cleanReps.length];
+    updatedCount++;
+
+    if (prevRep === nextRep) return contact;
+
+    const assignFootprint: LeadFootprintItem = {
+      id: `fp_bassign_${Date.now()}_${updatedCount}`,
+      timestamp: timestampStr,
+      isoDate: now.toISOString(),
+      type: 'status',
+      title: `Lead Reassigned → ${nextRep}`,
+      summary: `Reassigned from ${prevRep} to ${nextRep} by ${actorName}.`,
+      repName: actorName,
+    };
+
+    return {
+      ...contact,
+      assignedRep: nextRep,
+      footprint: [assignFootprint, ...(contact.footprint || [])],
+    };
+  });
+
+  if (updatedCount > 0) {
+    saveStoredContacts(updatedContacts);
+    syncFolderRepCounts(updatedContacts);
+  }
+  return updatedCount;
+}
+
+/**
+ * Recalculate distributedReps counts on all stored folders so folder cards always reflect live reassignments
+ */
+function syncFolderRepCounts(allContacts: ContactRecord[]): void {
+  const folders = getStoredFolders();
+  let changed = false;
+
+  const updatedFolders = folders.map((folder) => {
+    const folderLeads = allContacts.filter((c) => c.folderId === folder.id);
+    if (folderLeads.length === 0) return folder;
+
+    const counts: Record<string, number> = {};
+    folderLeads.forEach((c) => {
+      const r = c.assignedRep || 'Unassigned';
+      counts[r] = (counts[r] || 0) + 1;
+    });
+
+    changed = true;
+    return {
+      ...folder,
+      totalLeads: folderLeads.length,
+      distributedReps: Object.entries(counts).map(([repName, leadCount]) => ({
+        repName,
+        leadCount,
+      })),
+    };
+  });
+
+  if (changed) {
+    saveStoredFolders(updatedFolders);
+  }
+}
+
 /**
  * Export contacts to a standard RFC 4180 CSV file (Strictly Locked to Super Admin & Admin)
  */
@@ -1038,6 +1262,7 @@ export function exportContactsToCsv(contacts: ContactRecord[], customFilenamePre
     'Website',
     'LinkedIn URL',
     'Assigned Rep',
+    'Deal Value (USD)',
     'Status',
     'Cadence Day',
     'Direct Lead Notes',
@@ -1069,6 +1294,7 @@ export function exportContactsToCsv(contacts: ContactRecord[], customFilenamePre
       escapeCsv(c.website),
       escapeCsv(c.linkedinUrl),
       escapeCsv(c.assignedRep),
+      escapeCsv(`$${getContactDealValue(c).toLocaleString()}`),
       escapeCsv(c.status),
       escapeCsv(c.cadenceDay),
       escapeCsv(c.leadNotes),

@@ -320,13 +320,27 @@ export default function GlobalTopHeader() {
                 <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                   Switch Role (Testing)
                 </div>
-                {(['Rep', 'Manager', 'Super Admin'] as UserRole[]).map((r) => (
+                {(
+                  [
+                    'Rep',
+                    'Supervisor',
+                    'Manager',
+                    'Admin',
+                    'Super Admin',
+                  ] as UserRole[]
+                ).map((r) => (
                   <button
                     key={r}
                     onClick={() => handleRoleSwitch(r)}
                     className="w-full flex items-center justify-between px-2.5 py-1 rounded-lg text-xs hover:bg-zinc-100 transition-colors text-left"
                   >
-                    <span>{r === 'Super Admin' ? 'Floor Admin' : r}</span>
+                    <span>
+                      {r === 'Admin'
+                        ? 'Client Admin'
+                        : r === 'Super Admin'
+                        ? 'Super Admin (Owner)'
+                        : r}
+                    </span>
                     {role === r && <Check className="h-3.5 w-3.5 text-zinc-900" />}
                   </button>
                 ))}

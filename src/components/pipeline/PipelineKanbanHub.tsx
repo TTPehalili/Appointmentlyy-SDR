@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession } from '@/lib/session';
+import { useSession, canUserReassignLeads } from '@/lib/session';
 import {
   ContactRecord,
   IcpFolder,
@@ -40,14 +40,19 @@ import {
   deletePipelineStage,
   resetPipelineStagesToDefault,
   updateContactPipelineStage,
+  getContactDealValue,
+  updateContactDealValue,
+  reassignContactToRep,
   addContactNote,
   exportContactsToCsv,
   canUserExportCsv,
   subscribeToContacts,
 } from '@/lib/leadStore';
-import { normalizeTenantKey } from '@/lib/icpQuotaStore';
-
-const EST_DEAL_VALUE_USD = 3500;
+import {
+  normalizeTenantKey,
+  getTenantQuota,
+  updateTenantRepsRoster,
+} from '@/lib/icpQuotaStore';
 
 /**
  * Resolve which configured Kanban stage column a contact belongs to.
@@ -124,6 +129,7 @@ export default function PipelineKanbanHub() {
   const { session, role, tenantName, repName } = useSession();
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
+  const canReassign = canUserReassignLeads(role);
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
   const [folders, setFolders] = useState<IcpFolder[]>(() => getStoredFolders());
@@ -140,6 +146,15 @@ export default function PipelineKanbanHub() {
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [editingLabelInput, setEditingLabelInput] = useState('');
   const [editingSubtitleInput, setEditingSubtitleInput] = useState('');
+
+  // Inline Card Deal Value Editing State
+  const [editingDealCardId, setEditingDealCardId] = useState<string | null>(null);
+  const [editingDealInput, setEditingDealInput] = useState<string>('');
+
+  // Drawer Deal Value & New Rep Input State
+  const [drawerDealInput, setDrawerDealInput] = useState<string>('');
+  const [newAgentRosterInput, setNewAgentRosterInput] = useState<string>('');
+  const [reassignToast, setReassignToast] = useState<string | null>(null);
 
   // Customize / Add Stages Modal State
   const [isStageManagerOpen, setIsStageManagerOpen] = useState(false);
@@ -190,14 +205,15 @@ export default function PipelineKanbanHub() {
     });
   }, [contacts, isSuperAdmin, activeTenantCode, role, repName]);
 
-  // Available Reps for Filter
+  // Available Reps for Filter & Reassignment Roster
   const availableReps = useMemo(() => {
-    const set = new Set<string>();
+    const quota = getTenantQuota(activeTenantCode, tenantName);
+    const set = new Set<string>(quota.repsRoster || []);
     scopedContacts.forEach((c) => {
       if (c.assignedRep) set.add(c.assignedRep);
     });
     return Array.from(set);
-  }, [scopedContacts]);
+  }, [scopedContacts, activeTenantCode, tenantName]);
 
   // Filtered Contacts
   const filteredContacts = useMemo(() => {
@@ -248,9 +264,10 @@ export default function PipelineKanbanHub() {
           s.dealProbability >= 0.9
       ) || stages[stages.length - 2];
 
-    const bookedCount = bookedCol
-      ? (contactsByStage[bookedCol.statusValue] || []).length
-      : 0;
+    const bookedCards = bookedCol
+      ? contactsByStage[bookedCol.statusValue] || []
+      : [];
+    const bookedCount = bookedCards.length;
 
     const warmCol = stages.find(
       (s) =>
@@ -274,10 +291,17 @@ export default function PipelineKanbanHub() {
         0
       );
 
-    const bookedValueUsd = bookedCount * EST_DEAL_VALUE_USD;
+    const bookedValueUsd = bookedCards.reduce(
+      (sum, c) => sum + getContactDealValue(c),
+      0
+    );
     const weightedPipelineUsd = stages.reduce((acc, col) => {
-      const count = (contactsByStage[col.statusValue] || []).length;
-      return acc + Math.round(count * EST_DEAL_VALUE_USD * col.dealProbability);
+      const colCards = contactsByStage[col.statusValue] || [];
+      const colTotalValue = colCards.reduce(
+        (sum, c) => sum + getContactDealValue(c),
+        0
+      );
+      return acc + Math.round(colTotalValue * col.dealProbability);
     }, 0);
 
     return {
@@ -294,6 +318,53 @@ export default function PipelineKanbanHub() {
     () => contacts.find((c) => c.id === activeLeadId) || null,
     [contacts, activeLeadId]
   );
+
+  useEffect(() => {
+    if (activeLead) {
+      setDrawerDealInput(String(getContactDealValue(activeLead)));
+    }
+  }, [activeLead?.id, activeLead?.dealValue]);
+
+  // Save Deal Value for a lead
+  const handleSaveDealValue = (contactId: string, rawVal: string) => {
+    const numeric = Number(String(rawVal).replace(/[^0-9.]/g, ''));
+    if (isNaN(numeric) || numeric < 0) return;
+    updateContactDealValue(contactId, numeric, repName || role);
+    setContacts(getStoredContacts());
+    setEditingDealCardId(null);
+    setReassignToast(`Deal value updated to $${Math.round(numeric).toLocaleString()}`);
+    setTimeout(() => setReassignToast(null), 2400);
+  };
+
+  // Reassign a lead to another Rep (Supervisor, Manager, Admin, Super Admin)
+  const handleReassignLead = (contactId: string, targetRep: string) => {
+    if (!canReassign || !targetRep.trim()) return;
+    const updated = reassignContactToRep(
+      contactId,
+      targetRep.trim(),
+      repName || role,
+      role
+    );
+    if (updated) {
+      setContacts(getStoredContacts());
+      setFolders(getStoredFolders());
+      setReassignToast(`Reassigned ${updated.name} → ${targetRep.trim()}`);
+      setTimeout(() => setReassignToast(null), 2400);
+    }
+  };
+
+  // Add a new Agent/Rep to the workspace roster and optionally assign active lead
+  const handleAddNewAgentAndAssign = (assignLeadId?: string) => {
+    const clean = newAgentRosterInput.trim();
+    if (!clean || !canReassign) return;
+    const quota = getTenantQuota(activeTenantCode, tenantName);
+    const nextRoster = Array.from(new Set([...(quota.repsRoster || []), clean]));
+    updateTenantRepsRoster(activeTenantCode, nextRoster);
+    if (assignLeadId) {
+      handleReassignLead(assignLeadId, clean);
+    }
+    setNewAgentRosterInput('');
+  };
 
   // Move lead to stage
   const handleMoveStage = (contactId: string, targetStatus: string) => {
@@ -565,8 +636,12 @@ export default function PipelineKanbanHub() {
                 );
                 const isDragTarget = dragOverColumnId === col.id;
                 const isEditingThisHeader = editingStageId === col.id;
+                const rawStageTotal = cards.reduce(
+                  (sum, c) => sum + getContactDealValue(c),
+                  0
+                );
                 const stageValue = Math.round(
-                  cards.length * EST_DEAL_VALUE_USD * col.dealProbability
+                  rawStageTotal * col.dealProbability
                 );
 
                 return (
@@ -698,7 +773,7 @@ export default function PipelineKanbanHub() {
                                 !canExport ? 'select-none' : ''
                               }`}
                             >
-                              {/* Card Top: Name + LinkedIn + Rep */}
+                              {/* Card Top: Name + LinkedIn + Reassignable Rep Selector */}
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
@@ -723,9 +798,110 @@ export default function PipelineKanbanHub() {
                                   </div>
                                 </div>
 
-                                <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-mono text-[10px] shrink-0">
-                                  {lead.assignedRep?.split(' ')[0] || 'Rep'}
+                                {/* Rep Assignment Badge or 1-Click Reassign Dropdown (Supervisor, Manager, Admin, Super Admin) */}
+                                {canReassign ? (
+                                  <select
+                                    value={lead.assignedRep || 'Emil Halili'}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleReassignLead(lead.id, e.target.value);
+                                    }}
+                                    title="Reassign lead to another Rep / Agent (Supervisor, Manager, Admin, Super Admin)"
+                                    className="px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-800 font-mono text-[10px] font-semibold shrink-0 cursor-pointer border border-zinc-200 transition focus:outline-none max-w-[115px] truncate"
+                                  >
+                                    {availableReps.map((rep) => (
+                                      <option
+                                        key={rep}
+                                        value={rep}
+                                        className="bg-white text-zinc-900"
+                                      >
+                                        👤 {rep}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-mono text-[10px] shrink-0">
+                                    {lead.assignedRep?.split(' ')[0] || 'Rep'}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Editable Deal Value Badge Row */}
+                              <div
+                                className="flex items-center justify-between gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-[10px] font-mono text-zinc-400">
+                                  Deal Value (USD)
                                 </span>
+                                {editingDealCardId === lead.id ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[11px] font-mono font-bold text-zinc-500">
+                                      $
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={100}
+                                      autoFocus
+                                      value={editingDealInput}
+                                      onChange={(e) =>
+                                        setEditingDealInput(e.target.value)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleSaveDealValue(
+                                            lead.id,
+                                            editingDealInput
+                                          );
+                                        }
+                                        if (e.key === 'Escape') {
+                                          setEditingDealCardId(null);
+                                        }
+                                      }}
+                                      className="w-20 px-1.5 py-0.5 rounded border border-zinc-900 text-[11px] font-mono font-bold text-zinc-950 focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleSaveDealValue(
+                                          lead.id,
+                                          editingDealInput
+                                        )
+                                      }
+                                      className="p-1 rounded bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
+                                      title="Save Deal Value"
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingDealCardId(null)}
+                                      className="p-1 rounded bg-zinc-100 text-zinc-600 hover:bg-zinc-200 cursor-pointer"
+                                      title="Cancel"
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDealCardId(lead.id);
+                                      setEditingDealInput(
+                                        String(getContactDealValue(lead))
+                                      );
+                                    }}
+                                    title="Click to manually edit this lead's Deal Value ($)"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono text-[11px] font-bold transition cursor-pointer"
+                                  >
+                                    <span>
+                                      ${getContactDealValue(lead).toLocaleString()}
+                                    </span>
+                                    <Pencil className="w-2.5 h-2.5 text-emerald-600" />
+                                  </button>
+                                )}
                               </div>
 
                               {/* Company + Website */}
@@ -1245,6 +1421,119 @@ export default function PipelineKanbanHub() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Deal Value ($) & Rep Reassignment Control Card */}
+              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 space-y-3.5">
+                {/* Manual Deal Value Editor */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-zinc-900">
+                      Lead Deal Value (USD)
+                    </label>
+                    <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      Editable by Admin &amp; Assigned User
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-zinc-500">
+                        $
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={100}
+                        value={drawerDealInput}
+                        onChange={(e) => setDrawerDealInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveDealValue(activeLead.id, drawerDealInput);
+                          }
+                        }}
+                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-zinc-300 bg-white font-mono font-bold text-zinc-950 focus:outline-none focus:border-zinc-950"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSaveDealValue(activeLead.id, drawerDealInput)
+                      }
+                      className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold cursor-pointer shrink-0"
+                    >
+                      Update Value
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lead Reassignment Selector (Supervisor, Manager, Admin, Super Admin) */}
+                <div className="pt-3 border-t border-zinc-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-zinc-900">
+                      Assigned SDR / Agent
+                    </label>
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      {canReassign
+                        ? `${role} Clearance: Reassign Enabled`
+                        : 'Supervisor / Manager / Admin Only'}
+                    </span>
+                  </div>
+
+                  {canReassign ? (
+                    <div className="space-y-2">
+                      <select
+                        value={activeLead.assignedRep || 'Emil Halili'}
+                        onChange={(e) =>
+                          handleReassignLead(activeLead.id, e.target.value)
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white font-semibold text-zinc-950 focus:outline-none focus:border-zinc-950 cursor-pointer"
+                      >
+                        {availableReps.map((rep) => (
+                          <option key={rep} value={rep}>
+                            👤 {rep}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Quick Add New Rep/User to Workspace & Assign */}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newAgentRosterInput}
+                          onChange={(e) =>
+                            setNewAgentRosterInput(e.target.value)
+                          }
+                          placeholder="Or add new agent name to assign..."
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-[11px] text-zinc-900 focus:outline-none focus:border-zinc-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAddNewAgentAndAssign(activeLead.id)
+                          }
+                          disabled={!newAgentRosterInput.trim()}
+                          className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-semibold disabled:opacity-40 cursor-pointer shrink-0"
+                        >
+                          + Add &amp; Assign
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-700 font-mono flex items-center justify-between">
+                      <span>👤 {activeLead.assignedRep || 'Emil Halili'}</span>
+                      <span className="text-[10px] text-zinc-400">
+                        Switch to Supervisor/Manager/Admin to reassign
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {reassignToast && (
+                  <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px] flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{reassignToast}</span>
+                  </div>
+                )}
               </div>
 
               {/* Direct Contact & Links Card */}

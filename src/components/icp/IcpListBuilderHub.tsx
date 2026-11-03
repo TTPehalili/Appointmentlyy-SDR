@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession } from '@/lib/session';
+import { useSession, canUserReassignLeads } from '@/lib/session';
 import {
   ContactRecord,
   IcpFolder,
@@ -49,6 +49,7 @@ import {
   getStoredFolders,
   createIcpFolderWithLeads,
   distributeFolderEquallyToReps,
+  reassignContactToRep,
   exportContactsToCsv,
   canUserExportCsv,
   subscribeToContacts,
@@ -284,8 +285,7 @@ export default function IcpListBuilderHub() {
   const { session, role, tenantName, repName, email } = useSession();
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
-  const canBuildAndDistribute =
-    role === 'Super Admin' || role === 'Admin' || role === 'Manager';
+  const canBuildAndDistribute = canUserReassignLeads(role);
 
   // Active target tenant
   const [targetTenantCode, setTargetTenantCode] = useState<string>(() =>
@@ -2332,9 +2332,37 @@ export default function IcpListBuilderHub() {
                                       <div className="text-zinc-500">{lead.email}</div>
                                     </td>
                                     <td className="py-3 px-5">
-                                      <span className="px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-800 font-medium">
-                                        {lead.assignedRep}
-                                      </span>
+                                      {canBuildAndDistribute ? (
+                                        <select
+                                          value={lead.assignedRep || 'Emil Halili'}
+                                          onChange={(e) => {
+                                            reassignContactToRep(
+                                              lead.id,
+                                              e.target.value,
+                                              repName || role,
+                                              role
+                                            );
+                                            setContacts(getStoredContacts());
+                                            setFolders(getStoredFolders());
+                                          }}
+                                          className="px-2.5 py-1 rounded-md bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 font-semibold text-xs cursor-pointer focus:outline-none focus:border-zinc-900"
+                                        >
+                                          {Array.from(
+                                            new Set([
+                                              ...(activeQuota.repsRoster || []),
+                                              lead.assignedRep || 'Emil Halili',
+                                            ])
+                                          ).map((r) => (
+                                            <option key={r} value={r}>
+                                              👤 {r}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <span className="px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-800 font-medium">
+                                          {lead.assignedRep}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="py-3 px-5 text-right">
                                       <Link

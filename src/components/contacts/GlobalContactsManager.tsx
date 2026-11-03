@@ -30,7 +30,7 @@ import {
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
-import { useSession, isRoleAdmin } from '@/lib/session';
+import { useSession, isRoleAdmin, canUserReassignLeads } from '@/lib/session';
 import { 
   ContactRecord, 
   IcpFolder,
@@ -39,15 +39,25 @@ import {
   getStoredFolders,
   saveStoredContacts, 
   addContactNote, 
+  getContactDealValue,
+  updateContactDealValue,
+  reassignContactToRep,
+  bulkReassignContactsToReps,
   exportContactsToCsv, 
   canUserExportCsv,
   subscribeToContacts 
 } from '@/lib/leadStore';
+import {
+  normalizeTenantKey,
+  getTenantQuota,
+  updateTenantRepsRoster,
+} from '@/lib/icpQuotaStore';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, tenantName, repName } = useSession();
   const adminClearance = isRoleAdmin(role);
+  const canReassign = canUserReassignLeads(role);
   const canExportCsv = canUserExportCsv(role);
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
@@ -59,6 +69,17 @@ export default function GlobalContactsManager() {
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   
+  // Multi-Select & Bulk Reassignment State (Supervisor, Manager, Admin, Super Admin)
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [bulkTargetRep, setBulkTargetRep] = useState<string>('');
+  const [newAgentNameInput, setNewAgentNameInput] = useState<string>('');
+  const [actionBanner, setActionBanner] = useState<string | null>(null);
+
+  // Deal Value Editing State
+  const [editingRowDealId, setEditingRowDealId] = useState<string | null>(null);
+  const [editingRowDealVal, setEditingRowDealVal] = useState<string>('');
+  const [drawerDealVal, setDrawerDealVal] = useState<string>('');
+
   // New Note State inside Detail Drawer
   const [newNoteInput, setNewNoteInput] = useState('');
   const [noteSavedToast, setNoteSavedToast] = useState(false);
@@ -67,6 +88,11 @@ export default function GlobalContactsManager() {
   // 25 Results Per Page Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
   const PAGE_SIZE = 25;
+
+  const activeTenantCode = useMemo(
+    () => normalizeTenantKey(session.tenantCode || tenantName),
+    [session.tenantCode, tenantName]
+  );
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -83,14 +109,120 @@ export default function GlobalContactsManager() {
     return () => unsubscribe();
   }, [selectedContact?.id]);
 
-  // Distinct Reps for filter dropdown
+  useEffect(() => {
+    if (selectedContact) {
+      setDrawerDealVal(String(getContactDealValue(selectedContact)));
+    }
+  }, [selectedContact?.id, selectedContact?.dealValue]);
+
+  // Distinct Reps for filter & reassignment dropdowns (includes tenant roster + any rep on contacts)
   const uniqueReps = useMemo(() => {
-    const set = new Set<string>();
+    const quota = getTenantQuota(activeTenantCode, tenantName);
+    const set = new Set<string>(quota.repsRoster || []);
     contacts.forEach(c => {
       if (c.assignedRep) set.add(c.assignedRep);
     });
     return Array.from(set);
-  }, [contacts]);
+  }, [contacts, activeTenantCode, tenantName]);
+
+  useEffect(() => {
+    if (!bulkTargetRep && uniqueReps.length > 0) {
+      setBulkTargetRep(uniqueReps[0]);
+    }
+  }, [uniqueReps, bulkTargetRep]);
+
+  // Single-lead Reassign Handler
+  const handleSingleReassign = (contactId: string, newRep: string) => {
+    if (!canReassign || !newRep.trim()) return;
+    const updated = reassignContactToRep(
+      contactId,
+      newRep.trim(),
+      repName || role,
+      role
+    );
+    if (updated) {
+      setContacts(getStoredContacts());
+      setFolders(getStoredFolders());
+      if (selectedContact?.id === contactId) {
+        setSelectedContact(updated);
+      }
+      setActionBanner(`Reassigned ${updated.name} → ${newRep.trim()}`);
+      setTimeout(() => setActionBanner(null), 2600);
+    }
+  };
+
+  // Bulk Reassign Selected Leads to 1 Rep or Split Equally Across All Roster Reps
+  const handleBulkReassign = (mode: 'single' | 'equal_split') => {
+    if (!canReassign || selectedLeadIds.length === 0) return;
+    const targets =
+      mode === 'equal_split' ? uniqueReps : [bulkTargetRep || uniqueReps[0]];
+    const count = bulkReassignContactsToReps(
+      selectedLeadIds,
+      targets,
+      repName || role,
+      role
+    );
+    if (count > 0) {
+      setContacts(getStoredContacts());
+      setFolders(getStoredFolders());
+      setSelectedLeadIds([]);
+      setActionBanner(
+        mode === 'equal_split'
+          ? `Split ${count} leads equally across ${targets.length} reps (${targets.join(', ')})`
+          : `Reassigned ${count} selected leads → ${targets[0]}`
+      );
+      setTimeout(() => setActionBanner(null), 3200);
+    }
+  };
+
+  // Add a New Agent/User to the Workspace Roster
+  const handleAddAgentToRoster = (assignContactId?: string) => {
+    const clean = newAgentNameInput.trim();
+    if (!clean || !canReassign) return;
+    const quota = getTenantQuota(activeTenantCode, tenantName);
+    const updatedRoster = Array.from(
+      new Set([...(quota.repsRoster || []), clean])
+    );
+    updateTenantRepsRoster(activeTenantCode, updatedRoster);
+    setBulkTargetRep(clean);
+    if (assignContactId) {
+      handleSingleReassign(assignContactId, clean);
+    } else if (selectedLeadIds.length > 0) {
+      const count = bulkReassignContactsToReps(
+        selectedLeadIds,
+        [clean],
+        repName || role,
+        role
+      );
+      setContacts(getStoredContacts());
+      setFolders(getStoredFolders());
+      setSelectedLeadIds([]);
+      setActionBanner(`Added ${clean} & assigned ${count} selected leads`);
+      setTimeout(() => setActionBanner(null), 3000);
+    } else {
+      setActionBanner(`Added ${clean} to workspace agent roster`);
+      setTimeout(() => setActionBanner(null), 2500);
+    }
+    setNewAgentNameInput('');
+  };
+
+  // Save Deal Value for a Lead
+  const handleSaveDealValue = (contactId: string, rawVal: string) => {
+    const num = Number(String(rawVal).replace(/[^0-9.]/g, ''));
+    if (isNaN(num) || num < 0) return;
+    const updated = updateContactDealValue(contactId, num, repName || role);
+    if (updated) {
+      setContacts(getStoredContacts());
+      if (selectedContact?.id === contactId) {
+        setSelectedContact(updated);
+      }
+      setEditingRowDealId(null);
+      setActionBanner(
+        `Updated Deal Value for ${updated.name} → $${Math.round(num).toLocaleString()}`
+      );
+      setTimeout(() => setActionBanner(null), 2500);
+    }
+  };
 
   // Filtered Contacts (Enforcing Strict Rep Visibility & Anti-Leak Rules)
   const filteredContacts = useMemo(() => {
@@ -336,15 +468,144 @@ export default function GlobalContactsManager() {
             </div>
           </div>
 
+          {/* Action Toast Banner */}
+          {actionBanner && (
+            <div className="px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{actionBanner}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionBanner(null)}
+                className="text-emerald-700 hover:text-emerald-950 font-mono text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Bulk Lead Reassignment Command Bar (Supervisor, Manager, Admin, Super Admin) */}
+          {canReassign && (
+            <div className="bg-white border border-zinc-200 rounded-2xl px-4 py-3 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="px-2.5 py-1 rounded-lg bg-zinc-950 text-white font-mono text-[10px] font-bold uppercase tracking-wider">
+                  Lead Assignment Console ({role})
+                </span>
+                <span className="text-zinc-600">
+                  {selectedLeadIds.length > 0 ? (
+                    <>
+                      <strong className="text-zinc-950">
+                        {selectedLeadIds.length} lead(s)
+                      </strong>{' '}
+                      selected for reassignment
+                    </>
+                  ) : (
+                    'Select leads using the table checkboxes or use any row dropdown to reassign leads to another rep.'
+                  )}
+                </span>
+                {selectedLeadIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLeadIds([])}
+                    className="text-zinc-400 hover:text-zinc-900 underline cursor-pointer"
+                  >
+                    Clear Selection
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={bulkTargetRep}
+                  onChange={(e) => setBulkTargetRep(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 font-semibold focus:outline-none cursor-pointer"
+                >
+                  {uniqueReps.map((r) => (
+                    <option key={r} value={r}>
+                      Assign to: 👤 {r}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={selectedLeadIds.length === 0}
+                  onClick={() => handleBulkReassign('single')}
+                  className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 text-white font-bold transition cursor-pointer"
+                >
+                  Reassign Selected ({selectedLeadIds.length})
+                </button>
+
+                <button
+                  type="button"
+                  disabled={selectedLeadIds.length === 0}
+                  onClick={() => handleBulkReassign('equal_split')}
+                  className="px-3 py-1.5 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-100 disabled:opacity-40 text-zinc-800 font-semibold transition cursor-pointer"
+                  title="Split selected leads equally across all workspace reps"
+                >
+                  Split Equally ({uniqueReps.length} Reps)
+                </button>
+
+                {/* Quick Add New Rep/Agent */}
+                <div className="flex items-center gap-1 pl-2 border-l border-zinc-200">
+                  <input
+                    type="text"
+                    value={newAgentNameInput}
+                    onChange={(e) => setNewAgentNameInput(e.target.value)}
+                    placeholder="+ New rep name..."
+                    className="px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-900 w-36 focus:outline-none focus:bg-white focus:border-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    disabled={!newAgentNameInput.trim()}
+                    onClick={() => handleAddAgentToRoster()}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold cursor-pointer"
+                  >
+                    + Add Rep
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Contacts Table View (With Anti-Copy Protection for Non-Admins) */}
           <div className={`bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden ${!canExportCsv ? 'select-none' : ''}`}>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-mono text-[10px] uppercase tracking-wider">
-                    <th className="py-3 px-4 font-bold">Contact & Role</th>
-                    <th className="py-3 px-4 font-bold">Company & Scale</th>
+                    {canReassign && (
+                      <th className="py-3 pl-4 pr-1 w-8">
+                        <input
+                          type="checkbox"
+                          checked={
+                            paginatedContacts.length > 0 &&
+                            paginatedContacts.every((c) =>
+                              selectedLeadIds.includes(c.id)
+                            )
+                          }
+                          onChange={(e) => {
+                            const pageIds = paginatedContacts.map((c) => c.id);
+                            if (e.target.checked) {
+                              setSelectedLeadIds((prev) =>
+                                Array.from(new Set([...prev, ...pageIds]))
+                              );
+                            } else {
+                              setSelectedLeadIds((prev) =>
+                                prev.filter((id) => !pageIds.includes(id))
+                              );
+                            }
+                          }}
+                          title="Select all 25 leads on this page"
+                          className="rounded border-zinc-300 cursor-pointer"
+                        />
+                      </th>
+                    )}
+                    <th className="py-3 px-4 font-bold">Contact &amp; Role</th>
+                    <th className="py-3 px-4 font-bold">Company &amp; Scale</th>
                     <th className="py-3 px-4 font-bold">Direct Channels</th>
+                    <th className="py-3 px-4 font-bold">Deal Value ($)</th>
                     <th className="py-3 px-4 font-bold">Status</th>
                     <th className="py-3 px-4 font-bold">Assigned Rep</th>
                     <th className="py-3 px-4 font-bold">Footprint / Touches</th>
@@ -354,7 +615,7 @@ export default function GlobalContactsManager() {
                 <tbody className="divide-y divide-zinc-100">
                   {filteredContacts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-12 text-zinc-400">
+                      <td colSpan={canReassign ? 9 : 8} className="text-center py-12 text-zinc-400">
                         <Users className="w-8 h-8 mx-auto text-zinc-300 mb-2" />
                         <p className="text-xs font-medium">No matching contacts found.</p>
                         <p className="text-[11px] text-zinc-400">Try adjusting your search query or filters.</p>
@@ -364,13 +625,39 @@ export default function GlobalContactsManager() {
                     paginatedContacts.map((c) => {
                       const touchCount = c.footprint ? c.footprint.length : 0;
                       const latestTouch = c.footprint && c.footprint.length > 0 ? c.footprint[0] : null;
+                      const isRowSelected = selectedLeadIds.includes(c.id);
 
                       return (
                         <tr 
                           key={c.id} 
                           onClick={() => setSelectedContact(c)}
-                          className="hover:bg-zinc-50/80 transition-colors cursor-pointer group"
+                          className={`hover:bg-zinc-50/80 transition-colors cursor-pointer group ${
+                            isRowSelected ? 'bg-emerald-50/30' : ''
+                          }`}
                         >
+                          {/* Checkbox for Bulk Reassignment */}
+                          {canReassign && (
+                            <td
+                              className="py-3.5 pl-4 pr-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isRowSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedLeadIds((prev) => [...prev, c.id]);
+                                  } else {
+                                    setSelectedLeadIds((prev) =>
+                                      prev.filter((id) => id !== c.id)
+                                    );
+                                  }
+                                }}
+                                className="rounded border-zinc-300 cursor-pointer"
+                              />
+                            </td>
+                          )}
+
                           {/* 1. Contact & Role */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2.5">
@@ -410,16 +697,89 @@ export default function GlobalContactsManager() {
                             </div>
                           </td>
 
-                          {/* 4. Status Badge */}
+                          {/* 4. Editable Deal Value ($) */}
+                          <td
+                            className="py-3.5 px-4 font-mono text-xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {editingRowDealId === c.id ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-zinc-400 font-bold">$</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={100}
+                                  autoFocus
+                                  value={editingRowDealVal}
+                                  onChange={(e) =>
+                                    setEditingRowDealVal(e.target.value)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleSaveDealValue(c.id, editingRowDealVal);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      setEditingRowDealId(null);
+                                    }
+                                  }}
+                                  className="w-20 px-1.5 py-0.5 rounded border border-zinc-900 text-xs font-mono font-bold text-zinc-950 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleSaveDealValue(c.id, editingRowDealVal)
+                                  }
+                                  className="p-1 rounded bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingRowDealId(c.id);
+                                  setEditingRowDealVal(
+                                    String(getContactDealValue(c))
+                                  );
+                                }}
+                                title="Click to manually edit Deal Value ($)"
+                                className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] cursor-pointer transition"
+                              >
+                                ${getContactDealValue(c).toLocaleString()} ✎
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 5. Status Badge */}
                           <td className="py-3.5 px-4">
                             <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${getStatusBadge(c.status)}`}>
                               {c.status}
                             </span>
                           </td>
 
-                          {/* 5. Assigned Rep */}
-                          <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-600">
-                            {c.assignedRep || 'Emil Halili'}
+                          {/* 6. Assigned Rep (Inline Reassignment Dropdown for Supervisor, Manager, Admin, Super Admin) */}
+                          <td
+                            className="py-3.5 px-4 font-mono text-[11px] text-zinc-600"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {canReassign ? (
+                              <select
+                                value={c.assignedRep || 'Emil Halili'}
+                                onChange={(e) =>
+                                  handleSingleReassign(c.id, e.target.value)
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 font-semibold text-[11px] cursor-pointer focus:outline-none focus:border-zinc-900"
+                              >
+                                {uniqueReps.map((r) => (
+                                  <option key={r} value={r}>
+                                    👤 {r}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span>{c.assignedRep || 'Emil Halili'}</span>
+                            )}
                           </td>
 
                           {/* 6. Communication Footprint */}
@@ -582,8 +942,56 @@ export default function GlobalContactsManager() {
                     <span className="text-zinc-800 font-semibold">{selectedContact.headcount || '65 seats'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 block">Assigned SDR:</span>
-                    <span className="font-mono text-zinc-800 font-semibold">{selectedContact.assignedRep || 'Emil Halili'}</span>
+                    <span className="text-[10px] text-zinc-400 block">Deal Value (USD):</span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="font-mono font-bold text-zinc-500">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={100}
+                        value={drawerDealVal}
+                        onChange={(e) => setDrawerDealVal(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveDealValue(selectedContact.id, drawerDealVal);
+                          }
+                        }}
+                        className="w-24 px-2 py-0.5 rounded border border-zinc-300 bg-white font-mono font-bold text-zinc-950 text-xs focus:outline-none focus:border-zinc-950"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSaveDealValue(selectedContact.id, drawerDealVal)
+                        }
+                        className="px-2 py-0.5 rounded bg-zinc-950 text-white text-[10px] font-bold cursor-pointer"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                  <div className="col-span-2 pt-1.5 border-t border-zinc-200/80">
+                    <span className="text-[10px] text-zinc-400 block mb-1">
+                      Assigned SDR / Agent ({canReassign ? `${role} Reassign Active` : 'Read-Only'}):
+                    </span>
+                    {canReassign ? (
+                      <select
+                        value={selectedContact.assignedRep || 'Emil Halili'}
+                        onChange={(e) =>
+                          handleSingleReassign(selectedContact.id, e.target.value)
+                        }
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-900 cursor-pointer focus:outline-none focus:border-zinc-950"
+                      >
+                        {uniqueReps.map((r) => (
+                          <option key={r} value={r}>
+                            👤 {r}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="font-mono text-zinc-800 font-semibold">
+                        👤 {selectedContact.assignedRep || 'Emil Halili'}
+                      </span>
+                    )}
                   </div>
                 </div>
 

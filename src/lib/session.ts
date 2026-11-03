@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'Rep';
+export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'Supervisor' | 'Rep';
 
 export interface SdrSession {
   role: UserRole;
@@ -59,18 +59,40 @@ export function normalizeUserRole(rawRole?: string | null): UserRole {
   if (!rawRole) return 'Super Admin';
   const r = rawRole.trim().toLowerCase();
   if (r === 'super admin' || r === 'superadmin' || r === 'director' || r === 'owner') return 'Super Admin';
-  if (r === 'admin' || r === 'administrator') return 'Admin';
-  if (r === 'manager' || r === 'lead' || r === 'team lead' || r === 'supervisor') return 'Manager';
-  if (r === 'rep' || r === 'sdr' || r === 'bdr' || r === 'sales rep') return 'Rep';
+  if (r === 'admin' || r === 'administrator' || r === 'client admin') return 'Admin';
+  if (r === 'manager' || r === 'sales manager') return 'Manager';
+  if (r === 'supervisor' || r === 'lead' || r === 'team lead' || r === 'floor supervisor') return 'Supervisor';
+  if (r === 'rep' || r === 'sdr' || r === 'bdr' || r === 'sales rep' || r === 'agent') return 'Rep';
   return 'Super Admin';
 }
 
 /**
- * Check if a role has administrator or managerial clearance
+ * Check if a role has administrator, managerial, or supervisory clearance
+ * (Super Admin, Admin, Manager, or Supervisor)
  */
 export function isRoleAdmin(role: UserRole | string): boolean {
   const normalized = normalizeUserRole(role);
-  return normalized === 'Super Admin' || normalized === 'Admin' || normalized === 'Manager';
+  return (
+    normalized === 'Super Admin' ||
+    normalized === 'Admin' ||
+    normalized === 'Manager' ||
+    normalized === 'Supervisor'
+  );
+}
+
+/**
+ * Check if a user role is authorized to assign or reassign leads to other agents/users.
+ * Explicitly granted to: Super Admin, Admin (Client Admin), Manager, and Supervisor.
+ * Strictly blocked for: Rep (SDR / Agent).
+ */
+export function canUserReassignLeads(role?: UserRole | string | null): boolean {
+  const activeRole = role ? normalizeUserRole(role) : getStoredSession().role;
+  return (
+    activeRole === 'Super Admin' ||
+    activeRole === 'Admin' ||
+    activeRole === 'Manager' ||
+    activeRole === 'Supervisor'
+  );
 }
 
 /**
