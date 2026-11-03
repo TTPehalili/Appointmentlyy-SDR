@@ -34,11 +34,14 @@ import { useSession, isRoleAdmin, canUserReassignLeads } from '@/lib/session';
 import { 
   ContactRecord, 
   IcpFolder,
+  PipelineStageConfig,
   LeadFootprintItem, 
   getStoredContacts, 
   getStoredFolders,
+  getStoredPipelineStages,
   saveStoredContacts, 
   addContactNote, 
+  updateContactPipelineStage,
   getContactDealValue,
   updateContactDealValue,
   reassignContactToRep,
@@ -62,6 +65,9 @@ export default function GlobalContactsManager() {
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
   const [folders, setFolders] = useState<IcpFolder[]>(() => getStoredFolders());
+  const [pipelineStages, setPipelineStages] = useState<PipelineStageConfig[]>(() =>
+    getStoredPipelineStages()
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
@@ -98,9 +104,11 @@ export default function GlobalContactsManager() {
   useEffect(() => {
     setContacts(getStoredContacts());
     setFolders(getStoredFolders());
+    setPipelineStages(getStoredPipelineStages());
     const unsubscribe = subscribeToContacts((updated) => {
       setContacts(updated);
       setFolders(getStoredFolders());
+      setPipelineStages(getStoredPipelineStages());
       if (selectedContact) {
         const fresh = updated.find(c => c.id === selectedContact.id);
         if (fresh) setSelectedContact(fresh);
@@ -224,32 +232,37 @@ export default function GlobalContactsManager() {
     }
   };
 
-  // Filtered Contacts (Enforcing Strict Rep Visibility & Anti-Leak Rules)
-  const filteredContacts = useMemo(() => {
-    return contacts.filter(contact => {
+  // Base Contacts (Filtered by Role, Folder, Rep, and Search — before Status filter so Status Pill counts stay accurate)
+  const baseContactsBeforeStatus = useMemo(() => {
+    return contacts.filter((contact) => {
       // 1. Strict Rep-level isolation: Reps ONLY see leads explicitly distributed/assigned to them
       if (role === 'Rep') {
-        if (!contact.assignedRep || contact.assignedRep.toLowerCase() !== repName.toLowerCase()) {
+        if (
+          !contact.assignedRep ||
+          contact.assignedRep.toLowerCase() !== repName.toLowerCase()
+        ) {
           return false;
         }
       }
 
       // 2. Folder filter
-      if (selectedFolderFilter !== 'all' && contact.folderId !== selectedFolderFilter) {
+      if (
+        selectedFolderFilter !== 'all' &&
+        contact.folderId !== selectedFolderFilter
+      ) {
         return false;
       }
 
       // 3. Rep filter (Admin only)
-      if (adminClearance && selectedRepFilter !== 'all' && contact.assignedRep !== selectedRepFilter) {
+      if (
+        adminClearance &&
+        selectedRepFilter !== 'all' &&
+        contact.assignedRep !== selectedRepFilter
+      ) {
         return false;
       }
 
-      // 4. Status filter
-      if (selectedStatus !== 'all' && contact.status.toLowerCase() !== selectedStatus.toLowerCase()) {
-        return false;
-      }
-
-      // 5. Search query
+      // 4. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = contact.name.toLowerCase().includes(q);
@@ -257,15 +270,92 @@ export default function GlobalContactsManager() {
         const matchEmail = contact.email.toLowerCase().includes(q);
         const matchPhone = contact.phone.toLowerCase().includes(q);
         const matchTitle = contact.title.toLowerCase().includes(q);
-        const matchFolder = (contact.folderName || '').toLowerCase().includes(q);
-        if (!matchName && !matchCompany && !matchEmail && !matchPhone && !matchTitle && !matchFolder) {
+        const matchFolder = (contact.folderName || '')
+          .toLowerCase()
+          .includes(q);
+        const matchStatus = (contact.status || '').toLowerCase().includes(q);
+        if (
+          !matchName &&
+          !matchCompany &&
+          !matchEmail &&
+          !matchPhone &&
+          !matchTitle &&
+          !matchFolder &&
+          !matchStatus
+        ) {
           return false;
         }
       }
 
       return true;
     });
-  }, [contacts, searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter, adminClearance, role, repName]);
+  }, [
+    contacts,
+    searchQuery,
+    selectedRepFilter,
+    selectedFolderFilter,
+    adminClearance,
+    role,
+    repName,
+  ]);
+
+  // All Available Status Options (Combines configured Pipeline Kanban stages + any status present on contacts)
+  const availableStatusesWithCounts = useMemo(() => {
+    const countsMap = new Map<string, number>();
+
+    // Seed with configured Pipeline Kanban stages in order
+    pipelineStages.forEach((st) => {
+      countsMap.set(st.statusValue, 0);
+    });
+
+    // Also ensure standard statuses exist
+    [
+      'New Lead',
+      'In Cadence',
+      'Call Back Later',
+      'Left Voicemail',
+      'Meeting Booked',
+      'Disqualified',
+    ].forEach((std) => {
+      if (!countsMap.has(std)) countsMap.set(std, 0);
+    });
+
+    baseContactsBeforeStatus.forEach((c) => {
+      const s = (c.status || 'New Lead').trim();
+      countsMap.set(s, (countsMap.get(s) || 0) + 1);
+    });
+
+    return Array.from(countsMap.entries()).map(([status, count]) => ({
+      status,
+      count,
+    }));
+  }, [pipelineStages, baseContactsBeforeStatus]);
+
+  // Filtered Contacts (Applies selectedStatus on top of baseContactsBeforeStatus)
+  const filteredContacts = useMemo(() => {
+    if (selectedStatus === 'all') return baseContactsBeforeStatus;
+    return baseContactsBeforeStatus.filter(
+      (c) => (c.status || '').toLowerCase() === selectedStatus.toLowerCase()
+    );
+  }, [baseContactsBeforeStatus, selectedStatus]);
+
+  // Update a contact's Status inline
+  const handleStatusChange = (contactId: string, nextStatus: string) => {
+    if (!nextStatus) return;
+    const updated = updateContactPipelineStage(
+      contactId,
+      nextStatus,
+      repName || role
+    );
+    if (updated) {
+      setContacts(getStoredContacts());
+      if (selectedContact?.id === contactId) {
+        setSelectedContact(updated);
+      }
+      setActionBanner(`Updated ${updated.name} status → ${nextStatus}`);
+      setTimeout(() => setActionBanner(null), 2500);
+    }
+  };
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -398,73 +488,136 @@ export default function GlobalContactsManager() {
           </div>
 
           {/* Search & Filter Toolbar */}
-          <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            
-            {/* Search Box */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by prospect name, company, email, phone, title, or folder..."
-                className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 font-medium"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+          <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Search Box */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by prospect name, company, email, phone, title, status, or folder..."
+                  className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 font-medium"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-            {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* ICP Folder Filter */}
-              <select
-                value={selectedFolderFilter}
-                onChange={(e) => setSelectedFolderFilter(e.target.value)}
-                className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
-              >
-                <option value="all">📁 All ICP Folders ({folders.length})</option>
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    📁 {f.name} ({f.totalLeads})
-                  </option>
-                ))}
-              </select>
-
-              {/* Status Filter */}
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
-              >
-                <option value="all">All Statuses</option>
-                <option value="New Lead">New Lead</option>
-                <option value="In Cadence">In Cadence</option>
-                <option value="Meeting Booked">Meeting Booked</option>
-                <option value="Call Back Later">Call Back Later</option>
-                <option value="Left Voicemail">Left Voicemail</option>
-                <option value="Disqualified">Disqualified</option>
-              </select>
-
-              {/* Rep Filter (Admin only) */}
-              {adminClearance && uniqueReps.length > 1 && (
+              {/* Filter Dropdowns */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* ICP Folder Filter */}
                 <select
-                  value={selectedRepFilter}
-                  onChange={(e) => setSelectedRepFilter(e.target.value)}
-                  className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                  value={selectedFolderFilter}
+                  onChange={(e) => setSelectedFolderFilter(e.target.value)}
+                  className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
                 >
-                  <option value="all">All Assigned Reps</option>
-                  {uniqueReps.map(r => (
-                    <option key={r} value={r}>{r}</option>
+                  <option value="all">📁 All ICP Folders ({folders.length})</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      📁 {f.name} ({f.totalLeads})
+                    </option>
                   ))}
                 </select>
-              )}
+
+                {/* Status Filter Dropdown (Dynamically synced with all Pipeline Stages & Contact Statuses) */}
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                >
+                  <option value="all">
+                    🎯 All Statuses ({baseContactsBeforeStatus.length})
+                  </option>
+                  {availableStatusesWithCounts.map((item) => (
+                    <option key={item.status} value={item.status}>
+                      {item.status} ({item.count})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Rep Filter (Admin only) */}
+                {adminClearance && uniqueReps.length > 1 && (
+                  <select
+                    value={selectedRepFilter}
+                    onChange={(e) => setSelectedRepFilter(e.target.value)}
+                    className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                  >
+                    <option value="all">All Assigned Reps</option>
+                    {uniqueReps.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* 1-Click Interactive Status Filter Pills Bar */}
+            <div className="pt-2.5 border-t border-zinc-100 flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="text-[11px] font-mono text-zinc-400 mr-1 flex items-center gap-1">
+                <Filter className="w-3 h-3" />
+                <span>Filter by Status:</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStatus('all')}
+                className={`px-3 py-1 rounded-full font-semibold text-xs border transition cursor-pointer flex items-center gap-1.5 ${
+                  selectedStatus === 'all'
+                    ? 'bg-zinc-950 text-white border-zinc-950 shadow-2xs'
+                    : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                }`}
+              >
+                <span>All Contacts</span>
+                <span
+                  className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
+                    selectedStatus === 'all'
+                      ? 'bg-zinc-800 text-emerald-400'
+                      : 'bg-zinc-200/80 text-zinc-700'
+                  }`}
+                >
+                  {baseContactsBeforeStatus.length}
+                </span>
+              </button>
+
+              {availableStatusesWithCounts.map(({ status, count }) => {
+                const isActive =
+                  selectedStatus.toLowerCase() === status.toLowerCase();
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() =>
+                      setSelectedStatus(isActive ? 'all' : status)
+                    }
+                    className={`px-3 py-1 rounded-full font-semibold text-xs border transition cursor-pointer flex items-center gap-1.5 ${
+                      isActive
+                        ? 'bg-zinc-950 text-white border-zinc-950 shadow-2xs'
+                        : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-900'
+                    }`}
+                  >
+                    <span>{status}</span>
+                    <span
+                      className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
+                        isActive
+                          ? 'bg-zinc-800 text-emerald-400'
+                          : 'bg-zinc-100 text-zinc-600'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -751,11 +904,30 @@ export default function GlobalContactsManager() {
                             )}
                           </td>
 
-                          {/* 5. Status Badge */}
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${getStatusBadge(c.status)}`}>
-                              {c.status}
-                            </span>
+                          {/* 5. Interactive Status Selector Badge */}
+                          <td
+                            className="py-3.5 px-4"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <select
+                              value={c.status || 'New Lead'}
+                              onChange={(e) =>
+                                handleStatusChange(c.id, e.target.value)
+                              }
+                              className={`px-2.5 py-1 rounded-full font-bold text-[10px] border cursor-pointer focus:outline-none ${getStatusBadge(
+                                c.status
+                              )}`}
+                            >
+                              {availableStatusesWithCounts.map((item) => (
+                                <option
+                                  key={item.status}
+                                  value={item.status}
+                                  className="bg-white text-zinc-900 font-semibold"
+                                >
+                                  {item.status}
+                                </option>
+                              ))}
+                            </select>
                           </td>
 
                           {/* 6. Assigned Rep (Inline Reassignment Dropdown for Supervisor, Manager, Admin, Super Admin) */}
@@ -969,29 +1141,50 @@ export default function GlobalContactsManager() {
                       </button>
                     </div>
                   </div>
-                  <div className="col-span-2 pt-1.5 border-t border-zinc-200/80">
-                    <span className="text-[10px] text-zinc-400 block mb-1">
-                      Assigned SDR / Agent ({canReassign ? `${role} Reassign Active` : 'Read-Only'}):
-                    </span>
-                    {canReassign ? (
+                  <div className="col-span-2 pt-1.5 border-t border-zinc-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-1">
+                        Contact Pipeline Status:
+                      </span>
                       <select
-                        value={selectedContact.assignedRep || 'Emil Halili'}
+                        value={selectedContact.status || 'New Lead'}
                         onChange={(e) =>
-                          handleSingleReassign(selectedContact.id, e.target.value)
+                          handleStatusChange(selectedContact.id, e.target.value)
                         }
                         className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-900 cursor-pointer focus:outline-none focus:border-zinc-950"
                       >
-                        {uniqueReps.map((r) => (
-                          <option key={r} value={r}>
-                            👤 {r}
+                        {availableStatusesWithCounts.map((item) => (
+                          <option key={item.status} value={item.status}>
+                            🎯 {item.status}
                           </option>
                         ))}
                       </select>
-                    ) : (
-                      <span className="font-mono text-zinc-800 font-semibold">
-                        👤 {selectedContact.assignedRep || 'Emil Halili'}
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-1">
+                        Assigned SDR / Agent ({canReassign ? `${role} Reassign` : 'Read-Only'}):
                       </span>
-                    )}
+                      {canReassign ? (
+                        <select
+                          value={selectedContact.assignedRep || 'Emil Halili'}
+                          onChange={(e) =>
+                            handleSingleReassign(selectedContact.id, e.target.value)
+                          }
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-900 cursor-pointer focus:outline-none focus:border-zinc-950"
+                        >
+                          {uniqueReps.map((r) => (
+                            <option key={r} value={r}>
+                              👤 {r}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="font-mono text-zinc-800 font-semibold block py-1">
+                          👤 {selectedContact.assignedRep || 'Emil Halili'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
