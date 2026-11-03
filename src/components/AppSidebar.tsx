@@ -22,7 +22,8 @@ import {
   Users,
   UploadCloud,
   LifeBuoy,
-  FolderKanban
+  FolderKanban,
+  Kanban
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
@@ -50,6 +51,7 @@ export default function AppSidebar() {
   // Nav Groups
   const frontlineItems = [
     { label: 'Calling Floor', href: '/cockpit', icon: Swords },
+    { label: 'Pipeline Kanban', href: '/pipeline', icon: Kanban },
     { label: 'Global Contacts', href: '/contacts', icon: Users },
     { label: 'ICP List Builder', href: '/icp-builder', icon: FolderKanban },
     { label: 'Sparring Arena', href: '/sparring', icon: Headphones },

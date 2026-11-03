@@ -68,8 +68,8 @@ export interface IcpFolder {
   distributedReps: IcpFolderRepSlice[];
 }
 
-const CONTACTS_STORAGE_KEY = 'appointmentlyy_sdr_global_contacts_v2';
-const FOLDERS_STORAGE_KEY = 'appointmentlyy_sdr_icp_folders_v2';
+const CONTACTS_STORAGE_KEY = 'appointmentlyy_sdr_global_contacts_v3';
+const FOLDERS_STORAGE_KEY = 'appointmentlyy_sdr_icp_folders_v3';
 const CONTACTS_BROADCAST = 'appointmentlyy_contacts_sync';
 
 /**
@@ -194,10 +194,10 @@ export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
     folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
     industry: 'Outsourcing and Offshoring Consulting',
     location: 'Sydney, NSW, AU',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://staffdomain.com',
+    status: 'Meeting Booked',
+    cadenceDay: 3,
+    touchNumber: 4,
+    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://staffdomain.com • Booked executive discovery call for outbound SDR seat expansion.',
     footprint: []
   },
   {
@@ -217,9 +217,9 @@ export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
     folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
     industry: 'Outsourcing and Offshoring Consulting',
     location: 'Sydney, NSW, AU',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
+    status: 'In Cadence',
+    cadenceDay: 2,
+    touchNumber: 2,
     leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Listed BPO • Website: https://staffdomain.com',
     footprint: []
   },
@@ -240,10 +240,10 @@ export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
     folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
     industry: 'Outsourcing and Offshoring Consulting',
     location: 'Charlotte, NC, US',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
-    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://cloudstaff.com',
+    status: 'Call Back Later',
+    cadenceDay: 4,
+    touchNumber: 3,
+    leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://cloudstaff.com • Spoke with Jose; asked to reconnect Thursday afternoon.',
     footprint: []
   },
   {
@@ -263,9 +263,9 @@ export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
     folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
     industry: 'Outsourcing and Offshoring Consulting',
     location: 'Auckland, NZ',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
+    status: 'Left Voicemail',
+    cadenceDay: 2,
+    touchNumber: 2,
     leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://cloudstaff.com',
     footprint: []
   },
@@ -286,9 +286,9 @@ export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
     folderName: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
     industry: 'Outsourcing & Offshoring',
     location: 'Manila, PH',
-    status: 'New Lead',
-    cadenceDay: 1,
-    touchNumber: 0,
+    status: 'In Cadence',
+    cadenceDay: 3,
+    touchNumber: 2,
     leadNotes: 'ICP Cloud Verified Record • Outsource Accelerator Top BPO Directory • Website: https://kmc.solutions',
     footprint: []
   },
@@ -1001,6 +1001,58 @@ export function recordContactTouch(
     ...contacts[index],
     status: nextStatus,
     footprint: [newFootprint, ...(contacts[index].footprint || [])]
+  };
+
+  contacts[index] = updatedContact;
+  saveStoredContacts(contacts);
+  return updatedContact;
+}
+
+/**
+ * Move a contact to a new Pipeline Kanban stage and log the stage change in the lead's footprint
+ */
+export function updateContactPipelineStage(
+  contactId: string,
+  newStatus: string,
+  actorName: string = 'Emil Halili'
+): ContactRecord | null {
+  if (!contactId || !newStatus) return null;
+
+  const contacts = getStoredContacts();
+  const index = contacts.findIndex((c) => c.id === contactId);
+  if (index === -1) return null;
+
+  const prevStatus = contacts[index].status;
+  if (prevStatus === newStatus) return contacts[index];
+
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const formattedTime = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const timestampStr = `${formattedDate} • ${formattedTime}`;
+
+  const stageFootprint: LeadFootprintItem = {
+    id: `fp_pipe_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: timestampStr,
+    isoDate: now.toISOString(),
+    type: 'status',
+    title: `Pipeline Stage → ${newStatus}`,
+    summary: `Moved from "${prevStatus}" to "${newStatus}" on the Pipeline Kanban Board.`,
+    repName: actorName,
+    disposition: newStatus,
+  };
+
+  const updatedContact: ContactRecord = {
+    ...contacts[index],
+    status: newStatus,
+    touchNumber: (contacts[index].touchNumber || 0) + 1,
+    footprint: [stageFootprint, ...(contacts[index].footprint || [])],
   };
 
   contacts[index] = updatedContact;
