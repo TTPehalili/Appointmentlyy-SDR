@@ -66,68 +66,68 @@ export const PERSONA_VOICE_MAP: Record<string, {
   'bpo-directory-buyer': {
     isFemale: false,
     USA: { voiceId: 'cjVigY5qzO86Huf0OWal', label: 'American Executive Male (Eric)' },
-    Australia: { voiceId: '0zgVQzF8uy6TauIra2W1', label: 'Australian Executive Male (Joel)' },
-    UK: { voiceId: 'JBFqnCBsd6RMkjVDRZzb', label: 'British Executive Male (George)' }
+    Australia: { voiceId: '0zgVQzF8uy6TauIra2W1', label: 'Australian Conversational Male (Joel)' },
+    UK: { voiceId: '3f6pec3wODJsjTqtcNI2', label: 'British Conversational Male (Ricky)' }
   },
   'rushed-vp': {
     isFemale: false,
     USA: { voiceId: 'iP95p4xoKVk53GoZ742B', label: 'American Fast-Paced Male (Chris)' },
     Australia: { voiceId: 'IKne3meq5aSn9XLyUdCD', label: 'Australian Energetic Male (Charlie)' },
-    UK: { voiceId: 'onwK4e9ZLuTAKqWW03F9', label: 'British Sharp Broadcaster (Daniel)' }
+    UK: { voiceId: 'MnTN9XubPKNlI4AwhLj5', label: 'British Sharp Conversational Male (Craig)' }
   },
   'iron-gatekeeper': {
     isFemale: true,
-    USA: { voiceId: 'XrExE9yKIg1WjnnlVkGX', label: 'American Knowledgeable Female (Matilda)' },
-    Australia: { voiceId: '5TZtQYDIn8M40udRnoVI', label: 'Australian Professional Female (Dee)' },
-    UK: { voiceId: 'Xb7hH8MSUJpSbSDYk0k2', label: 'British Professional Female (Alice)' }
+    USA: { voiceId: 'cgSgspJ2msm6clMCkdW9', label: 'American Conversational Female (Jessica)' },
+    Australia: { voiceId: '5oOUpLU3e4Q55YyHGbk0', label: 'Australian Conversational Female (Julie)' },
+    UK: { voiceId: 'EtBr43MW0sMHh44Pdij6', label: 'British Conversational Female (Trinity X)' }
   },
   'incumbent-loyalist': {
     isFemale: false,
     USA: { voiceId: 'bIHbv24MWmeRgasZH58o', label: 'American Conversational Male (Will)' },
     Australia: { voiceId: '0zgVQzF8uy6TauIra2W1', label: 'Australian Grounded Male (Joel)' },
-    UK: { voiceId: 'JBFqnCBsd6RMkjVDRZzb', label: 'British Grounded Male (George)' }
+    UK: { voiceId: '3f6pec3wODJsjTqtcNI2', label: 'British Conversational Male (Ricky)' }
   },
   'frugal-cfo': {
     isFemale: false,
-    USA: { voiceId: 'pqHfZKP75CvOlQylNhV4', label: 'American Executive Male (Bill)' },
+    USA: { voiceId: 'CwhRBWXzGAHq8TQ4Fs17', label: 'American Resonant Male (Roger)' },
     Australia: { voiceId: '9B2Vd5yQ7rKaqNmzGdy1', label: 'Australian Deep-Tone Male (Steve Hogan)' },
-    UK: { voiceId: 'onwK4e9ZLuTAKqWW03F9', label: 'British Formal CFO (Daniel)' }
+    UK: { voiceId: 'uiwrDUnxv7K5Wwe9eO35', label: 'British Calm Conversational Male (Tyler)' }
   },
   'burned-director': {
     isFemale: true,
-    USA: { voiceId: 'EXAVITQu4vr4xnSDxMaL', label: 'American Direct Female (Sarah)' },
-    Australia: { voiceId: '0QT4OrDTvpDlUPmFsUWN', label: 'Australian Confident Female (Lily 40s)' },
-    UK: { voiceId: 'pFZP5JQG7iQjIQuC4Bku', label: 'British Direct Female (Lily)' }
+    USA: { voiceId: 'KVbz7a8CpMk4Pd1YNddI', label: 'American Direct Female (Samantha)' },
+    Australia: { voiceId: 'uWAhmTxbFR3p3HsniNS9', label: 'Australian Confident Female (Elle)' },
+    UK: { voiceId: 'tPDVQaZ6fdDCUmYpHyYd', label: 'British Direct Conversational Female (Isabelle)' }
   },
   'polite-ghoster': {
     isFemale: true,
     USA: { voiceId: 'cgSgspJ2msm6clMCkdW9', label: 'American Warm Friendly Female (Jessica)' },
-    Australia: { voiceId: '5TZtQYDIn8M40udRnoVI', label: 'Australian Friendly Female (Dee)' },
-    UK: { voiceId: 'Xb7hH8MSUJpSbSDYk0k2', label: 'British Polite Female (Alice)' }
+    Australia: { voiceId: '5oOUpLU3e4Q55YyHGbk0', label: 'Australian Friendly Female (Julie)' },
+    UK: { voiceId: 'bGnz83yTAb7caZSC7BBz', label: 'British Warm Conversational Female (Georgia K)' }
   },
   'overwhelmed-ops': {
     isFemale: false,
-    USA: { voiceId: 'nPczCjzI2devNBz1zQrb', label: 'American Deep Resonant Male (Brian)' },
+    USA: { voiceId: 'bIHbv24MWmeRgasZH58o', label: 'American Conversational Male (Will)' },
     Australia: { voiceId: '0zgVQzF8uy6TauIra2W1', label: 'Australian Casual Male (Joel)' },
-    UK: { voiceId: 'JBFqnCBsd6RMkjVDRZzb', label: 'British Conversational Male (George)' }
+    UK: { voiceId: 'MnTN9XubPKNlI4AwhLj5', label: 'British Conversational Male (Craig)' }
   },
   'technical-gatekeeper': {
     isFemale: false,
     USA: { voiceId: 'cjVigY5qzO86Huf0OWal', label: 'American Analytical Male (Eric)' },
     Australia: { voiceId: 'IKne3meq5aSn9XLyUdCD', label: 'Australian Confident Male (Charlie)' },
-    UK: { voiceId: 'onwK4e9ZLuTAKqWW03F9', label: 'British Technical Broadcaster (Daniel)' }
+    UK: { voiceId: '3f6pec3wODJsjTqtcNI2', label: 'British Conversational Male (Ricky)' }
   },
   'indecisive-manager': {
     isFemale: true,
-    USA: { voiceId: 'hpp4J3VqNfWAUOO0d1Us', label: 'American Bright Warm Female (Bella)' },
-    Australia: { voiceId: '0QT4OrDTvpDlUPmFsUWN', label: 'Australian Hesitant Female (Lily 40s)' },
-    UK: { voiceId: 'pFZP5JQG7iQjIQuC4Bku', label: 'British Hesitant Female (Lily)' }
+    USA: { voiceId: 'KVbz7a8CpMk4Pd1YNddI', label: 'American Bright Conversational Female (Samantha)' },
+    Australia: { voiceId: 'uWAhmTxbFR3p3HsniNS9', label: 'Australian Hesitant Female (Elle)' },
+    UK: { voiceId: 'tPDVQaZ6fdDCUmYpHyYd', label: 'British Hesitant Conversational Female (Isabelle)' }
   },
   'aggressive-skeptic': {
     isFemale: false,
-    USA: { voiceId: 'SOYHLrjzK2X1ezoPC6cr', label: 'American Fierce Gritty Male (Harry)' },
+    USA: { voiceId: 'iP95p4xoKVk53GoZ742B', label: 'American Fast Blunt Male (Chris)' },
     Australia: { voiceId: '9B2Vd5yQ7rKaqNmzGdy1', label: 'Australian Deep Gritty Male (Steve Hogan)' },
-    UK: { voiceId: 'JBFqnCBsd6RMkjVDRZzb', label: 'British Blunt Male (George)' }
+    UK: { voiceId: 'MnTN9XubPKNlI4AwhLj5', label: 'British Blunt Conversational Male (Craig)' }
   }
 };
 
@@ -146,11 +146,15 @@ export function getPersonaVoiceByCountry(
     };
   }
 
-  // Fallback to safe persona default
+  // Fallback to safe persona default strictly respecting gender and conversational voices
   const isFemale = ['iron-gatekeeper', 'burned-director', 'polite-ghoster', 'indecisive-manager'].includes(persona.id);
+  const fallbackVoiceId = isFemale
+    ? (targetCountry === 'Australia' ? '5oOUpLU3e4Q55YyHGbk0' : targetCountry === 'UK' ? 'EtBr43MW0sMHh44Pdij6' : 'cgSgspJ2msm6clMCkdW9')
+    : (targetCountry === 'Australia' ? '0zgVQzF8uy6TauIra2W1' : targetCountry === 'UK' ? '3f6pec3wODJsjTqtcNI2' : 'cjVigY5qzO86Huf0OWal');
+
   return {
-    voiceId: isFemale ? 'EXAVITQu4vr4xnSDxMaL' : 'cjVigY5qzO86Huf0OWal',
-    accentLabel: `${targetCountry} ${isFemale ? 'Female' : 'Male'} Voice`,
+    voiceId: fallbackVoiceId,
+    accentLabel: `${targetCountry} ${isFemale ? 'Female' : 'Male'} Conversational Voice`,
     langCode: targetCountry === 'Australia' ? 'en-AU' : targetCountry === 'UK' ? 'en-GB' : 'en-US'
   };
 }
@@ -243,7 +247,7 @@ Only agree to a meeting if they propose a low-friction 10-minute diagnostic.`,
     companyType: 'Enterprise Healthcare Systems',
     difficulty: 'Intermediate',
     accent: 'Crisp Professional US Female',
-    voiceId: 'XrExE9yKIg1WjnnlVkGX', // Matilda - Knowledgeable, Grounded, Professional Female
+    voiceId: 'cgSgspJ2msm6clMCkdW9', // Jessica - Spontaneous, Warm, Conversational Female
     voiceSettings: { stability: 0.50, similarity_boost: 0.78, style: 0.06, use_speaker_boost: true },
     avatarBg: 'from-slate-600 to-slate-900',
     scenario: 'Trained to intercept 50+ cold callers daily. Polite but firm brick wall.',
@@ -340,7 +344,7 @@ If the rep acknowledges P&L sensitivity, highlights performance-based discovery 
     companyType: 'Cybersecurity Scaleup',
     difficulty: 'Advanced',
     accent: 'Direct Confident US Female',
-    voiceId: 'EXAVITQu4vr4xnSDxMaL', // Sarah - Mature, Reassuring, Direct Conversational Female
+    voiceId: 'KVbz7a8CpMk4Pd1YNddI', // Samantha - Clear, Direct Conversational Female
     voiceSettings: { stability: 0.48, similarity_boost: 0.78, style: 0.08, use_speaker_boost: true },
     avatarBg: 'from-rose-600 to-red-900',
     scenario: 'Hired an offshore SDR team 6 months ago that burned their domain reputation and generated spam leads.',
@@ -468,7 +472,7 @@ If the rep acknowledges technical boundaries, confirms the 16kHz Web Audio pipel
     companyType: 'Staffing & HR Solutions',
     difficulty: 'Beginner',
     accent: 'Natural Conversational Female',
-    voiceId: '0QT4OrDTvpDlUPmFsUWN', // Lily 40s - Natural, Non-Broadcast Female
+    voiceId: 'KVbz7a8CpMk4Pd1YNddI', // Samantha - Conversational Female
     voiceSettings: { stability: 0.48, similarity_boost: 0.75, style: 0.06, use_speaker_boost: true },
     avatarBg: 'from-teal-600 to-emerald-900',
     scenario: 'Wants to improve team metrics but terrified of making a wrong decision or angering upper management.',

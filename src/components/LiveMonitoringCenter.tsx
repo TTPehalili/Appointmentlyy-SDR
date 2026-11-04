@@ -129,16 +129,22 @@ export default function LiveMonitoringCenter() {
     }
   }, [volume, isAudioMuted]);
 
-  // Helper to map customer voiceId given personaId and country
+  // Helper to map customer voiceId given personaId and country (strictly conversational and gender-matched)
   const getCustomerVoiceId = (personaId: string, country: SparringCountry): string => {
     const personaEntry = PERSONA_VOICE_MAP[personaId];
     if (personaEntry && personaEntry[country]) {
       return personaEntry[country].voiceId;
     }
-    // Fallbacks
-    if (country === 'Australia') return '0zgVQzF8uy6TauIra2W1';
-    if (country === 'UK') return 'JBFqnCBsd6RMkjVDRZzb';
-    return 'cjVigY5qzO86Huf0OWal';
+    const isFemale = personaEntry?.isFemale ?? ['iron-gatekeeper', 'burned-director', 'polite-ghoster', 'indecisive-manager'].includes(personaId);
+    if (isFemale) {
+      if (country === 'Australia') return '5oOUpLU3e4Q55YyHGbk0'; // Julie (Australian Conversational Female)
+      if (country === 'UK') return 'EtBr43MW0sMHh44Pdij6'; // Trinity X (British Conversational Female)
+      return 'cgSgspJ2msm6clMCkdW9'; // Jessica (American Conversational Female)
+    }
+    // Male Conversational fallbacks
+    if (country === 'Australia') return '0zgVQzF8uy6TauIra2W1'; // Joel (Australian Conversational Male)
+    if (country === 'UK') return '3f6pec3wODJsjTqtcNI2'; // Ricky O'Donnell (British Conversational Male)
+    return 'cjVigY5qzO86Huf0OWal'; // Eric (American Conversational Male)
   };
 
   // Builder for mock sessions supporting Arabic and Filipino Rep Accents

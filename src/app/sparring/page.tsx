@@ -13,24 +13,35 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { SPARRING_PERSONAS, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
+import { RepAccentKey } from '@/lib/repVoices';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
 
 export default function SparringLobbyPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<SparringCountry>('USA');
+  const [selectedRepAccent, setSelectedRepAccent] = useState<RepAccentKey>('arabic');
 
-  // Sync country preference from localStorage
+  // Sync country and rep accent preference from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('sparring_country');
     if (saved === 'USA' || saved === 'Australia' || saved === 'UK') {
       setSelectedCountry(saved);
+    }
+    const savedRep = localStorage.getItem('sparring_rep_accent') as RepAccentKey | null;
+    if (savedRep === 'arabic' || savedRep === 'filipino') {
+      setSelectedRepAccent(savedRep);
     }
   }, []);
 
   const handleCountryChange = (c: SparringCountry) => {
     setSelectedCountry(c);
     localStorage.setItem('sparring_country', c);
+  };
+
+  const handleRepAccentChange = (a: RepAccentKey) => {
+    setSelectedRepAccent(a);
+    localStorage.setItem('sparring_rep_accent', a);
   };
 
   const filteredPersonas = selectedDifficulty === 'all' 
@@ -71,22 +82,58 @@ export default function SparringLobbyPage() {
 
           {/* Filter Controls & Country Voice Switcher */}
           <div className="flex items-center justify-between gap-4 flex-wrap bg-white border border-zinc-200 rounded-xl px-4 py-3 shadow-xs">
-            {/* Country Voice Accent Dropdown Selector */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
-                <Globe className="h-3.5 w-3.5 text-zinc-500" />
-                <span>Buyer Voice Accent:</span>
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Rep Voice Accent Switcher */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
+                  <Users className="h-3.5 w-3.5 text-[#ED1C24]" />
+                  <span>Rep Voice:</span>
+                </div>
+                <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg text-xs font-medium border border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => handleRepAccentChange('arabic')}
+                    className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                      selectedRepAccent === 'arabic'
+                        ? 'bg-zinc-950 text-white font-bold shadow-2xs'
+                        : 'text-zinc-600 hover:text-zinc-950'
+                    }`}
+                  >
+                    <span>🇦🇪</span>
+                    <span>Arabic Accent</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRepAccentChange('filipino')}
+                    className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                      selectedRepAccent === 'filipino'
+                        ? 'bg-zinc-950 text-white font-bold shadow-2xs'
+                        : 'text-zinc-600 hover:text-zinc-950'
+                    }`}
+                  >
+                    <span>🇵🇭</span>
+                    <span>Filipino Accent</span>
+                  </button>
+                </div>
               </div>
-              <div className="relative inline-block">
-                <select
-                  value={selectedCountry}
-                  onChange={(e) => handleCountryChange(e.target.value as SparringCountry)}
-                  className="bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 text-xs font-medium py-1.5 pl-3 pr-7 rounded-lg transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-950"
-                >
-                  <option value="USA">🇺🇸 USA (American Accent)</option>
-                  <option value="Australia">🇦🇺 Australia (Australian Accent)</option>
-                  <option value="UK">🇬🇧 UK (British Accent)</option>
-                </select>
+
+              {/* Country Voice Accent Dropdown Selector */}
+              <div className="flex items-center gap-2 border-l border-zinc-200 pl-4">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
+                  <Globe className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Buyer Voice Accent:</span>
+                </div>
+                <div className="relative inline-block">
+                  <select
+                    value={selectedCountry}
+                    onChange={(e) => handleCountryChange(e.target.value as SparringCountry)}
+                    className="bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 text-xs font-medium py-1.5 pl-3 pr-7 rounded-lg transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                  >
+                    <option value="USA">🇺🇸 USA (American Accent)</option>
+                    <option value="Australia">🇦🇺 Australia (Australian Accent)</option>
+                    <option value="UK">🇬🇧 UK (British Accent)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -168,7 +215,7 @@ export default function SparringLobbyPage() {
                   {/* Start Sparring CTA */}
                   <div className="mt-4 pt-3 border-t border-zinc-100">
                     <Link
-                      href={`/sparring/${persona.id}?country=${selectedCountry}`}
+                      href={`/sparring/${persona.id}?country=${selectedCountry}&repAccent=${selectedRepAccent}`}
                       className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
                     >
                       <PhoneCall className="h-3.5 w-3.5" />

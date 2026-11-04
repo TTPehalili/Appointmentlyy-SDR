@@ -72,3 +72,4 @@ export function getRepVoice(accent: RepAccentKey = 'arabic', gender: 'male' | 'f
   const group = REP_VOICE_REGISTRY[accent] || REP_VOICE_REGISTRY.arabic;
   return group[gender] || group.male;
 }
+

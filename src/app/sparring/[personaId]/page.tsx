@@ -27,6 +27,7 @@ import {
   Globe
 } from 'lucide-react';
 import { SPARRING_PERSONAS, ScriptAssist, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
+import { RepAccentKey, getRepVoice, RepVoiceProfile } from '@/lib/repVoices';
 import { DialogueTurn } from '@/lib/qaEvaluator';
 import AppSidebar from '@/components/AppSidebar';
 import GlobalTopHeader from '@/components/GlobalTopHeader';
@@ -59,6 +60,9 @@ function SparringRoomContent() {
 
   // Country Voice model accent selection (USA, Australia, UK)
   const [selectedCountry, setSelectedCountry] = useState<SparringCountry>('USA');
+  // Rep Voice Accent (Arabic vs Filipino)
+  const [selectedRepAccent, setSelectedRepAccent] = useState<RepAccentKey>('arabic');
+  const [selectedRepGender, setSelectedRepGender] = useState<'male' | 'female'>('male');
 
   useEffect(() => {
     const countryQuery = searchParams.get('country') as SparringCountry | null;
@@ -71,13 +75,24 @@ function SparringRoomContent() {
         setSelectedCountry(saved);
       }
     }
+
+    const repQuery = searchParams.get('repAccent') as RepAccentKey | null;
+    if (repQuery === 'arabic' || repQuery === 'filipino') {
+      setSelectedRepAccent(repQuery);
+      localStorage.setItem('sparring_rep_accent', repQuery);
+    } else {
+      const savedRep = localStorage.getItem('sparring_rep_accent') as RepAccentKey | null;
+      if (savedRep === 'arabic' || savedRep === 'filipino') {
+        setSelectedRepAccent(savedRep);
+      }
+    }
   }, [searchParams]);
 
   const handleCountryChange = async (country: SparringCountry) => {
     setSelectedCountry(country);
     localStorage.setItem('sparring_country', country);
     try {
-      router.replace(`/sparring/${persona.id}?country=${country}`, { scroll: false });
+      router.replace(`/sparring/${persona.id}?country=${country}&repAccent=${selectedRepAccent}`, { scroll: false });
     } catch {}
 
     // If call is active, immediately re-synthesize in new accent so user hears instant voice change!
@@ -94,6 +109,14 @@ function SparringRoomContent() {
         }
       }
     }
+  };
+
+  const handleRepAccentChange = (accent: RepAccentKey) => {
+    setSelectedRepAccent(accent);
+    localStorage.setItem('sparring_rep_accent', accent);
+    try {
+      router.replace(`/sparring/${persona.id}?country=${selectedCountry}&repAccent=${accent}`, { scroll: false });
+    } catch {}
   };
 
   const [callActive, setCallActive] = useState(false);
@@ -768,7 +791,66 @@ function SparringRoomContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Rep Voice Accent Toggle (Arabic vs Filipino) */}
+            <div className="flex items-center bg-[#F2F0EF] border border-[#222021]/15 p-0.5 rounded-lg text-xs font-semibold">
+              <span className="px-2 text-[10px] font-mono text-[#6b6968] font-bold">REP VOICE:</span>
+              <button
+                type="button"
+                onClick={() => handleRepAccentChange('arabic')}
+                className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                  selectedRepAccent === 'arabic'
+                    ? 'bg-[#ED1C24] text-white shadow-2xs font-bold'
+                    : 'text-[#6b6968] hover:text-[#222021]'
+                }`}
+                title="Rep Voice: Arabic Accent (Dubai / Middle East Hub)"
+              >
+                <span>🇦🇪</span>
+                <span>Arabic</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRepAccentChange('filipino')}
+                className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                  selectedRepAccent === 'filipino'
+                    ? 'bg-[#ED1C24] text-white shadow-2xs font-bold'
+                    : 'text-[#6b6968] hover:text-[#222021]'
+                }`}
+                title="Rep Voice: Filipino Accent (Manila BPO Floor)"
+              >
+                <span>🇵🇭</span>
+                <span>Filipino</span>
+              </button>
+            </div>
+
+            {/* Rep Gender Toggle (Male vs Female) */}
+            <div className="flex items-center bg-[#F2F0EF] border border-[#222021]/15 p-0.5 rounded-lg text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setSelectedRepGender('male')}
+                className={`px-2 py-1 rounded-md transition cursor-pointer text-[11px] ${
+                  selectedRepGender === 'male'
+                    ? 'bg-[#222021] text-white shadow-2xs font-bold'
+                    : 'text-[#6b6968] hover:text-[#222021]'
+                }`}
+                title={selectedRepAccent === 'arabic' ? 'Tariq (Male)' : 'Paolo (Male)'}
+              >
+                {selectedRepAccent === 'arabic' ? 'Tariq (M)' : 'Paolo (M)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRepGender('female')}
+                className={`px-2 py-1 rounded-md transition cursor-pointer text-[11px] ${
+                  selectedRepGender === 'female'
+                    ? 'bg-[#222021] text-white shadow-2xs font-bold'
+                    : 'text-[#6b6968] hover:text-[#222021]'
+                }`}
+                title={selectedRepAccent === 'arabic' ? 'Noor (Female)' : 'Lovely (Female)'}
+              >
+                {selectedRepAccent === 'arabic' ? 'Noor (F)' : 'Lovely (F)'}
+              </button>
+            </div>
+
             {/* Country Voice Accent Switcher Dropdown */}
             <div className="flex items-center gap-1.5 bg-[#F2F0EF] border border-[#222021]/15 px-2.5 py-1 rounded-lg">
               <Globe className="h-3.5 w-3.5 text-[#ED1C24]" />
@@ -776,11 +858,11 @@ function SparringRoomContent() {
                 value={selectedCountry}
                 onChange={(e) => handleCountryChange(e.target.value as SparringCountry)}
                 className="bg-transparent text-xs font-bold text-[#222021] focus:outline-none cursor-pointer"
-                title="AI Voice Actor Accent Switcher"
+                title="Customer / Buyer Voice Accent Switcher"
               >
-                <option value="USA">🇺🇸 USA</option>
-                <option value="Australia">🇦🇺 Australia</option>
-                <option value="UK">🇬🇧 UK</option>
+                <option value="USA">🇺🇸 USA Buyer</option>
+                <option value="Australia">🇦🇺 Australia Buyer</option>
+                <option value="UK">🇬🇧 UK Buyer</option>
               </select>
             </div>
 
@@ -1021,12 +1103,14 @@ function SparringRoomContent() {
                       <span className={`text-[10px] font-bold uppercase tracking-wide ${
                         t.role === 'rep' ? 'text-[#ED1C24]' : 'text-[#6b6968]'
                       }`}>
-                        {t.role === 'rep' ? 'Sales Rep (You)' : persona.name}
+                        {t.role === 'rep'
+                          ? `Sales Rep (${selectedRepAccent === 'arabic' ? '🇦🇪 Arabic Accent' : '🇵🇭 Filipino Accent'})`
+                          : persona.name}
                       </span>
                       <span className="text-[10px] text-[#6b6968] font-mono">{t.timestamp}</span>
 
-                      {/* Replay audio button for prospect turns */}
-                      {t.role === 'prospect' && t.audioUrl && (
+                      {/* Replay audio button for turns */}
+                      {t.audioUrl && (
                         <button
                           onClick={() => playVoiceAudio(t.audioUrl!, t.content, i)}
                           title="Replay Voice Audio"
