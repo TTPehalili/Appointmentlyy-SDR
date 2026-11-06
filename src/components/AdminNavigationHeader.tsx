@@ -58,7 +58,7 @@ export default function AdminNavigationHeader({ activeSection }: { activeSection
         </div>
 
         <Link
-          href="/cockpit"
+          href="/dialer"
           className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-1.5 transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />

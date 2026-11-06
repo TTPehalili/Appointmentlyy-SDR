@@ -24,8 +24,6 @@ import {
   Award,
   Users
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 
 export default function MissionTargetsHub() {
   // Interactive Capacity Model State
@@ -112,14 +110,10 @@ export default function MissionTargetsHub() {
   ];
 
   return (
-    <div className="flex h-screen w-full bg-zinc-50/70 text-zinc-900 font-sans overflow-hidden">
-      {/* Collapsible Left Sidebar */}
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 w-full bg-zinc-50/70 text-zinc-900 font-sans overflow-hidden">
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Global Utility Bar */}
-        <GlobalTopHeader />
 
         {/* Scrollable Mission & Targets Canvas */}
         <main className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 space-y-8 max-w-7xl mx-auto w-full">
@@ -142,7 +136,7 @@ export default function MissionTargetsHub() {
               {/* Action Buttons */}
               <div className="pt-3 flex flex-wrap items-center gap-2.5">
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                 >
                   <Swords className="h-3.5 w-3.5" />
@@ -151,7 +145,7 @@ export default function MissionTargetsHub() {
                 </Link>
 
                 <Link
-                  href="/sparring"
+                  href="/practice"
                   className="px-4 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 font-medium text-xs flex items-center gap-2 border border-zinc-200 transition-colors cursor-pointer shadow-2xs"
                 >
                   <Headphones className="h-3.5 w-3.5 text-zinc-600" />

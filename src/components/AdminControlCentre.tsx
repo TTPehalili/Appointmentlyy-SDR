@@ -41,8 +41,6 @@ import {
   ShieldAlert,
   Radio
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import {
   useSession,
   getStoredRolePermissions,
@@ -434,10 +432,8 @@ export default function AdminControlCentre() {
 
   if (!isAdmin) {
     return (
-      <div className="flex h-screen w-screen overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
-        <AppSidebar />
+      <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <GlobalTopHeader />
           <main className="flex-1 flex items-center justify-center p-6">
             <div className="max-w-md w-full bg-white border border-zinc-200 rounded-2xl p-7 shadow-sm text-center space-y-4">
               <div className="h-12 w-12 rounded-xl bg-zinc-100 text-zinc-700 flex items-center justify-center mx-auto">
@@ -451,7 +447,7 @@ export default function AdminControlCentre() {
               </div>
               <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs transition-colors"
                 >
                   Return to Calling Floor
@@ -471,16 +467,12 @@ export default function AdminControlCentre() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-50/70 font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50/70 font-sans antialiased text-zinc-900">
       
-      {/* 1. LEFT SIDEBAR */}
-      <AppSidebar />
 
       {/* 2. MAIN APP SHELL */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* Top Global Utility Bar */}
-        <GlobalTopHeader />
 
         {/* Minimalist Shadow Mode Alert Banner */}
         {impersonatingTenant && (
@@ -496,7 +488,7 @@ export default function AdminControlCentre() {
             </div>
             <div className="flex items-center gap-2">
               <Link
-                href="/cockpit"
+                href="/dialer"
                 className="px-2.5 py-1 rounded bg-white text-zinc-950 font-medium text-xs hover:bg-zinc-100 transition-colors"
               >
                 Launch Cockpit as {impersonatingTenant.name.split(' ')[0]}
@@ -1261,7 +1253,7 @@ export default function AdminControlCentre() {
                         </div>
 
                         <Link
-                          href="/cockpit"
+                          href="/dialer"
                           className="px-3 py-1.5 rounded-lg bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-colors shrink-0"
                         >
                           <Phone className="h-3 w-3" />

@@ -21,8 +21,6 @@ import {
 } from 'lucide-react';
 import BorisOperationsIcon from '@/components/icons/BorisOperationsIcon';
 import ExecutiveReportRenderer from '@/components/assistant/ExecutiveReportRenderer';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { buildOpsSnapshot } from '@/lib/opsSnapshot';
 
 interface ChatMessage {
@@ -148,11 +146,9 @@ Select a prompt below or type your question:`,
   };
 
   return (
-    <div className="flex h-screen bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <GlobalTopHeader />
 
         <div className="max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col h-[calc(100vh-5rem)]">
           
@@ -176,7 +172,7 @@ Select a prompt below or type your question:`,
             </div>
 
             <Link
-              href="/analytics"
+              href="/reports"
               className="px-3 py-1.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-bold text-[#222021] hover:border-[#ED1C24] flex items-center gap-1.5 shadow-2xs transition-colors"
             >
               <BarChart3 className="h-4 w-4 text-[#ED1C24]" />

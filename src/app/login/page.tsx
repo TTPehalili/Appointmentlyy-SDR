@@ -155,7 +155,7 @@ function SdrLoginContent() {
       if (role === 'Super Admin' || role === 'Admin') {
         router.push('/admin');
       } else {
-        router.push('/cockpit');
+        router.push('/dialer');
       }
     }, 350);
   };

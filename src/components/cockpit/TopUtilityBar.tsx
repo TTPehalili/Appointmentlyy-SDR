@@ -56,7 +56,7 @@ export default function TopUtilityBar({
             <span>Cockpit</span>
           </span>
           <Link
-            href="/sparring"
+            href="/practice"
             className="px-2.5 py-1 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1.5"
           >
             <Swords className="h-3 w-3 text-slate-400" />

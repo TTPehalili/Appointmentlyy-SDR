@@ -23,8 +23,6 @@ import {
   SlidersHorizontal,
   RotateCcw,
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import {
   ContactRecord,
@@ -443,11 +441,9 @@ export default function PipelineKanbanHub() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <GlobalTopHeader />
 
         <main className="flex-1 flex flex-col min-h-0 px-6 py-5 space-y-4 max-w-[1600px] w-full mx-auto">
           {/* 1. TOP HEADER & PIPELINE TELEMETRY BAR */}
@@ -603,7 +599,7 @@ export default function PipelineKanbanHub() {
                   </div>
                 </div>
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold text-[11px] hover:bg-zinc-800"
                 >
                   <PhoneCall className="w-3 h-3 text-emerald-400" />
@@ -974,14 +970,14 @@ export default function PipelineKanbanHub() {
 
                                 <div className="flex items-center gap-1">
                                   <Link
-                                    href="/email"
+                                    href="/outreach/email"
                                     title="Open in Cold Email Studio"
                                     className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
                                   >
                                     <Mail className="w-3 h-3" />
                                   </Link>
                                   <Link
-                                    href="/cockpit"
+                                    href="/dialer"
                                     title="Dial on Calling Floor"
                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[10px] font-semibold"
                                   >
@@ -1649,7 +1645,7 @@ export default function PipelineKanbanHub() {
                 Open in Global Contacts
               </Link>
               <Link
-                href="/cockpit"
+                href="/dialer"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-950 text-white text-xs font-bold hover:bg-zinc-800"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />

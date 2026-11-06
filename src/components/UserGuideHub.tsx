@@ -23,8 +23,6 @@ import {
   Eye,
   Key
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 
 export default function UserGuideHub() {
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -134,14 +132,10 @@ export default function UserGuideHub() {
   const currentGuide = guideSteps.find(g => g.step === activeStep) || guideSteps[0];
 
   return (
-    <div className="flex h-screen w-full bg-zinc-50/70 text-zinc-900 font-sans overflow-hidden">
-      {/* Sidebar */}
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 w-full bg-zinc-50/70 text-zinc-900 font-sans overflow-hidden">
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Global Header */}
-        <GlobalTopHeader />
 
         {/* Scrollable Guide View */}
         <main className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 space-y-6 max-w-7xl mx-auto w-full">
@@ -162,14 +156,14 @@ export default function UserGuideHub() {
 
             <div className="flex items-center gap-2 shrink-0">
               <Link
-                href="/cockpit"
+                href="/dialer"
                 className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <Swords className="h-3.5 w-3.5" />
                 <span>Open Cockpit</span>
               </Link>
               <Link
-                href="/monitoring"
+                href="/live-floor"
                 className="px-3.5 py-2 rounded-lg bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-medium text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <Radio className="h-3.5 w-3.5 text-zinc-600" />

@@ -61,7 +61,7 @@ function VerifyLoginContent() {
           if (user.role === 'Super Admin' || user.role === 'Admin') {
             router.push('/admin');
           } else {
-            router.push('/cockpit');
+            router.push('/dialer');
           }
         }, 1100);
       } catch {
@@ -132,7 +132,7 @@ function VerifyLoginContent() {
                     router.push(
                       identity.role === 'Super Admin' || identity.role === 'Admin'
                         ? '/admin'
-                        : '/cockpit'
+                        : '/dialer'
                     )
                   }
                   className="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition cursor-pointer"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useSyncExternalStore } from 'react';
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'Supervisor' | 'Rep';
 
@@ -500,54 +500,64 @@ export function syncSessionFromUrl(): SdrSession {
 }
 
 /**
+ * Session store for React. Reads localStorage through useSyncExternalStore so the
+ * server render and the first client render agree (DEFAULT_SESSION), then React
+ * re-renders with the stored session. This avoids hydration mismatches.
+ */
+interface SessionSnapshot {
+  session: SdrSession;
+  canAccessIcp: boolean;
+}
+
+const SERVER_SNAPSHOT: SessionSnapshot = {
+  session: DEFAULT_SESSION,
+  canAccessIcp: true, // DEFAULT_SESSION is Super Admin
+};
+
+let cachedKey = '';
+let cachedSnapshot: SessionSnapshot = SERVER_SNAPSHOT;
+
+function getSessionSnapshot(): SessionSnapshot {
+  const session = getStoredSession();
+  const canAccessIcp = canUserAccessIcpBuilder(session.role);
+  const key = JSON.stringify(session) + String(canAccessIcp);
+  if (key !== cachedKey) {
+    cachedKey = key;
+    cachedSnapshot = { session, canAccessIcp };
+  }
+  return cachedSnapshot;
+}
+
+function subscribeToSession(onChange: () => void) {
+  window.addEventListener(SDR_SESSION_EVENT, onChange);
+  window.addEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(SDR_SESSION_EVENT, onChange);
+    window.removeEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+/**
  * React hook for consuming and updating SDR session
  */
 export function useSession() {
-  const [session, setSession] = useState<SdrSession>(() => getStoredSession());
-  const [canAccessIcp, setCanAccessIcp] = useState<boolean>(() => canUserAccessIcpBuilder(getStoredSession().role));
+  const { session, canAccessIcp } = useSyncExternalStore(
+    subscribeToSession,
+    getSessionSnapshot,
+    () => SERVER_SNAPSHOT,
+  );
 
   useEffect(() => {
-    // Initial sync from URL search params if present
-    const synced = syncSessionFromUrl();
-    setSession(synced);
-    setCanAccessIcp(canUserAccessIcpBuilder(synced.role));
-
-    const handleUpdate = (e: Event) => {
-      if (e instanceof CustomEvent && e.detail) {
-        const next = e.detail as SdrSession;
-        setSession(next);
-        setCanAccessIcp(canUserAccessIcpBuilder(next.role));
-      } else {
-        const cur = getStoredSession();
-        setSession(cur);
-        setCanAccessIcp(canUserAccessIcpBuilder(cur.role));
-      }
-    };
-
-    const handlePermissionsUpdate = () => {
-      setCanAccessIcp(canUserAccessIcpBuilder(getStoredSession().role));
-    };
-
-    window.addEventListener(SDR_SESSION_EVENT, handleUpdate);
-    window.addEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionsUpdate);
-    window.addEventListener('storage', handleUpdate);
-
-    return () => {
-      window.removeEventListener(SDR_SESSION_EVENT, handleUpdate);
-      window.removeEventListener(ROLE_PERMISSIONS_UPDATED_EVENT, handlePermissionsUpdate);
-      window.removeEventListener('storage', handleUpdate);
-    };
+    // Initial sync from URL search params if present (broadcasts an update event).
+    syncSessionFromUrl();
   }, []);
 
-  const updateSession = useCallback((updates: Partial<SdrSession>) => {
-    const updated = setStoredSession(updates);
-    setSession(updated);
-    return updated;
-  }, []);
+  const updateSession = useCallback((updates: Partial<SdrSession>) => setStoredSession(updates), []);
 
   const logout = useCallback(() => {
     clearStoredSession();
-    setSession({ ...DEFAULT_SESSION, isAuthenticated: false });
   }, []);
 
   return {

@@ -278,15 +278,23 @@
 }
 
 @layer base {
-  html,
+  /*
+   * Body copy is 14px, but the root stays 16px so rem-based spacing (h-9 = 36px) is exact.
+   * DESIGN-NOTE: keep html and body as separate rules. The CSS optimizer folds a body-only
+   * font-size into a combined "html, body" rule, which shrinks every rem by 12.5%.
+   */
+  html {
+    font-size: 100%;
+    background-color: var(--bg-app);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
   body {
     background-color: var(--bg-app);
     color: var(--text-primary);
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 20px;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
 
   table,

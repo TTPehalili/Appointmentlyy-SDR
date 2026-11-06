@@ -20,8 +20,6 @@ import {
   Eye,
   X,
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession } from '@/lib/session';
 import {
   TenantCustomDomainConfig,
@@ -220,11 +218,9 @@ export default function CustomDomainsManager() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <GlobalTopHeader />
 
         <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-[1440px] w-full mx-auto">
           {/* 1. TOP ARCHITECTURE & PRODUCTION HOST BANNER */}

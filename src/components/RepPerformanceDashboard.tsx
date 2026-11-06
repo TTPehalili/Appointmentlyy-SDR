@@ -34,8 +34,6 @@ import {
   LayoutGrid,
   List
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession } from '@/lib/session';
 
 export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
@@ -1404,11 +1402,9 @@ export default function RepPerformanceDashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <GlobalTopHeader />
 
         <div className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
           

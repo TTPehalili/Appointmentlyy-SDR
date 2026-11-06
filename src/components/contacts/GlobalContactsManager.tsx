@@ -28,8 +28,6 @@ import {
   FolderKanban
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import { 
   ContactRecord, 
@@ -407,16 +405,12 @@ export default function GlobalContactsManager() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
       
-      {/* 1. SIDEBAR */}
-      <AppSidebar />
 
       {/* 2. MAIN APP CONTAINER */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* Top Header */}
-        <GlobalTopHeader />
 
         {/* Scrollable Directory Content */}
         <main className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
@@ -450,7 +444,7 @@ export default function GlobalContactsManager() {
             <div className="flex items-center gap-2 flex-wrap">
               {canAccessIcp ? (
                 <Link
-                  href="/icp-builder"
+                  href="/lead-finder"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-2xs"
                 >
                   <FolderKanban className="w-3.5 h-3.5" />
@@ -982,14 +976,14 @@ export default function GlobalContactsManager() {
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <Link
-                                href={`/cockpit`}
+                                href={`/dialer`}
                                 className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700 transition-colors cursor-pointer"
                                 title="Open in Calling Floor"
                               >
                                 <PhoneCall className="w-3.5 h-3.5" />
                               </Link>
                               <Link
-                                href={`/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&company=${encodeURIComponent(c.company)}`}
+                                href={`/outreach/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&company=${encodeURIComponent(c.company)}`}
                                 className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700 transition-colors cursor-pointer"
                                 title="Draft Cold Email"
                               >
@@ -1089,7 +1083,7 @@ export default function GlobalContactsManager() {
               {/* Quick Actions Strip */}
               <div className="flex items-center gap-2">
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="flex-1 py-2 px-3 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
                 >
                   <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
@@ -1097,7 +1091,7 @@ export default function GlobalContactsManager() {
                 </Link>
 
                 <Link
-                  href={`/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&company=${encodeURIComponent(selectedContact.company)}`}
+                  href={`/outreach/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&company=${encodeURIComponent(selectedContact.company)}`}
                   className="flex-1 py-2 px-3 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
                 >
                   <Mail className="w-3.5 h-3.5 text-zinc-600" />

@@ -906,7 +906,7 @@ export default function LiveMonitoringCenter() {
           </div>
 
           <Link
-            href="/sparring"
+            href="/practice"
             className="px-4 py-2 rounded-xl bg-white border border-[#222021]/15 text-[#222021] hover:bg-[#F2F0EF] font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
           >
             <Headphones className="h-4 w-4 text-[#ED1C24]" />

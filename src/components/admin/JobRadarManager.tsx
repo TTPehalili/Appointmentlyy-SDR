@@ -265,7 +265,7 @@ export default function JobRadarManager() {
             <span>{actionToast}</span>
           </div>
           <Link
-            href="/cockpit"
+            href="/dialer"
             className="text-xs text-emerald-700 underline font-bold hover:text-emerald-900"
           >
             Open Calling Floor &rarr;

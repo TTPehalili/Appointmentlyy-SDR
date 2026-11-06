@@ -39,8 +39,6 @@ import {
   ExternalLink,
   Link2,
 } from 'lucide-react';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import { useSession, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import {
   ContactRecord,
@@ -841,11 +839,9 @@ export default function IcpListBuilderHub() {
       : 100;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
-      <AppSidebar />
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <GlobalTopHeader />
 
         {!canAccessIcp ? (
           <main className="flex-1 overflow-y-auto px-6 py-12 max-w-2xl w-full mx-auto flex items-center justify-center">
@@ -866,7 +862,7 @@ export default function IcpListBuilderHub() {
               </div>
               <div className="pt-2 flex items-center justify-center gap-3">
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-semibold text-xs transition shadow-xs"
                 >
                   Return to Calling Floor
@@ -1205,7 +1201,7 @@ export default function IcpListBuilderHub() {
                 </Link>
                 <span>&bull;</span>
                 <Link
-                  href="/cockpit"
+                  href="/dialer"
                   className="text-zinc-700 hover:text-zinc-950 font-medium underline decoration-zinc-300"
                 >
                   Calling Floor
@@ -1250,7 +1246,7 @@ export default function IcpListBuilderHub() {
                     Open Folder &rarr;
                   </button>
                   <Link
-                    href="/cockpit"
+                    href="/dialer"
                     className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
                   >
                     Go to Calling Floor
@@ -2535,7 +2531,7 @@ export default function IcpListBuilderHub() {
                                     </td>
                                     <td className="py-3 px-5 text-right">
                                       <Link
-                                        href="/cockpit"
+                                        href="/dialer"
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold hover:bg-zinc-800"
                                       >
                                         <PhoneCall className="w-3 h-3 text-emerald-400" />

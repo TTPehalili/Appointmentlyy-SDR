@@ -34,8 +34,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
-import AppSidebar from '@/components/AppSidebar';
-import GlobalTopHeader from '@/components/GlobalTopHeader';
 import {
   CADENCE_TOUCHES,
   CADENCE_PHONE_SCRIPTS,
@@ -786,16 +784,12 @@ export default function BorisCallingCockpit() {
 
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
 
-      {/* 1. LEFT SIDEBAR */}
-      <AppSidebar />
 
       {/* 2. MAIN APP SHELL */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Top Header */}
-        <GlobalTopHeader />
 
         {/* Scrollable Canvas */}
         <main className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
@@ -1785,7 +1779,7 @@ export default function BorisCallingCockpit() {
 
             <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between">
               <a
-                href={`/email?to=${encodeURIComponent(directEmail)}&name=${encodeURIComponent(customerName)}&company=${encodeURIComponent(partnerName)}&title=${encodeURIComponent(title)}`}
+                href={`/outreach/email?to=${encodeURIComponent(directEmail)}&name=${encodeURIComponent(customerName)}&company=${encodeURIComponent(partnerName)}&title=${encodeURIComponent(title)}`}
                 className="text-xs font-semibold text-zinc-600 hover:text-zinc-900 underline flex items-center gap-1"
               >
                 <span>Open in Cold Email Studio</span>
