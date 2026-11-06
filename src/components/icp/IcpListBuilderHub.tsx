@@ -1261,7 +1261,7 @@ export default function IcpListBuilderHub() {
  aria-label="LinkedIn profile URL"                      type="url"
                       value={linkedinUrlInput}
                       onChange={(e) => setLinkedinUrlInput(e.target.value)}
-                      placeholder="https://www.linkedin.com/in/derek-gallimore"
+                      placeholder="https://www.linkedin.com/in/jane-doe"
                       className="focus-ring flex-1 md:w-80 h-8 px-3 rounded-sm border border-line-strong bg-surface text-small font-mono text-fg placeholder:text-fg-disabled"
                     />
                     <Button
