@@ -973,7 +973,7 @@ export default function GlobalContactsManager() {
                                 <PhoneCall className="size-4" />
                               </Link>
                               <Link
-                                href={`/outreach/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&company=${encodeURIComponent(c.company)}`}
+                                href={`/outreach/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&prospectCompany=${encodeURIComponent(c.company)}`}
                                 className={rowIconLinkClass}
                                 title="Draft Cold Email"
                                 aria-label={`Email ${c.name}`}
@@ -1087,7 +1087,7 @@ export default function GlobalContactsManager() {
                 </Link>
 
                 <Link
-                  href={`/outreach/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&company=${encodeURIComponent(selectedContact.company)}`}
+                  href={`/outreach/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&prospectCompany=${encodeURIComponent(selectedContact.company)}`}
                   className={buttonClasses('secondary', 'md', 'flex-1')}
                 >
                   <Mail className="size-4 text-fg-secondary" aria-hidden />

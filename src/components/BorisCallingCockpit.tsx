@@ -61,6 +61,22 @@ import {
   recordContactTouch,
   subscribeToContacts
 } from '@/lib/leadStore';
+import { normalizeTenantKey } from '@/lib/icpQuotaStore';
+import {
+  CALLBACK_DISPOSITION,
+  CallbackTask,
+  createCallbackTask,
+  formatCallbackConfirmation
+} from '@/lib/callbackStore';
+import {
+  ScheduleCallbackDialog,
+  ScheduleCallbackInput,
+  CallbackReassignSelect,
+  CallbackTaskRow,
+  CallbacksPanel,
+  getOrgRepRoster,
+  useCallbackTasks
+} from '@/components/cockpit/CallbackTasks';
 
 interface ARMRebuttal {
   id: string;
@@ -141,8 +157,22 @@ export default function BorisCallingCockpit() {
   const repName = sessionRep || 'Emil Halili';
   const adminClearance = isRoleAdmin(role);
 
-  // Tab State for Right Column: 'notes' | 'footprint'
-  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'footprint'>('notes');
+  // Tab State for Right Column: 'notes' | 'footprint' | 'callbacks'
+  const [activeRightTab, setActiveRightTab] = useState<'notes' | 'footprint' | 'callbacks'>('notes');
+
+  // Callback tasks (org-scoped). The Callback outcome opens a scheduler instead of logging straight away.
+  const orgTenantCode = normalizeTenantKey(session.tenantCode || sessionTenant);
+  const callbackActor = useMemo(
+    () => ({ name: repName, role, tenantCode: orgTenantCode }),
+    [repName, role, orgTenantCode]
+  );
+  const callbackTasks = useCallbackTasks(orgTenantCode);
+  const [isCallbackDialogOpen, setIsCallbackDialogOpen] = useState<boolean>(false);
+  const [lastCallbackId, setLastCallbackId] = useState<string | null>(null);
+  const lastCallback = callbackTasks.find(t => t.id === lastCallbackId) || null;
+  const myOpenCallbackCount = callbackTasks.filter(
+    t => t.status === 'open' && t.assignedTo.toLowerCase() === repName.toLowerCase()
+  ).length;
 
   // Direct Lead Notes State (For non-CRM paying clients)
   const [leadNoteInput, setLeadNoteInput] = useState<string>('');
@@ -239,7 +269,7 @@ export default function BorisCallingCockpit() {
       step: 1,
       name: '1. Opener',
       goal: 'Get permission & reference yesterday\'s email to immediately eliminate cold call resistance.',
-      spokenText: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced—do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps burning paid client leads. Did that cross your screen, or do your reps somehow hit production on Day 3 without burning leads?"`,
+      spokenText: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced. Do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps learning on paid client leads. Did that cross your screen?"`,
       deliveryTip: 'Calm, confident, unhurried peer-to-peer tone. Do not apologize for calling.'
     },
     {
@@ -434,6 +464,7 @@ export default function BorisCallingCockpit() {
     setLeadWebsite(lead.website || '');
     setLeadLinkedinUrl(lead.linkedinUrl || '');
     setDisposition(null);
+    setLastCallbackId(null);
     setCurrentStep(1);
     setSelectedRebuttalId(null);
     setIsCallingActive(false);
@@ -663,7 +694,7 @@ export default function BorisCallingCockpit() {
   };
 
   // Handle Call Outcome / Disposition Selection
-  const handleSelectDisposition = (dispName: string) => {
+  const handleSelectDisposition = (dispName: string, opts?: { suppressToast?: boolean }): string | undefined => {
     if (!dispName) return;
     setDisposition(dispName);
     setIsCallingActive(false);
@@ -686,7 +717,7 @@ export default function BorisCallingCockpit() {
 
     // Log Cadence Activity with full synthesized CRM call notes
     try {
-      logCadenceActivity({
+      const activity = logCadenceActivity({
         repName,
         prospectName: customerName,
         companyName: partnerName,
@@ -701,10 +732,69 @@ export default function BorisCallingCockpit() {
         linkedinUrl: leadLinkedinUrl
       });
       setCompletedActivityCount(prev => prev + 1);
-      setActivityToast(`✓ Call logged: ${dispName} • Footprint & CRM Synced`);
-      setTimeout(() => setActivityToast(null), 3500);
+      if (!opts?.suppressToast) {
+        setActivityToast(`✓ Call logged: ${dispName} • Footprint & CRM Synced`);
+        setTimeout(() => setActivityToast(null), 3500);
+      }
+      return activity.id;
     } catch (err) {
       console.warn('Activity logging notice:', err);
+    }
+  };
+
+  // Callback outcome: reps in this org, this lead's callbacks, and the scheduler confirm handler
+  const callbackRoster = useMemo(
+    () => getOrgRepRoster(orgTenantCode, sessionTenant, repName),
+    [orgTenantCode, sessionTenant, repName]
+  );
+  const activeLeadKey = activeLead.id || directEmail;
+  const leadCallbacks = callbackTasks
+    .filter(t => t.contactId === activeLeadKey)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  // Re-read the lead from the contact store so new footprint entries show in History
+  const refreshLeadFromStore = (contactId: string) => {
+    const fresh = getStoredContacts().find(c => c.id === contactId || c.email?.toLowerCase() === contactId.toLowerCase());
+    if (fresh) setLeadsQueue(prev => prev.map(l => l.id === fresh.id ? { ...l, ...fresh } : l));
+  };
+
+  const handleConfirmCallback = (input: ScheduleCallbackInput) => {
+    const targetId = activeLead.id || directEmail;
+    // Same disposition path as every other outcome (footprint, activity log, CRM notes)
+    const activityId = handleSelectDisposition(CALLBACK_DISPOSITION, { suppressToast: true });
+    const task = createCallbackTask({
+      tenantCode: orgTenantCode,
+      contactId: targetId,
+      contactName: customerName,
+      companyName: partnerName,
+      phone,
+      email: directEmail,
+      dueAt: input.dueAt,
+      timeZone: input.timeZone,
+      note: input.note,
+      createdBy: repName,
+      assignedTo: input.assignedTo,
+      activityId
+    });
+    refreshLeadFromStore(targetId);
+    setIsCallbackDialogOpen(false);
+    setLastCallbackId(task.id);
+  };
+
+  const handleCallbackReassigned = (task: CallbackTask) => {
+    refreshLeadFromStore(task.contactId);
+  };
+
+  const handleOpenCallbackLead = (task: CallbackTask) => {
+    const idx = leadsQueue.findIndex(l =>
+      l.id === task.contactId || (!!l.email && l.email.toLowerCase() === (task.email || task.contactId).toLowerCase())
+    );
+    if (idx >= 0) {
+      selectLeadAtIndex(idx);
+      setActiveRightTab('footprint');
+    } else {
+      setActivityToast(`${task.contactName} is not in your current call queue.`);
+      setTimeout(() => setActivityToast(null), 3500);
     }
   };
 
@@ -852,6 +942,39 @@ export default function BorisCallingCockpit() {
               >
                 <X />
               </IconButton>
+            </div>
+          )}
+
+          {/* CALLBACK CONFIRMATION (with reassignment for the rep who scheduled it) */}
+          {lastCallback && (
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-success-500/40 bg-success-bg px-3.5 py-2 text-small font-medium text-success-fg animate-in fade-in"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="size-4 shrink-0 text-success-fg" />
+                <span>{formatCallbackConfirmation(lastCallback)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CallbackReassignSelect
+                  task={lastCallback}
+                  roster={callbackRoster}
+                  actor={callbackActor}
+                  onReassigned={handleCallbackReassigned}
+                  className="w-56"
+                />
+                <Button variant="ghost" size="sm" onClick={() => setActiveRightTab('callbacks')}>
+                  View callbacks
+                </Button>
+                <IconButton
+                  label="Dismiss"
+                  size="sm"
+                  onClick={() => setLastCallbackId(null)}
+                  className="text-success-fg hover:bg-success-bg hover:text-success-fg"
+                >
+                  <X />
+                </IconButton>
+              </div>
             </div>
           )}
 
@@ -1017,8 +1140,9 @@ export default function BorisCallingCockpit() {
                     <button
                       key={item.value}
                       type="button"
-                      onClick={() => handleSelectDisposition(item.value)}
+                      onClick={() => item.value === CALLBACK_DISPOSITION ? setIsCallbackDialogOpen(true) : handleSelectDisposition(item.value)}
                       aria-pressed={isSelected}
+                      aria-haspopup={item.value === CALLBACK_DISPOSITION ? 'dialog' : undefined}
                       className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${isSelected ? item.activeClass : item.idleClass
                         }`}
                     >
@@ -1501,7 +1625,36 @@ export default function BorisCallingCockpit() {
                     </span>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab('callbacks')}
+                  aria-pressed={activeRightTab === 'callbacks'}
+                  className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'callbacks'
+                      ? 'bg-surface text-fg shadow-xs'
+                      : 'text-fg-secondary hover:text-fg'
+                    }`}
+                >
+                  <Calendar className="size-4" />
+                  <span>Callbacks</span>
+                  {myOpenCallbackCount > 0 && (
+                    <span className="rounded-sm bg-ink-200 px-1.5 text-caption tabular-nums leading-5 text-fg-secondary">
+                      {myOpenCallbackCount}
+                    </span>
+                  )}
+                </button>
               </div>
+
+              {/* TAB 3: CALLBACK TASKS (assigned to me, scheduled by me, team for admins) */}
+              {activeRightTab === 'callbacks' && (
+                <CallbacksPanel
+                  tasks={callbackTasks}
+                  roster={callbackRoster}
+                  actor={callbackActor}
+                  isAdmin={adminClearance}
+                  onOpenLead={handleOpenCallbackLead}
+                />
+              )}
 
               {/* TAB 1: DIRECT LEAD NOTES & LIVE CRM NOTES */}
               {activeRightTab === 'notes' && (
@@ -1622,6 +1775,25 @@ export default function BorisCallingCockpit() {
                       <ExternalLink className="size-3.5" />
                     </Link>
                   </div>
+
+                  {/* This lead's callbacks (open first), reassignable by the rep who scheduled them */}
+                  {leadCallbacks.length > 0 && (
+                    <div className="space-y-2 border-b border-line pb-3">
+                      <span className="block text-caption text-fg-tertiary">Callbacks</span>
+                      {[...leadCallbacks]
+                        .sort((a, b) => Number(a.status !== 'open') - Number(b.status !== 'open'))
+                        .map(t => (
+                          <CallbackTaskRow
+                            key={t.id}
+                            task={t}
+                            roster={callbackRoster}
+                            actor={callbackActor}
+                            onReassigned={handleCallbackReassigned}
+                            showContact={false}
+                          />
+                        ))}
+                    </div>
+                  )}
 
                   {/* Footprint Timeline */}
                   <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
@@ -1769,7 +1941,7 @@ export default function BorisCallingCockpit() {
 
             <div className="flex items-center justify-between border-t border-line px-5 py-4">
               <a
-                href={`/outreach/email?to=${encodeURIComponent(directEmail)}&name=${encodeURIComponent(customerName)}&company=${encodeURIComponent(partnerName)}&title=${encodeURIComponent(title)}`}
+                href={`/outreach/email?to=${encodeURIComponent(directEmail)}&name=${encodeURIComponent(customerName)}&prospectCompany=${encodeURIComponent(partnerName)}&title=${encodeURIComponent(title)}`}
                 className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
               >
                 <span>Open in Cold Email Studio</span>
@@ -1794,6 +1966,19 @@ export default function BorisCallingCockpit() {
 
           </div>
       </Dialog>
+
+      {/* ========================================================================= */}
+      {/* SCHEDULE CALLBACK DIALOG (opened by the Callback outcome)                 */}
+      {/* ========================================================================= */}
+      <ScheduleCallbackDialog
+        open={isCallbackDialogOpen}
+        onClose={() => setIsCallbackDialogOpen(false)}
+        onConfirm={handleConfirmCallback}
+        contactName={customerName}
+        companyName={partnerName}
+        repName={repName}
+        roster={callbackRoster}
+      />
 
       {/* ========================================================================= */}
       {/* CALENDLY EMBED MODAL                                                      */}

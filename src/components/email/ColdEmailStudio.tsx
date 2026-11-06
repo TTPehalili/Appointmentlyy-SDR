@@ -88,7 +88,9 @@ export default function ColdEmailStudio() {
         const params = new URLSearchParams(window.location.search);
         const toParam = params.get('to');
         const nameParam = params.get('name');
-        const companyParam = params.get('company');
+        // 'prospectCompany', not 'company': ?company= is the workspace-onboarding param read by
+        // syncSessionFromUrl, and would rename the rep's own workspace to the prospect's company.
+        const companyParam = params.get('prospectCompany');
         const titleParam = params.get('title');
         if (toParam) {
           setProspectEmailState(toParam);

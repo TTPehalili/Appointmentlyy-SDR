@@ -688,7 +688,7 @@ export default function UnifiedEmailInbox() {
                       </span>
                     ) : (
                       <span className="truncate">
-                        From <span className="font-mono text-fg-secondary">emil@appointmentlyy.com</span> to <span className="text-fg-secondary">{activeThreadLead.leadName}</span>
+                        From <span className="font-mono text-fg-secondary">{verifiedSenderEmail}</span> to <span className="text-fg-secondary">{activeThreadLead.leadName}</span>
                       </span>
                     )}
                   </div>
