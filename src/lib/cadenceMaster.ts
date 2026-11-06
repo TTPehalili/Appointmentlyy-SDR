@@ -53,7 +53,7 @@ export const CADENCE_TOUCHES: CadenceTouch[] = [
     channel: 'Phone',
     mechanism: 'Push to Boris priority dial queue.',
     timingRule: 'First cold dial. No voicemail left on Day 2.',
-    spokenOpener: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced—do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about the rookie tax—watching new reps burn through paid client leads. Did that cross your screen, or do your reps somehow hit production on Day 3 without burning leads?"`,
+    spokenOpener: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced. Do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps learning on paid client leads. Did that cross your screen?"`,
     body: `Cold Call Phone #1 (Screen 1 Opener). Follow-up to Day 1 Email #1. Injects email subject to reduce cold-call friction right off the bat.`
   },
   {
@@ -167,7 +167,7 @@ export const CADENCE_PHONE_SCRIPTS: Record<number, CadencePhoneCallConfig> = {
       subject: 'quick question on {{company}} ramp time',
       coreHook: 'Rookie tax: new hires burning 500 paid client leads trying to figure out what to say'
     },
-    spokenOpenerEmailInjected: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced—do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about the rookie tax—watching new reps burn through paid client leads. Did that cross your screen, or do your reps somehow hit production on Day 3 without burning leads?"`,
+    spokenOpenerEmailInjected: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced. Do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps learning on paid client leads. Did that cross your screen?"`,
     spokenVerification: `"My notes show you're still leading {{department}} as the {{title}} over at {{company}}—is that still accurate?"`,
     reducedFrictionNote: 'References yesterday\'s Email #1 subject line to transform a cold dial into a warm follow-up touchpoint.'
   },
