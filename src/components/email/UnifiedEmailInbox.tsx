@@ -191,7 +191,7 @@ export default function UnifiedEmailInbox() {
 
   // Send Reply Handler
   const handleSendReply = async () => {
-    if (!replyText.trim() || !activeThreadLead) return;
+    if (isSendingReply || !replyText.trim() || !activeThreadLead) return;
     setIsSendingReply(true);
     setReplyError(null);
     try {
@@ -702,6 +702,11 @@ export default function UnifiedEmailInbox() {
                       <>
                         <RotateCw className="animate-spin" />
                         <span>Sending...</span>
+                      </>
+                    ) : sendSuccessKey === 'reply_sent' && !replyText.trim() ? (
+                      <>
+                        <Check />
+                        <span>Sent</span>
                       </>
                     ) : (
                       <>

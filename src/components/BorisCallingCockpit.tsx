@@ -734,6 +734,8 @@ export default function BorisCallingCockpit() {
 
   // Send Quick Follow-up Email
   const handleSendQuickEmail = async () => {
+    // Already sent (or sending): never dispatch the same follow-up twice.
+    if (isSendingQuickEmail || quickEmailSuccess) return;
     if (!directEmail || !directEmail.includes('@')) {
       alert('Please enter a valid recipient email address.');
       return;
@@ -1781,11 +1783,11 @@ export default function BorisCallingCockpit() {
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={isSendingQuickEmail}
+                  disabled={isSendingQuickEmail || !!quickEmailSuccess}
                   onClick={handleSendQuickEmail}
-                  icon={<Send />}
+                  icon={quickEmailSuccess ? <Check /> : <Send />}
                 >
-                  <span>{isSendingQuickEmail ? 'Sending...' : 'Send follow-up'}</span>
+                  <span>{isSendingQuickEmail ? 'Sending...' : quickEmailSuccess ? 'Sent' : 'Send follow-up'}</span>
                 </Button>
               </div>
             </div>

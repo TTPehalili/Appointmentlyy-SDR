@@ -137,6 +137,15 @@ export default function BillingInvoiceManager() {
     0
   );
 
+  // Locks the Send button after a successful send until the invoice itself changes,
+  // so a second click can't email the same client a duplicate invoice.
+  const invoiceSignature = JSON.stringify([
+    tenantName.trim(), tenantCode.trim().toUpperCase(), clientContactName.trim(),
+    clientEmail.trim().toLowerCase(), scenario, issueDate, creditsToProvision, lineItems,
+  ]);
+  const [sentSignature, setSentSignature] = useState<string | null>(null);
+  const invoiceSent = sentSignature === invoiceSignature;
+
   const handleUpdateLineItem = (
     idx: number,
     field: keyof InvoiceLineItem,
@@ -165,6 +174,7 @@ export default function BillingInvoiceManager() {
 
   // Send Invoice inside the Tool via Resend & Log to System Ledger
   const handleSendInvoiceToClient = async () => {
+    if (sendingEmail || invoiceSent) return;
     if (!clientEmail.trim() || !clientEmail.includes('@')) {
       setDispatchBanner({
         type: 'info',
@@ -216,6 +226,7 @@ export default function BillingInvoiceManager() {
         createdAt: new Date().toISOString(),
       };
 
+      setSentSignature(invoiceSignature);
       const updatedList = addSystemInvoice(createdInvoice);
       setInvoices(updatedList);
 
@@ -496,15 +507,17 @@ export default function BillingInvoiceManager() {
           <Button
             variant="brand"
             size="lg"
-            disabled={sendingEmail}
+            disabled={sendingEmail || invoiceSent}
             loading={sendingEmail}
             onClick={handleSendInvoiceToClient}
-            icon={<Send />}
+            icon={invoiceSent ? <CheckCircle2 /> : <Send />}
             className="w-full"
           >
             <span className="truncate">
               {sendingEmail
                 ? 'Sending invoice...'
+                : invoiceSent
+                ? `Invoice sent to ${clientEmail}`
                 : `Send invoice (${invoiceNumber} • $${totalAmountUsd.toLocaleString(
                     'en-US',
                     { minimumFractionDigits: 2 }

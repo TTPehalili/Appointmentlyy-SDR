@@ -586,7 +586,6 @@ export default function ColdEmailStudio() {
                   value={subjectText}
                   onChange={(e) => {
                     setSubjectText(e.target.value);
-                    if (sendButtonState === 'sent') setSendButtonState('idle');
                   }}
                   placeholder="Subject line (under 4 words, lowercase)"
                 />
@@ -616,7 +615,6 @@ export default function ColdEmailStudio() {
                     onClick={() => {
                       setSubjectText(s);
                       setShowSubjectSuggestions(false);
-                      if (sendButtonState === 'sent') setSendButtonState('idle');
                     }}
                     className="focus-ring cursor-pointer rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
                   >
@@ -660,7 +658,6 @@ export default function ColdEmailStudio() {
                 value={editableBody}
                 onChange={(e) => {
                   setEditableBody(e.target.value);
-                  if (sendButtonState === 'sent') setSendButtonState('idle');
                 }}
                 className="min-h-[260px] p-4 font-sans leading-relaxed"
                 placeholder="Write or workshop your cold email here..."
@@ -690,7 +687,6 @@ export default function ColdEmailStudio() {
                         } else {
                           setEditableBody(`${editableBody.trim()}\n\n${cta.text}`);
                         }
-                        if (sendButtonState === 'sent') setSendButtonState('idle');
                       }}
                       className="focus-ring cursor-pointer rounded-md border border-line bg-surface p-2.5 text-left transition-colors hover:bg-subtle"
                     >
@@ -789,7 +785,7 @@ export default function ColdEmailStudio() {
                 className={`flex-1 px-5 sm:flex-initial ${sendButtonState === 'sending' ? 'cursor-wait' : ''}`}
                 title={
                   sendButtonState === 'sent'
-                    ? `Already dispatched to ${prospectEmail}. Edit draft or change recipient to send another.`
+                    ? `Sent to ${prospectEmail}. Change the recipient or generate a new draft to send another.`
                     : `Dispatch live email from ${senderFrom} to ${prospectEmail}`
                 }
               >
