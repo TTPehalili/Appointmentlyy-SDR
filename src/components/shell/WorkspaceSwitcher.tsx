@@ -19,7 +19,9 @@ export function useWhiteLabel(): TenantCustomDomainConfig | null {
   const [config, setConfig] = React.useState<TenantCustomDomainConfig | null>(null);
   React.useEffect(() => {
     const sync = () => {
-      const host = getSimulatedCustomHost() || window.location.hostname;
+      // Same host the proxy resolved (it honours ?custom_domain= previews via the appy_active_host cookie).
+      const proxyHost = document.cookie.match(/(?:^|; )appy_active_host=([^;]+)/)?.[1];
+      const host = getSimulatedCustomHost() || (proxyHost && decodeURIComponent(proxyHost)) || window.location.hostname;
       const resolved = resolveTenantByHostname(host);
       setConfig(resolved && resolved.tenantCode !== HOME_WORKSPACE.code ? resolved : null);
     };
@@ -47,7 +49,7 @@ export function WorkspaceMark({ initials, size = 28 }: { initials?: string; size
       className="inline-flex shrink-0 items-center justify-center rounded-md bg-ink-900 p-[3px]"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/appointmentlyy-mark.png" alt="Appointmentlyy" className="size-full" />
+      <img src="/appointmentlyy-mark.png" alt="" className="size-full" />
     </span>
   );
 }

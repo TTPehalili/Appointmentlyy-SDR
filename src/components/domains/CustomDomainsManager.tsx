@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { DEFAULT_BRAND_500, checkBrandColor, deriveBrandTokens, normalizeHex } from '@/lib/theme';
 import {
   Globe,
   ShieldCheck,
@@ -19,6 +20,7 @@ import {
   ArrowRight,
   Eye,
   X,
+  Phone,
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import {
@@ -34,8 +36,27 @@ import {
   subscribeToCustomDomains,
   splitCustomDomainParts,
 } from '@/lib/customDomainStore';
+import { Badge, Button, IconButton, PageHeader, StatusDot } from '@/components/ui';
 
 const SUBDOMAIN_PRESETS = ['app', 'sdr', 'portal', 'dialer', 'outbound'];
+
+/** Numbered step header for the setup cards (presentation only). */
+function StepHeader({ n, title, description, right }: { n: number; title: string; description?: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="mt-0.5 size-6 shrink-0 rounded-full border border-line-strong text-caption tabular-nums text-fg flex items-center justify-center">
+          {n}
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-h3 text-fg">{title}</h2>
+          {description && <p className="text-small text-fg-secondary mt-0.5">{description}</p>}
+        </div>
+      </div>
+      {right}
+    </div>
+  );
+}
 
 export default function CustomDomainsManager() {
   const { session, role, tenantName, updateSession } = useSession();
@@ -79,6 +100,25 @@ export default function CustomDomainsManager() {
   const [hidePoweredBy, setHidePoweredBy] = useState<boolean>(
     () => activeConfig.branding.hidePoweredByBadge
   );
+  // White-label brand colour (Phase 6). Empty = Appointmentlyy crimson.
+  const [brandColorInput, setBrandColorInput] = useState<string>(
+    () => activeConfig.branding.brandColor ?? ''
+  );
+  const brandHex = normalizeHex(brandColorInput);
+  const brandCheck = brandColorInput.trim() ? checkBrandColor(brandColorInput) : null;
+  // Role tokens (--action-brand etc.) resolve from --brand-* on :root, so a scoped preview
+  // must override them too; on the real app the tokens are set on <html> itself.
+  const previewVars = useMemo(() => {
+    const t = deriveBrandTokens(brandHex ?? DEFAULT_BRAND_500);
+    return {
+      ...t,
+      '--action-brand': t['--brand-600'],
+      '--action-brand-hover': t['--brand-700'],
+      '--action-brand-fg': t['--brand-contrast'],
+      '--brand-text': t['--brand-600'],
+      '--bg-selected': t['--brand-50'],
+    } as unknown as React.CSSProperties;
+  }, [brandHex]);
 
   const [verifying, setVerifying] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -94,6 +134,7 @@ export default function CustomDomainsManager() {
     setInitialsInput(activeConfig.branding.logoInitials);
     setSupportEmailInput(activeConfig.branding.supportEmail);
     setHidePoweredBy(activeConfig.branding.hidePoweredByBadge);
+    setBrandColorInput(activeConfig.branding.brandColor ?? '');
   }, [activeConfig.tenantCode]);
 
   useEffect(() => {
@@ -118,6 +159,12 @@ export default function CustomDomainsManager() {
   // Save Custom Domain & Generate DNS Records
   const handleSaveDomainAndBranding = () => {
     if (!canManageDomain) return;
+    // Reject brand colours that can't reach 3:1 for UI glyphs (spec 7.3).
+    if (brandCheck && !brandCheck.ok) {
+      setToastMessage(`Brand colour not saved: ${brandCheck.message}`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
     const updated = upsertTenantCustomDomainConfig(activeConfig.tenantCode, {
       tenantName: activeConfig.tenantName,
       customDomain: domainInput,
@@ -137,6 +184,7 @@ export default function CustomDomainsManager() {
           activeConfig.branding.logoInitials,
         supportEmail: supportEmailInput.trim(),
         hidePoweredByBadge: hidePoweredBy,
+        brandColor: brandHex ?? undefined,
       },
     });
     setAllConfigs(getAllCustomDomainConfigs());
@@ -217,359 +265,117 @@ export default function CustomDomainsManager() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Presentation only: map the stored DNS state to a status badge.
+  const dnsBadge = (status: TenantCustomDomainConfig['dnsStatus'], verifiedLabel: string, pendingLabel: string) =>
+    status === 'active' ? (
+      <Badge tone="success"><CheckCircle2 className="h-3 w-3" aria-hidden />{verifiedLabel}</Badge>
+    ) : status === 'error' ? (
+      <Badge tone="danger"><AlertTriangle className="h-3 w-3" aria-hidden />Error</Badge>
+    ) : (
+      <Badge tone="warning"><span className="size-1.5 rounded-full bg-warning-400" aria-hidden />{pendingLabel}</Badge>
+    );
+
+  const inputClass =
+    'focus-ring w-full h-9 rounded-sm border border-line-strong bg-surface text-body text-fg focus:outline-none placeholder:text-fg-disabled disabled:opacity-50';
+  const labelClass = 'block mb-1.5 text-small font-medium text-fg';
+
+  const renderCopyButton = (value: string, field: string, label: string) => (
+    <IconButton
+      size="sm"
+      variant="secondary"
+      label={copiedField === field ? 'Copied' : label}
+      onClick={() => copyToClipboard(value, field)}
+    >
+      {copiedField === field ? <Check className="text-success-fg" /> : <Copy className="text-fg-secondary" />}
+    </IconButton>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-[1440px] w-full mx-auto">
-          {/* 1. TOP ARCHITECTURE & PRODUCTION HOST BANNER */}
-          <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 shadow-2xs space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white text-[10px] font-mono font-bold uppercase tracking-wider">
-                    <Globe className="w-3 h-3 text-emerald-400" />
-                    <span>WHITE-LABEL CUSTOM DOMAIN ENGINE</span>
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[11px] font-semibold">
-                    Primary Production Host: https://{PRIMARY_PLATFORM_HOST}
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700 font-mono text-[11px]">
-                    CNAME Alias: {BRANDED_CNAME_TARGET}
-                  </span>
-                </div>
-                <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-                  Customer Custom Domains &amp; White-Label DNS Setup
-                </h1>
-                <p className="text-xs text-zinc-500 max-w-3xl leading-relaxed">
-                  Let your customers host their dedicated Appointmentlyy SDR workspace on their own subdomain (e.g.,{' '}
-                  <code className="px-1.5 py-0.5 rounded bg-zinc-100 font-mono text-zinc-900">
-                    app.customerwebsiteurl.com
-                  </code>
-                  ). Customers simply add one <code className="font-mono">CNAME</code> record pointing to{' '}
-                  <code className="px-1.5 py-0.5 rounded bg-zinc-100 font-mono text-zinc-900">
-                    {BRANDED_CNAME_TARGET}
-                  </code>
-                  , and SSL (TLS 1.3) + tenant workspace routing activate automatically.
-                </p>
-              </div>
-
-              {/* Workspace is chosen with the shell workspace switcher (Phase 3: no per-page tenant selectors). */}
-            </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 max-w-[1440px] w-full mx-auto">
+          {/* 1. Page header */}
+          <div className="space-y-4">
+            <PageHeader
+              className="pb-0"
+              title="Branding & domains"
+              description="Put this workspace on your own brand and subdomain. One CNAME record, SSL is automatic."
+              meta={
+                <span className="text-small text-fg-tertiary">
+                  Production host <span className="font-mono text-fg-secondary">{PRIMARY_PLATFORM_HOST}</span>
+                </span>
+              }
+            />
 
             {/* Active Simulation Banner if previewing a customer's custom domain */}
             {simulatedHost && (
-              <div className="p-3.5 rounded-xl bg-zinc-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="px-4 py-3 rounded-lg bg-selected border border-brand-600/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-body">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span>
-                    <strong>Custom Domain Preview Active:</strong> You are currently viewing the app as if accessed via{' '}
-                    <code className="px-2 py-0.5 rounded bg-zinc-800 text-emerald-400 font-mono">
-                      https://{simulatedHost}
-                    </code>
+                  <span className="size-2 rounded-full bg-success-500 animate-pulse-soft shrink-0" aria-hidden />
+                  <span className="text-fg">
+                    <span className="font-medium">Custom domain preview is on.</span> You are viewing the app as if opened from{' '}
+                    <span className="font-mono">https://{simulatedHost}</span>
                   </span>
                 </div>
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="secondary"
                   onClick={() => {
                     setSimulatedCustomHost(null);
                     setSimulatedHostState(null);
                   }}
-                  className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold text-xs cursor-pointer shrink-0"
                 >
-                  Exit Custom Domain Preview
-                </button>
+                  Exit preview
+                </Button>
               </div>
             )}
 
             {toastMessage && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between">
+              <div role="status" className="px-4 py-3 rounded-lg bg-success-bg border border-success-500/30 text-success-fg text-body flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden />
                   <span>{toastMessage}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setToastMessage(null)}
-                  className="text-emerald-700 hover:text-emerald-950 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <IconButton label="Dismiss" size="sm" onClick={() => setToastMessage(null)} className="text-success-fg hover:text-success-fg">
+                  <X />
+                </IconButton>
               </div>
             )}
           </div>
 
-          {/* 2. STEP-BY-STEP CUSTOMER CUSTOM DOMAIN WIZARD */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* LEFT 7 COLUMNS: STEP 1 (DOMAIN INPUT) + STEP 2 (DNS CNAME/TXT RECORDS) */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* STEP 1: Enter Custom Subdomain */}
-              <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 space-y-4 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-zinc-950 text-white font-mono text-xs font-bold flex items-center justify-center">
-                      1
-                    </span>
-                    <h2 className="text-sm font-bold text-zinc-950">
-                      Assign Customer Subdomain (e.g., app.customerwebsiteurl.com)
-                    </h2>
-                  </div>
+          {/* 2. Steps + live preview */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT: STEP 1 (BRAND) + STEP 2 (DOMAIN + DNS) */}
+            <div className="lg:col-span-8 space-y-6">
 
-                  {/* Live Status Pill */}
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold border ${
-                      activeConfig.dnsStatus === 'active'
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-amber-50 text-amber-800 border-amber-200'
-                    }`}
-                  >
-                    {activeConfig.dnsStatus === 'active'
-                      ? '✓ DNS & SSL Active'
-                      : '⏳ Pending DNS CNAME'}
-                  </span>
-                </div>
+              {/* STEP 1: White-label branding */}
+              <div className="bg-surface border border-line rounded-lg p-6 space-y-5 shadow-xs">
+                <StepHeader
+                  n={1}
+                  title="Brand"
+                  description={<>What reps and managers see when they open <span className="font-mono">{domainInput}</span></>}
+                />
 
-                {/* Quick Subdomain Prefix Pills */}
-                <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                  <span className="text-zinc-400">Recommended prefixes:</span>
-                  {SUBDOMAIN_PRESETS.map((prefix) => (
-                    <button
-                      key={prefix}
-                      type="button"
-                      onClick={() => setDomainInput(`${prefix}.${rootDomain}`)}
-                      className={`px-2.5 py-1 rounded-lg font-mono text-[11px] border transition cursor-pointer ${
-                        subdomainPrefix === prefix
-                          ? 'bg-zinc-950 text-white border-zinc-950 font-bold'
-                          : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                      }`}
-                    >
-                      {prefix}.{rootDomain}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Domain Input Box */}
-                <div className="flex flex-col sm:flex-row gap-2.5">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-xs text-zinc-400">
-                      https://
-                    </span>
-                    <input
-                      type="text"
-                      value={domainInput}
-                      onChange={(e) => setDomainInput(e.target.value)}
-                      placeholder="app.customerwebsiteurl.com"
-                      disabled={!canManageDomain}
-                      className="w-full pl-16 pr-4 py-2.5 rounded-xl border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-950 focus:outline-none focus:border-zinc-950"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSaveDomainAndBranding}
-                    disabled={!canManageDomain}
-                    className="px-5 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 text-white text-xs font-bold transition cursor-pointer shrink-0"
-                  >
-                    Save Domain &amp; Generate DNS
-                  </button>
-                </div>
-              </div>
-
-              {/* STEP 2: Copy-Paste Customer DNS Records (GoDaddy / Cloudflare / Namecheap / Route53) */}
-              <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 space-y-4 shadow-2xs">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-zinc-950 text-white font-mono text-xs font-bold flex items-center justify-center">
-                      2
-                    </span>
-                    <div>
-                      <h2 className="text-sm font-bold text-zinc-950">
-                        Customer DNS Configuration Records
-                      </h2>
-                      <p className="text-[11px] text-zinc-500">
-                        Add these records in your customer&apos;s DNS provider (Cloudflare, GoDaddy, Namecheap, AWS Route53, or Google Cloud DNS)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* DNS Records Table */}
-                <div className="border border-zinc-200 rounded-xl overflow-hidden text-xs">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-mono uppercase text-zinc-500">
-                        <th className="py-2.5 px-3.5">Type</th>
-                        <th className="py-2.5 px-3.5">Host / Name</th>
-                        <th className="py-2.5 px-3.5">Value / Points To</th>
-                        <th className="py-2.5 px-3.5">TTL</th>
-                        <th className="py-2.5 px-3.5 text-right">Copy</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100 font-mono text-[11px]">
-                      {/* Record 1: Primary CNAME */}
-                      <tr className="bg-emerald-50/20">
-                        <td className="py-3 px-3.5">
-                          <span className="px-2 py-0.5 rounded bg-zinc-950 text-white font-bold text-[10px]">
-                            CNAME
-                          </span>
-                        </td>
-                        <td className="py-3 px-3.5 font-bold text-zinc-950">
-                          {subdomainPrefix}
-                          <span className="block text-[10px] font-normal text-zinc-400">
-                            ({domainInput})
-                          </span>
-                        </td>
-                        <td className="py-3 px-3.5 text-emerald-800 font-bold">
-                          {BRANDED_CNAME_TARGET}
-                          <span className="block text-[10px] font-normal text-zinc-400">
-                            or {VERCEL_CNAME_TARGET}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3.5 text-zinc-500">Auto / 300s</td>
-                        <td className="py-3 px-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              copyToClipboard(BRANDED_CNAME_TARGET, 'cname_val')
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-900 text-zinc-800 font-sans font-semibold text-[11px] cursor-pointer"
-                          >
-                            {copiedField === 'cname_val' ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-600" />
-                                <span>Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3 h-3" />
-                                <span>Copy Target</span>
-                              </>
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-
-                      {/* Record 2: Optional TXT Ownership Verification */}
-                      <tr>
-                        <td className="py-3 px-3.5">
-                          <span className="px-2 py-0.5 rounded bg-zinc-200 text-zinc-800 font-bold text-[10px]">
-                            TXT
-                          </span>
-                        </td>
-                        <td className="py-3 px-3.5 font-semibold text-zinc-800">
-                          _appointmentlyy-verify
-                          <span className="block text-[10px] font-normal text-zinc-400">
-                            ({activeConfig.txtVerificationName})
-                          </span>
-                        </td>
-                        <td className="py-3 px-3.5 text-zinc-600 break-all max-w-[240px]">
-                          {activeConfig.txtVerificationValue}
-                        </td>
-                        <td className="py-3 px-3.5 text-zinc-500">Auto / 300s</td>
-                        <td className="py-3 px-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              copyToClipboard(
-                                activeConfig.txtVerificationValue,
-                                'txt_val'
-                              )
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:border-zinc-900 text-zinc-800 font-sans font-semibold text-[11px] cursor-pointer"
-                          >
-                            {copiedField === 'txt_val' ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-600" />
-                                <span>Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3 h-3" />
-                                <span>Copy TXT</span>
-                              </>
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* STEP 3: Verify DNS Propagation & Provision SSL */}
-                <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-zinc-100">
-                  <div className="text-xs text-zinc-600">
-                    <span className="font-semibold text-zinc-900">Status:</span>{' '}
-                    {activeConfig.statusMessage}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      disabled={verifying || !canManageDomain}
-                      onClick={() => handleVerifyDnsAndSsl(false)}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 text-white text-xs font-bold transition cursor-pointer"
-                    >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 text-emerald-400 ${
-                          verifying ? 'animate-spin' : ''
-                        }`}
-                      />
-                      <span>
-                        {verifying ? 'Checking DNS...' : 'Verify Live DNS & SSL'}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={verifying || !canManageDomain}
-                      onClick={() => handleVerifyDnsAndSsl(true)}
-                      title="Simulate instant DNS verification & SSL certificate activation for demo testing"
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-semibold transition cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Instant Demo Activate</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT 5 COLUMNS: STEP 3 (WHITE-LABEL BRANDING) + LIVE SIMULATOR */}
-            <div className="lg:col-span-5 space-y-6">
-              <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 space-y-4 shadow-2xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-zinc-950 text-white font-mono text-xs font-bold flex items-center justify-center">
-                    3
-                  </span>
+                <div className="space-y-4">
                   <div>
-                    <h2 className="text-sm font-bold text-zinc-950">
-                      White-Label Workspace Branding
-                    </h2>
-                    <p className="text-[11px] text-zinc-500">
-                      Customize what reps &amp; managers see when visiting{' '}
-                      <code className="font-mono">{domainInput}</code>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">
-                      Workspace Header Brand Name
+                    <label className={labelClass}>
+                      Workspace name
                     </label>
                     <input
                       type="text"
                       value={displayNameInput}
                       onChange={(e) => setDisplayNameInput(e.target.value)}
                       placeholder="e.g., Apex Global Outbound Cloud"
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-950 font-semibold focus:outline-none focus:border-zinc-950"
+                      className={`${inputClass} px-3`}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block font-semibold text-zinc-700 mb-1">
-                        Logo Badge Initials (1–2 chars)
+                      <label className={labelClass}>
+                        Logo initials <span className="font-normal text-fg-tertiary">(1 or 2 letters)</span>
                       </label>
                       <input
                         type="text"
@@ -578,193 +384,389 @@ export default function CustomDomainsManager() {
                         onChange={(e) =>
                           setInitialsInput(e.target.value.toUpperCase())
                         }
-                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white font-mono font-bold text-zinc-950 focus:outline-none focus:border-zinc-950"
+                        className={`${inputClass} px-3`}
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-zinc-700 mb-1">
-                        IT / Helpdesk Support Email
+                      <label className={labelClass}>
+                        Support email
                       </label>
                       <input
                         type="email"
                         value={supportEmailInput}
                         onChange={(e) => setSupportEmailInput(e.target.value)}
                         placeholder="support@customerwebsiteurl.com"
-                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white font-mono text-zinc-900 focus:outline-none focus:border-zinc-950"
+                        className={`${inputClass} px-3`}
                       />
                     </div>
                   </div>
 
-                  <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200 cursor-pointer">
+                  <div>
+                    <label htmlFor="brand-colour-hex" className={labelClass}>
+                      Brand colour <span className="font-normal text-fg-tertiary">(buttons, active states, focus rings)</span>
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="color"
+                        aria-label="Pick brand colour"
+                        value={brandHex ?? DEFAULT_BRAND_500}
+                        onChange={(e) => setBrandColorInput(e.target.value.toUpperCase())}
+                        className="focus-ring h-9 w-12 cursor-pointer rounded-sm border border-line-strong bg-surface p-1"
+                      />
+                      <input
+                        id="brand-colour-hex"
+                        type="text"
+                        value={brandColorInput}
+                        onChange={(e) => setBrandColorInput(e.target.value)}
+                        placeholder={`${DEFAULT_BRAND_500} (Appointmentlyy crimson)`}
+                        aria-invalid={brandCheck ? !brandCheck.ok : undefined}
+                        aria-describedby="brand-colour-check"
+                        className={`${inputClass} max-w-56 px-3 font-mono`}
+                      />
+                      {brandColorInput && (
+                        <Button variant="ghost" size="sm" onClick={() => setBrandColorInput('')}>
+                          Use default
+                        </Button>
+                      )}
+                    </div>
+                    <p id="brand-colour-check" className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-small" aria-live="polite">
+                      {brandCheck ? (
+                        <>
+                          <StatusDot
+                            tone={!brandCheck.ok ? 'danger' : brandCheck.buttonText >= 4.5 ? 'success' : 'warning'}
+                            label={brandCheck.message}
+                          />
+                          {brandHex && (
+                            <span className="text-fg-tertiary tabular-nums">
+                              Button text {brandCheck.buttonText.toFixed(1)}:1 · On page {brandCheck.onCanvas.toFixed(1)}:1
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-fg-tertiary">Using Appointmentlyy crimson.</span>
+                      )}
+                    </p>
+                  </div>
+
+                  <label className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-line cursor-pointer hover:bg-subtle transition-colors">
                     <div>
-                      <span className="font-semibold text-zinc-900 block">
-                        Hide &ldquo;Powered by Appointmentlyy&rdquo; Badge
+                      <span className="text-body-strong text-fg block">
+                        Hide &ldquo;Powered by Appointmentlyy&rdquo;
                       </span>
-                      <span className="text-[11px] text-zinc-500">
-                        100% white-label header when accessed from{' '}
-                        <code className="font-mono">{domainInput}</code>
+                      <span className="text-small text-fg-secondary">
+                        Fully white-label header on{' '}
+                        <span className="font-mono">{domainInput}</span>
                       </span>
                     </div>
                     <input
                       type="checkbox"
                       checked={hidePoweredBy}
                       onChange={(e) => setHidePoweredBy(e.target.checked)}
-                      className="rounded border-zinc-300 cursor-pointer"
+                      className="focus-ring size-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer"
                     />
                   </label>
                 </div>
+              </div>
 
-                {/* Live Browser URL Bar Preview Card */}
-                <div className="p-4 rounded-xl bg-zinc-950 text-white space-y-3">
-                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                    <span>LIVE CUSTOM DOMAIN HEADER PREVIEW</span>
-                    <span className="text-emerald-400">🔒 TLS 1.3 HTTPS</span>
+              {/* STEP 2: Domain + DNS records */}
+              <div className="bg-surface border border-line rounded-lg p-6 space-y-5 shadow-xs">
+                <StepHeader
+                  n={2}
+                  title="Domain"
+                  description="Pick a subdomain, then add the records below at your DNS provider (Cloudflare, GoDaddy, Namecheap, AWS Route53 or Google Cloud DNS)."
+                  right={dnsBadge(activeConfig.dnsStatus, 'Verified', 'Pending DNS')}
+                />
+
+                {/* Quick Subdomain Prefix Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-small text-fg-tertiary mr-1">Suggested:</span>
+                  {SUBDOMAIN_PRESETS.map((prefix) => (
+                    <button
+                      key={prefix}
+                      type="button"
+                      onClick={() => setDomainInput(`${prefix}.${rootDomain}`)}
+                      aria-pressed={subdomainPrefix === prefix}
+                      className={`focus-ring h-7 px-2.5 rounded-full font-mono text-caption border transition-colors duration-150 cursor-pointer ${
+                        subdomainPrefix === prefix
+                          ? 'bg-selected text-fg border-brand-600/30'
+                          : 'bg-surface text-fg-secondary border-line hover:bg-subtle'
+                      }`}
+                    >
+                      {prefix}.{rootDomain}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Domain Input Box */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-small text-fg-tertiary">
+                      https://
+                    </span>
+                    <input
+                      type="text"
+                      value={domainInput}
+                      onChange={(e) => setDomainInput(e.target.value)}
+                      placeholder="app.customerwebsiteurl.com"
+                      disabled={!canManageDomain}
+                      aria-label="Custom subdomain"
+                      className={`${inputClass} pl-20 pr-3 font-mono`}
+                    />
+                  </div>
+                  <Button
+                    variant="brand"
+                    onClick={handleSaveDomainAndBranding}
+                    disabled={!canManageDomain}
+                  >
+                    Save and generate DNS
+                  </Button>
+                </div>
+
+                {/* DNS Records Table */}
+                <div className="border border-line rounded-lg overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-subtle text-caption text-fg-tertiary">
+                        <th className="h-9 px-3 font-medium">Type</th>
+                        <th className="h-9 px-3 font-medium">Host</th>
+                        <th className="h-9 px-3 font-medium">Points to</th>
+                        <th className="h-9 px-3 font-medium">TTL</th>
+                        <th className="h-9 px-3 font-medium text-right"><span className="sr-only">Copy</span></th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono text-small">
+                      {/* Record 1: Primary CNAME */}
+                      <tr className="border-t border-line">
+                        <td className="py-3 px-3 align-top">
+                          <span className="px-1.5 py-0.5 rounded-sm bg-subtle text-fg text-caption">
+                            CNAME
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg">
+                          {subdomainPrefix}
+                          <span className="block text-caption text-fg-tertiary">
+                            ({domainInput})
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg">
+                          {BRANDED_CNAME_TARGET}
+                          <span className="block text-caption text-fg-tertiary">
+                            or {VERCEL_CNAME_TARGET}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg-tertiary font-sans whitespace-nowrap">Auto / 300s</td>
+                        <td className="py-3 px-3 align-top text-right font-sans">
+                          {renderCopyButton(BRANDED_CNAME_TARGET, 'cname_val', 'Copy target')}
+                        </td>
+                      </tr>
+
+                      {/* Record 2: Optional TXT Ownership Verification */}
+                      <tr className="border-t border-line">
+                        <td className="py-3 px-3 align-top">
+                          <span className="px-1.5 py-0.5 rounded-sm bg-subtle text-fg text-caption">
+                            TXT
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg">
+                          _appointmentlyy-verify
+                          <span className="block text-caption text-fg-tertiary">
+                            ({activeConfig.txtVerificationName})
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg-secondary break-all max-w-[240px]">
+                          {activeConfig.txtVerificationValue}
+                        </td>
+                        <td className="py-3 px-3 align-top text-fg-tertiary font-sans whitespace-nowrap">Auto / 300s</td>
+                        <td className="py-3 px-3 align-top text-right font-sans">
+                          {renderCopyButton(activeConfig.txtVerificationValue, 'txt_val', 'Copy TXT')}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Verify DNS Propagation & Provision SSL */}
+                <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-line">
+                  <div className="text-small text-fg-secondary">
+                    <span className="font-medium text-fg">Status:</span>{' '}
+                    {activeConfig.statusMessage}
                   </div>
 
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="ghost"
+                      disabled={verifying || !canManageDomain}
+                      onClick={() => handleVerifyDnsAndSsl(true)}
+                      title="Simulate instant DNS verification & SSL certificate activation for demo testing"
+                      icon={<Sparkles />}
+                    >
+                      Demo activate
+                    </Button>
+
+                    <Button
+                      variant="primary"
+                      disabled={verifying || !canManageDomain}
+                      onClick={() => handleVerifyDnsAndSsl(false)}
+                      icon={<RefreshCw className={verifying ? 'animate-spin' : ''} />}
+                    >
+                      {verifying ? 'Checking DNS...' : 'Verify DNS and SSL'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: LIVE PREVIEW */}
+            <div className="lg:col-span-4 lg:sticky lg:top-0 space-y-6">
+              <div className="bg-surface border border-line rounded-lg p-6 space-y-4 shadow-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-h3 text-fg">Preview</h2>
+                  <span className="inline-flex items-center gap-1 text-caption text-fg-tertiary">
+                    <Lock className="w-3 h-3" aria-hidden />
+                    TLS 1.3 HTTPS
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-line overflow-hidden">
                   {/* Mock Browser URL Bar */}
-                  <div className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center gap-2 font-mono text-xs text-zinc-200">
-                    <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-                    <span className="text-emerald-400">https://</span>
-                    <span className="font-bold text-white truncate">
-                      {domainInput || 'app.customerwebsiteurl.com'}
+                  <div className="px-3 py-2 bg-subtle border-b border-line flex items-center gap-2 font-mono text-caption text-fg-secondary">
+                    <Lock className="w-3 h-3 text-fg-tertiary shrink-0" aria-hidden />
+                    <span className="truncate">
+                      <span className="text-fg-tertiary">https://</span>
+                      <span className="text-fg">{domainInput || 'app.customerwebsiteurl.com'}</span>
+                      <span className="text-fg-tertiary">/cockpit</span>
                     </span>
-                    <span className="text-zinc-500">/cockpit</span>
                   </div>
 
-                  {/* Mock White-Label Top Header */}
-                  <div className="p-3 rounded-lg bg-white text-zinc-900 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-md bg-zinc-950 text-white font-bold text-xs flex items-center justify-center">
-                        {initialsInput || 'CW'}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-zinc-950">
-                          {displayNameInput || 'Customer SDR Workspace'}
+                  {/* Live preview: the tenant's sidebar and brand button, themed with the derived tokens */}
+                  <div className="flex bg-app" style={previewVars}>
+                    <div className="w-36 shrink-0 border-r border-line p-2">
+                      <div className="mb-2 flex items-center gap-1.5 px-1">
+                        <div className="size-6 rounded-sm bg-action text-action-fg text-caption flex items-center justify-center shrink-0">
+                          {initialsInput || 'CW'}
                         </div>
-                        {!hidePoweredBy && (
-                          <div className="text-[10px] text-zinc-400 font-mono">
-                            Powered by Appointmentlyy
-                          </div>
-                        )}
+                        <span className="truncate text-small font-medium text-fg">
+                          {displayNameInput || 'Customer SDR Workspace'}
+                        </span>
                       </div>
+                      {['Home', 'Dialer', 'Inbox'].map((item, i) => (
+                        <div
+                          key={item}
+                          className={`relative flex h-7 items-center rounded-sm px-2 text-small ${i === 1 ? 'bg-subtle font-medium text-fg' : 'text-fg-secondary'}`}
+                        >
+                          {i === 1 && <span className="absolute inset-y-1.5 -left-1 w-0.5 rounded-full bg-brand-500" aria-hidden />}
+                          {item}
+                        </div>
+                      ))}
+                      {!hidePoweredBy && (
+                        <div className="mt-3 px-2 text-caption text-fg-tertiary">Powered by Appointmentlyy</div>
+                      )}
                     </div>
-                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[10px] font-semibold">
-                      {activeConfig.tenantName}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleSaveDomainAndBranding}
-                      className="flex-1 py-2 rounded-lg bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs transition cursor-pointer"
-                    >
-                      Save Branding
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSimulateCustomDomain(activeConfig)}
-                      className="flex-1 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>
-                        {simulatedHost === activeConfig.customDomain
-                          ? 'Exit Domain Preview'
-                          : 'Test Custom Domain Live'}
+                    <div className="flex flex-1 flex-col items-start gap-2 p-3">
+                      <span className="text-small text-fg-secondary">Adam Reyes, Taskus</span>
+                      <span className="inline-flex h-8 items-center gap-1.5 rounded-md bg-action-brand px-3 text-small font-medium text-action-brand-fg">
+                        <Phone className="size-3.5" aria-hidden /> Call
                       </span>
-                    </button>
+                      <span className="text-caption text-brand-text">Link colour</span>
+                    </div>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    className="flex-1"
+                    variant="secondary"
+                    onClick={handleSaveDomainAndBranding}
+                  >
+                    Save branding
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    variant="secondary"
+                    onClick={() => handleToggleSimulateCustomDomain(activeConfig)}
+                    icon={<Eye className="text-fg-secondary" />}
+                  >
+                    {simulatedHost === activeConfig.customDomain
+                      ? 'Exit domain preview'
+                      : 'Test domain live'}
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 3. SUPER ADMIN MULTI-CLIENT DOMAIN DIRECTORY & PRODUCTION DEPLOYMENT GUIDE */}
-          <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 space-y-4 shadow-2xs">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-sm font-bold text-zinc-950">
-                  Connected Customer Custom Domains Registry
-                </h2>
-                <p className="text-xs text-zinc-500">
-                  All customer subdomains routed through{' '}
-                  <code className="font-mono text-zinc-800">src/proxy.ts</code> to{' '}
-                  <code className="font-mono text-zinc-800">
-                    https://{PRIMARY_PLATFORM_HOST}
-                  </code>
-                </p>
-              </div>
+          {/* 3. Connected domains registry */}
+          <div className="bg-surface border border-line rounded-lg shadow-xs overflow-hidden">
+            <div className="px-6 pt-5 pb-4">
+              <h2 className="text-h3 text-fg">
+                Connected domains
+              </h2>
+              <p className="text-small text-fg-secondary mt-0.5">
+                All customer subdomains route through{' '}
+                <span className="font-mono">src/proxy.ts</span> to{' '}
+                <span className="font-mono">
+                  https://{PRIMARY_PLATFORM_HOST}
+                </span>
+              </p>
             </div>
 
-            <div className="border border-zinc-200 rounded-xl overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="overflow-x-auto border-t border-line">
+              <table className="w-full text-left border-collapse text-body">
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-mono uppercase text-zinc-500">
-                    <th className="py-2.5 px-4">Tenant Workspace</th>
-                    <th className="py-2.5 px-4">Custom Domain</th>
-                    <th className="py-2.5 px-4">CNAME Target</th>
-                    <th className="py-2.5 px-4">White-Label Brand</th>
-                    <th className="py-2.5 px-4">DNS &amp; SSL Status</th>
-                    <th className="py-2.5 px-4 text-right">Actions</th>
+                  <tr className="bg-subtle text-caption text-fg-tertiary">
+                    <th className="h-9 px-4 font-medium">Workspace</th>
+                    <th className="h-9 px-4 font-medium">Custom domain</th>
+                    <th className="h-9 px-4 font-medium">Brand</th>
+                    <th className="h-9 px-4 font-medium">Status</th>
+                    <th className="h-9 px-4 font-medium text-right"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody>
                   {Object.values(allConfigs).map((cfg) => {
                     const isSimulated = simulatedHost === cfg.customDomain;
                     return (
-                      <tr key={cfg.tenantCode} className="hover:bg-zinc-50/70">
-                        <td className="py-3 px-4 font-semibold text-zinc-950">
-                          {cfg.tenantName}
-                          <span className="block text-[10px] font-mono text-zinc-400">
+                      <tr key={cfg.tenantCode} className="border-t border-line hover:bg-subtle transition-colors">
+                        <td className="py-3 px-4">
+                          <span className="text-body-strong text-fg">{cfg.tenantName}</span>
+                          <span className="block text-caption font-mono text-fg-tertiary">
                             {cfg.tenantCode}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-mono font-bold text-zinc-900">
+                        <td className="py-3 px-4 font-mono text-small text-fg">
                           https://{cfg.customDomain}
-                        </td>
-                        <td className="py-3 px-4 font-mono text-zinc-500">
-                          {cfg.cnameTarget}
+                          <span className="block text-caption text-fg-tertiary">
+                            CNAME {cfg.cnameTarget}
+                          </span>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="inline-flex items-center gap-1.5 font-medium text-zinc-800">
-                            <span className="w-5 h-5 rounded bg-zinc-900 text-white font-mono text-[10px] font-bold flex items-center justify-center">
+                          <span className="inline-flex items-center gap-2 text-fg">
+                            <span className="size-5 rounded-sm bg-ink-950 text-ink-50 text-[10px] font-medium flex items-center justify-center shrink-0">
                               {cfg.branding.logoInitials}
                             </span>
                             <span>{cfg.branding.workspaceDisplayName}</span>
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
-                              cfg.dnsStatus === 'active'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }`}
-                          >
-                            {cfg.dnsStatus === 'active'
-                              ? '● SSL Active (TLS 1.3)'
-                              : '◐ Pending Customer CNAME'}
-                          </span>
+                          {dnsBadge(cfg.dnsStatus, 'SSL active', 'Pending CNAME')}
                         </td>
-                        <td className="py-3 px-4 text-right space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTenantCode(cfg.tenantCode)}
-                            className="px-2.5 py-1 rounded-lg border border-zinc-200 hover:border-zinc-900 text-zinc-700 font-semibold text-[11px] cursor-pointer"
-                          >
-                            Configure
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSimulateCustomDomain(cfg)}
-                            className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] cursor-pointer ${
-                              isSimulated
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-zinc-950 text-white hover:bg-zinc-800'
-                            }`}
-                          >
-                            {isSimulated ? 'Previewing Now' : 'Simulate Visit'}
-                          </button>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedTenantCode(cfg.tenantCode)}
+                            >
+                              Configure
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleToggleSimulateCustomDomain(cfg)}
+                              icon={isSimulated ? <span className="size-1.5 rounded-full bg-success-500" aria-hidden /> : undefined}
+                            >
+                              {isSimulated ? 'Previewing' : 'Simulate visit'}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -778,4 +780,3 @@ export default function CustomDomainsManager() {
     </div>
   );
 }
-

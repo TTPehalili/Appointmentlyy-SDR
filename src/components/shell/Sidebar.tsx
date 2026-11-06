@@ -9,7 +9,7 @@ import { isNavItemActive, NAV_GROUP_LABELS, type NavGroup, type NavItem } from '
 import { Kbd } from '@/components/ui';
 import { useShell } from './ShellContext';
 import { useVisibleNav } from './useVisibleNav';
-import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { WorkspaceSwitcher, useWhiteLabel } from './WorkspaceSwitcher';
 import { ProfileMenu } from './ProfileMenu';
 
 const GROUP_ORDER: NavGroup[] = ['main', 'prospect', 'improve', 'team'];
@@ -41,6 +41,9 @@ export function Sidebar() {
   const inSettings = pathname.startsWith('/admin') || pathname.startsWith('/platform');
   const collapsed = savedCollapsed || inSettings;
   const items = useVisibleNav();
+  const whiteLabel = useWhiteLabel();
+  // Brand guide 4: tenant logos replace ours; our name appears only in this footer, and tenants can hide it.
+  const showPoweredBy = !!whiteLabel && !whiteLabel.branding.hidePoweredByBadge;
 
   const groups = GROUP_ORDER.map((g) => ({ group: g, items: items.filter((i) => i.group === g) })).filter(
     (g) => g.items.length > 0,
@@ -96,6 +99,13 @@ export function Sidebar() {
         {!collapsed && (
           <p className="flex items-center gap-1.5 px-2.5 pt-1 text-caption text-fg-tertiary">
             <Kbd>[</Kbd> to collapse
+          </p>
+        )}
+        {showPoweredBy && !collapsed && (
+          <p className="flex items-center gap-1.5 px-2.5 pt-2 text-caption text-fg-tertiary">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/appointmentlyy-mark.png" alt="" className="size-3.5 rounded-[3px] bg-ink-900 p-px" />
+            Powered by Appointmentlyy
           </p>
         )}
       </div>

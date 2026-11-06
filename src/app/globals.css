@@ -50,7 +50,9 @@
   --bg-selected: var(--brand-50);
   --text-primary: var(--ink-900);
   --text-secondary: var(--ink-600);
-  --text-tertiary: var(--ink-500);
+  /* DESIGN-NOTE (derived for AA): ink-500 is 4.39:1 on ink-100 (table headers, subtle
+     panels). Nudged 20% toward ink-600 so tertiary text clears 4.5:1 on canvas, white and ink-100. */
+  --text-tertiary: color-mix(in srgb, var(--ink-500) 80%, var(--ink-600));
   --text-disabled: var(--ink-400);
   --text-on-inverse: var(--ink-50);
   --text-on-inverse-secondary: var(--ink-400);
@@ -295,6 +297,13 @@
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 20px;
+  }
+
+  /* Visible focus everywhere (brand guide 9). Components with the focus-ring utility
+     replace this with the brand glow; utilities win over this base-layer rule. */
+  :focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
   }
 
   table,

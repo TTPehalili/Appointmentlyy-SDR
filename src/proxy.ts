@@ -28,7 +28,7 @@ const PLATFORM_PRIMARY_HOSTS = new Set([
 // Pre-seeded server-side map of known custom domains -> tenantCode
 const KNOWN_CUSTOM_DOMAINS: Record<
   string,
-  { tenantCode: string; tenantName: string }
+  { tenantCode: string; tenantName: string; brandColor?: string }
 > = {
   'app.appointmentlyy.com': {
     tenantCode: 'APPOINTMENTLYY',
@@ -37,6 +37,7 @@ const KNOWN_CUSTOM_DOMAINS: Record<
   'app.apexglobalbpo.com': {
     tenantCode: 'APEX-GLOBAL',
     tenantName: 'Apex Global BPO',
+    brandColor: '#0F766E',
   },
   'app.shorepartnersbpo.com': {
     tenantCode: 'SHORE-PARTNERS',
@@ -92,6 +93,15 @@ export function proxy(request: NextRequest) {
     path: '/',
     sameSite: 'lax',
   });
+
+  // White-label theme (redesign spec 7): the tenant brand colour rides in a cookie that the
+  // <head> boot script in the root layout applies before first paint. Platform hosts get
+  // the default Appointmentlyy brand.
+  if (matchedTenant?.brandColor && isCustomCustomerDomain) {
+    response.cookies.set('appy_brand', matchedTenant.brandColor, { path: '/', sameSite: 'lax' });
+  } else if (!isCustomCustomerDomain && request.cookies.get('appy_brand')) {
+    response.cookies.delete('appy_brand');
+  }
 
   if (matchedTenant) {
     response.cookies.set('appy_domain_tenant_code', matchedTenant.tenantCode, {

@@ -19,7 +19,7 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
-        className="focus-ring flex h-9 w-full max-w-md items-center gap-2.5 rounded-md border border-line bg-surface px-3 text-body text-fg-tertiary transition-colors duration-150 hover:border-line-strong"
+        className="focus-ring hidden h-9 w-full max-w-md items-center gap-2.5 rounded-md border border-line bg-surface px-3 text-body text-fg-tertiary transition-colors duration-150 hover:border-line-strong sm:flex"
       >
         <Search className="size-4 shrink-0" aria-hidden />
         <span className="flex-1 truncate text-left">Search leads, pages and actions</span>
@@ -29,6 +29,10 @@ export function TopBar() {
         </span>
       </button>
 
+      {/* Small screens: search collapses to an icon so every top-bar action stays reachable. */}
+      <IconButton label="Search" className="sm:hidden" onClick={() => setPaletteOpen(true)}>
+        <Search className="size-5 stroke-[1.5]" />
+      </IconButton>
       <div className="ml-auto flex items-center gap-1">
         <Link
           href="/help"

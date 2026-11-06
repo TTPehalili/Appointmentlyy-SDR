@@ -9,6 +9,7 @@ import { ImpersonationBanner } from './ImpersonationBanner';
 import { CopilotPanel } from './CopilotPanel';
 import { MobileTabBar } from './MobileTabBar';
 import { ShellCommandPalette } from './ShellCommandPalette';
+import { ThemeSync } from './ThemeSync';
 import { cn } from '@/lib/cn';
 
 /**
@@ -23,6 +24,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <ShellProvider>
       <ToastProvider>
         <div className="flex h-dvh w-full flex-col overflow-hidden bg-app text-fg">
+          <a
+            href="#main"
+            className="sr-only z-[70] rounded-md bg-action px-3 py-2 text-body font-medium text-action-fg focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+          >
+            Skip to main content
+          </a>
           <ImpersonationBanner />
           <div className="flex min-h-0 flex-1">
             {/* URL-reading shell parts sit in Suspense so dynamic routes can still prerender (Cache Components). */}
@@ -32,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
               <div className="flex min-h-0 flex-1">
-                <main id="main" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                <main id="main" tabIndex={-1} className="relative outline-none flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   {children}
                 </main>
                 <React.Suspense fallback={null}>
@@ -46,6 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </React.Suspense>
         </div>
         <ShellCommandPalette />
+        <ThemeSync />
       </ToastProvider>
     </ShellProvider>
   );

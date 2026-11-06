@@ -22,6 +22,8 @@ export interface WhiteLabelBranding {
   supportEmail: string;
   loginHeadline: string;
   hidePoweredByBadge: boolean;
+  /** Tenant brand colour (hex). Overrides only the --brand-* tokens; undefined = Appointmentlyy crimson. */
+  brandColor?: string;
 }
 
 export interface TenantCustomDomainConfig {
@@ -139,6 +141,7 @@ export const INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainCon
       workspaceDisplayName: 'Apex Global Outbound Cloud',
       logoInitials: 'AG',
       accentColor: 'emerald',
+      brandColor: '#0F766E',
       supportEmail: 'it-ops@apexglobalbpo.com',
       loginHeadline: 'Apex Global BPO — Dedicated SDR Calling Floor',
       hidePoweredByBadge: true,
