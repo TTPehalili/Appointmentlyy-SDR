@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronsUpDown, KeyRound, LogOut, Mail } from 'lucide-react';
+import { Check, ChevronsUpDown, KeyRound, LogOut, Mail, Settings } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { changeUserPassword, useSession, type UserRole } from '@/lib/session';
 import { Avatar, Button, Dialog, Field, Input } from '@/components/ui';
@@ -105,6 +105,18 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
           ))}
 
           <div className="mt-1 border-t border-line pt-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                router.push('/settings');
+              }}
+              className={cn(item, 'text-fg')}
+            >
+              <Settings className="text-fg-secondary" aria-hidden />
+              Settings
+            </button>
             <button
               type="button"
               role="menuitem"

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { BRAND_BOOT_SCRIPT } from "@/lib/theme";
+import { COLOR_MODE_BOOT_SCRIPT } from "@/lib/colorModeScript";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -31,6 +32,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         {/* White-label: apply the tenant brand colour before first paint (no flash). */}
         <script dangerouslySetInnerHTML={{ __html: BRAND_BOOT_SCRIPT }} />
+        {/* Light / System / Dark preference (Settings › Appearance), applied before first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: COLOR_MODE_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>

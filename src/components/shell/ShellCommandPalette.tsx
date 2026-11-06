@@ -71,6 +71,14 @@ export function ShellCommandPalette() {
         onRun: () => setCopilotOpen(!copilotOpen),
       },
       { id: 'act-sidebar', group: 'Actions', label: 'Collapse or expand sidebar', icon: <PanelLeft />, hint: '[', onRun: toggleCollapsed },
+      {
+        id: 'act-settings',
+        group: 'Actions',
+        label: 'Settings',
+        icon: <Settings />,
+        keywords: 'appearance theme dark mode light mode system preferences',
+        onRun: () => router.push('/settings'),
+      },
     ];
     return [...pages, ...tools, ...actions, ...admin];
   }, [nav, role, router, copilotOpen, setCopilotOpen, toggleCollapsed]);

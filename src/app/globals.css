@@ -97,35 +97,38 @@
   color-scheme: light;
 }
 
-[data-theme="dark"] {
-  --bg-app: var(--ink-950);
-  --bg-surface: var(--ink-900);
-  --bg-subtle: var(--ink-800);
-  --bg-inverse: var(--ink-950);
-  --bg-selected: color-mix(in srgb, var(--brand-500) 14%, transparent);
-  --text-primary: var(--ink-50);
-  --text-secondary: var(--ink-400);
-  --text-tertiary: var(--ink-500);
-  --text-disabled: var(--ink-600);
-  --border-default: var(--ink-800);
-  --border-strong: var(--ink-700);
-  --action-primary: var(--ink-50);
-  --action-primary-hover: var(--ink-200);
-  --action-primary-fg: var(--ink-900);
-  --action-brand: var(--brand-500);
-  --action-brand-hover: var(--brand-600);
-  --brand-text: var(--brand-500);
-  /* DESIGN-NOTE: the guide defines no dark variants for semantic text; the 700 shades fail
-     contrast on ink-900, so dark mode uses the 500/400 shades and translucent tints. */
-  --success-fg: var(--success-500);
-  --success-bg: color-mix(in srgb, var(--success-500) 14%, transparent);
-  --warning-fg: var(--warning-400);
-  --warning-bg: color-mix(in srgb, var(--warning-400) 14%, transparent);
-  --danger-fg: color-mix(in srgb, var(--danger-700) 45%, white);
-  --danger-bg: color-mix(in srgb, var(--danger-700) 18%, transparent);
-  --chart-1: var(--ink-50);
-  --chart-target: var(--ink-700);
-  color-scheme: dark;
+/* Screen only: printouts (invoices, reports) always use the light theme. */
+@media screen {
+  [data-theme="dark"] {
+    --bg-app: var(--ink-950);
+    --bg-surface: var(--ink-900);
+    --bg-subtle: var(--ink-800);
+    --bg-inverse: var(--ink-950);
+    --bg-selected: color-mix(in srgb, var(--brand-500) 14%, transparent);
+    --text-primary: var(--ink-50);
+    --text-secondary: var(--ink-400);
+    --text-tertiary: var(--ink-500);
+    --text-disabled: var(--ink-600);
+    --border-default: var(--ink-800);
+    --border-strong: var(--ink-700);
+    --action-primary: var(--ink-50);
+    --action-primary-hover: var(--ink-200);
+    --action-primary-fg: var(--ink-900);
+    --action-brand: var(--brand-500);
+    --action-brand-hover: var(--brand-600);
+    --brand-text: var(--brand-500);
+    /* DESIGN-NOTE: the guide defines no dark variants for semantic text; the 700 shades fail
+       contrast on ink-900, so dark mode uses the 500/400 shades and translucent tints. */
+    --success-fg: var(--success-500);
+    --success-bg: color-mix(in srgb, var(--success-500) 14%, transparent);
+    --warning-fg: var(--warning-400);
+    --warning-bg: color-mix(in srgb, var(--warning-400) 14%, transparent);
+    --danger-fg: color-mix(in srgb, var(--danger-700) 45%, white);
+    --danger-bg: color-mix(in srgb, var(--danger-700) 18%, transparent);
+    --chart-1: var(--ink-50);
+    --chart-target: var(--ink-700);
+    color-scheme: dark;
+  }
 }
 
 @theme inline {
