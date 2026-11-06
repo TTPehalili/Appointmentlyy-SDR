@@ -10,6 +10,7 @@ import {
   Send,
   Sparkles,
   Printer,
+  Check,
 } from 'lucide-react';
 import {
   ICP_TOPUP_PACKAGES,
@@ -18,6 +19,7 @@ import {
   WISE_PAYMENT_LINK,
 } from '@/lib/icpQuotaStore';
 import MinimalistInvoiceCard from './MinimalistInvoiceCard';
+import { Badge, Button, Dialog, IconButton, buttonClasses } from '@/components/ui';
 
 export interface QuotaTopUpModalProps {
   isOpen: boolean;
@@ -49,8 +51,6 @@ export default function QuotaTopUpModal({
     ticketId?: string;
     emailDispatched: boolean;
   } | null>(null);
-
-  if (!isOpen) return null;
 
   const handleGenerateInvoice = async () => {
     setSubmitting(true);
@@ -134,32 +134,31 @@ export default function QuotaTopUpModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-zinc-50 border border-zinc-200 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title={generatedInvoice ? `Invoice ${generatedInvoice.invoiceNumber} is ready to pay on Wise` : 'Top up your lead quota'}
+      size="xl"
+      bare
+      dismissible={!submitting}
+      className="bg-app"
+    >
+      <div>
         {/* Top Modal Header */}
-        <div className="bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="bg-surface border-b border-line px-6 py-4 flex items-start justify-between gap-4 sticky top-0 z-10">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-white">
-                ICP Data Cloud
-              </span>
-              <span className="text-xs text-zinc-500 font-mono">
-                {tenantName}
-              </span>
+            <div className="text-small text-fg-secondary">
+              {tenantName}
             </div>
-            <h2 className="text-base font-bold text-zinc-950 mt-1">
+            <h2 id="quota-topup-title" className="text-h3 text-fg mt-0.5">
               {generatedInvoice
-                ? `Official Invoice ${generatedInvoice.invoiceNumber} — Ready for Wise Payment`
-                : 'Tap Up ICP List Building Quota'}
+                ? `Invoice ${generatedInvoice.invoiceNumber} is ready to pay on Wise`
+                : 'Top up your lead quota'}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <IconButton label="Close" variant="ghost" size="sm" onClick={onClose}>
+            <X />
+          </IconButton>
         </div>
 
         <div className="p-6 space-y-6">
@@ -169,22 +168,21 @@ export default function QuotaTopUpModal({
               <div className="space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      1. Select Additional Record Volume
+                    <h3 className="text-body-strong text-fg">
+                      1. Choose how many records to add
                     </h3>
-                    <p className="text-xs text-zinc-600 mt-0.5">
-                      Choose the volume you wish to add. We will email your
-                      system-generated invoice and log a priority billing ticket
-                      for instant activation.
+                    <p className="text-small text-fg-secondary mt-0.5">
+                      We&apos;ll email you an invoice and open a priority billing
+                      ticket so the records are added as soon as you pay.
                     </p>
                   </div>
                   <Link
                     href="/admin/support"
                     onClick={onClose}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100 shrink-0"
+                    className={buttonClasses('ghost', 'sm')}
                   >
-                    <LifeBuoy className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Contact Support / Ticket Desk</span>
+                    <LifeBuoy className="text-fg-secondary" />
+                    <span>Contact support</span>
                   </Link>
                 </div>
 
@@ -195,54 +193,42 @@ export default function QuotaTopUpModal({
                       <button
                         key={pack.id}
                         type="button"
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedPack(pack)}
-                        className={`text-left rounded-xl p-4 border transition cursor-pointer flex flex-col justify-between ${
+                        className={`focus-ring text-left rounded-lg p-4 border bg-surface transition-colors duration-150 cursor-pointer flex flex-col justify-between ${
                           isSelected
-                            ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm'
-                            : 'bg-white text-zinc-900 border-zinc-200 hover:border-zinc-400'
+                            ? 'border-action shadow-xs'
+                            : 'border-line hover:border-line-strong'
                         }`}
                       >
                         <div>
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span
-                              className={`text-xs font-mono font-semibold ${
-                                isSelected ? 'text-zinc-300' : 'text-zinc-500'
-                              }`}
-                            >
+                            <span className="text-caption tabular-nums text-fg-tertiary">
                               {pack.costPerRecord}
                             </span>
                             {pack.badge && (
-                              <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  isSelected
-                                    ? 'bg-white text-zinc-950'
-                                    : 'bg-zinc-100 text-zinc-800'
-                                }`}
-                              >
+                              <Badge tone={isSelected ? 'brand' : 'neutral'}>
                                 {pack.badge}
-                              </span>
+                              </Badge>
                             )}
                           </div>
-                          <div className="text-sm font-bold">{pack.label}</div>
-                          <div
-                            className={`text-xs mt-1 ${
-                              isSelected ? 'text-zinc-400' : 'text-zinc-500'
-                            }`}
-                          >
-                            Direct Dial Phones + Verified Work Emails
+                          <div className="text-body-strong text-fg">{pack.label}</div>
+                          <div className="text-small mt-1 text-fg-secondary">
+                            Direct phones and verified work emails
                           </div>
                         </div>
 
-                        <div className="mt-4 pt-3 border-t border-zinc-200/20 flex items-baseline justify-between">
-                          <span className="text-xl font-mono font-bold">
+                        <div className="mt-4 pt-3 border-t border-line flex items-baseline justify-between">
+                          <span className="text-h2 tabular-nums text-fg">
                             ${pack.priceUsd}
                           </span>
                           <span
-                            className={`text-xs ${
-                              isSelected ? 'text-emerald-400' : 'text-zinc-400'
+                            className={`inline-flex items-center gap-1 text-small ${
+                              isSelected ? 'text-fg font-medium' : 'text-fg-tertiary'
                             }`}
                           >
-                            {isSelected ? '✓ Selected' : 'Select'}
+                            {isSelected ? <Check className="w-3.5 h-3.5" /> : null}
+                            {isSelected ? 'Selected' : 'Select'}
                           </span>
                         </div>
                       </button>
@@ -252,32 +238,32 @@ export default function QuotaTopUpModal({
               </div>
 
               {/* Step 2: Invoice Recipient & Notes */}
-              <div className="bg-white border border-zinc-200 rounded-xl p-4 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                  2. Invoice Delivery &amp; Ticket Details
+              <div className="bg-surface border border-line rounded-lg shadow-xs p-4 space-y-3">
+                <h3 className="text-body-strong text-fg">
+                  2. Invoice and ticket details
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-zinc-700 mb-1">
-                      Send Branded Invoice To (Email)
+                    <label className="block text-small font-medium text-fg mb-1">
+                      Send the invoice to
                     </label>
                     <input
                       type="email"
                       value={recipientEmail}
                       onChange={(e) => setRecipientEmail(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs text-zinc-900 focus:outline-none focus:border-zinc-900"
+                      className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled"
                       placeholder="billing@yourcompany.com"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-zinc-700 mb-1">
-                      Optional Note for Support / Billing Ticket
+                    <label className="block text-small font-medium text-fg mb-1">
+                      Note for the billing ticket <span className="font-normal text-fg-tertiary">(optional)</span>
                     </label>
                     <input
                       type="text"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-xs text-zinc-900 focus:outline-none focus:border-zinc-900"
+                      className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled"
                       placeholder="e.g. Urgent Q4 campaign pull"
                     />
                   </div>
@@ -286,8 +272,8 @@ export default function QuotaTopUpModal({
 
               {/* Live Minimalist Preview Before Sending */}
               <div className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Invoice Preview
+                <div className="text-caption text-fg-tertiary">
+                  Invoice preview
                 </div>
                 <MinimalistInvoiceCard
                   invoiceNumber="INV-2026-PREVIEW"
@@ -315,60 +301,54 @@ export default function QuotaTopUpModal({
 
               {/* Submit Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                <div className="text-xs text-zinc-500">
-                  Need a custom enterprise volume tier? Email{' '}
+                <div className="text-small text-fg-secondary">
+                  Need a custom enterprise volume? Email{' '}
                   <a
                     href="mailto:emil@appointmentlyy.com"
-                    className="font-semibold text-zinc-900 underline"
+                    className="focus-ring rounded-sm font-medium text-fg underline underline-offset-2 decoration-line-strong"
                   >
                     emil@appointmentlyy.com
                   </a>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 cursor-pointer"
-                  >
+                  <Button variant="secondary" onClick={onClose}>
                     Cancel
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="brand"
                     disabled={submitting}
                     onClick={handleGenerateInvoice}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 transition cursor-pointer disabled:opacity-50"
+                    icon={<Send />}
                   >
-                    <Send className="w-3.5 h-3.5" />
                     <span>
                       {submitting
-                        ? 'Generating Invoice & Ticket...'
-                        : `Send Invoice & Pay $${selectedPack.priceUsd} via Wise`}
+                        ? 'Creating invoice and ticket...'
+                        : `Send invoice and pay $${selectedPack.priceUsd} via Wise`}
                     </span>
-                  </button>
+                  </Button>
                 </div>
               </div>
             </>
           ) : (
             /* Step 3: Confirmation Screen + Wise Link + QR + Ticket Link */
             <div className="space-y-5">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-success-bg rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-emerald-950">
-                    <div className="font-bold">
-                      Invoice {generatedInvoice.invoiceNumber} Generated &amp;
-                      Logged
+                  <CheckCircle2 className="w-4 h-4 text-success-fg shrink-0 mt-0.5" />
+                  <div className="text-small text-fg">
+                    <div className="text-body-strong text-success-fg">
+                      Invoice {generatedInvoice.invoiceNumber} created and logged
                     </div>
-                    <p className="text-emerald-800 mt-0.5">
-                      Dispatched to <strong>{recipientEmail}</strong>
+                    <p className="text-fg-secondary mt-0.5">
+                      Sent to <span className="font-medium text-fg">{recipientEmail}</span>
                       {generatedInvoice.ticketId
-                        ? ` and logged under Support Ticket #${generatedInvoice.ticketId}.`
+                        ? ` and logged under support ticket #${generatedInvoice.ticketId}.`
                         : '.'}{' '}
-                      Complete your <strong>${selectedPack.priceUsd}.00 USD</strong>{' '}
-                      transfer via Wise below to credit your{' '}
-                      <strong>
+                      Pay <span className="font-medium text-fg tabular-nums">${selectedPack.priceUsd}.00 USD</span>{' '}
+                      on Wise below to add your{' '}
+                      <span className="font-medium text-fg tabular-nums">
                         +{selectedPack.records.toLocaleString()} records
-                      </strong>
+                      </span>
                       .
                     </p>
                   </div>
@@ -378,19 +358,19 @@ export default function QuotaTopUpModal({
                     href={WISE_PAYMENT_LINK}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 transition"
+                    className={buttonClasses('brand', 'md')}
                   >
                     <span>Pay ${selectedPack.priceUsd} on Wise</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <ExternalLink />
                   </a>
                   {generatedInvoice.ticketId && (
                     <Link
                       href={`/admin/support?id=${generatedInvoice.ticketId}`}
                       onClick={onClose}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-emerald-300 text-emerald-900 hover:bg-emerald-100 transition"
+                      className={buttonClasses('secondary', 'md')}
                     >
-                      <LifeBuoy className="w-3.5 h-3.5" />
-                      <span>Open Ticket</span>
+                      <LifeBuoy className="text-fg-secondary" />
+                      <span>Open ticket</span>
                     </Link>
                   )}
                 </div>
@@ -419,30 +399,27 @@ export default function QuotaTopUpModal({
               />
 
               <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  icon={<Printer />}
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-100 cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print / Save PDF</span>
-                </button>
-                <button
-                  type="button"
+                  Print or save as PDF
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={() => {
                     setGeneratedInvoice(null);
                     onClose();
                   }}
-                  className="px-4 py-2 rounded-lg text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 cursor-pointer"
                 >
                   Done
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
-

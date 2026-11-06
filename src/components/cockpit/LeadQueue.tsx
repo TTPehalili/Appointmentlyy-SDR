@@ -39,36 +39,36 @@ export default function LeadQueue({
   );
 
   return (
-    <aside className="w-72 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0 overflow-hidden select-none">
+    <aside className="flex w-72 shrink-0 select-none flex-col overflow-hidden border-r border-line bg-app">
       {/* Height 44px Compact Search & Filter Input */}
-      <div className="h-11 px-3 border-b border-slate-200 bg-white flex items-center justify-between gap-2 shrink-0">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface px-3">
         <div className="relative flex-1">
-          <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
           <input
             type="text"
             value={searchFilter}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search leads, title, co..."
-            className="w-full pl-8 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#ED1C24] focus:bg-white"
+            placeholder="Search name, title or company"
+            className="focus-ring h-8 w-full rounded-sm border border-line-strong bg-surface pl-8 pr-2 text-small text-fg placeholder:text-fg-disabled"
           />
         </div>
-        <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+        <span className="shrink-0 rounded-sm bg-subtle px-1.5 text-caption tabular-nums leading-5 text-fg-secondary">
           {filteredLeads.length}
         </span>
       </div>
 
       {/* Pane Sub-header */}
-      <div className="px-3 py-1.5 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between shrink-0">
-        <span className="text-[10px] font-bold text-slate-600 tracking-wider uppercase">
-          PRIORITY QUEUE
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-subtle px-3 py-1.5">
+        <span className="text-group text-fg-tertiary">
+          Priority queue
         </span>
-        <span className="text-[10px] font-mono text-slate-500">
-          Auto-Rotate: ON
+        <span className="text-caption text-fg-tertiary">
+          Auto-rotate on
         </span>
       </div>
 
-      {/* Scrollable Lead Queue (divide-y divide-slate-100) */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+      {/* Scrollable Lead Queue */}
+      <div className="flex-1 overflow-y-auto">
         {filteredLeads.map((lead) => {
           const isSelected = lead.id === selectedLeadId;
 
@@ -76,35 +76,35 @@ export default function LeadQueue({
             <div
               key={lead.id}
               onClick={() => onSelectLead(lead.id)}
-              className={`h-16 px-3 py-2 flex flex-col justify-between cursor-pointer transition-colors relative ${
+              className={`relative flex h-16 cursor-pointer flex-col justify-between border-b border-l-2 border-b-line px-3 py-2 transition-colors duration-150 ${
                 isSelected
-                  ? 'border-l-4 border-[#ED1C24] bg-white shadow-xs'
-                  : 'border-l-4 border-transparent hover:bg-slate-100/70'
+                  ? 'border-l-brand-600 bg-selected'
+                  : 'border-l-transparent hover:bg-subtle'
               }`}
             >
               {/* Top Row: Name + Timezone Clock */}
               <div className="flex items-center justify-between gap-2">
-                <span className={`text-xs font-bold truncate ${isSelected ? 'text-[#222021] font-extrabold' : 'text-slate-800'}`}>
+                <span className="truncate text-body-strong text-fg">
                   {lead.name}
                 </span>
-                <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1 shrink-0">
-                  <Clock className="h-2.5 w-2.5 text-slate-400" />
+                <span className="flex shrink-0 items-center gap-1 text-caption tabular-nums text-fg-tertiary">
+                  <Clock className="size-3 text-fg-tertiary" />
                   <span>{lead.localTime.split(' - ')[1] || lead.localTime}</span>
                 </span>
               </div>
 
-              {/* Bottom Row: Company / Title + Cadence Step Pill */}
+              {/* Bottom Row: Company / Title + Cadence Step */}
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] text-slate-600 truncate leading-none">
-                  {lead.company} • <span className="text-slate-500">{lead.title}</span>
+                <p className="truncate text-caption leading-none text-fg-secondary">
+                  {lead.company} · <span className="text-fg-tertiary">{lead.title}</span>
                 </p>
                 <span
-                  className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded shrink-0 border ${
+                  className={`inline-flex h-5 shrink-0 items-center rounded-sm px-1.5 text-caption ${
                     lead.status === 'booked'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      ? 'bg-success-bg text-success-fg'
                       : lead.status === 'contacted'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                      ? 'bg-warning-bg text-warning-fg'
+                      : 'bg-subtle text-fg-secondary'
                   }`}
                 >
                   {lead.cadenceStep}
@@ -115,8 +115,8 @@ export default function LeadQueue({
         })}
 
         {filteredLeads.length === 0 && (
-          <div className="p-6 text-center text-slate-400">
-            <p className="text-xs">No leads match filter.</p>
+          <div className="p-6 text-center">
+            <p className="text-small text-fg-secondary">No leads match this search.</p>
           </div>
         )}
       </div>

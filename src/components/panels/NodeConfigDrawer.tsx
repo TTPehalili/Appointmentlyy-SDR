@@ -3,6 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, X, Play, CheckCircle2, AlertCircle, Copy, Check, ExternalLink, RefreshCw, CheckCheck } from 'lucide-react';
 import { getNodeDefinition, INodeDefinition } from '@/registry';
+import { Button } from '@/components/ui';
+
+const fieldCls =
+  'focus-ring w-full h-9 px-3 rounded-sm bg-surface border border-line-strong text-body text-fg placeholder:text-fg-disabled';
+const groupLabelCls = 'text-caption text-fg-tertiary';
 
 function ElevenLabsBadgeIcon({ className }: { className?: string }) {
   return (
@@ -87,12 +92,12 @@ export default function NodeConfigDrawer({
   const isElevenLabs = initialNodeData.nodeType === 'elevenLabsNode';
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-stone-200 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
-      {/* n8n Node Details Top Bar */}
-      <div className="px-4 py-3 border-b border-stone-200 flex items-center justify-between bg-white text-xs">
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-[480px] bg-surface border-l border-line shadow-lg flex flex-col animate-in slide-in-from-right duration-200 rounded-l-xl overflow-hidden">
+      {/* Node details top bar */}
+      <div className="px-5 py-3 border-b border-line flex items-center justify-between bg-surface text-small">
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 font-bold text-stone-700 hover:text-stone-900 transition-colors cursor-pointer"
+          className="focus-ring rounded-sm flex items-center gap-1.5 font-medium text-fg-secondary hover:text-fg transition-colors cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Node details</span>
@@ -102,44 +107,42 @@ export default function NodeConfigDrawer({
           href="https://elevenlabs.io/docs"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-stone-500 hover:text-stone-800 transition-colors font-medium text-[11px]"
+          className="focus-ring rounded-sm flex items-center gap-1 text-fg-secondary hover:text-fg transition-colors text-small"
         >
           <span>Docs</span>
-          <ExternalLink className="h-3 w-3" />
+          <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
 
       {/* Node Brand & Description Header (Exactly matching n8n screenshot) */}
-      <div className="p-5 border-b border-stone-100 bg-stone-50/40 space-y-3">
+      <div className="px-5 py-4 border-b border-line space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            {isElevenLabs ? (
-              <ElevenLabsBadgeIcon className="h-6 w-6 text-stone-900" />
-            ) : (
-              <div className="h-7 w-7 rounded-lg bg-stone-900 text-white flex items-center justify-center font-bold text-xs">
-                {nodeDef?.displayName?.[0] || 'N'}
-              </div>
-            )}
+            <div className="h-8 w-8 rounded-md border border-line bg-subtle text-fg-secondary flex items-center justify-center text-small font-medium">
+              {isElevenLabs ? (
+                <ElevenLabsBadgeIcon className="h-4 w-4" />
+              ) : (
+                nodeDef?.displayName?.[0] || 'N'
+              )}
+            </div>
             <div className="flex items-center gap-1.5">
-              <h3 className="text-base font-black text-stone-900">{nodeDef?.displayName}</h3>
-              <span className="h-4 w-4 rounded-full bg-stone-900 text-white flex items-center justify-center text-[10px]">
-                ✓
-              </span>
+              <h2 className="text-h2 text-fg">{nodeDef?.displayName}</h2>
+              <Check className="h-4 w-4 text-fg-secondary" aria-label="Verified" />
             </div>
           </div>
-          <span className="text-[11px] font-mono text-stone-400">Installed</span>
+          <span className="text-caption text-fg-tertiary">Installed</span>
         </div>
 
-        <p className="text-xs text-stone-500 leading-relaxed">
+        <p className="text-body text-fg-secondary">
           {nodeDef?.description || 'Interact with ElevenLabs API for speech synthesis and voice cloning'}
         </p>
 
-        <div className="flex items-center gap-3 text-[11px] text-stone-400 font-mono">
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-2 text-small text-fg-tertiary">
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
             <span>Verified</span>
           </span>
-          <span>•</span>
+          <span>·</span>
           <span>Published by appointmentlyy</span>
         </div>
       </div>
@@ -148,25 +151,25 @@ export default function NodeConfigDrawer({
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
         {/* Node Label Customization */}
         <div className="space-y-1">
-          <label className="text-[11px] font-semibold text-stone-600">Node Name on Canvas</label>
+          <label className="text-small font-medium text-fg">Step name on canvas</label>
           <input
             type="text"
             value={label}
             onChange={(e) => handleLabelChange(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-xs font-bold text-stone-900 focus:outline-none focus:border-stone-800"
+            className={fieldCls}
           />
         </div>
 
         {/* ElevenLabs 7 Actions Selector (Exact replica of screenshot) */}
         {isElevenLabs && (
-          <div className="space-y-3 border-y border-stone-200 py-3">
+          <div className="space-y-3 border-y border-line py-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-800 uppercase tracking-wider">Actions (7)</span>
+              <span className="text-h3 text-fg">Actions <span className="text-caption tabular-nums text-fg-tertiary">7</span></span>
             </div>
 
             {/* Voice Actions */}
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Voice Actions</span>
+              <span className={groupLabelCls}>Voice actions</span>
               <div className="space-y-1 pl-1">
                 {[
                   { id: 'getVoice', label: 'Get a voice' },
@@ -178,8 +181,8 @@ export default function NodeConfigDrawer({
                   return (
                     <label
                       key={act.id}
-                      className={`flex items-center gap-2 p-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                        isChecked ? 'bg-stone-100 font-bold text-stone-900' : 'text-stone-600 hover:bg-stone-50'
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-body cursor-pointer transition-colors ${
+                        isChecked ? 'bg-selected font-medium text-fg' : 'text-fg-secondary hover:bg-subtle'
                       }`}
                     >
                       <input
@@ -190,7 +193,7 @@ export default function NodeConfigDrawer({
                           handleFieldChange('actionCategory', 'voice');
                           handleFieldChange('operation', act.id);
                         }}
-                        className="text-stone-900 focus:ring-stone-900"
+                        className="focus-ring h-4 w-4 accent-ink-900"
                       />
                       <span>{act.label}</span>
                     </label>
@@ -201,7 +204,7 @@ export default function NodeConfigDrawer({
 
             {/* Speech Actions */}
             <div className="space-y-1.5 pt-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Speech Actions</span>
+              <span className={groupLabelCls}>Speech actions</span>
               <div className="space-y-1 pl-1">
                 {[
                   { id: 'textToSpeech', label: 'Convert text to speech' },
@@ -212,8 +215,8 @@ export default function NodeConfigDrawer({
                   return (
                     <label
                       key={act.id}
-                      className={`flex items-center gap-2 p-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                        isChecked ? 'bg-stone-100 font-bold text-stone-900' : 'text-stone-600 hover:bg-stone-50'
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-body cursor-pointer transition-colors ${
+                        isChecked ? 'bg-selected font-medium text-fg' : 'text-fg-secondary hover:bg-subtle'
                       }`}
                     >
                       <input
@@ -224,7 +227,7 @@ export default function NodeConfigDrawer({
                           handleFieldChange('actionCategory', 'speech');
                           handleFieldChange('operation', act.id);
                         }}
-                        className="text-stone-900 focus:ring-stone-900"
+                        className="focus-ring h-4 w-4 accent-ink-900"
                       />
                       <span>{act.label}</span>
                     </label>
@@ -237,7 +240,7 @@ export default function NodeConfigDrawer({
 
         {/* Dynamic Parameter Fields */}
         <div className="space-y-4">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-stone-400">Parameters</h4>
+          <h3 className="text-h3 text-fg">Parameters</h3>
           {nodeDef?.properties.map((prop) => {
             // Check displayOptions
             if (prop.displayOptions?.show) {
@@ -258,15 +261,15 @@ export default function NodeConfigDrawer({
             return (
               <div key={prop.name} className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-stone-800">{prop.displayName}</label>
-                  {prop.required && <span className="text-[10px] font-bold text-rose-500">*Required</span>}
+                  <label className="text-small font-medium text-fg">{prop.displayName}</label>
+                  {prop.required && <span className="text-caption text-fg-tertiary">Required</span>}
                 </div>
 
                 {prop.type === 'options' && (
                   <select
                     value={currentValue}
                     onChange={(e) => handleFieldChange(prop.name, e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-stone-200 text-xs focus:ring-2 focus:ring-stone-900 focus:outline-none"
+                    className={`${fieldCls} pr-8`}
                   >
                     {prop.options?.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -281,7 +284,7 @@ export default function NodeConfigDrawer({
                     type="text"
                     value={currentValue}
                     onChange={(e) => handleFieldChange(prop.name, e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-stone-200 text-xs font-mono focus:ring-2 focus:ring-stone-900 focus:outline-none"
+                    className={`${fieldCls} font-mono text-small`}
                   />
                 )}
 
@@ -291,7 +294,7 @@ export default function NodeConfigDrawer({
                     step="0.05"
                     value={currentValue}
                     onChange={(e) => handleFieldChange(prop.name, Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-stone-200 text-xs focus:ring-2 focus:ring-stone-900 focus:outline-none"
+                    className={`${fieldCls} tabular-nums`}
                   />
                 )}
 
@@ -301,9 +304,9 @@ export default function NodeConfigDrawer({
                       type="checkbox"
                       checked={Boolean(currentValue)}
                       onChange={(e) => handleFieldChange(prop.name, e.target.checked)}
-                      className="rounded text-stone-900 focus:ring-stone-900"
+                      className="focus-ring h-4 w-4 rounded-sm accent-ink-900"
                     />
-                    <span className="text-xs text-stone-600">Enabled</span>
+                    <span className="text-body text-fg-secondary">Enabled</span>
                   </label>
                 )}
 
@@ -312,12 +315,12 @@ export default function NodeConfigDrawer({
                     rows={prop.type === 'code' ? 6 : 4}
                     value={typeof currentValue === 'object' ? JSON.stringify(currentValue, null, 2) : currentValue}
                     onChange={(e) => handleFieldChange(prop.name, e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-stone-950 text-stone-200 font-mono text-[11px] border border-stone-800 focus:ring-2 focus:ring-stone-700 focus:outline-none"
+                    className="focus-ring w-full px-3 py-2 rounded-sm bg-subtle text-fg font-mono text-small border border-line-strong"
                   />
                 )}
 
                 {prop.description && (
-                  <p className="text-[10px] text-stone-500 leading-relaxed">{prop.description}</p>
+                  <p className="text-small text-fg-tertiary">{prop.description}</p>
                 )}
               </div>
             );
@@ -325,43 +328,39 @@ export default function NodeConfigDrawer({
         </div>
 
         {/* Test Step Inspector */}
-        <div className="pt-2 border-t border-stone-200 space-y-3">
+        <div className="pt-4 border-t border-line space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-stone-400">Test Step</h4>
-            <button
-              onClick={handleRunTestStep}
-              disabled={isTesting}
-              className="px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
+            <h3 className="text-h3 text-fg">Test step</h3>
+            <Button size="sm" variant="primary" onClick={handleRunTestStep} disabled={isTesting}>
               {isTesting ? (
                 <>
-                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  <RefreshCw className="h-4 w-4 animate-spin" />
                   <span>Testing...</span>
                 </>
               ) : (
                 <>
-                  <Play className="h-3 w-3" />
-                  <span>Execute Step</span>
+                  <Play className="h-4 w-4" />
+                  <span>Test step</span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
 
           {testOutput && (
-            <div className="p-3 rounded-2xl bg-stone-950 text-stone-100 font-mono text-[10px] space-y-1.5 max-h-56 overflow-y-auto">
-              <div className="flex items-center justify-between text-stone-400 border-b border-stone-800 pb-1">
-                <span>Output Payloads</span>
+            <div className="p-3 rounded-lg bg-subtle border border-line text-caption space-y-1.5 max-h-56 overflow-y-auto">
+              <div className="flex items-center justify-between text-fg-tertiary border-b border-line pb-1.5">
+                <span>Output</span>
                 {testOutput.success ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Passed
+                  <span className="text-success-fg flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Passed
                   </span>
                 ) : (
-                  <span className="text-rose-400 font-bold flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> Error
+                  <span className="text-danger-fg flex items-center gap-1">
+                    <AlertCircle className="h-3.5 w-3.5" /> Error
                   </span>
                 )}
               </div>
-              <pre className="text-stone-300 whitespace-pre-wrap">
+              <pre className="text-fg font-mono whitespace-pre-wrap">
                 {JSON.stringify(testOutput.items || testOutput.error, null, 2)}
               </pre>
             </div>
@@ -370,14 +369,11 @@ export default function NodeConfigDrawer({
       </div>
 
       {/* Footer */}
-      <div className="p-3.5 border-t border-stone-200 bg-stone-50 flex items-center justify-between text-xs text-stone-500">
-        <span className="font-mono text-[11px]">{nodeDef?.name}</span>
-        <button
-          onClick={onClose}
-          className="px-3.5 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold transition-colors cursor-pointer"
-        >
+      <div className="px-5 py-3 border-t border-line flex items-center justify-between text-fg-tertiary">
+        <span className="font-mono text-caption">{nodeDef?.name}</span>
+        <Button size="sm" variant="secondary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
     </div>
   );

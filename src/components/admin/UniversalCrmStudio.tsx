@@ -1,21 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
-  Layers, 
-  Plus, 
-  Trash2, 
-  ExternalLink, 
-  Zap, 
-  ArrowRight,
-  Sliders,
-  Check,
-  RotateCcw
-} from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, RefreshCw, Check, ShieldCheck, Unplug } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, PageHeader, Tabs, Tooltip } from '@/components/ui';
 
 interface FieldMapping {
   id: string;
@@ -41,6 +28,7 @@ export default function UniversalCrmStudio() {
   const [retryingDlq, setRetryingDlq] = useState(false);
   const [dlqSuccess, setDlqSuccess] = useState(false);
   const [savedMappings, setSavedMappings] = useState(false);
+  const [pendingDisconnect, setPendingDisconnect] = useState<CrmConnector | null>(null);
 
   const [connectors, setConnectors] = useState<CrmConnector[]>([
     {
@@ -160,169 +148,143 @@ export default function UniversalCrmStudio() {
 
   return (
     <div className="space-y-6">
-      
-      {/* Studio Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ED1C24]/10 border border-[#ED1C24]/20 text-[#ED1C24] text-[10px] font-bold tracking-wide uppercase mb-1.5">
-            <Zap className="h-3 w-3" />
-            <span>Canonical Data Normalization Layer</span>
-          </div>
-          <h2 className="text-xl font-black text-[#222021] tracking-tight">
-            Universal CRM Integration & Field Mapping Studio
-          </h2>
-          <p className="text-xs text-[#6b6968]">
-            Bi-directionally synchronize reps, call telemetry, AI sparring scores, and buyer objections across any external CRM.
-          </p>
-        </div>
 
-        {/* Sub-Tabs */}
-        <div className="flex items-center gap-1.5 bg-[#F2F0EF] p-1 rounded-xl">
-          {[
-            { id: 'mapper', label: 'Field Schema Mapper' },
-            { id: 'connectors', label: 'CRM Gateways' },
-            { id: 'stream', label: 'Sync Stream & DLQ' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === tab.id
-                  ? 'bg-white text-[#222021] shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="CRM & field mapping"
+        description="Sync reps, call activity, practice scores and objections with your CRM."
+        tabs={
+          <Tabs
+            label="CRM sections"
+            value={activeTab}
+            onChange={(v) => setActiveTab(v as any)}
+            items={[
+              { value: 'mapper', label: 'Field mapping' },
+              { value: 'connectors', label: 'Connections' },
+              { value: 'stream', label: 'Sync log' },
+            ]}
+          />
+        }
+      />
 
       {/* TAB 1: FIELD SCHEMA MAPPER */}
       {activeTab === 'mapper' && (
-        <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-black text-[#222021]">LMS Canonical Schema ➔ CRM Field Mapper</h3>
-              <p className="text-xs text-[#6b6968] mt-0.5">
-                Controls exact payload transformation whenever an AI sparring session concludes or a Boris certificate is generated.
-              </p>
-            </div>
+        <Card>
+          <CardHeader
+            className="pb-4"
+            title="Field mapping"
+            description="Controls what is sent to the CRM when a practice session ends or a Boris certificate is issued."
+            actions={
+              <Button
+                variant="brand"
+                onClick={handleSaveMappings}
+                icon={savedMappings ? <Check /> : undefined}
+              >
+                {savedMappings ? 'Saved' : 'Save mappings'}
+              </Button>
+            }
+          />
 
-            <button
-              onClick={handleSaveMappings}
-              className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              {savedMappings ? <Check className="h-4 w-4" /> : null}
-              <span>{savedMappings ? 'Mappings Saved!' : 'Save Field Mappings'}</span>
-            </button>
-          </div>
-
-          <div className="border border-[#222021]/10 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#F2F0EF] border-b border-[#222021]/10 text-[11px] font-mono font-bold text-[#6b6968] uppercase">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-small">
+              <thead className="bg-subtle text-caption text-fg-tertiary">
                 <tr>
-                  <th className="py-3 px-4">LMS Entity / Metric</th>
-                  <th className="py-3 px-4">Direction</th>
-                  <th className="py-3 px-4">External CRM Field Name</th>
-                  <th className="py-3 px-4">Automation Trigger</th>
-                  <th className="py-3 px-4 text-right">Status</th>
+                  <th className="px-4 py-2.5 font-medium">App field</th>
+                  <th className="px-4 py-2.5 font-medium">Direction</th>
+                  <th className="px-4 py-2.5 font-medium">CRM field</th>
+                  <th className="px-4 py-2.5 font-medium">Trigger</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#222021]/10">
+              <tbody>
                 {mappings.map((m) => (
-                  <tr key={m.id} className="hover:bg-[#FAF9F5] transition-colors">
-                    <td className="py-3 px-4 font-bold text-[#222021]">
+                  <tr key={m.id} className="border-t border-line transition-colors hover:bg-subtle">
+                    <td className="px-4 py-3 text-body-strong text-fg">
                       {m.lmsField}
                     </td>
-                    <td className="py-3 px-4 font-mono text-[11px]">
-                      <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
-                        {m.direction}
-                      </span>
+                    <td className="px-4 py-3 text-fg-secondary">
+                      {m.direction}
                     </td>
-                    <td className="py-3 px-4 font-mono text-[11px] text-[#ED1C24] font-semibold">
+                    <td className="px-4 py-3 font-mono text-fg">
                       {m.crmField}
                     </td>
-                    <td className="py-3 px-4 text-[#6b6968]">
+                    <td className="px-4 py-3 text-fg-secondary">
                       {m.syncTrigger}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <td className="px-4 py-3 text-right">
+                      <Badge tone="success">
                         <CheckCircle2 className="h-3 w-3" />
-                        <span>ACTIVE SYNC</span>
-                      </span>
+                        <span>Syncing</span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* TAB 2: CRM GATEWAYS */}
       {activeTab === 'connectors' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {connectors.map((c) => (
-            <div 
-              key={c.id}
-              className={`bg-white border rounded-2xl p-5 shadow-2xs space-y-4 transition-all ${
-                c.isConnected ? 'border-emerald-300' : 'border-[#222021]/10'
-              }`}
-            >
-              <div className="flex items-start justify-between">
+            <Card key={c.id} className="space-y-4 p-5">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-xl bg-[#F2F0EF] flex items-center justify-center text-xl shadow-2xs shrink-0">
-                    {c.logo}
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-subtle">
+                    <Building2 className="h-4 w-4 text-fg-secondary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm text-[#222021]">{c.name}</h3>
-                    <p className="text-[11px] text-[#6b6968]">{c.category}</p>
+                    <h3 className="text-h3 text-fg">{c.name}</h3>
+                    <p className="text-small text-fg-secondary">{c.category}</p>
                   </div>
                 </div>
 
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
-                  c.isConnected
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : 'bg-stone-100 text-stone-600 border-stone-200'
-                }`}>
-                  {c.isConnected ? 'CONNECTED' : 'DISCONNECTED'}
-                </span>
+                {c.isConnected ? (
+                  <Badge tone="success">Connected</Badge>
+                ) : (
+                  <Badge tone="neutral">Not connected</Badge>
+                )}
               </div>
 
               {c.isConnected && (
-                <div className="p-3 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 text-xs font-mono space-y-1">
-                  <div className="flex justify-between text-[#6b6968]">
-                    <span>Location / Portal ID:</span>
-                    <span className="font-bold text-[#222021]">{c.locationId}</span>
+                <dl className="space-y-1.5 rounded-md bg-subtle p-3 text-small">
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-fg-secondary">Location / portal ID</dt>
+                    <dd className="flex items-center gap-1">
+                      <span className="font-mono text-fg">{c.locationId}</span>
+                    </dd>
                   </div>
-                  <div className="flex justify-between text-[#6b6968]">
-                    <span>Sync Frequency:</span>
-                    <span>{c.syncFrequency}</span>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-fg-secondary">Sync frequency</dt>
+                    <dd className="text-fg">{c.syncFrequency}</dd>
                   </div>
-                  <div className="flex justify-between text-[#6b6968]">
-                    <span>Records Synchronized:</span>
-                    <span className="font-bold text-emerald-700">{c.recordsSynced} records</span>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-fg-secondary">Records synced</dt>
+                    <dd className="tabular-nums text-fg">{c.recordsSynced} records</dd>
                   </div>
-                </div>
+                </dl>
               )}
 
-              <div className="pt-2 border-t border-[#222021]/10 flex items-center justify-between">
-                <span className="text-[11px] text-[#6b6968] font-mono">
-                  HMAC Signature Verified
+              <div className="flex items-center justify-between border-t border-line pt-3">
+                <span className="inline-flex items-center gap-1.5 text-small text-fg-tertiary">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <Tooltip content="Each webhook is signed with a shared secret so forged requests are rejected.">
+                    <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">HMAC</span>
+                  </Tooltip>
+                  signature verified
                 </span>
-                <button
-                  onClick={() => toggleConnector(c.id)}
-                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
-                    c.isConnected
-                      ? 'bg-stone-100 hover:bg-red-50 text-stone-700 hover:text-red-700 border border-stone-300'
-                      : 'bg-[#222021] hover:bg-stone-800 text-white'
-                  }`}
-                >
-                  {c.isConnected ? 'Disconnect' : 'Connect Gateway'}
-                </button>
+                {c.isConnected ? (
+                  <Button size="sm" variant="danger" onClick={() => setPendingDisconnect(c)} icon={<Unplug />}>
+                    Disconnect
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="primary" onClick={() => toggleConnector(c.id)}>
+                    Connect
+                  </Button>
+                )}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -330,62 +292,69 @@ export default function UniversalCrmStudio() {
       {/* TAB 3: SYNC STREAM & DEAD LETTER QUEUE (DLQ) */}
       {activeTab === 'stream' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-black text-[#222021]">Real-Time CRM Synchronization Stream</h3>
-              <p className="text-xs text-[#6b6968]">Audit log of outgoing webhook dispatches and BullMQ worker deliveries.</p>
+              <h3 className="text-h2 text-fg">Sync log</h3>
+              <p className="text-small text-fg-secondary">Outgoing webhook deliveries and queue worker results.</p>
             </div>
 
-            <button
+            <Button
+              variant="primary"
               onClick={handleRetryDlq}
               disabled={retryingDlq}
-              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              icon={<RefreshCw className={retryingDlq ? 'animate-spin' : ''} />}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${retryingDlq ? 'animate-spin' : ''}`} />
-              <span>{retryingDlq ? 'Retrying DLQ Events...' : 'Retry Failed DLQ Queue'}</span>
-            </button>
+              {retryingDlq ? 'Retrying...' : 'Retry failed events'}
+            </Button>
           </div>
 
           {dlqSuccess && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono font-bold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Dead Letter Queue (DLQ) successfully cleared! All 1 event dispatched with 200 OK response.</span>
+            <div className="flex items-center gap-2 rounded-lg border border-success-fg/20 bg-success-bg p-3 text-small text-success-fg">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>Retry queue cleared. 1 event delivered with 200 OK.</span>
             </div>
           )}
 
-          <div className="bg-white border border-[#222021]/10 rounded-2xl overflow-hidden shadow-2xs divide-y divide-[#222021]/10 text-xs">
+          <Card className="divide-y divide-line overflow-hidden text-small">
             {syncLogs.map((log) => (
-              <div key={log.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF9F5] transition-colors">
+              <div key={log.id} className="flex flex-col justify-between gap-3 p-4 transition-colors hover:bg-subtle sm:flex-row sm:items-center">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-[10px] px-2 py-0.5 rounded bg-zinc-100 text-zinc-700">
-                      {log.crm}
-                    </span>
-                    <span className="font-bold text-[#222021]">{log.event}</span>
-                    <span className="text-[#6b6968]">&bull; Rep: {log.rep}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-body-strong text-fg">{log.crm}</span>
+                    <span className="font-mono text-fg">{log.event}</span>
+                    <span className="text-fg-secondary">&bull; Rep: {log.rep}</span>
                   </div>
                   {log.error && (
-                    <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 font-mono mt-1">
-                      ⚠️ {log.error}
+                    <p className="mt-1 flex items-start gap-1.5 rounded-md bg-warning-bg p-2 text-small text-warning-fg">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{log.error}</span>
                     </p>
                   )}
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                    log.status.includes('200')
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border-amber-200 animate-pulse'
-                  }`}>
-                    {log.status}
-                  </span>
-                  <span className="text-[11px] font-mono text-[#6b6968]">{log.time}</span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <Badge tone={log.status.includes('200') ? 'success' : 'warning'}>
+                    <span className="font-mono">{log.status}</span>
+                  </Badge>
+                  <span className="text-small text-fg-tertiary">{log.time}</span>
                 </div>
               </div>
             ))}
-          </div>
+          </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDisconnect !== null}
+        onClose={() => setPendingDisconnect(null)}
+        onConfirm={() => {
+          if (pendingDisconnect) toggleConnector(pendingDisconnect.id);
+        }}
+        title={`Disconnect ${pendingDisconnect?.name ?? 'connector'}?`}
+        description="Records stop syncing to this CRM until you connect it again."
+        confirmLabel="Disconnect"
+        icon={<Unplug />}
+      />
 
     </div>
   );

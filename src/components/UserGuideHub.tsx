@@ -21,8 +21,12 @@ import {
   FileText,
   Search,
   Eye,
-  Key
+  Key,
+  ArrowLeft,
+  Lightbulb,
+  Keyboard
 } from 'lucide-react';
+import { Button, PageHeader, buttonClasses } from '@/components/ui';
 
 export default function UserGuideHub() {
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -132,45 +136,32 @@ export default function UserGuideHub() {
   const currentGuide = guideSteps.find(g => g.step === activeStep) || guideSteps[0];
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full bg-zinc-50/70 text-zinc-900 font-sans overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 w-full bg-app text-fg font-sans overflow-hidden">
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Scrollable Guide View */}
-        <main className="flex-1 overflow-y-auto px-6 lg:px-12 py-8 space-y-6 max-w-7xl mx-auto w-full">
-          
-          {/* Header Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-5">
-            <div>
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 block mb-1">
-                PLATFORM DOCUMENTATION
-              </span>
-              <h1 className="text-2xl font-bold text-zinc-950 tracking-tight">
-                User Guide & Platform Manual
-              </h1>
-              <p className="text-xs text-zinc-500 mt-1 max-w-2xl leading-relaxed">
-                Step-by-step operating workflows. Master front-line calling, AI sparring, supervisor live monitoring, and admin tenant controls.
-              </p>
-            </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 max-w-7xl mx-auto w-full">
 
-            <div className="flex items-center gap-2 shrink-0">
-              <Link
-                href="/dialer"
-                className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <Swords className="h-3.5 w-3.5" />
-                <span>Open Cockpit</span>
-              </Link>
-              <Link
-                href="/live-floor"
-                className="px-3.5 py-2 rounded-lg bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-800 font-medium text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <Radio className="h-3.5 w-3.5 text-zinc-600" />
-                <span>Live Monitoring</span>
-              </Link>
-            </div>
-          </div>
+          {/* Page header */}
+          <PageHeader
+            className="pb-0"
+            title="Help center"
+            description="Step-by-step guides for calling, AI practice, live monitoring and admin controls."
+            secondaryActions={
+              <>
+                <Link href="/live-floor" className={buttonClasses('secondary', 'md')}>
+                  <Radio aria-hidden />
+                  <span>Live monitoring</span>
+                </Link>
+                <Link href="/dialer" className={buttonClasses('primary', 'md')}>
+                  <Swords aria-hidden />
+                  <span>Open dialer</span>
+                </Link>
+              </>
+            }
+          />
 
           {/* Sequential Step Selector Tabs */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -180,180 +171,169 @@ export default function UserGuideHub() {
                 <button
                   key={step.step}
                   onClick={() => setActiveStep(step.step)}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  aria-current={isCurrent ? 'step' : undefined}
+                  className={`focus-ring p-3 rounded-lg border text-left transition-colors duration-150 cursor-pointer flex flex-col gap-2 shadow-xs ${
                     isCurrent
-                      ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
-                      : 'bg-white border-zinc-200 hover:border-zinc-300 text-zinc-900 shadow-2xs'
+                      ? 'bg-selected border-brand-600'
+                      : 'bg-surface border-line hover:bg-subtle'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                      isCurrent ? 'bg-zinc-800 text-zinc-200' : 'bg-zinc-100 text-zinc-500'
-                    }`}>
-                      0{step.step}
-                    </span>
-                    <span className="text-[10px] font-mono uppercase truncate ml-1 text-zinc-400">
-                      {step.tag}
-                    </span>
-                  </div>
-                  <h4 className={`text-xs font-semibold leading-snug line-clamp-2 ${
-                    isCurrent ? 'text-white' : 'text-zinc-900'
-                  }`}>
+                  <span className={`text-caption tabular-nums ${isCurrent ? 'text-brand-text' : 'text-fg-tertiary'}`}>
+                    Step {step.step}
+                  </span>
+                  <span className="text-body-strong text-fg leading-snug line-clamp-2">
                     {step.title}
-                  </h4>
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* ACTIVE STEP CARD: DEEP DIVE & SCREENSHOT */}
-          <div className="bg-white border border-[#222021]/10 rounded-3xl p-6 sm:p-8 shadow-2xs space-y-6">
-            
+          {/* Active step card */}
+          <div className="bg-surface border border-line rounded-lg p-6 shadow-xs space-y-6">
+
             {/* Step Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222021]/10 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-[#ED1C24] text-white">
-                    STEP 0{currentGuide.step} OF 06
-                  </span>
-                  <span className="text-xs font-mono text-[#6b6968] uppercase font-bold">
-                    ROUTE: {currentGuide.route}
-                  </span>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-line pb-5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-caption text-fg-tertiary">
+                  <span className="tabular-nums">Step {currentGuide.step} of 6</span>
+                  <span aria-hidden>·</span>
+                  <span className="font-mono">{currentGuide.route}</span>
                 </div>
-                <h2 className="text-2xl font-black text-[#222021] tracking-tight mt-1.5">
+                <h2 className="text-h2 text-fg mt-1">
                   {currentGuide.title}
                 </h2>
-                <p className="text-xs text-[#6b6968] mt-1 leading-relaxed max-w-3xl">
+                <p className="text-body text-fg-secondary mt-1 max-w-3xl">
                   {currentGuide.summary}
                 </p>
               </div>
 
               <Link
                 href={currentGuide.route}
-                className="px-5 py-2.5 rounded-xl bg-[#222021] hover:bg-stone-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer self-start sm:self-auto"
+                className={buttonClasses('primary', 'md', 'self-start')}
               >
-                <span>Launch This Feature</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Open this feature</span>
+                <ArrowRight aria-hidden />
               </Link>
             </div>
 
             {/* Main Content Grid: Left Highlights, Right Screenshot */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              
+
               {/* Left Column: Key Action Checklist & Pro-Tip (5 cols) */}
               <div className="lg:col-span-5 space-y-5">
                 <div className="space-y-3">
-                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#ED1C24] block">
-                    HOW TO NAVIGATE THIS STEP:
-                  </span>
-                  <div className="space-y-2.5">
+                  <h3 className="text-h3 text-fg">How to use this step</h3>
+                  <ul className="divide-y divide-line rounded-lg border border-line">
                     {currentGuide.highlights.map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-2.5 text-xs text-[#222021] leading-relaxed p-2.5 rounded-xl bg-[#F2F0EF]/80 border border-[#222021]/5">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <li key={idx} className="flex items-start gap-2.5 px-3 py-2.5 text-body text-fg">
+                        <CheckCircle2 className="size-4 text-success-fg shrink-0 mt-0.5" aria-hidden />
                         <span>{item}</span>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
 
                 {/* Pro Tip Callout Box */}
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-1">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
-                    <span>💡</span>
-                    <span>PRO TIP FOR BDRS & MANAGERS</span>
-                  </span>
-                  <p className="text-xs text-amber-950 font-medium leading-relaxed">
-                    {currentGuide.proTip}
-                  </p>
+                <div className="flex items-start gap-3 rounded-lg border border-line bg-subtle p-4">
+                  <Lightbulb className="size-4 text-fg-secondary shrink-0 mt-0.5" aria-hidden />
+                  <div className="space-y-1">
+                    <p className="text-body-strong text-fg">Tip for reps and managers</p>
+                    <p className="text-body text-fg-secondary">
+                      {currentGuide.proTip}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Navigation Next/Prev Buttons */}
-                <div className="pt-2 flex items-center gap-3">
+                <div className="pt-1 flex items-center gap-2">
                   {currentGuide.step > 1 && (
-                    <button
+                    <Button
+                      variant="secondary"
                       onClick={() => setActiveStep(currentGuide.step - 1)}
-                      className="px-4 py-2 rounded-xl bg-[#F2F0EF] hover:bg-[#e7e4e2] text-[#222021] text-xs font-bold transition-colors cursor-pointer"
+                      icon={<ArrowLeft aria-hidden />}
                     >
-                      &larr; Prev Step
-                    </button>
+                      Previous step
+                    </Button>
                   )}
                   {currentGuide.step < 6 && (
-                    <button
+                    <Button
+                      variant="brand"
                       onClick={() => setActiveStep(currentGuide.step + 1)}
-                      className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold transition-colors cursor-pointer"
                     >
-                      Next Step &rarr;
-                    </button>
+                      Next step
+                      <ArrowRight aria-hidden />
+                    </Button>
                   )}
                 </div>
               </div>
 
               {/* Right Column: Actual Application Screenshot (7 cols) */}
-              <div className="lg:col-span-7 space-y-2">
-                <div className="rounded-2xl border border-[#222021]/15 overflow-hidden shadow-lg bg-stone-950">
+              <figure className="lg:col-span-7 space-y-2">
+                <div className="rounded-lg border border-line overflow-hidden bg-subtle">
                   {/* Browser Mockup Header */}
-                  <div className="px-4 py-2.5 bg-stone-900 border-b border-stone-800 flex items-center justify-between text-xs text-stone-400 font-mono">
+                  <div className="px-3 py-2 bg-surface border-b border-line flex items-center justify-between gap-3 text-caption text-fg-tertiary">
                     <div className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/80" />
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-                      <span className="ml-2 text-stone-300">Appointmentlyy SDR Live Interface</span>
+                      <span className="size-2.5 rounded-full bg-line-strong" />
+                      <span className="size-2.5 rounded-full bg-line-strong" />
+                      <span className="size-2.5 rounded-full bg-line-strong" />
+                      <span className="ml-2">Appointmentlyy SDR</span>
                     </div>
-                    <span>http://localhost:3000{currentGuide.route}</span>
+                    <span className="font-mono truncate">http://localhost:3000{currentGuide.route}</span>
                   </div>
 
                   {/* Screenshot Image */}
                   <div className="relative group">
-                    <img 
-                      src={currentGuide.image} 
+                    <img
+                      src={currentGuide.image}
                       alt={currentGuide.title}
-                      className="w-full h-auto object-cover max-h-[460px] border-b border-stone-800"
+                      className="w-full h-auto object-cover max-h-[460px]"
                     />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                      <span className="bg-white text-stone-950 px-3 py-1.5 rounded-xl font-bold text-xs shadow-lg">
-                        Verified Production Interface
+                    <div className="absolute inset-0 bg-ink-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                      <span className="bg-surface text-fg px-3 py-1.5 rounded-md text-small font-medium shadow-md">
+                        Verified production interface
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-[11px] font-mono text-[#6b6968] text-center">
-                  Figure 0{currentGuide.step}: {currentGuide.caption}
-                </p>
-              </div>
+                <figcaption className="text-small text-fg-tertiary text-center">
+                  Figure {currentGuide.step}: {currentGuide.caption}
+                </figcaption>
+              </figure>
 
             </div>
           </div>
 
           {/* Quick FAQ / Reference Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-white border border-[#222021]/10 shadow-2xs space-y-2">
-              <span className="text-[10px] font-mono font-bold uppercase text-[#ED1C24] block">
-                KEYBOARD SHORTCUTS
-              </span>
-              <h4 className="text-xs font-bold text-[#222021]">Instant Rebuttals</h4>
-              <p className="text-xs text-[#6b6968] leading-relaxed">
-                Press <kbd className="px-1.5 py-0.5 bg-[#F2F0EF] border border-[#222021]/15 rounded font-mono text-[11px] text-[#222021]">R</kbd> anytime inside the calling cockpit to immediately toggle the 11-battlecard ARM rebuttal drawer without lifting your hands from the keyboard.
+            <div className="p-5 rounded-lg bg-surface border border-line shadow-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <Keyboard className="size-4 text-fg-secondary" aria-hidden />
+                <h4 className="text-h3 text-fg">Instant rebuttals</h4>
+              </div>
+              <p className="text-body text-fg-secondary">
+                Press <kbd className="px-1.5 py-0.5 bg-subtle border border-line rounded-sm font-mono text-caption text-fg">R</kbd> anytime inside the calling cockpit to immediately toggle the 11-battlecard ARM rebuttal drawer without lifting your hands from the keyboard.
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white border border-[#222021]/10 shadow-2xs space-y-2">
-              <span className="text-[10px] font-mono font-bold uppercase text-blue-600 block">
-                TELEPHONY PROTOCOL
-              </span>
-              <h4 className="text-xs font-bold text-[#222021]">Click-to-Call Handshake</h4>
-              <p className="text-xs text-[#6b6968] leading-relaxed">
-                Clicking the emerald phone button triggers the system <code className="font-mono text-stone-900 bg-[#F2F0EF] px-1 rounded">tel:</code> protocol, instantly bridging the lead's direct number to your configured dialer app.
+            <div className="p-5 rounded-lg bg-surface border border-line shadow-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <PhoneCall className="size-4 text-fg-secondary" aria-hidden />
+                <h4 className="text-h3 text-fg">Click to call</h4>
+              </div>
+              <p className="text-body text-fg-secondary">
+                Clicking the emerald phone button triggers the system <code className="font-mono text-fg bg-subtle px-1 rounded-sm">tel:</code> protocol, instantly bridging the lead&apos;s direct number to your configured dialer app.
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-white border border-[#222021]/10 shadow-2xs space-y-2">
-              <span className="text-[10px] font-mono font-bold uppercase text-emerald-600 block">
-                SUPERVISOR COACHING
-              </span>
-              <h4 className="text-xs font-bold text-[#222021]">Live Sparring Audio</h4>
-              <p className="text-xs text-[#6b6968] leading-relaxed">
-                Supervisors can open <strong className="text-[#222021]">Live Monitoring</strong> to listen in real time to reps practicing with AI buyer personas, viewing sentiment and audio waveforms live.
+            <div className="p-5 rounded-lg bg-surface border border-line shadow-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <Headphones className="size-4 text-fg-secondary" aria-hidden />
+                <h4 className="text-h3 text-fg">Live practice audio</h4>
+              </div>
+              <p className="text-body text-fg-secondary">
+                Supervisors can open <strong className="font-medium text-fg">Live Monitoring</strong> to listen in real time to reps practicing with AI buyer personas, viewing sentiment and audio waveforms live.
               </p>
             </div>
           </div>

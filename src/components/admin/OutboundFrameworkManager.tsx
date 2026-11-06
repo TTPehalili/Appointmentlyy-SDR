@@ -20,8 +20,24 @@ import {
   PhoneCall,
   HelpCircle,
   ShieldCheck,
-  Eye
+  Eye,
+  Lightbulb,
+  X
 } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  SegmentedControl,
+  Select,
+  Skeleton,
+  StatusDot,
+  Textarea,
+} from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { 
   DEFAULT_OUTBOUND_FRAMEWORKS, 
@@ -135,111 +151,86 @@ export default function OutboundFrameworkManager() {
 
   const filteredFrameworks = frameworks.filter(f => f.channel === activeTab);
 
+
   return (
     <div className="space-y-6">
-      {/* HEADER BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1 rounded-md bg-zinc-900 text-white">
-              <Sparkles className="h-4 w-4" />
-            </span>
-            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-500">
-              AI OUTBOUND FRAMEWORKS STUDIO
-            </span>
-          </div>
-          <h2 className="text-lg font-bold text-zinc-900 tracking-tight mt-1">
-            Cold Call, Cold Email & LinkedIn Frameworks
-          </h2>
-          <p className="text-xs text-zinc-500">
-            Configure guru cold calling openers, email frameworks, and anti-sales CTAs grounded in .csv prospect intelligence.
-          </p>
+      {/* Toolbar: channel switch + reset */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="overflow-x-auto scrollbar-none">
+          <SegmentedControl
+            label="Framework library"
+            value={activeTab}
+            onChange={(v) => setActiveTab(v as 'Phone' | 'Email' | 'LinkedIn' | 'CTAs' | 'Playground')}
+            items={[
+              {
+                value: 'Phone',
+                label: (
+                  <>
+                    <PhoneCall className="w-3.5 h-3.5" aria-hidden />
+                    <span className="whitespace-nowrap">Cold call openers</span>
+                    <span className="text-caption tabular-nums text-fg-tertiary">{frameworks.filter(f => f.channel === 'Phone').length}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'Email',
+                label: (
+                  <>
+                    <Mail className="w-3.5 h-3.5" aria-hidden />
+                    <span className="whitespace-nowrap">Cold email</span>
+                    <span className="text-caption tabular-nums text-fg-tertiary">{frameworks.filter(f => f.channel === 'Email').length}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'LinkedIn',
+                label: (
+                  <>
+                    <LinkedinIcon className="w-3.5 h-3.5" />
+                    <span className="whitespace-nowrap">LinkedIn</span>
+                    <span className="text-caption tabular-nums text-fg-tertiary">{frameworks.filter(f => f.channel === 'LinkedIn').length}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'CTAs',
+                label: (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden />
+                    <span className="whitespace-nowrap">Anti-sales CTAs</span>
+                    <span className="text-caption tabular-nums text-fg-tertiary">{antiSalesCtas.length}</span>
+                  </>
+                ),
+              },
+              {
+                value: 'Playground',
+                label: (
+                  <>
+                    <Play className="w-3.5 h-3.5" aria-hidden />
+                    <span className="whitespace-nowrap">Playground</span>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
 
         <div className="flex items-center gap-2">
           {isSavedToast && (
-            <span className="text-xs text-emerald-700 font-medium flex items-center gap-1 animate-in fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Saved successfully</span>
+            <span role="status" className="text-small text-success-fg flex items-center gap-1 animate-in fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
+              <span>Saved</span>
             </span>
           )}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleResetToDefaults}
-            className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Defaults</span>
-          </button>
+            Reset to defaults
+          </Button>
         </div>
-      </div>
-
-      {/* SEGMENTED TAB NAV */}
-      <div className="flex items-center gap-1 border-b border-zinc-200 pb-px overflow-x-auto scrollbar-none">
-        <button
-          type="button"
-          onClick={() => setActiveTab('Phone')}
-          className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'Phone'
-              ? 'border-zinc-900 text-zinc-900 font-bold bg-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <PhoneCall className="w-3.5 h-3.5" />
-          <span>Cold Call Guru Openers ({frameworks.filter(f => f.channel === 'Phone').length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('Email')}
-          className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'Email'
-              ? 'border-zinc-900 text-zinc-900 font-bold bg-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <Mail className="w-3.5 h-3.5" />
-          <span>Cold Email Frameworks ({frameworks.filter(f => f.channel === 'Email').length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('LinkedIn')}
-          className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'LinkedIn'
-              ? 'border-zinc-900 text-zinc-900 font-bold bg-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <LinkedinIcon className="w-3.5 h-3.5" />
-          <span>LinkedIn Frameworks ({frameworks.filter(f => f.channel === 'LinkedIn').length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('CTAs')}
-          className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'CTAs'
-              ? 'border-zinc-900 text-zinc-900 font-bold bg-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Anti-Sales CTA Library ({antiSalesCtas.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('Playground')}
-          className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
-            activeTab === 'Playground'
-              ? 'border-zinc-900 text-zinc-900 font-bold bg-white'
-              : 'border-transparent text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <Play className="w-3.5 h-3.5" />
-          <span>Live Gemini Playground</span>
-        </button>
       </div>
 
       {/* FRAMEWORKS LIST (Phone, Email, LinkedIn) */}
@@ -247,75 +238,74 @@ export default function OutboundFrameworkManager() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
             {filteredFrameworks.map((fw) => (
-              <div 
+              <div
                 key={fw.id}
-                className="bg-white border border-zinc-200 rounded-xl p-4 shadow-2xs space-y-3"
+                className="bg-surface border border-line rounded-lg p-5 shadow-xs space-y-3"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-zinc-900">{fw.name}</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
-                      {fw.authorOrStyle}
-                    </span>
-                    {fw.isDefault && (
-                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-zinc-900 text-white">
-                        Floor Default
-                      </span>
-                    )}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-h3 text-fg">{fw.name}</h3>
+                      {fw.isDefault && (
+                        <Badge tone="neutral">Floor default</Badge>
+                      )}
+                    </div>
+                    <p className="text-small text-fg-tertiary">{fw.authorOrStyle}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {!fw.isDefault && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleSetDefault(fw.id, fw.channel)}
-                        className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline cursor-pointer"
                       >
-                        Set as Default
-                      </button>
+                        Set as default
+                      </Button>
                     )}
                     <button
                       type="button"
                       onClick={() => handleToggleActive(fw.id)}
-                      className={`text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer border ${
-                        fw.isActive
-                          ? 'bg-zinc-100 text-zinc-800 border-zinc-300'
-                          : 'bg-zinc-50 text-zinc-400 border-zinc-200'
-                      }`}
+                      aria-pressed={fw.isActive}
+                      className="focus-ring inline-flex h-8 items-center rounded-md px-2 hover:bg-subtle transition-colors duration-150 cursor-pointer"
                     >
-                      {fw.isActive ? 'Active' : 'Disabled'}
+                      <StatusDot
+                        tone={fw.isActive ? 'success' : 'neutral'}
+                        label={fw.isActive ? 'Active' : 'Disabled'}
+                        className="text-small"
+                      />
                     </button>
-                    <button
-                      type="button"
+                    <IconButton
+                      label="Edit framework"
+                      size="sm"
                       onClick={() => setEditingFramework(fw)}
-                      className="p-1 text-zinc-400 hover:text-zinc-700 cursor-pointer"
                     >
                       <Edit3 className="w-4 h-4" />
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
 
-                <p className="text-xs text-zinc-600 leading-relaxed">
+                <p className="text-body text-fg-secondary">
                   {fw.description}
                 </p>
 
                 {/* ANTI-SALES PRINCIPLE */}
-                <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200/80 text-xs text-zinc-700 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono font-semibold uppercase text-zinc-500">
-                    <ShieldCheck className="w-3.5 h-3.5 text-zinc-700" />
-                    <span>Anti-Sales Constraint (Target: ~{fw.targetWordCount} words)</span>
+                <div className="p-3 rounded-md bg-app border border-line space-y-1">
+                  <div className="flex items-center gap-1.5 text-caption text-fg-tertiary">
+                    <ShieldCheck className="w-3.5 h-3.5 text-fg-secondary" aria-hidden />
+                    <span>Anti-sales constraint, about {fw.targetWordCount} words</span>
                   </div>
-                  <p className="text-[11px] text-zinc-600">
+                  <p className="text-small text-fg-secondary">
                     {fw.antiSalesPrinciple}
                   </p>
                 </div>
 
                 {/* EXAMPLE SNIPPET */}
                 <div className="space-y-1">
-                  <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase">
-                    Sample Output Preview:
+                  <span className="text-caption text-fg-tertiary">
+                    Sample output
                   </span>
-                  <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 font-mono text-xs text-zinc-800 whitespace-pre-wrap leading-relaxed">
+                  <div className="p-3 rounded-md bg-app border border-line text-small text-fg whitespace-pre-wrap">
                     {fw.exampleSnippet}
                   </div>
                 </div>
@@ -328,30 +318,25 @@ export default function OutboundFrameworkManager() {
       {/* ANTI-SALES CTA LIBRARY */}
       {activeTab === 'CTAs' && (
         <div className="space-y-4">
-          <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600">
-            <strong>Anti-Sales Psychology:</strong> Defensive prospects delete emails and hang up on cold calls when pushed into a corner. 
+          <div className="p-4 rounded-lg bg-subtle border border-line text-body text-fg-secondary">
+            <span className="text-body-strong text-fg">Why anti-sales CTAs work.</span> Defensive prospects delete emails and hang up on cold calls when pushed into a corner.
             Permission-based, no-oriented, and pattern-interrupt CTAs give prospects total freedom to decline, which disarms pressure and drastically increases conversation rates.
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {antiSalesCtas.map((cta) => (
-              <div 
+              <div
                 key={cta.id}
-                className="bg-white border border-zinc-200 rounded-xl p-3.5 shadow-2xs space-y-2 flex flex-col justify-between"
+                className="bg-surface border border-line rounded-lg p-4 shadow-xs space-y-2 flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between pb-1.5 border-b border-zinc-100">
-                    <span className="text-xs font-bold text-zinc-900">{cta.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
-                        {cta.channel}
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-white">
-                        {cta.psychologyAngle}
-                      </span>
-                    </div>
+                  <div className="flex items-start justify-between gap-2 pb-2 border-b border-line">
+                    <span className="text-body-strong text-fg">{cta.label}</span>
+                    <span className="text-small text-fg-tertiary text-right shrink-0">
+                      {cta.channel} &middot; {cta.psychologyAngle}
+                    </span>
                   </div>
-                  <p className="text-xs text-zinc-800 font-mono mt-2 italic">
+                  <p className="text-body text-fg mt-2">
                     "{cta.ctaText}"
                   </p>
                 </div>
@@ -365,174 +350,158 @@ export default function OutboundFrameworkManager() {
       {activeTab === 'Playground' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT: Test Controls (5 cols) */}
-          <div className="lg:col-span-5 bg-white border border-zinc-200 rounded-xl p-4 shadow-2xs space-y-4">
+          <div className="lg:col-span-5 bg-surface border border-line rounded-lg p-5 shadow-xs space-y-4">
             <div>
-              <h3 className="text-sm font-bold text-zinc-900">Live Gemini Synthesis Playground</h3>
-              <p className="text-xs text-zinc-500">Test cold calls, emails, and LinkedIn messages live against a .csv prospect.</p>
+              <h3 className="text-h3 text-fg">Playground</h3>
+              <p className="text-small text-fg-secondary">Test cold calls, emails and LinkedIn messages against a sample prospect.</p>
             </div>
 
             {/* CHANNEL TOGGLE */}
-            <div className="grid grid-cols-3 p-1 bg-zinc-100 rounded-lg text-xs font-medium border border-zinc-200/60">
-              {(['Phone', 'Email', 'LinkedIn'] as OutboundChannel[]).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => {
-                    setPlaygroundChannel(c);
-                    const matching = frameworks.filter(f => f.channel === c && f.isActive);
-                    if (matching.length > 0) setTestFrameworkId(matching[0].id);
-                  }}
-                  className={`py-1.5 rounded-md text-center transition-all cursor-pointer ${
-                    playgroundChannel === c ? 'bg-white text-zinc-900 font-bold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Channel"
+              className="w-full [&>button]:flex-1 [&>button]:justify-center"
+              value={playgroundChannel}
+              onChange={(v) => {
+                const c = v as OutboundChannel;
+                setPlaygroundChannel(c);
+                const matching = frameworks.filter(f => f.channel === c && f.isActive);
+                if (matching.length > 0) setTestFrameworkId(matching[0].id);
+              }}
+              items={(['Phone', 'Email', 'LinkedIn'] as OutboundChannel[]).map((c) => ({ value: c, label: c }))}
+            />
 
-            <div className="space-y-2.5">
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Select Framework
-                </label>
-                <select
+            <div className="space-y-4">
+              <Field label="Framework" htmlFor="pg-framework">
+                <Select
+                  id="pg-framework"
                   value={testFrameworkId}
                   onChange={(e) => setTestFrameworkId(e.target.value)}
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 font-medium"
                 >
                   {frameworks.filter(f => f.channel === playgroundChannel).map(f => (
                     <option key={f.id} value={f.id}>
                       {f.name} ({f.authorOrStyle})
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Select Anti-Sales Closing Angle
-                </label>
-                <select
+              <Field label="Closing angle" htmlFor="pg-cta">
+                <Select
+                  id="pg-cta"
                   value={testCtaId}
                   onChange={(e) => setTestCtaId(e.target.value)}
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 font-medium"
                 >
                   {antiSalesCtas.filter(c => c.channel === playgroundChannel || c.channel === 'Both' || c.channel === 'All').map(c => (
                     <option key={c.id} value={c.id}>
                       {c.label} ({c.psychologyAngle})
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Custom Test Guidance (Optional)
-                </label>
-                <input
+              <Field label="Extra guidance (optional)" htmlFor="pg-guidance">
+                <Input
+                  id="pg-guidance"
                   type="text"
                   value={testCustomPrompt}
                   onChange={(e) => setTestCustomPrompt(e.target.value)}
                   placeholder="e.g. 'Emphasize Titan BPO competitor leak' or 'Under 25 words'"
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900"
                 />
-              </div>
+              </Field>
 
-              <div className="pt-2 border-t border-zinc-100">
-                <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase block mb-1">
-                  Active .csv Prospect Intelligence:
+              <div className="pt-3 border-t border-line">
+                <span className="text-caption text-fg-tertiary block mb-1.5">
+                  Sample prospect
                 </span>
-                <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[11px] text-zinc-700 space-y-1">
-                  <div><strong>Lead:</strong> {testLead.name} ({testLead.title})</div>
-                  <div><strong>Company:</strong> {testLead.company} • {testLead.headcount}</div>
-                  <div><strong>Tech Stack:</strong> {testLead.techStack}</div>
-                  <div><strong>Competitor:</strong> {testLead.outsourcer}</div>
-                  <div><strong>Pain:</strong> {testLead.painPoint}</div>
-                </div>
+                <dl className="p-3 rounded-md bg-app border border-line text-small grid grid-cols-[88px_1fr] gap-x-3 gap-y-1">
+                  <dt className="text-fg-tertiary">Lead</dt>
+                  <dd className="text-fg">{testLead.name} ({testLead.title})</dd>
+                  <dt className="text-fg-tertiary">Company</dt>
+                  <dd className="text-fg">{testLead.company} &middot; {testLead.headcount}</dd>
+                  <dt className="text-fg-tertiary">Tech stack</dt>
+                  <dd className="text-fg">{testLead.techStack}</dd>
+                  <dt className="text-fg-tertiary">Competitor</dt>
+                  <dd className="text-fg">{testLead.outsourcer}</dd>
+                  <dt className="text-fg-tertiary">Pain</dt>
+                  <dd className="text-fg">{testLead.painPoint}</dd>
+                </dl>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="brand"
                 onClick={handleRunTest}
                 disabled={isTesting}
-                className="w-full py-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                className="w-full"
+                icon={isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               >
-                {isTesting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Querying Gemini 3.5 Flash...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Run Gemini Synthesis Test</span>
-                  </>
-                )}
-              </button>
+                {isTesting ? 'Generating...' : 'Run test'}
+              </Button>
             </div>
           </div>
 
           {/* RIGHT: Test Output (7 cols) */}
-          <div className="lg:col-span-7 bg-white border border-zinc-200 rounded-xl p-4 shadow-2xs space-y-3 min-h-[360px]">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
-              <span className="text-xs font-bold text-zinc-900">
-                Synthesis Output ({playgroundChannel})
+          <div className="lg:col-span-7 bg-surface border border-line rounded-lg p-5 shadow-xs space-y-3 min-h-[360px]">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-line">
+              <span className="text-h3 text-fg">
+                Output ({playgroundChannel})
               </span>
               {testResult && (
-                <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500">
+                <div className="flex items-center gap-2 text-small tabular-nums text-fg-tertiary">
                   <span>{testResult.wordCount} words</span>
-                  <span>•</span>
+                  <span aria-hidden>&middot;</span>
                   <span>~{testResult.readingTimeSec}s {playgroundChannel === 'Phone' ? 'speak' : 'read'}</span>
-                  <span>•</span>
-                  <span className="text-zinc-700 font-semibold">{testResult.modelUsed}</span>
+                  <span aria-hidden>&middot;</span>
+                  <span className="text-fg-secondary">{testResult.modelUsed}</span>
                 </div>
               )}
             </div>
 
             {isTesting && (
-              <div className="flex flex-col items-center justify-center py-16 text-zinc-500 gap-2">
-                <Loader2 className="w-6 h-6 animate-spin text-zinc-900" />
-                <span className="text-xs font-mono">Running prompt inference with Gemini...</span>
+              <div className="space-y-2 py-2" aria-busy="true">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-2/3" />
               </div>
             )}
 
             {!isTesting && !testResult && (
-              <div className="flex flex-col items-center justify-center py-16 text-zinc-400 gap-1 text-center">
-                <Play className="w-6 h-6 stroke-1" />
-                <span className="text-xs">Click "Run Gemini Synthesis Test" to preview the live outbound message.</span>
-              </div>
+              <EmptyState
+                icon={<Play />}
+                title="No output yet"
+                description="Choose a framework and select Run test to preview the message."
+              />
             )}
 
             {!isTesting && testResult && (
               <div className="space-y-3 animate-in fade-in">
                 {testResult.subject && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-mono text-[10px] font-semibold text-zinc-500 uppercase">Subject:</span>
-                    <span className="font-mono bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded border border-zinc-200">
+                  <div className="flex items-center gap-2 text-body">
+                    <span className="text-caption text-fg-tertiary">Subject</span>
+                    <span className="text-body-strong text-fg">
                       {testResult.subject}
                     </span>
                   </div>
                 )}
 
-                <div className="p-3.5 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-800 whitespace-pre-wrap leading-relaxed">
+                <div className="p-4 rounded-md bg-app border border-line text-body text-fg whitespace-pre-wrap">
                   {testResult.body}
                 </div>
 
                 {testResult.prospectInsight && (
-                  <div className="p-2.5 rounded-lg bg-zinc-100/70 border border-zinc-200/60 text-[11px] text-zinc-700 flex items-start gap-1.5">
-                    <span className="text-xs">💡</span>
-                    <span><strong>Why this angle converts from .csv:</strong> {testResult.prospectInsight}</span>
+                  <div className="p-3 rounded-md bg-subtle border border-line text-small text-fg-secondary flex items-start gap-2">
+                    <Lightbulb className="h-4 w-4 shrink-0 text-fg-secondary" aria-hidden />
+                    <span><span className="text-body-strong text-fg">Why this angle works:</span> {testResult.prospectInsight}</span>
                   </div>
                 )}
 
                 {testResult.alternativeHooks && testResult.alternativeHooks.length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase">
-                      Alternative Generated Hooks:
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-caption text-fg-tertiary">
+                      Alternative hooks
                     </span>
                     {testResult.alternativeHooks.map((h: string, idx: number) => (
-                      <div key={idx} className="p-1.5 rounded bg-zinc-50 border border-zinc-200 text-[11px] font-mono text-zinc-600">
+                      <div key={idx} className="px-3 py-2 rounded-sm bg-app border border-line text-small text-fg-secondary">
                         "{h}"
                       </div>
                     ))}
@@ -545,103 +514,93 @@ export default function OutboundFrameworkManager() {
       )}
 
       {/* EDIT MODAL */}
-      {editingFramework && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white border border-zinc-200 rounded-2xl shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
-              <h3 className="text-sm font-bold text-zinc-900">
-                Edit Framework: {editingFramework.name}
-              </h3>
-              <button
-                type="button"
+      <Dialog
+        open={editingFramework !== null}
+        onClose={() => setEditingFramework(null)}
+        title={editingFramework ? `Edit framework: ${editingFramework.name}` : 'Edit framework'}
+        size="lg"
+        bare
+      >
+        {editingFramework && (
+          <div>
+            <div className="flex items-start justify-between gap-4 px-6 pt-5">
+              <h2 id="edit-framework-title" className="text-h2 text-fg">
+                Edit framework: {editingFramework.name}
+              </h2>
+              <IconButton
+                label="Close"
+                size="sm"
                 onClick={() => setEditingFramework(null)}
-                className="text-zinc-400 hover:text-zinc-700 text-xs cursor-pointer"
               >
-                ✕
-              </button>
+                <X className="h-4 w-4" />
+              </IconButton>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Framework Name
-                </label>
-                <input
+            <div className="space-y-4 px-6 py-5">
+              <Field label="Name" htmlFor="fw-name">
+                <Input
+                  id="fw-name"
                   type="text"
                   value={editingFramework.name}
                   onChange={(e) => setEditingFramework({ ...editingFramework, name: e.target.value })}
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-900 font-semibold"
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Description
-                </label>
-                <input
+              <Field label="Description" htmlFor="fw-description">
+                <Input
+                  id="fw-description"
                   type="text"
                   value={editingFramework.description}
                   onChange={(e) => setEditingFramework({ ...editingFramework, description: e.target.value })}
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-900"
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Gemini Prompt Instructions
-                </label>
-                <textarea
+              <Field label="AI prompt instructions" htmlFor="fw-prompt">
+                <Textarea
+                  id="fw-prompt"
                   rows={6}
                   value={editingFramework.promptInstruction}
                   onChange={(e) => setEditingFramework({ ...editingFramework, promptInstruction: e.target.value })}
-                  className="w-full bg-white border border-zinc-200 rounded-lg p-2.5 text-xs font-mono text-zinc-800 leading-relaxed"
+                  className="font-mono text-small"
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Anti-Sales Principle / Constraint
-                </label>
-                <input
+              <Field label="Anti-sales constraint" htmlFor="fw-principle">
+                <Input
+                  id="fw-principle"
                   type="text"
                   value={editingFramework.antiSalesPrinciple}
                   onChange={(e) => setEditingFramework({ ...editingFramework, antiSalesPrinciple: e.target.value })}
-                  className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-900"
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="text-[10px] font-mono font-medium text-zinc-500 uppercase block mb-1">
-                  Example Snippet
-                </label>
-                <textarea
+              <Field label="Example snippet" htmlFor="fw-example">
+                <Textarea
+                  id="fw-example"
                   rows={3}
                   value={editingFramework.exampleSnippet}
                   onChange={(e) => setEditingFramework({ ...editingFramework, exampleSnippet: e.target.value })}
-                  className="w-full bg-white border border-zinc-200 rounded-lg p-2.5 text-xs font-mono text-zinc-800 leading-relaxed"
                 />
-              </div>
+              </Field>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-200">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-line">
+              <Button
+                variant="secondary"
                 onClick={() => setEditingFramework(null)}
-                className="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-medium cursor-pointer"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="brand"
                 onClick={() => handleSaveFramework(editingFramework)}
-                className="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium cursor-pointer"
               >
-                Save Changes
-              </button>
+                Save changes
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   );
 }

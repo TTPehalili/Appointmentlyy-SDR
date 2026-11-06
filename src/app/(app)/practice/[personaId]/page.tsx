@@ -8,24 +8,23 @@ import {
   Mic, 
   MicOff, 
   Volume2, 
-  VolumeX, 
-  CheckCircle, 
-  Clock, 
-  Sparkles, 
-  Send, 
-  ArrowLeft, 
-  Radio, 
-  CheckCircle2, 
-  Circle, 
-  Play, 
-  Pause, 
-  AlertCircle, 
-  Headphones, 
-  RotateCcw, 
-  PhoneCall, 
+  VolumeX,
+  Check,
+  Clock,
+  Sparkles,
+  Send,
+  ArrowLeft,
+  CheckCircle2,
+  Play,
+  AlertCircle,
+  Headphones,
+  PhoneCall,
   Copy,
-  Globe
+  CornerDownLeft,
+  Info,
+  Lightbulb
 } from 'lucide-react';
+import { Badge, Button, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
 import { SPARRING_PERSONAS, ScriptAssist, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
 import { RepAccentKey, getRepVoice, RepVoiceProfile } from '@/lib/repVoices';
 import { DialogueTurn } from '@/lib/qaEvaluator';
@@ -767,67 +766,69 @@ function SparringRoomContent() {
   const completedObjectivesCount = objectives.filter((o: any) => o.completed).length;
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#F2F0EF] font-sans antialiased text-[#222021]">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Subheader Breadcrumb */}
-        <div className="border-b border-[#222021]/10 bg-white px-8 py-2.5 flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Subheader breadcrumb and voice settings */}
+        <div className="border-b border-line bg-surface px-4 md:px-8 py-3 flex items-center justify-between gap-3 flex-wrap shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <Link
               href="/practice"
-              className="p-1.5 rounded-lg bg-[#F2F0EF] hover:bg-[#e7e4e2] text-[#222021] transition-colors"
+              aria-label="Back to Sparring Arena"
+              title="Back to Sparring Arena"
+              className={buttonClasses('ghost', 'md', 'size-9 px-0')}
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden />
             </Link>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-[#222021]">{persona.name}</span>
-              <span className="text-[#6b6968]">•</span>
-              <span className="text-[#6b6968] font-medium">{persona.title} ({persona.companyType})</span>
+            <div className="min-w-0">
+              <h1 className="text-h3 text-fg truncate">{persona.name}</h1>
+              <p className="text-small text-fg-secondary truncate">{persona.title}, {persona.companyType}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Rep Voice Accent Toggle (Arabic vs Filipino) */}
-            <div className="flex items-center bg-[#F2F0EF] border border-[#222021]/15 p-0.5 rounded-lg text-xs font-semibold">
-              <span className="px-2 text-[10px] font-mono text-[#6b6968] font-bold">REP VOICE:</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Rep voice accent toggle (Arabic vs Filipino) */}
+            <div role="group" aria-label="Your voice accent" className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5">
+              <span className="px-2 text-small text-fg-secondary">Your voice</span>
               <button
                 type="button"
                 onClick={() => handleRepAccentChange('arabic')}
-                className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                aria-pressed={selectedRepAccent === 'arabic'}
+                className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepAccent === 'arabic'
-                    ? 'bg-[#ED1C24] text-white shadow-2xs font-bold'
-                    : 'text-[#6b6968] hover:text-[#222021]'
+                    ? 'bg-surface text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
                 title="Rep Voice: Arabic Accent (Dubai / Middle East Hub)"
               >
-                <span>🇦🇪</span>
-                <span>Arabic</span>
+                Arabic
               </button>
               <button
                 type="button"
                 onClick={() => handleRepAccentChange('filipino')}
-                className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                aria-pressed={selectedRepAccent === 'filipino'}
+                className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepAccent === 'filipino'
-                    ? 'bg-[#ED1C24] text-white shadow-2xs font-bold'
-                    : 'text-[#6b6968] hover:text-[#222021]'
+                    ? 'bg-surface text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
                 title="Rep Voice: Filipino Accent (Manila BPO Floor)"
               >
-                <span>🇵🇭</span>
-                <span>Filipino</span>
+                Filipino
               </button>
             </div>
 
-            {/* Rep Gender Toggle (Male vs Female) */}
-            <div className="flex items-center bg-[#F2F0EF] border border-[#222021]/15 p-0.5 rounded-lg text-xs font-semibold">
+            {/* Rep gender toggle (male vs female) */}
+            <div role="group" aria-label="Your voice" className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5">
               <button
                 type="button"
                 onClick={() => setSelectedRepGender('male')}
-                className={`px-2 py-1 rounded-md transition cursor-pointer text-[11px] ${
+                aria-pressed={selectedRepGender === 'male'}
+                className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepGender === 'male'
-                    ? 'bg-[#222021] text-white shadow-2xs font-bold'
-                    : 'text-[#6b6968] hover:text-[#222021]'
+                    ? 'bg-surface text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
                 title={selectedRepAccent === 'arabic' ? 'Tariq (Male)' : 'Paolo (Male)'}
               >
@@ -836,10 +837,11 @@ function SparringRoomContent() {
               <button
                 type="button"
                 onClick={() => setSelectedRepGender('female')}
-                className={`px-2 py-1 rounded-md transition cursor-pointer text-[11px] ${
+                aria-pressed={selectedRepGender === 'female'}
+                className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepGender === 'female'
-                    ? 'bg-[#222021] text-white shadow-2xs font-bold'
-                    : 'text-[#6b6968] hover:text-[#222021]'
+                    ? 'bg-surface text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
                 title={selectedRepAccent === 'arabic' ? 'Noor (Female)' : 'Lovely (Female)'}
               >
@@ -847,93 +849,97 @@ function SparringRoomContent() {
               </button>
             </div>
 
-            {/* Country Voice Accent Switcher Dropdown */}
-            <div className="flex items-center gap-1.5 bg-[#F2F0EF] border border-[#222021]/15 px-2.5 py-1 rounded-lg">
-              <Globe className="h-3.5 w-3.5 text-[#ED1C24]" />
-              <select
+            {/* Buyer voice accent switcher */}
+            <div className="w-40">
+              <Select
                 value={selectedCountry}
                 onChange={(e) => handleCountryChange(e.target.value as SparringCountry)}
-                className="bg-transparent text-xs font-bold text-[#222021] focus:outline-none cursor-pointer"
+                className="h-8 text-small"
                 title="Customer / Buyer Voice Accent Switcher"
+                aria-label="Buyer accent"
               >
-                <option value="USA">🇺🇸 USA Buyer</option>
-                <option value="Australia">🇦🇺 Australia Buyer</option>
-                <option value="UK">🇬🇧 UK Buyer</option>
-              </select>
+                <option value="USA">USA buyer</option>
+                <option value="Australia">Australia buyer</option>
+                <option value="UK">UK buyer</option>
+              </Select>
             </div>
 
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F2F0EF] border border-[#222021]/10 font-mono text-[11px] text-[#222021] font-semibold">
-              <Clock className="h-3.5 w-3.5 text-[#ED1C24]" />
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-small tabular-nums text-fg">
+              <Clock className="size-4 text-fg-tertiary" aria-hidden />
               <span>{formatTime(callDuration)}</span>
-            </div>
-            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-              callActive 
+            </span>
+            <span className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-small text-fg">
+              <span
+                aria-hidden
+                className={`size-2 shrink-0 rounded-full ${
+                  callActive
+                    ? isPlayingAudio
+                      ? 'bg-brand-500 animate-pulse-soft'
+                      : isListeningMic
+                      ? 'bg-success-500 animate-pulse-soft'
+                      : 'bg-warning-400'
+                    : 'bg-fg-disabled'
+                }`}
+              />
+              {callConnecting
+                ? 'Dialing...'
+                : callActive
                 ? isPlayingAudio
-                  ? 'bg-red-50 text-[#ED1C24] border-red-200 animate-pulse'
+                  ? `${persona.name} speaking`
                   : isListeningMic
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-blue-50 text-blue-700 border-blue-200'
-                : 'bg-[#F2F0EF] text-[#6b6968] border-[#222021]/10'
-            }`}>
-              {callConnecting 
-                ? 'Dialing...' 
-                : callActive 
-                ? isPlayingAudio 
-                  ? `${persona.name} Speaking` 
-                  : isListeningMic 
-                  ? 'Your Turn (Mic Live)' 
-                  : 'Thinking...' 
-                : 'Ready to Dial'}
+                  ? 'Your turn, mic live'
+                  : 'Thinking...'
+                : 'Ready to dial'}
             </span>
           </div>
         </div>
 
-        {/* Main Room Body */}
-        <main className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Live Call Wave & Conversation (8 Cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-5">
-            
-            {/* Waveform / Call Centerpiece Card */}
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-2xs relative overflow-hidden">
+        {/* Main room body */}
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 grid grid-cols-1 lg:grid-cols-12 gap-6 content-start">
+
+          {/* Left column: dark focus surface with the call and the conversation */}
+          <div className="lg:col-span-8 lg:self-start flex flex-col rounded-xl bg-ink-950 text-ink-50 overflow-hidden">
+
+            {/* Call centerpiece */}
+            <div className="p-6 flex flex-col items-center justify-center text-center relative">
               {/* Permanent Blessed Audio Player */}
               <audio ref={audioElementRef} id="sparring-audio-player" preload="auto" playsInline className="hidden" />
 
               <div className="flex items-center gap-2 absolute top-4 right-4">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-100 text-[10px] font-mono text-[#222021] border border-zinc-200 font-semibold">
-                  <Headphones className="h-3 w-3 text-[#ED1C24]" />
-                  <span>Two-Way Hands-Free Voice</span>
+                <span className="inline-flex items-center gap-1.5 text-caption text-ink-400">
+                  <Headphones className="size-3.5" aria-hidden />
+                  <span>Hands-free voice</span>
                 </span>
               </div>
 
               {/* Autoplay block prompt if browser blocked audio */}
               {audioBlocked && (
-                <div 
+                <div
                   onClick={primeAudioContext}
-                  className="mb-3 px-4 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2 cursor-pointer animate-bounce"
+                  className="mb-4 px-3 py-2 rounded-md bg-warning-bg text-warning-fg text-small flex items-center gap-2 cursor-pointer"
                 >
-                  <Volume2 className="h-4 w-4 text-amber-700" />
-                  <span className="font-semibold">Tap here to enable audio playback in your browser</span>
+                  <Volume2 className="size-4" aria-hidden />
+                  <span className="font-medium">Tap here to turn on audio in your browser</span>
                 </div>
               )}
 
               {/* Mic permission prompt */}
               {micPermissionDenied && (
-                <div className="mb-3 px-4 py-2 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-rose-700" />
+                <div className="mb-4 px-3 py-2 rounded-md bg-danger-bg text-danger-fg text-small flex items-center gap-2">
+                  <AlertCircle className="size-4" aria-hidden />
                   <span>Microphone blocked in browser. Click the lock icon in your URL bar to allow mic.</span>
                 </div>
               )}
 
-              <div className="h-16 w-16 rounded-2xl bg-[#222021] text-white font-black text-xl flex items-center justify-center shadow-sm mb-3">
+              <div className="size-16 rounded-full bg-ink-800 text-ink-50 font-semibold text-h2 flex items-center justify-center mb-3">
                 {persona.name.split(' ').map((n: string) => n[0]).join('')}
               </div>
 
-              <h2 className="text-base font-bold text-[#222021]">{persona.name}</h2>
-              <p className="text-xs text-[#6b6968] mt-0.5 max-w-md">{persona.scenario}</p>
+              <h2 className="text-h2 text-ink-50">{persona.name}</h2>
+              <p className="text-small text-ink-400 mt-1 max-w-md">{persona.scenario}</p>
 
-              {/* Dynamic Reactive Voice Waveform Indicator */}
-              <div className="flex items-center gap-1.5 h-14 my-3">
+              {/* Reactive voice waveform */}
+              <div className="flex items-center gap-1.5 h-14 my-4" aria-hidden>
                 {[16, 32, 44, 24, 38, 50, 28, 46, 20, 36, 48, 22, 40, 52, 18, 34, 42].map((h, i) => {
                   const isActive = callActive && (isPlayingAudio || isListeningMic || isAiResponding);
                   const dynamicHeight = isActive
@@ -950,11 +956,11 @@ function SparringRoomContent() {
                       className={`w-1 rounded-full transition-all duration-150 ${
                         isActive
                           ? isPlayingAudio
-                            ? 'bg-[#ED1C24] animate-pulse'
+                            ? 'bg-brand-500 animate-pulse-soft'
                             : isListeningMic
-                            ? 'bg-emerald-500 animate-pulse'
-                            : 'bg-[#222021]'
-                          : 'bg-[#d8d5d3]'
+                            ? 'bg-success-500 animate-pulse-soft'
+                            : 'bg-ink-50'
+                          : 'bg-ink-700'
                       }`}
                       style={{
                         height: `${dynamicHeight}px`
@@ -964,51 +970,52 @@ function SparringRoomContent() {
                 })}
               </div>
 
-              {/* Live Interactive Status Pill */}
-              <div className="h-6 mb-2 flex items-center justify-center">
+              {/* Live status line */}
+              <div className="h-7 mb-3 flex items-center justify-center text-small">
                 {isPlayingAudio && (
-                  <span className="text-xs font-mono font-semibold text-[#ED1C24] flex items-center gap-1.5 animate-pulse">
-                    <Sparkles className="h-3.5 w-3.5 animate-spin" />
-                    <span>{persona.name} is speaking audibly... (Listen)</span>
+                  <span className="text-ink-50 flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-brand-500 animate-pulse-soft" aria-hidden />
+                    <span>{persona.name} is speaking. Listen.</span>
                   </span>
                 )}
                 {isListeningMic && !isPlayingAudio && (
-                  <span className="text-xs font-mono font-bold text-emerald-700 flex items-center gap-2 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                    <span className="h-2 w-2 rounded-full bg-emerald-600 animate-ping" />
-                    <span>Mic is live — speak naturally into your mic (Hands-free)</span>
+                  <span className="text-ink-50 flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-success-500 animate-pulse-soft" aria-hidden />
+                    <span>Mic is live. Speak naturally, hands-free.</span>
                   </span>
                 )}
                 {isAiResponding && !isPlayingAudio && (
-                  <span className="text-xs font-mono text-[#6b6968] flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-[#ED1C24] animate-spin" />
-                    <span>{persona.name} is formulating response...</span>
+                  <span className="text-ink-400 flex items-center gap-2">
+                    <Sparkles className="size-4 animate-pulse-soft" aria-hidden />
+                    <span>{persona.name} is thinking...</span>
                   </span>
                 )}
                 {!isPlayingAudio && !isListeningMic && !isAiResponding && callActive && (
-                  <span className="text-xs font-mono text-[#6b6968]">
+                  <span className="text-ink-400">
                     Speak into your microphone or type below
                   </span>
                 )}
                 {!callActive && (
-                  <span className="text-xs font-mono text-[#6b6968]">
-                    Click Dial In below to start hands-free voice conversation
+                  <span className="text-ink-400">
+                    Dial in to start a hands-free voice call
                   </span>
                 )}
               </div>
 
-              {/* Call Control Actions */}
+              {/* Call control actions */}
               {!callActive ? (
-                <button
+                <Button
                   id="dial-in-btn"
+                  variant="brand"
+                  size="lg"
                   onClick={startCall}
-                  className="px-8 py-3.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-extrabold text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  icon={<PhoneCall aria-hidden />}
                 >
-                  <PhoneCall className="h-4 w-4" />
-                  <span>DIAL IN & START TWO-WAY CONVERSATION</span>
-                </button>
+                  Dial in and start the call
+                </Button>
               ) : (
-                <div className="flex items-center gap-3">
-                  {/* Hands-free Microphone Indicator / Toggle */}
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  {/* Hands-free microphone toggle */}
                   <button
                     onClick={() => {
                       if (isListeningMic) {
@@ -1018,17 +1025,17 @@ function SparringRoomContent() {
                       }
                     }}
                     title={isListeningMic ? "Mute microphone" : "Unmute microphone"}
-                    className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`focus-ring h-11 px-4 rounded-md border text-body font-medium flex items-center gap-2 transition-colors duration-150 cursor-pointer [&_svg]:size-4 ${
                       isListeningMic
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700 animate-pulse'
-                        : 'bg-[#F2F0EF] border-[#222021]/10 text-[#6b6968] hover:bg-[#e7e4e2]'
+                        ? 'border-success-500/50 bg-success-500/10 text-ink-50'
+                        : 'border-ink-700 text-ink-400 hover:bg-ink-800 hover:text-ink-50'
                     }`}
                   >
-                    {isListeningMic ? <Mic className="h-4 w-4 text-emerald-600" /> : <MicOff className="h-4 w-4 text-[#6b6968]" />}
-                    <span>{isListeningMic ? 'Hands-free Mic: Active' : 'Hands-free Mic: Paused'}</span>
+                    {isListeningMic ? <Mic className="text-success-500" aria-hidden /> : <MicOff aria-hidden />}
+                    <span>{isListeningMic ? 'Mic on' : 'Mic paused'}</span>
                   </button>
 
-                  {/* Speaker Mute Toggle */}
+                  {/* Speaker mute toggle */}
                   <button
                     onClick={() => {
                       if (!isMuted) {
@@ -1047,44 +1054,47 @@ function SparringRoomContent() {
                       setIsMuted(!isMuted);
                     }}
                     title={isMuted ? "Unmute audio" : "Mute audio"}
-                    className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                    aria-label={isMuted ? "Unmute audio" : "Mute audio"}
+                    className={`focus-ring size-11 rounded-md border flex items-center justify-center transition-colors duration-150 cursor-pointer [&_svg]:size-4 ${
                       isMuted
-                        ? 'bg-rose-50 border-rose-200 text-rose-700'
-                        : 'bg-[#F2F0EF] border-[#222021]/10 text-[#222021] hover:bg-[#e7e4e2]'
+                        ? 'border-ink-50 bg-ink-50 text-ink-900'
+                        : 'border-ink-700 text-ink-50 hover:bg-ink-800'
                     }`}
                   >
-                    {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                    {isMuted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
                   </button>
 
-                  {/* End Call & Grade */}
-                  <button
+                  {/* End call and grade */}
+                  <Button
+                    variant="brand"
+                    size="lg"
                     onClick={endCallAndGrade}
                     disabled={isFinishingCall}
-                    className="px-5 py-2.5 rounded-xl bg-[#222021] hover:bg-black text-white font-bold text-xs uppercase tracking-wider transition-colors shadow-2xs flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                    loading={isFinishingCall}
+                    icon={<PhoneOff aria-hidden />}
                   >
-                    <PhoneOff className="h-4 w-4 text-[#ED1C24]" />
-                    <span>{isFinishingCall ? 'GENERATING SCORECARD...' : 'END CALL & GRADE'}</span>
-                  </button>
+                    {isFinishingCall ? 'Building your scorecard...' : 'End call and get scorecard'}
+                  </Button>
                 </div>
               )}
             </div>
 
-            {/* Dialogue Feed */}
-            <div className="bg-white border border-[#222021]/10 rounded-2xl flex flex-col overflow-hidden shadow-2xs min-h-[340px]">
-              <div className="px-4 py-2.5 border-b border-[#222021]/10 flex items-center justify-between bg-[#F2F0EF]/40">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#222021]">
-                  Live Two-Way Audio Feed ({transcript.length} turns)
+            {/* Dialogue feed */}
+            <div className="flex flex-col border-t border-ink-800 min-h-[340px]">
+              <div className="px-5 py-3 border-b border-ink-800 flex items-center justify-between">
+                <span className="text-body-strong text-ink-50">
+                  Conversation <span className="text-ink-400 font-normal tabular-nums">{transcript.length} turns</span>
                 </span>
-                <span className="text-[11px] font-mono text-[#6b6968] flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${callActive ? 'bg-emerald-500 animate-ping' : 'bg-zinc-400'} inline-block`} />
-                  <span>ElevenLabs Realtime Voice Active</span>
+                <span className="text-caption text-ink-400 flex items-center gap-2">
+                  <span className={`size-2 rounded-full ${callActive ? 'bg-success-500 animate-pulse-soft' : 'bg-ink-700'} inline-block`} aria-hidden />
+                  <span>{callActive ? 'Live voice on' : 'Live voice off'}</span>
                 </span>
               </div>
 
-              <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 max-h-[350px]">
+              <div ref={scrollRef} className="flex-1 p-5 overflow-y-auto space-y-4 max-h-[350px]">
                 {transcript.length === 0 && (
-                  <div className="py-12 text-center text-xs text-[#6b6968]">
-                    Click <strong className="text-[#222021]">"DIAL IN & START TWO-WAY CONVERSATION"</strong> above to connect and hear {persona.name} speak.
+                  <div className="py-12 text-center text-small text-ink-400">
+                    Click <strong className="text-ink-50 font-medium">Dial in and start the call</strong> above to connect and hear {persona.name} speak.
                   </div>
                 )}
 
@@ -1096,65 +1106,64 @@ function SparringRoomContent() {
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-wide ${
-                        t.role === 'rep' ? 'text-[#ED1C24]' : 'text-[#6b6968]'
-                      }`}>
+                      <span className="text-caption text-ink-400">
                         {t.role === 'rep'
-                          ? `Sales Rep (${selectedRepAccent === 'arabic' ? '🇦🇪 Arabic Accent' : '🇵🇭 Filipino Accent'})`
+                          ? `You (${selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino accent'})`
                           : persona.name}
                       </span>
-                      <span className="text-[10px] text-[#6b6968] font-mono">{t.timestamp}</span>
+                      <span className="text-caption text-ink-400 tabular-nums">{t.timestamp}</span>
 
                       {/* Replay audio button for turns */}
                       {t.audioUrl && (
                         <button
                           onClick={() => playVoiceAudio(t.audioUrl!, t.content, i)}
                           title="Replay Voice Audio"
-                          className={`p-1 rounded hover:bg-[#e7e4e2] text-[#6b6968] transition-colors cursor-pointer ${
-                            activeAudioTurn === i ? 'text-[#ED1C24]' : ''
+                          aria-label="Replay voice audio"
+                          className={`focus-ring p-1 rounded-sm hover:bg-ink-800 transition-colors cursor-pointer ${
+                            activeAudioTurn === i ? 'text-brand-500' : 'text-ink-400 hover:text-ink-50'
                           }`}
                         >
-                          <Play className="h-3 w-3" />
+                          <Play className="size-3" aria-hidden />
                         </button>
                       )}
                     </div>
-                    <div className={`p-3 rounded-2xl text-xs leading-relaxed ${
+                    <div className={`px-3.5 py-2.5 rounded-lg text-body ${
                       t.role === 'rep'
-                        ? 'bg-[#ED1C24]/10 border border-[#ED1C24]/20 text-[#222021] rounded-tr-none'
-                        : 'bg-[#F2F0EF] border border-[#222021]/10 text-[#222021] rounded-tl-none'
+                        ? 'bg-ink-50 text-ink-900 rounded-tr-sm'
+                        : 'bg-ink-800 text-ink-50 rounded-tl-sm'
                     }`}>
                       {t.content}
                     </div>
                   </div>
                 ))}
 
-                {/* Real-time Speech Transcription Preview while speaking */}
+                {/* Real-time speech transcription preview while speaking */}
                 {liveTranscriptPreview && (
-                  <div className="flex flex-col gap-1 max-w-[85%] ml-auto items-end opacity-90 animate-pulse">
+                  <div className="flex flex-col gap-1 max-w-[85%] ml-auto items-end opacity-90">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase text-emerald-600">You (Speaking...)</span>
+                      <span className="text-caption text-success-500">You, speaking...</span>
                     </div>
-                    <div className="p-3 rounded-2xl text-xs leading-relaxed bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-tr-none shadow-sm">
+                    <div className="px-3.5 py-2.5 rounded-lg text-body border border-success-500/40 text-ink-50 rounded-tr-sm">
                       {liveTranscriptPreview}
                     </div>
                   </div>
                 )}
 
                 {isAiResponding && (
-                  <div className="flex items-center gap-2 text-xs text-[#6b6968] italic p-2">
-                    <Sparkles className="h-3.5 w-3.5 text-[#ED1C24] animate-spin" />
-                    <span>{persona.name} is replying with voice...</span>
+                  <div className="flex items-center gap-2 text-small text-ink-400 p-2">
+                    <Sparkles className="size-4 animate-pulse-soft" aria-hidden />
+                    <span>{persona.name} is replying...</span>
                   </div>
                 )}
               </div>
 
-              {/* Rep Spoken / Text Input Bar */}
-              <form 
+              {/* Rep spoken / text input bar */}
+              <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSendMessage();
-                }} 
-                className="p-3 border-t border-[#222021]/10 bg-white flex items-center gap-2"
+                }}
+                className="p-3 border-t border-ink-800 flex items-center gap-2"
               >
                 <button
                   type="button"
@@ -1167,13 +1176,14 @@ function SparringRoomContent() {
                     }
                   }}
                   title="Toggle Microphone"
-                  className={`p-2 rounded-xl border transition-colors cursor-pointer shrink-0 ${
+                  aria-label="Toggle microphone"
+                  className={`focus-ring size-9 rounded-md border flex items-center justify-center transition-colors duration-150 cursor-pointer shrink-0 disabled:opacity-50 ${
                     isListeningMic
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700 animate-pulse'
-                      : 'bg-[#F2F0EF] border-[#222021]/10 text-[#6b6968] hover:bg-[#e7e4e2]'
+                      ? 'border-success-500/50 bg-success-500/10 text-success-500'
+                      : 'border-ink-700 text-ink-400 hover:bg-ink-800 hover:text-ink-50'
                   }`}
                 >
-                  <Mic className="h-4 w-4" />
+                  <Mic className="size-4" aria-hidden />
                 </button>
 
                 <input
@@ -1182,205 +1192,199 @@ function SparringRoomContent() {
                   value={repInput}
                   onChange={(e) => setRepInput(e.target.value)}
                   placeholder={
-                    !callActive 
-                      ? "Dial in above to start two-way phone call..."
+                    !callActive
+                      ? "Dial in above to start the call..."
                       : isListeningMic
-                      ? "Listening to you hands-free... pause talking to auto-send, or edit here"
-                      : "Type your spoken response or toggle microphone..."
+                      ? "Listening hands-free... pause talking to auto-send, or edit here"
+                      : "Type what you would say, or turn on the mic..."
                   }
-                  className="flex-1 bg-[#F2F0EF] border border-[#222021]/10 rounded-xl px-4 py-2 text-xs text-[#222021] placeholder-[#6b6968] focus:outline-none focus:bg-white focus:border-[#ED1C24] disabled:opacity-50"
+                  aria-label="Your response"
+                  className="focus-ring flex-1 h-9 bg-ink-800 border border-ink-700 rounded-sm px-3 text-body text-ink-50 placeholder:text-ink-400 focus:border-brand-500 disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={!callActive || !repInput.trim() || isAiResponding}
-                  className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs shrink-0 cursor-pointer"
+                  className="focus-ring h-9 px-3.5 rounded-md bg-ink-50 hover:bg-ink-200 disabled:opacity-50 disabled:pointer-events-none text-ink-900 font-medium text-body flex items-center gap-2 transition-colors duration-150 shrink-0 cursor-pointer"
                 >
                   <span>Speak</span>
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="size-4" aria-hidden />
                 </button>
               </form>
             </div>
           </div>
 
-          {/* Right Column: Live Objectives & Scoring Criteria (4 Cols) */}
-          <div className="lg:col-span-4 flex flex-col gap-5">
-            
-            {/* Real-Time Teleprompter & Objection Script Assist */}
-            <div className="bg-white border-2 border-[#ED1C24]/30 rounded-2xl p-5 shadow-2xs space-y-3.5 relative overflow-hidden transition-all duration-300">
-              {/* Subtle top indicator bar */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#ED1C24] via-rose-500 to-amber-500" />
+          {/* Right rail: suggested line, live objectives and buyer context */}
+          <div className="lg:col-span-4 flex flex-col gap-4">
 
+            {/* Real-time script assist */}
+            <div className="bg-surface border border-line rounded-lg p-5 shadow-xs space-y-4">
               {/* Header */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#222021] flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4 text-[#ED1C24] animate-pulse" />
-                  <span>REAL-TIME SCRIPT ASSIST</span>
-                </span>
-                <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
-                  <span>LIVE PROMPTER</span>
-                </span>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-h3 text-fg flex items-center gap-2">
+                  <Sparkles className="size-4 text-fg-secondary" aria-hidden />
+                  <span>What to say next</span>
+                </h2>
+                <StatusDot tone="success" live label={<span className="text-small text-fg-secondary">Live</span>} />
               </div>
 
-              {/* Current Friction / Objection Badge */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#6b6968] font-bold">Friction:</span>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200">
-                  🎯 {scriptAssist?.objectionType || "Initial Gatekeeping / Friction"}
-                </span>
+              {/* Current objection */}
+              <div className="flex items-center gap-2 flex-wrap text-small">
+                <span className="text-fg-tertiary">Objection</span>
+                <Badge tone="warning" className="h-auto min-h-5 whitespace-normal py-0.5">
+                  {scriptAssist?.objectionType || "Initial Gatekeeping / Friction"}
+                </Badge>
               </div>
 
-              {/* Verbatim Script Teleprompter Box */}
-              <div className="bg-[#18181b] text-white rounded-xl p-3.5 border border-zinc-800 shadow-inner space-y-2.5">
-                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-1.5">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-rose-400 font-bold flex items-center gap-1">
-                    <Radio className="h-3 w-3 text-rose-400 animate-pulse" />
-                    <span>WHAT TO SAY NEXT (VERBATIM):</span>
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => scriptAssist?.recommendedScript && handleCopyScript(scriptAssist.recommendedScript)}
-                      className="text-[10px] text-zinc-400 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Copy script to clipboard"
-                    >
-                      {copiedScript ? (
-                        <>
-                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                          <span className="text-emerald-400 font-medium">Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-xs text-zinc-100 font-medium leading-relaxed italic selection:bg-rose-500 selection:text-white">
-                  "{scriptAssist?.recommendedScript || persona.initialScriptAssist?.recommendedScript}"
-                </p>
-
-                {/* 1-Click Action to drop into Rep Input */}
-                <div className="pt-1 flex items-center justify-between gap-2">
+              {/* Suggested line */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center rounded-sm bg-ai px-1.5 text-caption leading-5 text-ink-900">Suggested line</span>
                   <button
                     type="button"
-                    disabled={!callActive || isAiResponding}
-                    onClick={() => {
-                      if (scriptAssist?.recommendedScript) {
-                        setRepInput(scriptAssist.recommendedScript);
-                      }
-                    }}
-                    className="w-full text-center py-1.5 px-2.5 rounded-lg bg-[#ED1C24] hover:bg-[#d0181f] disabled:opacity-50 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    onClick={() => scriptAssist?.recommendedScript && handleCopyScript(scriptAssist.recommendedScript)}
+                    className={buttonClasses('ghost', 'sm', 'h-7 px-2')}
+                    title="Copy script to clipboard"
                   >
-                    <span>🪄 Drop Into Input Bar</span>
+                    {copiedScript ? (
+                      <>
+                        <CheckCircle2 className="text-success-fg" aria-hidden />
+                        <span className="text-success-fg">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy aria-hidden />
+                        <span>Copy</span>
+                      </>
+                    )}
                   </button>
                 </div>
+
+                <p className="border-l-2 border-ai pl-3 text-body-strong text-fg">
+                  &ldquo;{scriptAssist?.recommendedScript || persona.initialScriptAssist?.recommendedScript}&rdquo;
+                </p>
+
+                {/* 1-click action to drop into rep input */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  disabled={!callActive || isAiResponding}
+                  onClick={() => {
+                    if (scriptAssist?.recommendedScript) {
+                      setRepInput(scriptAssist.recommendedScript);
+                    }
+                  }}
+                  icon={<CornerDownLeft aria-hidden />}
+                >
+                  Use this line
+                </Button>
               </div>
 
-              {/* A.R.M. Framework Step Breakdown */}
+              {/* A.R.M. framework step breakdown */}
               {scriptAssist?.arm && (
-                <div className="space-y-1.5 bg-[#F2F0EF]/80 rounded-xl p-2.5 border border-[#222021]/10 text-[11px]">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-[#6b6968] font-bold">
-                    A.R.M. Execution Breakdown:
+                <div className="space-y-2 border-t border-line pt-4">
+                  <div className="flex items-center gap-1.5 text-small text-fg-tertiary">
+                    <span>How to answer, step by step</span>
+                    <Tooltip content="The A.R.M. method: Acknowledge the objection, Respond to it, then Move to a next step.">
+                      <Info className="size-3.5" aria-label="About the A.R.M. method" />
+                    </Tooltip>
                   </div>
-                  <div className="space-y-1 text-[#222021]">
-                    <div className="flex items-start gap-1.5">
-                      <span className="font-mono font-bold text-amber-700 bg-amber-100/80 px-1 py-0.5 rounded text-[10px] shrink-0">A</span>
-                      <span className="text-[11px] leading-tight text-[#444]"><strong className="text-[#222021]">Acknowledge:</strong> {scriptAssist.arm.acknowledge}</span>
-                    </div>
-                    <div className="flex items-start gap-1.5">
-                      <span className="font-mono font-bold text-blue-700 bg-blue-100/80 px-1 py-0.5 rounded text-[10px] shrink-0">R</span>
-                      <span className="text-[11px] leading-tight text-[#444]"><strong className="text-[#222021]">Respond:</strong> {scriptAssist.arm.respond}</span>
-                    </div>
-                    <div className="flex items-start gap-1.5">
-                      <span className="font-mono font-bold text-emerald-700 bg-emerald-100/80 px-1 py-0.5 rounded text-[10px] shrink-0">M</span>
-                      <span className="text-[11px] leading-tight text-[#444]"><strong className="text-[#222021]">Move:</strong> {scriptAssist.arm.move}</span>
-                    </div>
-                  </div>
+                  <ol className="space-y-2 text-small text-fg-secondary">
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-subtle text-[10px] font-medium tabular-nums text-fg-secondary">1</span>
+                      <span><strong className="font-medium text-fg">Acknowledge:</strong> {scriptAssist.arm.acknowledge}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-subtle text-[10px] font-medium tabular-nums text-fg-secondary">2</span>
+                      <span><strong className="font-medium text-fg">Respond:</strong> {scriptAssist.arm.respond}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-subtle text-[10px] font-medium tabular-nums text-fg-secondary">3</span>
+                      <span><strong className="font-medium text-fg">Move:</strong> {scriptAssist.arm.move}</span>
+                    </li>
+                  </ol>
                 </div>
               )}
 
-              {/* Tactical Rationale */}
+              {/* Tactical rationale */}
               {scriptAssist?.tacticalRationale && (
-                <div className="text-[11px] text-[#6b6968] leading-tight flex items-start gap-1.5 pt-0.5">
-                  <span className="shrink-0 text-amber-600">💡</span>
-                  <span><strong className="text-[#222021]">Why this works:</strong> {scriptAssist.tacticalRationale}</span>
+                <div className="text-small text-fg-secondary flex items-start gap-2">
+                  <Lightbulb className="size-4 shrink-0 text-fg-tertiary mt-0.5" aria-hidden />
+                  <span><strong className="font-medium text-fg">Why this works:</strong> {scriptAssist.tacticalRationale}</span>
                 </div>
               )}
             </div>
 
-            {/* Live Objectives Checklist */}
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-3">
+            {/* Live objectives checklist */}
+            <div className="bg-surface border border-line rounded-lg p-5 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#222021] flex items-center gap-1.5">
-                  <CheckCircle className="h-4 w-4 text-[#ED1C24]" />
-                  <span>LIVE OBJECTIVES</span>
-                </span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#ED1C24]/10 text-[#ED1C24] border border-[#ED1C24]/20">
+                <h2 className="text-h3 text-fg">Objectives</h2>
+                <span className="text-small tabular-nums text-fg-secondary">
                   {completedObjectivesCount} / {objectives.length}
                 </span>
               </div>
 
-              <div className="space-y-2 text-xs">
+              <ul className="space-y-2.5">
                 {objectives.map((obj: any) => (
-                  <div
+                  <li
                     key={obj.id}
-                    className={`p-3 rounded-xl border transition-all duration-300 flex items-center gap-2.5 ${
-                      obj.completed
-                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900 font-semibold shadow-2xs'
-                        : 'bg-[#F2F0EF] border-[#222021]/10 text-[#6b6968]'
-                    }`}
+                    className="flex items-start gap-2.5 text-body"
                   >
-                    {obj.completed ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <Circle className="h-4 w-4 text-[#6b6968] shrink-0" />
-                    )}
-                    <span className="leading-snug">{obj.description}</span>
-                  </div>
+                    <span
+                      aria-hidden
+                      className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors duration-150 ${
+                        obj.completed
+                          ? 'border-action bg-action text-action-fg'
+                          : 'border-line-strong bg-surface'
+                      }`}
+                    >
+                      {obj.completed && <Check className="size-3" strokeWidth={3} />}
+                    </span>
+                    <span className={obj.completed ? 'text-fg-tertiary line-through' : 'text-fg'}>
+                      <span className="sr-only">{obj.completed ? 'Done: ' : 'To do: '}</span>
+                      {obj.description}
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
 
-            {/* Behavioral Rules / Persona Context */}
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-3 text-xs">
+            {/* Buyer behaviour / persona context */}
+            <div className="bg-surface border border-line rounded-lg p-5 shadow-xs space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#222021] block">
-                  BUYER BEHAVIORAL RULES:
-                </span>
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-zinc-100 text-[#222021] border border-zinc-200">
+                <h2 className="text-h3 text-fg">
+                  About this buyer
+                </h2>
+                <Badge tone={persona.difficulty === 'Beginner' ? 'success' : persona.difficulty === 'Advanced' ? 'warning' : persona.difficulty === 'Nightmare' ? 'danger' : 'neutral'}>
                   {persona.difficulty}
-                </span>
+                </Badge>
               </div>
 
-              <div className="p-3 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 text-[11px] text-[#222021] font-mono leading-relaxed">
-                "{persona.coreObjection}"
-              </div>
+              <blockquote className="border-l-2 border-line-strong pl-3 text-body text-fg-secondary">
+                &ldquo;{persona.coreObjection}&rdquo;
+              </blockquote>
 
-              <div className="space-y-1.5 text-[11px] text-[#6b6968] leading-relaxed">
+              <div className="space-y-2 text-small text-fg-secondary">
                 <p>
-                  <strong className="text-[#222021]">Scenario:</strong> {persona.scenario}
+                  <strong className="font-medium text-fg">Scenario:</strong> {persona.scenario}
                 </p>
                 <p>
-                  <strong className="text-[#222021]">Tactical Hint:</strong> Validate their friction with tactical empathy before introducing the reframe. Conclude with a 10-minute diagnostic benchmark question.
+                  <strong className="font-medium text-fg">Tip:</strong> Show you understand their concern before you reframe it. Finish by asking for a 10-minute diagnostic call.
                 </p>
               </div>
             </div>
 
-            {/* Voice Profile Card */}
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs flex items-center justify-between text-xs">
-              <div>
-                <span className="text-[10px] uppercase font-mono font-bold text-[#6b6968] block">Voice Accent</span>
-                <span className="font-semibold text-[#222021]">
+            {/* Voice profile */}
+            <div className="bg-surface border border-line rounded-lg p-4 shadow-xs flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="text-caption text-fg-tertiary block">Buyer voice</span>
+                <span className="text-body-strong text-fg">
                   {getPersonaVoiceByCountry(persona, selectedCountry).accentLabel}
                 </span>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] uppercase font-mono font-bold text-[#6b6968] block">Territory Voice Model</span>
-                <span className="font-mono text-[11px] text-[#ED1C24] font-bold">
+              <div className="text-right min-w-0">
+                <span className="text-caption text-fg-tertiary block">Voice model</span>
+                <span className="text-small text-fg-secondary">
                   {selectedCountry} ElevenLabs Turbo v2.5
                 </span>
               </div>
@@ -1395,7 +1399,7 @@ function SparringRoomContent() {
 
 export default function SparringRoomPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-[#6b6968]">Loading Sparring Arena...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-small text-fg-secondary">Loading Sparring Arena...</div>}>
       <SparringRoomContent />
     </Suspense>
   );

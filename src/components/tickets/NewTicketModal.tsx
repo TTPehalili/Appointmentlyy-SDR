@@ -14,9 +14,11 @@ import {
   User, 
   Compass, 
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  ChevronDown
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
+import { Button, IconButton, Dialog } from '@/components/ui';
 import { TICKET_CATEGORIES, TicketCategory, TicketPriority, TroubleTicket } from '@/lib/ticketTypes';
 
 interface NewTicketModalProps {
@@ -60,8 +62,6 @@ export default function NewTicketModal({
       }
     }
   }, [isOpen, repName, email, tenantName]);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,127 +119,120 @@ export default function NewTicketModal({
     }
   };
 
+  const inputClass =
+    'focus-ring w-full h-9 rounded-sm border border-line-strong bg-surface text-body text-fg focus:outline-none placeholder:text-fg-disabled';
+  const labelClass = 'mb-1.5 flex items-center gap-1.5 text-small font-medium text-fg';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div 
-        className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title="New ticket"
+      size="lg"
+      className="overflow-hidden"
+      dismissible={!submitting}
+      bare
+    >
+      <div className="w-full overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]">
         {/* Header */}
-        <div className="px-6 py-4 bg-zinc-900 text-white flex items-center justify-between shrink-0 border-b border-zinc-800">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md">
-              <LifeBuoy className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm tracking-tight text-white">Submit Trouble Ticket</h3>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-300 font-semibold uppercase">
-                  Appointmentlyy SLA
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400">
-                Direct incident triage with Emil Halili & the core engineering team
-              </p>
-            </div>
+        <div className="px-6 py-4 flex items-start justify-between gap-4 shrink-0 border-b border-line">
+          <div>
+            <h3 id="new-ticket-title" className="text-h2 text-fg">New ticket</h3>
+            <p className="text-body text-fg-secondary mt-0.5">
+              Goes straight to Emil Halili and the engineering team.
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <IconButton label="Close" onClick={onClose} size="sm">
+            <X />
+          </IconButton>
         </div>
 
         {/* Content Area */}
         {createdTicket ? (
           // Success State
           <div className="p-8 text-center flex flex-col items-center justify-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center ring-8 ring-emerald-50/50">
-              <CheckCircle2 className="h-8 w-8" />
+            <div className="size-12 rounded-full bg-success-bg text-success-fg flex items-center justify-center">
+              <CheckCircle2 className="h-6 w-6" aria-hidden />
             </div>
-            <div className="space-y-1">
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold bg-zinc-100 text-zinc-800 border border-zinc-200">
+            <div className="space-y-2">
+              <span className="inline-block px-2 py-0.5 rounded-sm text-caption font-mono bg-subtle text-fg border border-line">
                 {createdTicket.id}
               </span>
-              <h4 className="text-lg font-bold text-zinc-900">Trouble Ticket Logged & Assigned</h4>
-              <p className="text-xs text-zinc-500 max-w-md mx-auto">
-                We have received your ticket regarding <strong className="text-zinc-800">&ldquo;{createdTicket.subject}&rdquo;</strong>.
+              <h4 className="text-h2 text-fg">Ticket logged and assigned</h4>
+              <p className="text-body text-fg-secondary max-w-md mx-auto">
+                We have received your ticket regarding <strong className="font-medium text-fg">&ldquo;{createdTicket.subject}&rdquo;</strong>.
               </p>
             </div>
 
-            <div className="w-full max-w-md bg-zinc-50 rounded-xl p-4 border border-zinc-200 text-left text-xs space-y-2">
-              <div className="flex items-center gap-2 text-zinc-700">
-                <Mail className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>Confirmation email dispatched to <strong className="font-semibold text-zinc-900">{createdTicket.requesterEmail}</strong></span>
-              </div>
-              <div className="flex items-center gap-2 text-zinc-700">
-                <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
-                <span>Incident alert dispatched to <strong className="font-semibold text-zinc-900">Emil Halili (CEO/Founder)</strong></span>
-              </div>
-              <div className="flex items-center gap-2 text-zinc-700">
-                <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
-                <span>Status is set to <strong className="font-semibold text-zinc-900">In Progress</strong> — live updates will appear in your dashboard</span>
-              </div>
-            </div>
+            <ul className="w-full max-w-md rounded-lg border border-line divide-y divide-line text-left text-body text-fg-secondary">
+              <li className="flex items-center gap-2.5 px-4 py-2.5">
+                <Mail className="h-4 w-4 text-fg-tertiary shrink-0" aria-hidden />
+                <span>Confirmation email sent to <strong className="font-medium text-fg">{createdTicket.requesterEmail}</strong></span>
+              </li>
+              <li className="flex items-center gap-2.5 px-4 py-2.5">
+                <ShieldAlert className="h-4 w-4 text-fg-tertiary shrink-0" aria-hidden />
+                <span>Alert sent to <strong className="font-medium text-fg">Emil Halili (CEO/Founder)</strong></span>
+              </li>
+              <li className="flex items-center gap-2.5 px-4 py-2.5">
+                <Sparkles className="h-4 w-4 text-fg-tertiary shrink-0" aria-hidden />
+                <span>Status is <strong className="font-medium text-fg">In progress</strong>. Updates will appear in your dashboard.</span>
+              </li>
+            </ul>
 
             <div className="pt-2 flex items-center gap-3">
-              <button
-                onClick={onClose}
-                className="px-5 py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-800 transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <span>View Ticket in Dashboard</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              <Button variant="primary" onClick={onClose}>
+                View ticket
+                <ArrowRight aria-hidden />
+              </Button>
             </div>
           </div>
         ) : (
           // Form State
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-body">
             {error && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-start gap-2.5">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div role="alert" className="px-4 py-3 rounded-md bg-danger-bg border border-danger-fg/30 text-danger-fg flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
                 <div>
-                  <div className="font-semibold">Submission Error</div>
-                  <div className="text-[11px] mt-0.5">{error}</div>
+                  <div className="font-medium">Couldn&apos;t submit</div>
+                  <div className="text-small mt-0.5">{error}</div>
                 </div>
               </div>
             )}
 
             {/* Tenant and Submitter Metadata */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-zinc-50 p-3.5 rounded-xl border border-zinc-200/80">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-600 mb-1 flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-zinc-400" />
-                  <span>Tenant / Company</span>
+                <label className={labelClass}>
+                  <Building2 className="h-3.5 w-3.5 text-fg-tertiary" aria-hidden />
+                  <span>Workspace or company</span>
                 </label>
                 <input
                   type="text"
                   value={tenant}
                   onChange={(e) => setTenant(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className={`${inputClass} px-3`}
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-600 mb-1 flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-zinc-400" />
-                  <span>Requester Name</span>
+                <label className={labelClass}>
+                  <User className="h-3.5 w-3.5 text-fg-tertiary" aria-hidden />
+                  <span>Your name</span>
                 </label>
                 <input
                   type="text"
                   value={requesterName}
                   onChange={(e) => setRequesterName(e.target.value)}
                   required
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className={`${inputClass} px-3`}
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-600 mb-1 flex items-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5 text-zinc-400" />
-                  <span>Notification Email</span>
+                <label className={labelClass}>
+                  <Mail className="h-3.5 w-3.5 text-fg-tertiary" aria-hidden />
+                  <span>Email for updates</span>
                 </label>
                 <input
                   type="email"
@@ -247,59 +240,51 @@ export default function NewTicketModal({
                   onChange={(e) => setRequesterEmail(e.target.value)}
                   required
                   placeholder="your.email@company.com"
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className={`${inputClass} px-3`}
                 />
               </div>
             </div>
 
             {/* Category and Priority */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
-                  Issue Category
+                <label className={labelClass}>
+                  Category
                 </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as TicketCategory)}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900 font-medium"
-                >
-                  {TICKET_CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-zinc-400 mt-1">
+                <div className="relative">
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                    className={`${inputClass} appearance-none pl-3 pr-9`}
+                  >
+                    {TICKET_CATEGORIES.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-fg-tertiary" aria-hidden />
+                </div>
+                <p className="text-small text-fg-tertiary mt-1.5">
                   {TICKET_CATEGORIES.find(c => c.value === category)?.description}
                 </p>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
-                  Priority / Impact
+                <label className={labelClass}>
+                  Priority
                 </label>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-4 gap-0.5 rounded-md border border-line bg-subtle p-0.5">
                   {(['low', 'medium', 'high', 'urgent'] as TicketPriority[]).map((p) => {
                     const isSelected = priority === p;
-                    const colors = {
-                      low: 'border-zinc-200 hover:bg-zinc-50 text-zinc-700',
-                      medium: 'border-blue-200 hover:bg-blue-50 text-blue-700',
-                      high: 'border-orange-200 hover:bg-orange-50 text-orange-700',
-                      urgent: 'border-rose-200 hover:bg-rose-50 text-rose-700',
-                    };
-                    const selectedColors = {
-                      low: 'bg-zinc-800 text-white border-zinc-800 font-bold',
-                      medium: 'bg-blue-600 text-white border-blue-600 font-bold',
-                      high: 'bg-orange-600 text-white border-orange-600 font-bold',
-                      urgent: 'bg-rose-600 text-white border-rose-600 font-bold ring-2 ring-rose-200',
-                    };
                     return (
                       <button
                         type="button"
                         key={p}
                         onClick={() => setPriority(p)}
-                        className={`py-1.5 px-2 rounded-lg text-[11px] capitalize border transition-all text-center ${
-                          isSelected ? selectedColors[p] : colors[p]
+                        aria-pressed={isSelected}
+                        className={`focus-ring h-8 px-2 rounded-[6px] text-small font-medium capitalize transition-colors duration-150 text-center ${
+                          isSelected ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
                         }`}
                       >
                         {p}
@@ -307,19 +292,27 @@ export default function NewTicketModal({
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-zinc-400 mt-1">
-                  {priority === 'urgent' && '🔴 Critical SLA: Immediate engineering notification sent to Emil Halili.'}
-                  {priority === 'high' && '🟠 Major impairment: Responded within 30 minutes.'}
-                  {priority === 'medium' && '🔵 Standard triage: Normal business hours review.'}
-                  {priority === 'low' && '⚪ Minor inquiry or workflow suggestion.'}
+                <p className="text-small text-fg-tertiary mt-1.5 flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className={`size-2 shrink-0 rounded-full ${
+                      priority === 'urgent' ? 'bg-danger-fg' : priority === 'high' ? 'bg-warning-400' : priority === 'medium' ? 'bg-fg-tertiary' : 'bg-fg-disabled'
+                    }`}
+                  />
+                  <span>
+                    {priority === 'urgent' && 'Critical: engineering and Emil Halili are notified right away.'}
+                    {priority === 'high' && 'Major impact: answered within 30 minutes.'}
+                    {priority === 'medium' && 'Standard: reviewed during business hours.'}
+                    {priority === 'low' && 'Minor question or workflow suggestion.'}
+                  </span>
                 </p>
               </div>
             </div>
 
             {/* Subject */}
             <div>
-              <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
-                Subject / Issue Summary <span className="text-rose-500">*</span>
+              <label className={labelClass}>
+                Subject <span className="text-danger-fg">*</span>
               </label>
               <input
                 type="text"
@@ -327,14 +320,14 @@ export default function NewTicketModal({
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="e.g. Telephony latency spike when calling Australian numbers"
                 required
-                className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900 placeholder:text-zinc-400"
+                className={`${inputClass} px-3`}
               />
             </div>
 
             {/* Description */}
             <div>
-              <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
-                Detailed Problem Description <span className="text-rose-500">*</span>
+              <label className={labelClass}>
+                What happened? <span className="text-danger-fg">*</span>
               </label>
               <textarea
                 value={description}
@@ -342,71 +335,59 @@ export default function NewTicketModal({
                 rows={4}
                 required
                 placeholder="What occurred? What steps lead up to the issue? Include any specific error codes or callers affected..."
-                className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900 placeholder:text-zinc-400 resize-none leading-relaxed"
+                className="focus-ring w-full px-3 py-2 rounded-sm border border-line-strong bg-surface text-body text-fg focus:outline-none placeholder:text-fg-disabled resize-none"
               />
             </div>
 
             {/* Affected URL / Page */}
             <div>
-              <label className="block text-[11px] font-semibold text-zinc-700 mb-1 flex items-center gap-1.5">
-                <Compass className="h-3.5 w-3.5 text-zinc-400" />
-                <span>Affected Page or Feature Route (Optional)</span>
+              <label className={labelClass}>
+                <Compass className="h-3.5 w-3.5 text-fg-tertiary" aria-hidden />
+                <span>Affected page <span className="font-normal text-fg-tertiary">(optional)</span></span>
               </label>
               <input
                 type="text"
                 value={affectedUrl}
                 onChange={(e) => setAffectedUrl(e.target.value)}
                 placeholder="/cockpit, /email, /admin/frameworks..."
-                className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 bg-white text-zinc-900 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900 font-mono text-[11px]"
+                className={`${inputClass} px-3 font-mono`}
               />
             </div>
 
             {/* Email Checkbox */}
-            <div className="pt-1">
+            <div>
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={sendEmailConfirmation}
                   onChange={(e) => setSendEmailConfirmation(e.target.checked)}
-                  className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 h-3.5 w-3.5"
+                  className="focus-ring size-4 rounded-sm border-line-strong accent-ink-900"
                 />
-                <span className="text-[11px] text-zinc-600">
-                  Send email receipt & live tracking link to <strong className="text-zinc-800">{requesterEmail || 'my email'}</strong>
+                <span className="text-small text-fg-secondary">
+                  Email me a receipt and tracking link at <strong className="font-medium text-fg">{requesterEmail || 'my email'}</strong>
                 </span>
               </label>
             </div>
 
             {/* Footer Buttons */}
-            <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors font-medium text-xs"
-              >
+            <div className="pt-4 border-t border-line flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={onClose}>
                 Cancel
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="submit"
+                variant="brand"
                 disabled={submitting}
-                className="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                loading={submitting}
+                icon={submitting ? undefined : <Send />}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Transmitting & Dispatching Alert...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-3.5 w-3.5" />
-                    <span>Submit Trouble Ticket</span>
-                  </>
-                )}
-              </button>
+                {submitting ? 'Submitting...' : 'Submit ticket'}
+              </Button>
             </div>
           </form>
         )}
       </div>
-    </div>
+    </Dialog>
   );
 }

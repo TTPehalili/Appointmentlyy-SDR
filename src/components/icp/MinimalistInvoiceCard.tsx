@@ -49,10 +49,10 @@ export default function MinimalistInvoiceCard({
   });
 
   return (
-    <div className="bg-white text-zinc-900 rounded-xl border border-zinc-200/90 overflow-hidden shadow-xs font-sans">
-      {/* Black Header: Official Appointmentlyy Logo & Invoice Meta */}
+    <div className="bg-surface text-fg rounded-lg border border-line overflow-hidden shadow-xs font-sans">
+      {/* Dark document header: kept because the official logo artwork is designed for a dark background */}
       <div
-        className={`bg-zinc-950 text-white ${
+        className={`bg-ink-950 text-ink-50 ${
           compact ? 'px-6 py-5' : 'px-8 sm:px-10 py-6'
         } flex items-center justify-between gap-4`}
       >
@@ -62,38 +62,38 @@ export default function MinimalistInvoiceCard({
             alt="Appointmentlyy"
             className="h-7 w-auto object-contain mb-1.5"
           />
-          <div className="text-xs text-zinc-400">emil@appointmentlyy.com</div>
+          <div className="text-small text-ink-400">emil@appointmentlyy.com</div>
         </div>
         <div className="text-right">
-          <div className="text-xs uppercase tracking-widest text-zinc-400 font-medium">
+          <div className="text-caption text-ink-400">
             Invoice
           </div>
-          <div className="text-xs font-mono text-white font-semibold mt-1">
+          <div className="text-small font-mono text-ink-50 font-medium mt-1">
             {invoiceNumber}
           </div>
-          <div className="text-xs text-zinc-400 mt-0.5">{issueDate}</div>
+          <div className="text-small text-ink-400 mt-0.5">{issueDate}</div>
         </div>
       </div>
 
       {/* Main Minimalist Invoice Body */}
       <div className={compact ? 'p-6' : 'p-8 sm:p-10'}>
         {/* Billed To & Amount Due Summary */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-zinc-100">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-line">
           <div>
-            <div className="text-xs text-zinc-400 mb-1">Billed to</div>
-            <div className="text-xs font-semibold text-zinc-900">
+            <div className="text-caption text-fg-tertiary mb-1">Billed to</div>
+            <div className="text-body-strong text-fg">
               {tenantName || 'Client Workspace'}
             </div>
-            <div className="text-xs text-zinc-500">
+            <div className="text-small text-fg-secondary">
               {clientContactName || 'Account Administrator'} &bull;{' '}
               {clientEmail || 'client@company.com'}
             </div>
           </div>
           <div className="sm:text-right">
-            <div className="text-xs text-zinc-400 mb-0.5">Amount due</div>
-            <div className="text-2xl font-semibold tracking-tight text-zinc-950 font-mono">
+            <div className="text-caption text-fg-tertiary mb-0.5">Amount due</div>
+            <div className="text-kpi tabular-nums text-fg">
               ${formattedTotal}{' '}
-              <span className="text-xs font-normal text-zinc-400">USD</span>
+              <span className="text-small font-normal text-fg-tertiary">USD</span>
             </div>
           </div>
         </div>
@@ -102,25 +102,25 @@ export default function MinimalistInvoiceCard({
         <div className="py-4">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-zinc-100 text-xs text-zinc-400 font-normal">
-                <th className="py-2.5 font-normal">Description</th>
-                <th className="py-2.5 text-right font-normal w-28">Amount</th>
+              <tr className="border-b border-line text-caption text-fg-tertiary">
+                <th className="py-2.5 font-medium">Description</th>
+                <th className="py-2.5 text-right font-medium w-28">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 text-xs">
+            <tbody className="divide-y divide-line text-small">
               {lineItems.map((item, idx) => (
                 <tr key={idx}>
                   <td className="py-3.5 pr-4">
-                    <div className="font-medium text-zinc-900">
+                    <div className="font-medium text-fg">
                       {item.description}
                     </div>
                     {item.subtext && (
-                      <div className="text-zinc-400 mt-0.5">{item.subtext}</div>
+                      <div className="text-fg-tertiary mt-0.5">{item.subtext}</div>
                     )}
                   </td>
                   <td
-                    className={`py-3.5 text-right font-mono align-top ${
-                      item.amountUsd === 0 ? 'text-zinc-400' : 'text-zinc-900'
+                    className={`py-3.5 text-right tabular-nums align-top ${
+                      item.amountUsd === 0 ? 'text-fg-tertiary' : 'text-fg'
                     }`}
                   >
                     $
@@ -136,33 +136,33 @@ export default function MinimalistInvoiceCard({
         </div>
 
         {/* Total Due Row */}
-        <div className="pt-4 pb-8 border-t border-zinc-200 flex justify-between items-center">
-          <span className="text-xs font-medium text-zinc-500">Total due</span>
-          <span className="text-sm font-semibold font-mono text-zinc-950">
+        <div className="pt-4 pb-8 border-t border-line flex justify-between items-center">
+          <span className="text-small font-medium text-fg-secondary">Total due</span>
+          <span className="text-body-strong tabular-nums text-fg">
             ${formattedTotal} USD
           </span>
         </div>
 
         {/* Minimal Wise Payment & QR Section */}
-        <div className="pt-6 border-t border-zinc-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="pt-6 border-t border-line flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="space-y-2 max-w-sm">
-            <div className="text-xs font-semibold text-zinc-900">
+            <div className="text-body-strong text-fg">
               Pay via Wise
             </div>
-            <p className="text-xs text-zinc-500 leading-relaxed">
+            <p className="text-small text-fg-secondary">
               Transfer via Wise using the link below or scan the QR code.
               Reference{' '}
               <button
                 type="button"
                 onClick={copyInvoiceRef}
-                className="inline-flex items-center gap-1 font-mono text-zinc-800 underline decoration-zinc-300 hover:decoration-zinc-900 cursor-pointer"
+                className="focus-ring rounded-sm inline-flex items-center gap-1 font-mono text-fg underline underline-offset-2 decoration-line-strong hover:decoration-fg cursor-pointer"
                 title="Copy invoice reference"
               >
                 <span>{invoiceNumber}</span>
                 {copiedRef ? (
-                  <Check className="w-3 h-3 text-emerald-600" />
+                  <Check className="w-3 h-3 text-success-fg" />
                 ) : (
-                  <Copy className="w-3 h-3 text-zinc-400" />
+                  <Copy className="w-3 h-3 text-fg-tertiary" />
                 )}
               </button>{' '}
               in your note.
@@ -172,16 +172,16 @@ export default function MinimalistInvoiceCard({
                 href={WISE_PAYMENT_LINK}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium bg-zinc-950 text-white hover:bg-zinc-800 transition"
+                className="focus-ring inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-line-strong bg-surface text-small font-medium text-fg hover:bg-subtle transition-colors duration-150"
               >
                 <span>wise.com/pay/me/emilhalilih</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="w-3.5 h-3.5 text-fg-secondary" />
               </a>
-              <span className="text-xs font-mono text-zinc-400">
+              <span className="text-small font-mono text-fg-tertiary">
                 {WISE_TAG}
               </span>
               {ticketId && (
-                <span className="text-xs font-mono text-zinc-400">
+                <span className="text-small font-mono text-fg-tertiary">
                   &bull; Ticket {ticketId}
                 </span>
               )}
@@ -192,40 +192,41 @@ export default function MinimalistInvoiceCard({
             <img
               src={WISE_QR_PATH}
               alt="Wise QR @emilhalilih"
-              className="w-24 h-24 object-contain rounded-lg border border-zinc-200"
+              className="w-24 h-24 object-contain rounded-md border border-line"
             />
           </div>
         </div>
 
         {/* Subtle Note & Official Refund Policy */}
-        <div className="mt-8 pt-5 border-t border-zinc-100 space-y-3 text-xs text-zinc-400">
-          <div className="text-zinc-500">
+        <div className="mt-8 pt-5 border-t border-line space-y-3 text-caption font-normal text-fg-tertiary">
+          <div className="text-fg-secondary">
             {footerNote ||
               'Month 1 includes platform setup, BYOK access, and 8,000 ICP credits (2,000/wk). Month 2+ renews at $249/mo (BYOK) + selected ICP volume.'}
           </div>
-          <div className="pt-3 border-t border-zinc-100 space-y-1 text-zinc-400 leading-relaxed">
-            <div className="font-semibold text-zinc-600">
-              Refund &amp; Cancellation Policy
+          <div className="pt-3 border-t border-line space-y-1 text-fg-tertiary">
+            <div className="font-medium text-fg-secondary">
+              Refund and cancellation policy
             </div>
+
             <p>
-              <strong className="font-medium text-zinc-500">
+              <strong className="font-medium text-fg-tertiary">
                 Setup &amp; Infrastructure:
               </strong>{' '}
               Initial workspace deployment, configuration, and setup fees
               ($2,500) are non-refundable once resource provisioning has begun.{' '}
-              <strong className="font-medium text-zinc-500">
+              <strong className="font-medium text-fg-tertiary">
                 Monthly Subscriptions:
               </strong>{' '}
               Recurring monthly charges ($249/mo BYOK) operate on a flexible
               30-day model with zero multi-year lock-in and are non-refundable
               once a billing cycle commences; cancel anytime prior to the next
               billing date.{' '}
-              <strong className="font-medium text-zinc-500">
+              <strong className="font-medium text-fg-tertiary">
                 Data Credits &amp; Consumables:
               </strong>{' '}
               Contact enrichment batches and ICP Data Cloud record allocations
               are non-refundable once provisioned or processed. Inquiries:{' '}
-              <span className="text-zinc-600 font-mono">
+              <span className="text-fg-secondary font-mono">
                 Admin@appointmentlyy.com
               </span>
             </p>

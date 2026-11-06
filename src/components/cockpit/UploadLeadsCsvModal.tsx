@@ -3,7 +3,6 @@
 import React, { useState, useRef } from 'react';
 import { 
   X, 
-  Upload, 
   FileSpreadsheet, 
   CheckCircle2, 
   AlertCircle, 
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { CadenceLeadRecord } from '@/lib/cadenceMaster';
+import { Button, IconButton, Dialog } from '@/components/ui';
 
 interface UploadLeadsCsvModalProps {
   isOpen: boolean;
@@ -32,8 +32,6 @@ export default function UploadLeadsCsvModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  if (!isOpen) return null;
 
   const parseCsvText = (text: string): Record<string, string>[] => {
     const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -183,38 +181,34 @@ export default function UploadLeadsCsvModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#222021]/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div 
-        className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-[#222021]/15 overflow-hidden text-[#222021]"
-        onClick={e => e.stopPropagation()}
-      >
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title="Upload leads from CSV"
+      size="md"
+      className="max-w-xl"
+      dismissible={!isProcessing}
+      bare
+    >
+      <div className="w-full text-fg">
         {/* HEADER */}
-        <div className="px-6 py-4 bg-[#222021] text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-[#ED1C24] text-white">
-              <Upload className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="text-base font-black tracking-tight text-white">
-                Upload Leads CSV & Inject Context
-              </h2>
-              <p className="text-xs text-white/60">
-                Instantly injects Website, LinkedIn, & Signals into all AI Boris teleprompter scripts.
-              </p>
-            </div>
+        <div className="flex items-start justify-between gap-3 border-b border-line px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="text-h2 text-fg">
+              Upload leads from CSV
+            </h2>
+            <p className="mt-0.5 text-body text-fg-secondary">
+              Adds each lead&apos;s website, LinkedIn and buying signals to your call scripts.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <IconButton label="Close" size="sm" onClick={onClose}>
+            <X />
+          </IconButton>
         </div>
 
         {/* CONTENT */}
-        <div className="p-6 space-y-4">
-          
+        <div className="space-y-4 p-6">
+
           {/* DRAG & DROP ZONE */}
           <div
             onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -226,10 +220,10 @@ export default function UploadLeadsCsvModal({
               if (file) processFile(file);
             }}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-              isDragging 
-                ? 'border-[#ED1C24] bg-red-50/50' 
-                : 'border-[#222021]/20 hover:border-[#ED1C24] bg-[#F2F0EF]/40 hover:bg-[#F2F0EF]'
+            className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors duration-150 ${
+              isDragging
+                ? 'border-brand-600 bg-selected'
+                : 'border-line-strong bg-app hover:bg-subtle'
             }`}
           >
             <input
@@ -245,28 +239,28 @@ export default function UploadLeadsCsvModal({
 
             {isProcessing ? (
               <div className="flex flex-col items-center justify-center space-y-2 py-4">
-                <Loader2 className="h-8 w-8 text-[#ED1C24] animate-spin" />
-                <span className="text-xs font-bold text-[#222021]">Parsing CSV & Injecting Signal Variables...</span>
+                <Loader2 className="size-8 animate-spin text-fg-secondary" />
+                <span className="text-small font-medium text-fg">Reading your CSV and adding lead details...</span>
               </div>
             ) : successCount !== null ? (
-              <div className="flex flex-col items-center justify-center space-y-2 py-4 text-emerald-600">
-                <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-                <span className="text-sm font-bold text-emerald-800">
-                  Successfully imported {successCount} leads into Boris Queue!
+              <div className="flex flex-col items-center justify-center space-y-2 py-4">
+                <CheckCircle2 className="size-8 text-success-fg" />
+                <span className="text-body-strong text-success-fg">
+                  Imported {successCount} leads into your queue
                 </span>
-                <span className="text-xs text-stone-500">Loading teleprompter...</span>
+                <span className="text-small text-fg-tertiary">Loading teleprompter...</span>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-[#222021]/10 flex items-center justify-center text-[#ED1C24]">
-                  <FileSpreadsheet className="h-6 w-6" />
+                <div className="flex size-12 items-center justify-center rounded-lg border border-line bg-surface text-fg-secondary shadow-xs">
+                  <FileSpreadsheet className="size-6" />
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-[#222021] block">
-                    Drop your .csv file here, or <span className="text-[#ED1C24] underline">browse files</span>
+                  <span className="block text-body-strong text-fg">
+                    Drop your .csv file here, or <span className="text-brand-text underline">browse files</span>
                   </span>
-                  <span className="text-xs text-[#6b6968] block mt-1">
-                    Supports columns: Website, LinkedIn Profile, Buying Signals, Tech Stack, Pain Points
+                  <span className="mt-1 block text-small text-fg-secondary">
+                    Supported columns: Website, LinkedIn profile, buying signals, tech stack, pain points
                   </span>
                 </div>
               </div>
@@ -274,35 +268,35 @@ export default function UploadLeadsCsvModal({
           </div>
 
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+            <div className="flex items-center gap-2 rounded-md border border-danger-fg/30 bg-danger-bg p-3 text-small text-danger-fg">
+              <AlertCircle className="size-4 shrink-0 text-danger-fg" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {/* SUPPORTED SIGNALS BREAKDOWN */}
-          <div className="bg-stone-50 rounded-xl p-4 border border-[#222021]/10 text-xs space-y-2">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#222021]">
-              <Sparkles className="h-3.5 w-3.5 text-[#ED1C24]" />
-              <span>Context Variables Automatically Injected:</span>
+          <div className="space-y-2 rounded-lg border border-line bg-app p-4">
+            <div className="flex items-center gap-1.5 text-caption text-fg-tertiary">
+              <Sparkles className="size-3.5 text-fg-tertiary" />
+              <span>Lead details added automatically</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-[#4a4847]">
+            <div className="grid grid-cols-2 gap-2 text-small text-fg-secondary">
               <div className="flex items-center gap-1.5">
-                <Globe className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                <span><strong className="text-[#222021]">website</strong>: Injected in pitch & links</span>
+                <Globe className="size-3.5 shrink-0 text-fg-secondary" />
+                <span><code className="font-mono text-caption text-fg">website</code>: used in the pitch and links</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <LinkedinIcon className="h-3.5 w-3.5 text-sky-700 shrink-0" />
-                <span><strong className="text-[#222021]">linkedin_url</strong>: 1-click rep connection</span>
+                <LinkedinIcon className="size-3.5 shrink-0 text-fg-secondary" />
+                <span><code className="font-mono text-caption text-fg">linkedin_url</code>: one-click connect</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                <span><strong className="text-[#222021]">buying_signals</strong>: Live HUD badges</span>
+                <Zap className="size-3.5 shrink-0 text-fg-secondary" />
+                <span><code className="font-mono text-caption text-fg">buying_signals</code>: shown on the call screen</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-purple-600 shrink-0" />
-                <span><strong className="text-[#222021]">tech_stack / pain</strong>: In battlecards</span>
+                <Sparkles className="size-3.5 shrink-0 text-fg-secondary" />
+                <span><code className="font-mono text-caption text-fg">tech_stack / pain</code>: used in battlecards</span>
               </div>
             </div>
           </div>
@@ -310,17 +304,13 @@ export default function UploadLeadsCsvModal({
         </div>
 
         {/* FOOTER */}
-        <div className="px-6 py-3 bg-[#F2F0EF] border-t border-[#222021]/10 flex items-center justify-between text-xs text-[#6b6968]">
-          <span>Syncs with Supabase table <code>leads</code></span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-white border border-[#222021]/15 text-[#222021] font-bold hover:bg-stone-100 transition-colors cursor-pointer"
-          >
+        <div className="flex items-center justify-between gap-3 border-t border-line px-6 py-3 text-small text-fg-secondary">
+          <span>Syncs with the Supabase table <code className="font-mono text-caption">leads</code></span>
+          <Button variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { setStoredSession, UserRole } from '@/lib/session';
+import { Badge, Button, buttonClasses } from '@/components/ui';
 
 function VerifyLoginContent() {
   const router = useRouter();
@@ -79,31 +80,28 @@ function VerifyLoginContent() {
   }, [token, router]);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 flex flex-col justify-between font-sans px-4">
-      <header className="w-full max-w-md mx-auto pt-10 pb-4 flex items-center justify-center">
-        <Link href="/login" className="inline-flex items-center">
+    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
+        <Link href="/login" className="focus-ring inline-flex items-center rounded-sm">
           <img
             src="/appointmentlyy-logo.png"
-            alt="Appointmentlyy Logo"
-            className="h-9 w-auto object-contain"
+            alt="Appointmentlyy"
+            className="h-8 w-auto object-contain"
           />
         </Link>
       </header>
 
       <main className="w-full max-w-md mx-auto my-auto py-8">
-        <div className="bg-white rounded-2xl p-8 border border-zinc-200/90 shadow-xs text-center">
+        <div className="bg-surface rounded-xl p-8 border border-line shadow-xs text-center" aria-live="polite">
           {status === 'verifying' && (
             <div className="space-y-4 py-4">
-              <div className="w-10 h-10 rounded-full border-2 border-zinc-200 border-t-zinc-950 animate-spin mx-auto" />
+              <div className="w-10 h-10 rounded-full border-2 border-line border-t-fg animate-spin mx-auto" aria-hidden />
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400 mb-1">
-                  AUTHENTICATING_SESSION
-                </div>
-                <h1 className="text-lg font-bold text-zinc-950">
-                  Verifying your secure login link...
+                <h1 className="text-h2 text-fg">
+                  Verifying your login link...
                 </h1>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Establishing encrypted workspace session on Appointmentlyy SDR.
+                <p className="text-body text-fg-secondary mt-1">
+                  Opening a secure session for your Appointmentlyy workspace.
                 </p>
               </div>
             </div>
@@ -111,23 +109,29 @@ function VerifyLoginContent() {
 
           {status === 'success' && identity && (
             <div className="space-y-4 py-2">
-              <div className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-6 h-6" />
+              <div className="size-12 rounded-full bg-success-bg text-success-fg flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-6 h-6" aria-hidden />
               </div>
               <div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono text-[10px] font-semibold mb-2">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>VERIFIED // {identity.tenantCode}</span>
+                <div className="mb-2">
+                  <Badge tone="success">
+                    <ShieldCheck className="w-3 h-3" aria-hidden />
+                    <span>Verified</span>
+                    <span className="font-mono">{identity.tenantCode}</span>
+                  </Badge>
                 </div>
-                <h1 className="text-lg font-bold text-zinc-950">
+                <h1 className="text-h2 text-fg">
                   Welcome, {identity.repName}
                 </h1>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Routing you to <span className="font-semibold text-zinc-800">{identity.tenantName}</span> ({identity.role})...
+                <p className="text-body text-fg-secondary mt-1">
+                  Taking you to <span className="font-medium text-fg">{identity.tenantName}</span> ({identity.role})...
                 </p>
               </div>
               <div className="pt-2">
-                <button
+                <Button
+                  variant="brand"
+                  size="lg"
+                  className="w-full"
                   onClick={() =>
                     router.push(
                       identity.role === 'Super Admin' || identity.role === 'Admin'
@@ -135,36 +139,32 @@ function VerifyLoginContent() {
                         : '/dialer'
                     )
                   }
-                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <span>Enter Workspace Now</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                  Enter workspace
+                  <ArrowRight aria-hidden />
+                </Button>
               </div>
             </div>
           )}
 
           {status === 'error' && (
             <div className="space-y-4 py-2">
-              <div className="w-11 h-11 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-6 h-6" />
+              <div className="size-12 rounded-full bg-danger-bg text-danger-fg flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" aria-hidden />
               </div>
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-rose-500 mb-1">
-                  TOKEN_VERIFICATION_FAILED
-                </div>
-                <h1 className="text-lg font-bold text-zinc-950">
-                  Login Link Expired or Invalid
+                <h1 className="text-h2 text-fg">
+                  This login link has expired or is invalid
                 </h1>
-                <p className="text-xs text-zinc-500 mt-1">{errorMessage}</p>
+                <p className="text-body text-fg-secondary mt-1">{errorMessage}</p>
               </div>
               <div className="pt-2">
                 <Link
                   href="/login"
-                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition"
+                  className={buttonClasses('primary', 'lg', 'w-full')}
                 >
-                  <span>Return to Login</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>Back to sign in</span>
+                  <ArrowRight aria-hidden />
                 </Link>
               </div>
             </div>
@@ -172,8 +172,8 @@ function VerifyLoginContent() {
         </div>
       </main>
 
-      <footer className="w-full max-w-md mx-auto py-6 text-center font-mono text-[10px] tracking-wider text-zinc-400">
-        © 2026 APPOINTMENTLYY AI · SECURE ACCESS GATEWAY
+      <footer className="w-full max-w-md mx-auto py-6 text-center text-caption text-fg-tertiary">
+        © 2026 Appointmentlyy
       </footer>
     </div>
   );
@@ -183,8 +183,8 @@ export default function VerifyLoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center text-xs text-zinc-500 font-mono">
-          VERIFYING_TOKEN...
+        <div className="min-h-screen bg-app flex items-center justify-center text-body text-fg-tertiary">
+          Verifying...
         </div>
       }
     >
@@ -192,4 +192,3 @@ export default function VerifyLoginPage() {
     </Suspense>
   );
 }
-

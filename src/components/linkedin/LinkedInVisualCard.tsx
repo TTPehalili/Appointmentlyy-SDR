@@ -15,6 +15,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { VisualCardConfig } from '@/lib/linkedinStudio';
+import { Button, SegmentedControl, Textarea } from '@/components/ui';
 
 export interface PovPhotoItem {
   id: string;
@@ -312,63 +313,62 @@ export default function LinkedInVisualCard({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
-      {/* Visual Header & Mode Toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-900">
-          <ImageIcon className="h-3.5 w-3.5 text-zinc-600" />
-          <span>Post Visual Pairing</span>
-          <span className="flex items-center gap-0.5 text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
-            <ShieldCheck className="h-2.5 w-2.5 text-emerald-600" />
-            POV Aligned
+    <div className="space-y-3 rounded-lg border border-line bg-surface p-4">
+      {/* Visual header & mode toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="h-4 w-4 text-fg-secondary" />
+          <span className="text-body-strong text-fg">Post image</span>
+          <span className="flex items-center gap-1 text-small text-fg-tertiary">
+            <ShieldCheck className="h-3.5 w-3.5 text-success-fg" />
+            Matches the post
           </span>
         </div>
 
-        {/* Visual Mode Selector Tabs */}
-        <div className="flex items-center gap-1 bg-zinc-100 p-0.5 rounded-lg border border-zinc-200 text-[10px] font-semibold">
-          <button
-            type="button"
-            onClick={() => setVisualMode('photo')}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors ${
-              visualMode === 'photo'
-                ? 'bg-white text-zinc-900 shadow-2xs font-bold'
-                : 'text-zinc-500 hover:text-zinc-800'
-            }`}
-          >
-            <Camera className="h-2.5 w-2.5" />
-            <span>Relatable Photo</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setVisualMode('graphic')}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors ${
-              visualMode === 'graphic'
-                ? 'bg-white text-zinc-900 shadow-2xs font-bold'
-                : 'text-zinc-500 hover:text-zinc-800'
-            }`}
-          >
-            <Layers className="h-2.5 w-2.5" />
-            <span>Graphic</span>
-          </button>
-        </div>
+        <SegmentedControl
+          size="sm"
+          label="Image type"
+          value={visualMode}
+          onChange={(v) => setVisualMode(v as 'photo' | 'graphic')}
+          items={[
+            {
+              value: 'photo',
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5" />
+                  <span>Photo</span>
+                </span>
+              ),
+            },
+            {
+              value: 'graphic',
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>Graphic</span>
+                </span>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {/* =================================================================== */}
-      {/* MODE 1: REALISTIC & RELATABLE PHOTOGRAPHY PREVIEW                   */}
+      {/* MODE 1: REALISTIC PHOTO PREVIEW                                     */}
       {/* =================================================================== */}
       {visualMode === 'photo' ? (
-        <div className="space-y-2.5">
-          {/* Dual Visual Variant Switcher (e.g. Primary vs Alternative Devil) */}
+        <div className="space-y-3">
+          {/* Primary vs alternative photo */}
           {alternativeImageUrl && (
-            <div className="flex items-center justify-center gap-1 p-1 bg-zinc-100 rounded-lg text-[10px] font-semibold border border-zinc-200">
+            <div className="flex items-center justify-center gap-1 rounded-md border border-line bg-subtle p-0.5 text-small">
               <button
                 type="button"
                 onClick={() => setActiveVariant('primary')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  activeVariant === 'primary' 
-                    ? 'bg-white text-zinc-900 shadow-2xs font-bold ring-1 ring-zinc-300' 
-                    : 'text-zinc-600 hover:text-zinc-900'
+                aria-pressed={activeVariant === 'primary'}
+                className={`focus-ring rounded-sm px-2.5 py-1 transition-colors ${
+                  activeVariant === 'primary'
+                    ? 'bg-surface font-medium text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
               >
                 {primaryButtonLabel}
@@ -376,10 +376,11 @@ export default function LinkedInVisualCard({
               <button
                 type="button"
                 onClick={() => setActiveVariant('alternative')}
-                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
-                  activeVariant === 'alternative' 
-                    ? 'bg-rose-950 text-rose-100 shadow-2xs font-bold ring-1 ring-rose-700' 
-                    : 'text-zinc-600 hover:text-rose-800'
+                aria-pressed={activeVariant === 'alternative'}
+                className={`focus-ring flex items-center gap-1 rounded-sm px-2.5 py-1 transition-colors ${
+                  activeVariant === 'alternative'
+                    ? 'bg-surface font-medium text-fg shadow-xs'
+                    : 'text-fg-secondary hover:text-fg'
                 }`}
               >
                 <span>{alternativeImageLabel}</span>
@@ -387,215 +388,211 @@ export default function LinkedInVisualCard({
             </div>
           )}
 
-          {/* Photo Display Card */}
-          <div className="relative w-full aspect-square max-w-[280px] mx-auto rounded-xl overflow-hidden border border-zinc-200 bg-zinc-900 shadow-sm group">
-            <img 
-              src={displayedPhotoUrl} 
-              alt={`LinkedIn Episode ${episodeNumber} Visual`} 
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          {/* Photo */}
+          <div className="group relative mx-auto aspect-square w-full max-w-[280px] overflow-hidden rounded-lg border border-line bg-subtle">
+            <img
+              src={displayedPhotoUrl}
+              alt={`LinkedIn Episode ${episodeNumber} Visual`}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
 
-            {/* Episode & Aesthetic / Demographics Badge */}
-            <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between gap-1 pointer-events-none">
-              <span className="text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/75 text-emerald-300 backdrop-blur-xs border border-white/10">
+            {/* Style & audience labels */}
+            <div className="pointer-events-none absolute left-2 right-2 top-2 z-10 flex items-center justify-between gap-1">
+              <span className="rounded-sm bg-ink-950/75 px-2 py-0.5 text-caption text-ink-50 backdrop-blur-xs">
                 Candid 35mm
               </span>
 
-              {/* Cultural Demographics Indicator */}
               {displayedBadgeType === 'devil' ? (
-                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-rose-950/90 text-rose-300 border border-rose-500/40">
+                <span className="rounded-sm bg-ink-950/75 px-2 py-0.5 text-caption text-ink-50 backdrop-blur-xs">
                   {displayedBadge}
                 </span>
               ) : displayedBadgeType === 'client' ? (
-                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-950/90 text-blue-300 border border-blue-500/40">
+                <span className="rounded-sm bg-ink-950/75 px-2 py-0.5 text-caption text-ink-50 backdrop-blur-xs">
                   {displayedBadge}
                 </span>
               ) : (
-                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-950/90 text-emerald-300 border border-emerald-500/40">
+                <span className="rounded-sm bg-ink-950/75 px-2 py-0.5 text-caption text-ink-50 backdrop-blur-xs">
                   {displayedBadge}
                 </span>
               )}
             </div>
 
-            {/* Headline and Narrative Subtitle Overlay */}
-            <div className="absolute bottom-2 left-2 right-2 z-10 p-2 rounded-lg bg-black/80 backdrop-blur-xs border border-white/10 text-white text-left">
-              <div className="text-[10px] font-bold tracking-tight truncate text-zinc-100">
+            {/* Headline overlay */}
+            <div className="absolute bottom-2 left-2 right-2 z-10 rounded-md bg-ink-950/80 p-2 text-left backdrop-blur-xs">
+              <div className="truncate text-caption text-ink-50">
                 {displayedHeadline}
               </div>
-              <div className="text-[8px] text-zinc-300 font-mono line-clamp-1">
+              <div className="line-clamp-1 text-caption font-normal text-ink-400">
                 {displayedSubtitle}
               </div>
             </div>
           </div>
 
-          {/* Gemini Realistic Photography Prompt Box - 100% Synchronized */}
-          <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-2 space-y-1.5 text-left">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-zinc-700 flex items-center gap-1 uppercase tracking-wider">
-                <Sparkles className="h-3 w-3 text-amber-500" />
-                Gemini Photographic Prompt
-                <span className="text-[8px] font-normal text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded font-sans">
-                  In Sync
-                </span>
+          {/* Photo prompt (kept in sync with the photo) */}
+          <div className="space-y-2 rounded-md border border-line bg-subtle p-3 text-left">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-small font-medium text-fg">
+                <Sparkles className="h-3.5 w-3.5 text-fg-secondary" />
+                Photo prompt
               </span>
-              
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingPrompt(!isEditingPrompt)}
-                  className="flex items-center gap-0.5 text-[10px] font-medium text-zinc-600 hover:text-zinc-950 bg-white border border-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-100 transition-colors"
-                  title="Customize photographic prompt"
-                >
-                  <Edit3 className="h-2.5 w-2.5 text-zinc-500" />
-                  <span>{isEditingPrompt ? 'Close' : 'Edit'}</span>
-                </button>
 
-                <button
-                  type="button"
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                  title="Customize photographic prompt"
+                  className="h-7 px-2"
+                >
+                  <Edit3 />
+                  <span>{isEditingPrompt ? 'Close' : 'Edit'}</span>
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => copyToClipboard(displayedPhotoPrompt, `prompt-photo-${episodeNumber}`)}
-                  className="flex items-center gap-1 text-[10px] font-semibold text-zinc-700 hover:text-zinc-950 bg-white border border-zinc-200 px-2 py-0.5 rounded hover:bg-zinc-100 transition-colors shadow-2xs"
+                  className="h-7 px-2"
                 >
                   {copiedKey === `prompt-photo-${episodeNumber}` ? (
                     <>
-                      <Check className="h-2.5 w-2.5 text-emerald-600" />
-                      <span className="text-emerald-600">Copied!</span>
+                      <Check />
+                      <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="h-2.5 w-2.5" />
-                      <span>Copy Prompt</span>
+                      <Copy />
+                      <span>Copy prompt</span>
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
 
             {isEditingPrompt ? (
-              <textarea
+              <Textarea
                 value={displayedPhotoPrompt}
                 onChange={(e) => setCustomPrimaryPrompt(e.target.value)}
                 rows={3}
-                className="w-full text-[10px] font-mono p-1.5 rounded border border-zinc-300 bg-white focus:outline-hidden focus:ring-1 focus:ring-zinc-800 text-zinc-800"
+                className="min-h-0 text-small"
               />
             ) : (
-              <p className="text-[10px] text-zinc-700 leading-relaxed font-mono bg-white p-2 rounded border border-zinc-200/90 line-clamp-3">
+              <p className="line-clamp-3 rounded-sm border border-line bg-surface p-2 text-small leading-relaxed text-fg-secondary">
                 {displayedPhotoPrompt}
               </p>
             )}
           </div>
 
-          {/* Action Buttons: Switch Photo & Download Photo */}
-          <div className="grid grid-cols-2 gap-2 pt-0.5">
-            <button
-              type="button"
+          {/* Switch photo & download */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleCycleAuthenticPhoto}
-              className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 transition-colors"
               title="Cycle through curated authentic 35mm photos with synchronized prompts"
             >
-              <RefreshCw className="h-3 w-3 text-zinc-600" />
-              <span>Switch Photo</span>
-            </button>
+              <RefreshCw />
+              <span>Switch photo</span>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleDownloadPhoto}
               disabled={downloading}
-              className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-[11px] font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition-colors shadow-2xs"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download />
               <span>{downloading ? 'Saving...' : 'Download JPG'}</span>
-            </button>
+            </Button>
           </div>
 
           {currentCatalogIndex !== initialCatalogIndex && (
-            <div className="text-center pt-0.5">
-              <button
-                type="button"
-                onClick={handleResetDefaultPhoto}
-                className="text-[10px] text-zinc-400 hover:text-zinc-700 underline transition-colors"
-              >
-                Reset to Episode {episodeNumber} Default
-              </button>
+            <div className="text-center">
+              <Button variant="ghost" size="sm" onClick={handleResetDefaultPhoto}>
+                Reset to episode {episodeNumber} default
+              </Button>
             </div>
           )}
         </div>
       ) : (
         /* =================================================================== */
-        /* MODE 2: MINIMALIST EXECUTIVE GRAPHIC PREVIEW                        */
+        /* MODE 2: GRAPHIC PREVIEW (the exported graphic itself is dark)       */
         /* =================================================================== */
-        <div className="space-y-2.5">
-          <div 
-            className="relative w-full aspect-square max-w-[280px] mx-auto rounded-xl bg-zinc-950 p-4 border border-zinc-800 text-white flex flex-col justify-between overflow-hidden shadow-md select-none group"
+        <div className="space-y-3">
+          <div
+            className="group relative mx-auto flex aspect-square w-full max-w-[280px] select-none flex-col justify-between overflow-hidden rounded-lg border border-line bg-inverse p-4 text-ink-50"
           >
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:16px_16px] opacity-20 pointer-events-none" />
-            
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,var(--ink-800)_1px,transparent_1px),linear-gradient(to_bottom,var(--ink-800)_1px,transparent_1px)] bg-[size:16px_16px] opacity-40" />
+
             <div className="relative z-10 flex items-center justify-between">
-              <span className="text-[9px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-rose-400 border border-zinc-700">
+              <span className="rounded-full border border-ink-700 bg-ink-800 px-2 py-0.5 text-caption text-ink-50">
                 {visualConfig.tag || `EPISODE 0${episodeNumber}`}
               </span>
-              <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-tight">
+              <span className="text-caption font-normal text-ink-400">
                 Appointmentlyy
               </span>
             </div>
 
-            <div className="relative z-10 my-auto text-center space-y-1">
-              <div className="text-4xl font-extrabold tracking-tight text-white font-mono">
+            <div className="relative z-10 my-auto space-y-1 text-center">
+              <div className="text-display tabular-nums text-ink-50">
                 {visualConfig.metric || '82%'}
               </div>
-              <div className="text-[10px] text-zinc-400 font-medium px-2 leading-tight">
+              <div className="px-2 text-caption leading-tight text-ink-400">
                 {visualConfig.metricLabel || 'Operational Metric'}
               </div>
             </div>
 
-            <div className="relative z-10 pt-2 border-t border-zinc-800/80 space-y-0.5 text-left">
-              <div className="text-[11px] font-bold text-zinc-100 line-clamp-2 leading-tight">
+            <div className="relative z-10 space-y-0.5 border-t border-ink-800 pt-2 text-left">
+              <div className="line-clamp-2 text-caption leading-tight text-ink-50">
                 {visualConfig.headline}
               </div>
-              <div className="text-[9px] text-zinc-400 line-clamp-1">
+              <div className="line-clamp-1 text-caption font-normal text-ink-400">
                 {visualConfig.subheadline || 'Key takeaway for BPO and outbound leaders'}
               </div>
             </div>
           </div>
 
-          {/* Graphic Design Prompt */}
-          <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-2 space-y-1 text-left">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-zinc-700 flex items-center gap-1 uppercase tracking-wider">
-                <Sparkles className="h-3 w-3 text-amber-500" />
-                Graphic Design Prompt
+          {/* Graphic prompt */}
+          <div className="space-y-2 rounded-md border border-line bg-subtle p-3 text-left">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-small font-medium text-fg">
+                <Sparkles className="h-3.5 w-3.5 text-fg-secondary" />
+                Graphic prompt
               </span>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => copyToClipboard(imagePrompt, `prompt-graphic-${episodeNumber}`)}
-                className="flex items-center gap-1 text-[10px] font-medium text-zinc-700 hover:text-zinc-950 bg-white border border-zinc-200 px-2 py-0.5 rounded hover:bg-zinc-100 transition-colors"
+                className="h-7 px-2"
               >
                 {copiedKey === `prompt-graphic-${episodeNumber}` ? (
                   <>
-                    <Check className="h-2.5 w-2.5 text-emerald-600" />
-                    <span className="text-emerald-600 font-semibold">Copied!</span>
+                    <Check />
+                    <span>Copied</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="h-2.5 w-2.5" />
-                    <span>Copy Prompt</span>
+                    <Copy />
+                    <span>Copy prompt</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
-            <p className="text-[10px] text-zinc-600 leading-snug line-clamp-3 font-mono bg-white p-1.5 rounded border border-zinc-200/80">
+            <p className="line-clamp-3 rounded-sm border border-line bg-surface p-2 text-small leading-snug text-fg-secondary">
               {imagePrompt}
             </p>
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleDownloadSvg}
             disabled={downloading}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-[11px] font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition-colors shadow-2xs"
+            className="w-full"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span>{downloading ? 'Downloading...' : 'Download Graphic (SVG)'}</span>
-          </button>
+            <Download />
+            <span>{downloading ? 'Downloading...' : 'Download graphic (SVG)'}</span>
+          </Button>
         </div>
       )}
     </div>

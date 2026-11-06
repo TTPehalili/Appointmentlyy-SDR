@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Send, 
-  Loader2, 
   Copy, 
   Check, 
   ArrowRight, 
@@ -18,9 +17,12 @@ import {
   CheckCircle2,
   PhoneCall,
   Mail,
-  RotateCcw
+  RotateCcw,
+  FileText,
+  Lightbulb
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import { Button } from '@/components/ui';
 import { 
   DEFAULT_OUTBOUND_FRAMEWORKS, 
   DEFAULT_ANTI_SALES_CTAS, 
@@ -204,79 +206,78 @@ export default function AiOutboundCopilot({
   ];
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-2xs transition-all">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-xs">
       {/* HEADER / TOGGLE */}
-      <div 
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        className="px-3.5 py-2.5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-100/70 transition-colors"
+        className="flex cursor-pointer select-none items-center justify-between border-b border-line px-4 py-3 transition-colors duration-150 hover:bg-subtle"
       >
         <div className="flex items-center gap-2">
-          <div className="p-1 rounded-md bg-zinc-900 text-white">
-            <Sparkles className="w-3.5 h-3.5" />
-          </div>
+          <Sparkles className="size-4 text-fg-secondary" />
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-zinc-900">
-                Gemini AI Outbound Copilot
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-h3 text-fg">
+                AI writing copilot
               </span>
-              <span className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded bg-zinc-200/70 text-zinc-700 flex items-center gap-1">
+              <span className="flex items-center gap-1 text-caption text-fg-tertiary">
                 {channelIcon}
                 <span>{channelLabel}</span>
               </span>
             </div>
-            <p className="text-[11px] text-zinc-500">
-              Grounded in .csv intelligence • Guru frameworks • Anti-sales CTAs
+            <p className="text-caption text-fg-tertiary">
+              Uses your lead data, saved frameworks and soft closing lines.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {generatedResult && (
-            <span className="text-[10px] font-mono text-zinc-500 bg-white border border-zinc-200 px-2 py-0.5 rounded">
-              {generatedResult.wordCount} words • ~{generatedResult.readingTimeSec}s {channel === 'Phone' ? 'speak' : 'read'}
+            <span className="text-caption tabular-nums text-fg-tertiary">
+              {generatedResult.wordCount} words · ~{generatedResult.readingTimeSec}s {channel === 'Phone' ? 'speak' : 'read'}
             </span>
           )}
-          <button 
-            type="button" 
-            className="text-zinc-400 hover:text-zinc-600 p-0.5"
+          <button
+            type="button"
+            aria-label={isOpen ? 'Collapse' : 'Expand'}
+            className="focus-ring rounded-sm p-0.5 text-fg-tertiary hover:text-fg"
           >
-            {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {isOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </button>
         </div>
       </div>
 
       {/* EXPANDED CONTENT */}
       {isOpen && (
-        <div className="p-3.5 space-y-3">
+        <div className="space-y-3 p-4">
           {/* CSV KNOWLEDGE SIGNALS BAR */}
-          <div className="p-2 rounded-lg bg-zinc-50 border border-zinc-200/80 text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1 text-zinc-600">
-            <span className="font-semibold text-zinc-900 flex items-center gap-1">
-              <span>📄</span>
-              <span>CSV Intelligence:</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-line bg-app p-2 text-caption text-fg-secondary">
+            <span className="flex items-center gap-1 text-fg">
+              <FileText className="size-3.5 text-fg-secondary" />
+              <span>Lead data:</span>
             </span>
-            <span>Floor: <strong className="text-zinc-900">{lead.headcount || '50+ Seats'}</strong></span>
-            <span>Tech: <strong className="text-zinc-900">{lead.techStack || 'Apollo/HubSpot'}</strong></span>
-            <span>Competitor: <strong className="text-zinc-900">{lead.outsourcer || 'Incumbent BPO'}</strong></span>
+            <span>Floor: <span className="text-fg">{lead.headcount || '50+ Seats'}</span></span>
+            <span>Tech: <span className="text-fg">{lead.techStack || 'Apollo/HubSpot'}</span></span>
+            <span>Competitor: <span className="text-fg">{lead.outsourcer || 'Incumbent BPO'}</span></span>
             {lead.painPoint && (
-              <span className="truncate max-w-xs">
-                Friction: <strong className="text-zinc-900">{lead.painPoint}</strong>
+              <span className="max-w-xs truncate">
+                Friction: <span className="text-fg">{lead.painPoint}</span>
               </span>
             )}
             {lead.website && (
-              <span>Web: <span className="font-mono text-zinc-700">{lead.website}</span></span>
+              <span>Web: <span className="font-mono text-fg">{lead.website}</span></span>
             )}
           </div>
 
           {/* DROPDOWN OPTIONS TO CHOOSE FROM */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="text-[10px] font-mono font-medium uppercase tracking-wider text-zinc-500 block mb-1">
-                Select Outbound Framework ({frameworks.length} Available)
+              <label className="mb-1.5 block text-caption text-fg-secondary">
+                Framework ({frameworks.length} available)
               </label>
               <select
                 value={selectedFrameworkId}
                 onChange={(e) => handleFrameworkChange(e.target.value)}
-                className="w-full bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900/10 focus:border-zinc-400 font-medium"
+                className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg"
               >
                 {frameworks.map((fw) => (
                   <option key={fw.id} value={fw.id}>
@@ -287,13 +288,13 @@ export default function AiOutboundCopilot({
             </div>
 
             <div>
-              <label className="text-[10px] font-mono font-medium uppercase tracking-wider text-zinc-500 block mb-1">
-                Select Anti-Sales Closing Angle
+              <label className="mb-1.5 block text-caption text-fg-secondary">
+                Closing angle
               </label>
               <select
                 value={selectedCtaId}
                 onChange={(e) => setSelectedCtaId(e.target.value)}
-                className="w-full bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900/10 focus:border-zinc-400 font-medium"
+                className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg"
               >
                 {antiSalesCtas.map((cta) => (
                   <option key={cta.id} value={cta.id}>
@@ -310,32 +311,27 @@ export default function AiOutboundCopilot({
               type="text"
               value={customRepInstruction}
               onChange={(e) => setCustomRepInstruction(e.target.value)}
-              placeholder="Custom direction? (e.g. 'Mention Manila expansion' or 'Keep under 20 words')"
-              className="flex-1 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-900/10 focus:border-zinc-400"
+              placeholder="Any direction? For example: mention the Manila expansion, or keep it under 20 words"
+              className="focus-ring h-9 flex-1 rounded-sm border border-line-strong bg-surface px-3 text-small text-fg placeholder:text-fg-disabled"
             />
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="md"
               onClick={() => handleGenerate()}
-              disabled={isGenerating}
-              className="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 text-white font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              loading={isGenerating}
+              icon={isGenerating ? undefined : <Sparkles />}
             >
               {isGenerating ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Synthesizing...</span>
-                </>
+                <span>Writing...</span>
               ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-zinc-300" />
-                  <span>{generatedResult ? 'Rewrite Another Version' : 'Synthesize with Gemini'}</span>
-                </>
+                <span>{generatedResult ? 'Write another version' : 'Write with AI'}</span>
               )}
-            </button>
+            </Button>
           </div>
 
           {/* QUICK REWRITE TWEAK CHIPS */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-            <span className="text-[10px] font-mono text-zinc-400">1-click angle tweaks:</span>
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span className="text-caption text-fg-tertiary">Quick tweaks:</span>
             {quickTweaks.map((qt, idx) => (
               <button
                 key={idx}
@@ -345,7 +341,7 @@ export default function AiOutboundCopilot({
                   setCustomRepInstruction(qt.prompt);
                   handleGenerate(qt.prompt);
                 }}
-                className="px-2 py-0.5 rounded text-[11px] bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 transition-colors cursor-pointer border border-zinc-200/50"
+                className="focus-ring inline-flex h-7 cursor-pointer items-center rounded-full border border-line-strong bg-surface px-2.5 text-caption text-fg transition-colors duration-150 hover:bg-subtle disabled:opacity-50"
               >
                 {qt.label}
               </button>
@@ -354,53 +350,53 @@ export default function AiOutboundCopilot({
 
           {/* RESULT CARD & APPROVE WORKFLOW */}
           {generatedResult && (
-            <div className="mt-2.5 p-3.5 rounded-lg bg-zinc-50/80 border border-zinc-200 space-y-2.5 animate-in fade-in">
-              {/* METADATA CHIPS */}
-              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 pb-2 border-b border-zinc-200/60">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-zinc-800">
+            <div className="mt-2.5 space-y-3 rounded-md border border-line bg-app p-4 animate-in fade-in">
+              {/* METADATA */}
+              <div className="flex items-center justify-between border-b border-line pb-2 text-caption text-fg-tertiary">
+                <div className="flex items-center gap-2 tabular-nums">
+                  <span className="text-fg">
                     {generatedResult.frameworkUsed}
                   </span>
-                  <span>•</span>
+                  <span aria-hidden>·</span>
                   <span>{generatedResult.wordCount} words</span>
-                  <span>•</span>
+                  <span aria-hidden>·</span>
                   <span>~{generatedResult.readingTimeSec}s {channel === 'Phone' ? 'spoken' : 'read'}</span>
                 </div>
-                <span className="text-zinc-400">
+                <span>
                   via {generatedResult.modelUsed}
                 </span>
               </div>
 
               {/* EMAIL SUBJECT (if email) */}
               {channel === 'Email' && generatedResult.subject && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-mono text-[10px] font-semibold text-zinc-500 uppercase">Subject:</span>
-                  <span className="font-medium text-zinc-900 bg-white px-2 py-0.5 rounded border border-zinc-200 font-mono text-xs">
+                <div className="flex items-center gap-2 text-small">
+                  <span className="text-caption text-fg-tertiary">Subject</span>
+                  <span className="text-body-strong text-fg">
                     {generatedResult.subject}
                   </span>
                 </div>
               )}
 
               {/* SCRIPT / MESSAGE BODY */}
-              <div className="bg-white p-3 rounded-lg border border-zinc-200 text-xs text-zinc-800 font-mono whitespace-pre-wrap leading-relaxed">
+              <div className="whitespace-pre-wrap rounded-md border border-line bg-surface p-3 text-body text-fg">
                 {generatedResult.body}
               </div>
 
               {/* PROSPECT INSIGHT ANGLE */}
               {generatedResult.prospectInsight && (
-                <div className="text-[11px] text-zinc-600 bg-zinc-100/60 p-2 rounded border border-zinc-200/50 flex items-start gap-1.5">
-                  <span className="text-xs">💡</span>
+                <div className="flex items-start gap-1.5 rounded-md border border-line bg-subtle p-2 text-small text-fg-secondary">
+                  <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-fg-secondary" />
                   <span>
-                    <strong>Why this converts from .csv:</strong> {generatedResult.prospectInsight}
+                    <span className="text-fg">Why this should land:</span> {generatedResult.prospectInsight}
                   </span>
                 </div>
               )}
 
               {/* ALTERNATIVE HOOKS */}
               {generatedResult.alternativeHooks.length > 0 && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase">
-                    Swap Opening Hook:
+                <div className="space-y-1.5">
+                  <span className="text-caption text-fg-tertiary">
+                    Swap the opening line
                   </span>
                   <div className="space-y-1">
                     {generatedResult.alternativeHooks.map((hook, hIdx) => (
@@ -408,11 +404,11 @@ export default function AiOutboundCopilot({
                         key={hIdx}
                         type="button"
                         onClick={() => handleSwapHook(hook)}
-                        className="w-full text-left p-1.5 rounded bg-white hover:bg-zinc-100 border border-zinc-200 text-[11px] text-zinc-700 font-mono flex items-center justify-between group cursor-pointer transition-colors"
+                        className="focus-ring group flex w-full cursor-pointer items-center justify-between rounded-sm border border-line bg-surface p-2 text-left text-small text-fg transition-colors duration-150 hover:bg-subtle"
                       >
-                        <span className="truncate pr-2">"{hook}"</span>
-                        <span className="text-[10px] font-sans font-medium text-zinc-400 group-hover:text-zinc-900 shrink-0">
-                          Use Hook
+                        <span className="truncate pr-2">&quot;{hook}&quot;</span>
+                        <span className="shrink-0 text-caption text-fg-tertiary group-hover:text-fg">
+                          Use this line
                         </span>
                       </button>
                     ))}
@@ -421,55 +417,55 @@ export default function AiOutboundCopilot({
               )}
 
               {/* APPROVE & REWRITE WORKFLOW BUTTONS */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-zinc-200/60">
+              <div className="flex flex-col justify-between gap-2 border-t border-line pt-3 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={handleApprove}
-                    className="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    icon={<Check />}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Approve & Apply to {channel === 'Phone' ? 'Teleprompter' : channel === 'Email' ? 'Email Composer' : 'LinkedIn'}</span>
-                  </button>
+                    <span>Apply to {channel === 'Phone' ? 'teleprompter' : channel === 'Email' ? 'email composer' : 'LinkedIn'}</span>
+                  </Button>
 
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleGenerate()}
                     disabled={isGenerating}
-                    className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    icon={<RefreshCw className={isGenerating ? 'animate-spin' : ''} />}
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-                    <span>Rewrite Another</span>
-                  </button>
+                    Write another
+                  </Button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleCopy}
-                    className="px-2.5 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                    icon={copied ? <Check className="text-success-fg" /> : <Copy />}
                   >
-                    {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                     <span>{copied ? 'Copied' : 'Copy'}</span>
-                  </button>
+                  </Button>
 
                   {onResetOriginal && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={onResetOriginal}
-                      className="px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                      icon={<RotateCcw />}
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Revert Default</span>
-                    </button>
+                      Revert to default
+                    </Button>
                   )}
                 </div>
               </div>
 
               {appliedToast && (
-                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-xs font-medium flex items-center gap-1.5 animate-in fade-in">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Approved! Successfully applied to {channel === 'Phone' ? 'active teleprompter' : 'message composer'}.</span>
+                <div className="flex items-center gap-1.5 rounded-md border border-success-500/40 bg-success-bg p-2 text-small font-medium text-success-fg animate-in fade-in">
+                  <CheckCircle2 className="size-4 shrink-0 text-success-fg" />
+                  <span>Applied to the {channel === 'Phone' ? 'active teleprompter' : 'message composer'}.</span>
                 </div>
               )}
             </div>

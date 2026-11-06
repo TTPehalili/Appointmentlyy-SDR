@@ -109,6 +109,9 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Volume2
 };
 
+const HANDLE_CLS =
+  '!w-2.5 !h-2.5 !bg-surface !border-2 !border-ink-400 hover:!border-brand-500 transition-colors';
+
 export interface CanvasNodeData {
   label: string;
   nodeType: string;
@@ -152,14 +155,10 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
 
   return (
     <div
-      className={`group relative transition-all duration-150 select-none ${
-        isSubNode
-          ? 'min-w-[170px] max-w-[210px] rounded-2xl bg-white border border-stone-300 shadow-2xs hover:border-stone-500'
-          : isTrigger
-          ? 'min-w-[140px] rounded-3xl bg-white border-2 border-stone-800 shadow-xs hover:shadow-md'
-          : 'min-w-[220px] max-w-[260px] rounded-2xl bg-white border-2 border-stone-800 shadow-xs hover:shadow-md'
+      className={`group relative rounded-lg border bg-surface transition-colors duration-150 select-none ${
+        isSubNode ? 'min-w-[170px] max-w-[190px] shadow-xs' : 'w-[240px] shadow-xs'
       } ${
-        selected ? 'ring-2 ring-stone-900 ring-offset-2 border-stone-900' : ''
+        selected ? 'border-brand-600 ring-1 ring-brand-600' : 'border-line hover:border-line-strong'
       }`}
     >
       {/* Target input handle (unless Trigger) */}
@@ -168,28 +167,28 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
           type="target"
           position={Position.Left}
           id="input"
-          className="!w-3 !h-3 !bg-stone-100 !border-2 !border-stone-600 hover:!border-stone-900 hover:!bg-stone-300 transition-colors"
+          className={HANDLE_CLS}
         />
       )}
 
       {/* Trigger specific subtle lightning indicator (like in screenshot) */}
       {isTrigger && (
-        <div className="absolute -left-5 top-1/2 -translate-y-1/2 flex items-center justify-center text-rose-500">
-          <Zap className="h-4 w-4 fill-rose-500 text-rose-500" />
+        <div className="absolute -left-6 top-1/2 -translate-y-1/2 flex items-center justify-center text-fg-tertiary" title="Trigger">
+          <Zap className="h-4 w-4" />
         </div>
       )}
 
       {/* Minimalist n8n Node Body */}
-      <div className={`p-3.5 flex items-center gap-3 ${isTrigger ? 'flex-col text-center justify-center py-4' : ''}`}>
-        {/* Crisp monochrome icon */}
-        <div className={`p-2 rounded-xl bg-stone-100 text-stone-900 shrink-0 ${isTrigger ? 'h-10 w-10 flex items-center justify-center' : ''}`}>
-          <IconComponent className="h-5 w-5" />
+      <div className="px-3 py-2.5 flex items-center gap-2.5">
+        {/* Monochrome icon */}
+        <div className="h-8 w-8 rounded-md border border-line bg-subtle text-fg-secondary shrink-0 flex items-center justify-center">
+          <IconComponent className="h-4 w-4" />
         </div>
 
         {/* Title and Subtitle */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
-            <h4 className="text-xs font-bold text-stone-900 truncate tracking-tight">{nodeData.label}</h4>
+            <h4 className="text-body-strong text-fg truncate">{nodeData.label}</h4>
             {/* Quick action buttons on hover */}
             <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
               <button
@@ -197,49 +196,49 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
                   e.stopPropagation();
                   nodeData.onOpenConfig && nodeData.onOpenConfig(id);
                 }}
-                className="p-0.5 rounded text-stone-400 hover:text-stone-800 hover:bg-stone-100"
+                className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-fg hover:bg-subtle"
                 title="Configure"
               >
-                <Settings className="h-3 w-3" />
+                <Settings className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   nodeData.onDelete && nodeData.onDelete(id);
                 }}
-                className="p-0.5 rounded text-stone-400 hover:text-rose-600 hover:bg-rose-50"
+                className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-danger-fg hover:bg-danger-bg"
                 title="Delete"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
           {subtitle && (
-            <p className="text-[10px] font-mono text-stone-500 truncate mt-0.5">
+            <p className="text-small text-fg-secondary truncate">
               {subtitle}
             </p>
           )}
 
           {/* Minimal status indicator if running/success/error */}
           {status !== 'idle' && (
-            <div className="mt-1 flex items-center gap-1 text-[9px] font-mono">
+            <div className="mt-1 flex items-center gap-1.5 text-caption">
               {status === 'running' && (
                 <>
-                  <Loader2 className="h-2.5 w-2.5 text-amber-500 animate-spin" />
-                  <span className="text-amber-600">Running...</span>
+                  <Loader2 className="h-3 w-3 text-fg-tertiary animate-spin" />
+                  <span className="text-fg-secondary">Running...</span>
                 </>
               )}
               {status === 'success' && (
                 <>
-                  <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
-                  <span className="text-emerald-700">Done {nodeData.executionTimeMs ? `(${nodeData.executionTimeMs}ms)` : ''}</span>
+                  <CheckCircle2 className="h-3 w-3 text-success-fg" />
+                  <span className="text-success-fg tabular-nums">Done {nodeData.executionTimeMs ? `(${nodeData.executionTimeMs}ms)` : ''}</span>
                 </>
               )}
               {status === 'error' && (
                 <>
-                  <AlertCircle className="h-2.5 w-2.5 text-rose-500" />
-                  <span className="text-rose-600">Error</span>
+                  <AlertCircle className="h-3 w-3 text-danger-fg" />
+                  <span className="text-danger-fg">Error</span>
                 </>
               )}
             </div>
@@ -255,9 +254,9 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
               type="source"
               position={Position.Right}
               id="true"
-              className="!w-3 !h-3 !bg-stone-100 !border-2 !border-stone-800 hover:!bg-stone-300"
+              className={HANDLE_CLS}
             />
-            <span className="text-[8px] font-mono font-bold text-stone-700 mr-1.5 bg-white px-1 rounded border border-stone-200">
+            <span className="text-caption text-fg-secondary mr-2 bg-surface px-1 rounded-sm border border-line">
               true
             </span>
           </div>
@@ -266,9 +265,9 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
               type="source"
               position={Position.Right}
               id="false"
-              className="!w-3 !h-3 !bg-stone-100 !border-2 !border-stone-800 hover:!bg-stone-300"
+              className={HANDLE_CLS}
             />
-            <span className="text-[8px] font-mono font-bold text-stone-700 mr-1.5 bg-white px-1 rounded border border-stone-200">
+            <span className="text-caption text-fg-secondary mr-2 bg-surface px-1 rounded-sm border border-line">
               false
             </span>
           </div>
@@ -278,19 +277,19 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
           type="source"
           position={Position.Right}
           id="output"
-          className="!w-3 !h-3 !bg-stone-100 !border-2 !border-stone-600 hover:!border-stone-900 hover:!bg-stone-300 transition-colors"
+          className={HANDLE_CLS}
         />
       )}
 
       {/* Sub-handles for AI Agent (Model, Memory, Tool) */}
       {hasSubHandles && (
-        <div className="border-t border-stone-100 px-3 py-1.5 bg-stone-50/60 rounded-b-xl flex items-center justify-around text-[9px] font-mono text-stone-500">
+        <div className="border-t border-line px-3 py-1.5 bg-subtle rounded-b-lg flex items-center justify-around text-caption text-fg-tertiary">
           <div className="relative flex flex-col items-center">
             <Handle
               type="source"
               position={Position.Bottom}
               id="model"
-              className="!w-2.5 !h-2.5 !bg-stone-200 !border !border-stone-600"
+              className="!w-2.5 !h-2.5 !rounded-sm !bg-surface !border !border-ink-400 hover:!border-brand-500"
             />
             <span className="mt-1">Model</span>
           </div>
@@ -299,7 +298,7 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
               type="source"
               position={Position.Bottom}
               id="memory"
-              className="!w-2.5 !h-2.5 !bg-stone-200 !border !border-stone-600"
+              className="!w-2.5 !h-2.5 !rounded-sm !bg-surface !border !border-ink-400 hover:!border-brand-500"
             />
             <span className="mt-1">Memory</span>
           </div>
@@ -308,7 +307,7 @@ export const WorkflowCanvasNode = memo(function WorkflowCanvasNode({ id, data, s
               type="source"
               position={Position.Bottom}
               id="tool"
-              className="!w-2.5 !h-2.5 !bg-stone-200 !border !border-stone-600"
+              className="!w-2.5 !h-2.5 !rounded-sm !bg-surface !border !border-ink-400 hover:!border-brand-500"
             />
             <span className="mt-1">Tool</span>
           </div>

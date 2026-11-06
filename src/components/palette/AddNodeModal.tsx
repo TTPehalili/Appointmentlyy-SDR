@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Search, X, Plus, Sparkles, Cpu, Layers, GitFork, Webhook, Code, Globe, MessageSquare } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Search, X, Sparkles, Cpu, Layers, GitFork, Webhook, Code, Globe, MessageSquare } from 'lucide-react';
+import { Button, Dialog, IconButton, Kbd } from '@/components/ui';
 import { ALL_NODE_DEFINITIONS, INodeDefinition, NodeCategory } from '@/registry';
 
 const CATEGORIES: { label: string; value: string; icon: React.ElementType }[] = [
@@ -24,17 +25,12 @@ interface AddNodeModalProps {
 export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Close on Escape key
+  // Focus search once the dialog is shown (runs after Dialog's showModal effect)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+    if (isOpen) searchRef.current?.focus();
+  }, [isOpen]);
 
   const filteredNodes = useMemo(() => {
     let list = ALL_NODE_DEFINITIONS;
@@ -53,46 +49,36 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
     );
   }, [selectedCategory, searchQuery]);
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-3xl rounded-3xl bg-white border border-stone-200 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+    <Dialog open={isOpen} onClose={onClose} title="Add a step" size="xl" bare className="overflow-hidden">
+      <div className="flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-rose-50 text-[#ED1C24] flex items-center justify-center font-bold">
-              <Plus className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-stone-900">Add Automation Node</h3>
-              <p className="text-xs text-stone-500">Select preloaded trigger, logic, app, AI or MCP step</p>
-            </div>
+        <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-h2 text-fg">Add a step</h2>
+            <p className="mt-1 text-body text-fg-secondary">Pick a trigger, logic, app, AI or MCP step.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <IconButton label="Close" size="sm" onClick={onClose} className="-mr-2 -mt-1">
+            <X className="h-4 w-4" />
+          </IconButton>
         </div>
 
         {/* Search Input */}
-        <div className="p-4 border-b border-stone-100 bg-stone-50/50">
+        <div className="px-6 pb-4 border-b border-line">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-tertiary" />
             <input
+              ref={searchRef}
               type="text"
-              autoFocus
-              placeholder="Search nodes by name, app (Slack, Stripe), or function (/ to focus)..."
+              placeholder="Search by name, app (Slack, Stripe) or function"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#ED1C24] focus:border-transparent transition-all"
+              className="focus-ring w-full h-9 pl-9 pr-3 rounded-sm bg-surface border border-line-strong text-body text-fg placeholder:text-fg-disabled"
             />
           </div>
 
           {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-3 pb-1 no-scrollbar text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-3 no-scrollbar text-small">
             {CATEGORIES.map((cat) => {
               const Icon = cat.icon;
               const isActive = selectedCategory === cat.value;
@@ -100,10 +86,10 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
                 <button
                   key={cat.value}
                   onClick={() => setSelectedCategory(cat.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                  className={`focus-ring flex items-center gap-1.5 h-7 px-2.5 rounded-full border whitespace-nowrap transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-[#222021] text-white shadow-2xs'
-                      : 'bg-white text-stone-600 hover:bg-stone-200/60 border border-stone-200/60'
+                      ? 'bg-action text-action-fg border-transparent'
+                      : 'bg-surface text-fg-secondary hover:bg-subtle hover:text-fg border-line'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -115,11 +101,11 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
         </div>
 
         {/* Node Grid List */}
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-2">
           {filteredNodes.length === 0 ? (
-            <div className="col-span-2 py-12 text-center text-stone-400">
-              <p className="text-sm font-medium">No nodes found matching &ldquo;{searchQuery}&rdquo;</p>
-              <p className="text-xs mt-1">Try searching for &ldquo;webhook&rdquo;, &ldquo;slack&rdquo;, &ldquo;ai&rdquo;, or &ldquo;code&rdquo;</p>
+            <div className="col-span-2 py-12 text-center">
+              <p className="text-body-strong text-fg">No steps match &ldquo;{searchQuery}&rdquo;</p>
+              <p className="text-small text-fg-secondary mt-1">Try &ldquo;webhook&rdquo;, &ldquo;slack&rdquo;, &ldquo;ai&rdquo; or &ldquo;code&rdquo;.</p>
             </div>
           ) : (
             filteredNodes.map((node) => (
@@ -129,28 +115,28 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
                   onSelectNode(node);
                   onClose();
                 }}
-                className="group p-3.5 rounded-2xl border border-stone-200 bg-white hover:border-stone-800 hover:shadow-xs transition-all cursor-pointer flex items-start gap-3"
+                className="group p-3 rounded-lg border border-line bg-surface hover:border-line-strong hover:bg-subtle transition-colors cursor-pointer flex items-start gap-3"
               >
-                <div className="p-2.5 rounded-xl bg-stone-100 text-stone-900 shrink-0">
+                <div className="h-8 w-8 rounded-md border border-line bg-subtle text-fg-secondary shrink-0 flex items-center justify-center">
                   {node.name === 'elevenLabsNode' ? (
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                       <rect x="7" y="4" width="3.5" height="16" rx="1.75" />
                       <rect x="13.5" y="4" width="3.5" height="16" rx="1.75" />
                     </svg>
                   ) : (
-                    <span className="font-mono text-xs font-bold">{node.displayName[0]}</span>
+                    <span className="text-small font-medium">{node.displayName[0]}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1">
-                    <h4 className="text-xs font-bold text-stone-900 transition-colors truncate">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-body-strong text-fg truncate">
                       {node.displayName}
                     </h4>
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200 shrink-0">
+                    <span className="text-caption text-fg-tertiary shrink-0 truncate max-w-[45%]">
                       {node.category}
                     </span>
                   </div>
-                  <p className="text-[11px] text-stone-500 line-clamp-2 mt-1 leading-relaxed">
+                  <p className="text-small text-fg-secondary line-clamp-2 mt-0.5">
                     {node.description}
                   </p>
                 </div>
@@ -160,20 +146,17 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-stone-100 bg-stone-50 flex items-center justify-between text-[11px] text-stone-400">
+        <div className="px-6 py-3 border-t border-line flex items-center justify-between text-small text-fg-secondary">
           <div className="flex items-center gap-2">
-            <span>Showing {filteredNodes.length} nodes</span>
-            <span>•</span>
-            <span>Shortcut: Press <kbd className="px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 font-mono text-[10px]">/</kbd> on canvas</span>
+            <span className="tabular-nums">{filteredNodes.length} steps</span>
+            <span className="text-fg-tertiary">·</span>
+            <span className="flex items-center gap-1">Press <Kbd>/</Kbd> on the canvas to open</span>
           </div>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 rounded-lg bg-stone-200 text-stone-700 hover:bg-stone-300 font-medium transition-colors"
-          >
+          <Button size="sm" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

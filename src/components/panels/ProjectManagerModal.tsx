@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Folder, FolderPlus, X, Palette, Trash2, Edit3, ArrowRight } from 'lucide-react';
 import { ProjectFolderRecord } from '@/lib/db';
+import { Button, Dialog, IconButton } from '@/components/ui';
 
 const PRESET_COLORS = [
   '#ED1C24', // Crimson
@@ -26,6 +27,12 @@ export default function ProjectModal({ isOpen, onClose, initialProject, onSave }
   const [description, setDescription] = useState(initialProject?.description || '');
   const [color, setColor] = useState(initialProject?.color || '#ED1C24');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const nameRef = React.useRef<HTMLInputElement>(null);
+
+  // Focus the name field once the dialog is shown (runs after Dialog's showModal effect)
+  React.useEffect(() => {
+    if (isOpen) nameRef.current?.focus();
+  }, [isOpen]);
 
   // Sync state when initialProject changes
   React.useEffect(() => {
@@ -39,8 +46,6 @@ export default function ProjectModal({ isOpen, onClose, initialProject, onSave }
       setColor('#ED1C24');
     }
   }, [initialProject, isOpen]);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,63 +66,65 @@ export default function ProjectModal({ isOpen, onClose, initialProject, onSave }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-md rounded-3xl bg-white border border-stone-200 shadow-2xl overflow-hidden flex flex-col">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title={initialProject ? 'Edit folder' : 'New folder'}
+      size="md"
+      bare
+      dismissible={!isSubmitting}
+      className="max-w-md overflow-hidden"
+    >
+      <div className="flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold"
-              style={{ backgroundColor: color }}
-            >
-              <Folder className="h-5 w-5" />
-            </div>
+        <div className="px-6 pt-5 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <Folder className="mt-1 h-5 w-5 shrink-0 text-fg-secondary" />
             <div>
-              <h3 className="text-sm font-bold text-stone-900">
-                {initialProject ? 'Edit Project Folder' : 'New Automation Project Folder'}
-              </h3>
-              <p className="text-[11px] text-stone-500">Organize workflows into dedicated project environments</p>
+              <h2 className="text-h2 text-fg">
+                {initialProject ? 'Edit folder' : 'New folder'}
+              </h2>
+              <p className="mt-1 text-body text-fg-secondary">Group related workflows together.</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-          >
+          <IconButton label="Close" size="sm" onClick={onClose} className="-mr-2 -mt-1">
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 pt-4 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-stone-700">Project / Folder Name</label>
+            <label className="text-small font-medium text-fg">Folder name</label>
             <input
+              ref={nameRef}
               type="text"
               required
-              autoFocus
-              placeholder="e.g. Sales Dialers, QA Rubrics, Stripe Billing..."
+              placeholder="e.g. Sales dialers, QA rubrics, Stripe billing"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-200 text-xs focus:ring-2 focus:ring-[#ED1C24] focus:outline-none"
+              className="focus-ring w-full h-9 px-3 rounded-sm bg-surface border border-line-strong text-body text-fg placeholder:text-fg-disabled"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-stone-700">Description (Optional)</label>
+            <label className="text-small font-medium text-fg">
+              Description <span className="font-normal text-fg-tertiary">(optional)</span>
+            </label>
             <textarea
               rows={2}
-              placeholder="Purpose of this automation project..."
+              placeholder="What is this folder for?"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-200 text-xs focus:ring-2 focus:ring-[#ED1C24] focus:outline-none"
+              className="focus-ring w-full px-3 py-2 rounded-sm bg-surface border border-line-strong text-body text-fg placeholder:text-fg-disabled"
             />
           </div>
 
           {/* Color tag picker */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-stone-700 flex items-center gap-1.5">
-              <Palette className="h-3.5 w-3.5" />
-              <span>Project Accent Color</span>
+            <label className="text-small font-medium text-fg flex items-center gap-1.5">
+              <Palette className="h-4 w-4 text-fg-secondary" />
+              <span>Folder colour tag</span>
             </label>
             <div className="flex items-center gap-2 pt-1">
               {PRESET_COLORS.map((c) => (
@@ -125,8 +132,9 @@ export default function ProjectModal({ isOpen, onClose, initialProject, onSave }
                   type="button"
                   key={c}
                   onClick={() => setColor(c)}
-                  className={`h-7 w-7 rounded-full transition-transform cursor-pointer ${
-                    color === c ? 'scale-120 ring-2 ring-offset-2 ring-stone-900' : 'hover:scale-110'
+                  aria-label={`Colour ${c}`}
+                  className={`focus-ring h-6 w-6 rounded-full border border-line transition-shadow cursor-pointer ${
+                    color === c ? 'ring-2 ring-offset-2 ring-ink-900' : ''
                   }`}
                   style={{ backgroundColor: c }}
                 />
@@ -134,24 +142,16 @@ export default function ProjectModal({ isOpen, onClose, initialProject, onSave }
             </div>
           </div>
 
-          <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
-            >
+          <div className="-mx-6 px-6 py-4 border-t border-line flex items-center justify-end gap-2">
+            <Button variant="secondary" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !name.trim()}
-              className="px-4 py-1.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {isSubmitting ? 'Saving...' : initialProject ? 'Save Changes' : 'Create Folder'}
-            </button>
+            </Button>
+            <Button type="submit" variant="brand" disabled={isSubmitting || !name.trim()}>
+              {isSubmitting ? 'Saving...' : initialProject ? 'Save changes' : 'Create folder'}
+            </Button>
           </div>
         </form>
       </div>
-    </div>
+    </Dialog>
   );
 }

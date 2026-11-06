@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-  Kanban,
   Search,
   PhoneCall,
   Mail,
   Globe,
   ExternalLink,
   FolderKanban,
-  Users,
   Plus,
   Check,
   ChevronRight,
@@ -22,7 +21,23 @@ import {
   Trash2,
   SlidersHorizontal,
   RotateCcw,
+  UserPlus,
 } from 'lucide-react';
+import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import {
+  Avatar,
+  Badge,
+  Button,
+  buttonClasses,
+  Dialog,
+  Drawer,
+  EmptyState,
+  IconButton,
+  Menu,
+  PageHeader,
+  SegmentedControl,
+  type MenuItem,
+} from '@/components/ui';
 import { useSession, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import {
   ContactRecord,
@@ -46,11 +61,43 @@ import {
   canUserExportCsv,
   subscribeToContacts,
 } from '@/lib/leadStore';
+import { stageDotClass, stagePaletteLabel } from '@/lib/stageColors';
 import {
   normalizeTenantKey,
   getTenantQuota,
   updateTenantRepsRoster,
 } from '@/lib/icpQuotaStore';
+
+/** Board / table view choice, persisted in localStorage (board is the default). */
+type PipelineView = 'board' | 'table';
+const PIPELINE_VIEW_KEY = 'appy_pipeline_view';
+const pipelineViewListeners = new Set<() => void>();
+
+function subscribePipelineView(onChange: () => void) {
+  pipelineViewListeners.add(onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    pipelineViewListeners.delete(onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
+
+function getPipelineViewSnapshot(): PipelineView {
+  try {
+    return localStorage.getItem(PIPELINE_VIEW_KEY) === 'table' ? 'table' : 'board';
+  } catch {
+    return 'board';
+  }
+}
+
+function setPipelineView(next: PipelineView) {
+  try {
+    localStorage.setItem(PIPELINE_VIEW_KEY, next);
+  } catch {
+    // Storage unavailable: the choice simply won't persist.
+  }
+  pipelineViewListeners.forEach((fn) => fn());
+}
 
 /**
  * Resolve which configured Kanban stage column a contact belongs to.
@@ -128,6 +175,12 @@ export default function PipelineKanbanHub() {
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canReassign = canUserReassignLeads(role);
+  const router = useRouter();
+  const view = useSyncExternalStore(
+    subscribePipelineView,
+    getPipelineViewSnapshot,
+    (): PipelineView => 'board'
+  );
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
   const [folders, setFolders] = useState<IcpFolder[]>(() => getStoredFolders());
@@ -370,6 +423,45 @@ export default function PipelineKanbanHub() {
     setContacts(getStoredContacts());
   };
 
+  // Card / row overflow menu: Call, Email, Move to any other stage, Reassign
+  const buildLeadMenuItems = (lead: ContactRecord): (MenuItem | 'divider')[] => {
+    const items: (MenuItem | 'divider')[] = [
+      { label: 'Call', icon: <PhoneCall />, onSelect: () => router.push('/dialer') },
+      { label: 'Email', icon: <Mail />, onSelect: () => router.push('/outreach/email') },
+    ];
+    const currentStage = resolveStageForContact(lead.status, stages);
+    const otherStages = stages.filter((s) => s.statusValue !== currentStage);
+    if (otherStages.length > 0) {
+      items.push('divider');
+      otherStages.forEach((s) =>
+        items.push({
+          label: `Move to ${s.label}`,
+          icon: (
+            <span className="flex size-4 items-center justify-center">
+              <span className={`size-2 rounded-full ${stageDotClass(s.dotColor)}`} />
+            </span>
+          ),
+          onSelect: () => handleMoveStage(lead.id, s.statusValue),
+        })
+      );
+    }
+    if (canReassign) {
+      const currentRep = lead.assignedRep || 'Emil Halili';
+      const otherReps = availableReps.filter((rep) => rep !== currentRep);
+      if (otherReps.length > 0) {
+        items.push('divider');
+        otherReps.forEach((rep) =>
+          items.push({
+            label: `Reassign to ${rep}`,
+            icon: <UserPlus />,
+            onSelect: () => handleReassignLead(lead.id, rep),
+          })
+        );
+      }
+    }
+    return items;
+  };
+
   // Inline Edit Stage Label Handlers
   const startEditingStageHeader = (col: PipelineStageConfig) => {
     setEditingStageId(col.id);
@@ -440,179 +532,168 @@ export default function PipelineKanbanHub() {
     setNoteInput('');
   };
 
+  const filterSelectClass =
+    'focus-ring h-9 w-auto max-w-[220px] truncate rounded-sm border border-line-strong bg-surface px-3 text-body text-fg cursor-pointer hover:border-fg-disabled transition-colors';
+  const fieldClass =
+    'focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-3 text-body text-fg placeholder:text-fg-disabled';
+
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <main className="flex-1 flex flex-col min-h-0 px-6 py-5 space-y-4 max-w-[1600px] w-full mx-auto">
-          {/* 1. TOP HEADER & PIPELINE TELEMETRY BAR */}
-          <div className="bg-white border border-zinc-200/90 rounded-2xl overflow-hidden shrink-0 shadow-2xs">
-            <div className="px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-100">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white text-[10px] font-mono font-semibold tracking-wider uppercase">
-                    <Kanban className="w-3 h-3 text-emerald-400" />
-                    <span>LIVE OUTBOUND PIPELINE</span>
-                  </span>
-                  <span className="text-xs font-mono text-zinc-400">
-                    {tenantName}
-                  </span>
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">
-                    {stages.length} Custom Stages • Click any stage title to edit label
-                  </span>
-                </div>
-                <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-                  Pipeline
-                </h1>
-              </div>
-
-              {/* Filter & Stage Customization Controls */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Search */}
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search name, BPO, domain..."
-                    className="pl-8 pr-3 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50/70 focus:bg-white text-xs text-zinc-900 w-48 focus:outline-none focus:border-zinc-900"
+        <main className="flex-1 flex flex-col min-h-0 px-4 py-6 md:px-8 space-y-4 w-full">
+          {/* 1. TOP HEADER & PIPELINE SUMMARY */}
+          <div className="shrink-0 space-y-4">
+            <PageHeader
+              className="pb-0"
+              title="Pipeline"
+              count={telemetry.totalLeads}
+              description={`${tenantName}: ${stages.length} stages. Click a stage name to rename it.`}
+              secondaryActions={
+                <>
+                  <SegmentedControl
+                    label="View"
+                    value={view}
+                    onChange={(v) => setPipelineView(v === 'table' ? 'table' : 'board')}
+                    items={[
+                      { value: 'board', label: 'Board' },
+                      { value: 'table', label: 'Table' },
+                    ]}
                   />
-                </div>
 
-                {/* Folder Filter */}
-                <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-2.5 py-1.5 text-xs">
-                  <FolderKanban className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                  <select
-                    value={selectedFolderId}
-                    onChange={(e) => setSelectedFolderId(e.target.value)}
-                    className="bg-transparent text-zinc-900 font-medium focus:outline-none cursor-pointer max-w-[180px] truncate"
+                  {/* Customize / Add Pipeline Stages Button */}
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsStageManagerOpen(true)}
+                    icon={<SlidersHorizontal className="text-fg-secondary" />}
                   >
-                    <option value="ALL">
-                      All ICP Folders ({scopedContacts.length})
-                    </option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    Edit stages
+                  </Button>
 
-                {/* Rep Filter (for Admins/Managers) */}
-                {role !== 'Rep' && (
-                  <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-2.5 py-1.5 text-xs">
-                    <Users className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    <select
-                      value={selectedRepFilter}
-                      onChange={(e) => setSelectedRepFilter(e.target.value)}
-                      className="bg-transparent text-zinc-900 font-medium focus:outline-none cursor-pointer"
+                  {/* Export or Lock */}
+                  {canExport ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        exportContactsToCsv(filteredContacts, 'pipeline_kanban_export')
+                      }
+                      icon={<Download className="text-fg-secondary" />}
                     >
-                      <option value="ALL">All SDR Reps</option>
-                      {availableReps.map((rep) => (
-                        <option key={rep} value={rep}>
-                          {rep}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Customize / Add Pipeline Stages Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsStageManagerOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-zinc-50 text-zinc-900 border border-zinc-300 text-xs font-semibold transition cursor-pointer"
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-700" />
-                  <span>Edit &amp; Add Stages</span>
-                </button>
-
-                {/* Export or Lock */}
-                {canExport ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportContactsToCsv(filteredContacts, 'pipeline_kanban_export')
-                    }
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold transition cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Export CSV</span>
-                  </button>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-500 text-xs select-none">
-                    <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>CSV Locked</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* 4-Column Pipeline KPI Strip */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-zinc-100 bg-zinc-50/40 text-xs">
-              <div className="px-6 py-3 flex items-center justify-between">
-                <div>
-                  <div className="text-zinc-400 font-medium">Total Active Pipeline</div>
-                  <div className="text-lg font-bold font-mono text-zinc-950 mt-0.5">
-                    {telemetry.totalLeads.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">prospects</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-6 py-3 flex items-center justify-between">
-                <div>
-                  <div className="text-zinc-400 font-medium">In Active Cadence</div>
-                  <div className="text-lg font-bold font-mono text-zinc-950 mt-0.5">
-                    {telemetry.inCadenceCount.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">working</span>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 font-mono text-[11px]">
-                  {telemetry.warmCallbacks} Warm Callbacks
-                </span>
-              </div>
-
-              <div className="px-6 py-3 flex items-center justify-between">
-                <div>
-                  <div className="text-zinc-400 font-medium">Meetings Booked</div>
-                  <div className="text-lg font-bold font-mono text-emerald-700 mt-0.5">
-                    {telemetry.bookedCount.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">confirmed</span>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-semibold text-[11px]">
-                  ${telemetry.bookedValueUsd.toLocaleString()} Booked
-                </span>
-              </div>
-
-              <div className="px-6 py-3 flex items-center justify-between bg-white">
-                <div>
-                  <div className="text-zinc-400 font-medium">
-                    Weighted Pipeline Value
-                  </div>
-                  <div className="text-lg font-bold font-mono text-zinc-950 mt-0.5">
-                    ${telemetry.weightedPipelineUsd.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">est. ARR</span>
-                  </div>
-                </div>
-                <Link
-                  href="/dialer"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold text-[11px] hover:bg-zinc-800"
-                >
-                  <PhoneCall className="w-3 h-3 text-emerald-400" />
-                  <span>Calling Floor</span>
+                      Export CSV
+                    </Button>
+                  ) : (
+                    <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-body text-fg-tertiary select-none">
+                      <Lock className="size-4 text-fg-disabled" aria-hidden />
+                      <span>CSV locked</span>
+                    </span>
+                  )}
+                </>
+              }
+              primaryAction={
+                <Link href="/dialer" className={buttonClasses('brand', 'md')}>
+                  <PhoneCall className="size-4" aria-hidden />
+                  <span>Start calling</span>
                 </Link>
+              }
+            />
+
+            {/* Filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Search */}
+              <div className="relative w-full sm:w-72">
+                <Search className="pointer-events-none size-4 text-fg-tertiary absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search name, company or domain"
+                  className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface pl-9 pr-3 text-body text-fg placeholder:text-fg-disabled hover:border-fg-disabled transition-colors"
+                />
               </div>
+
+              {/* Folder Filter */}
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value)}
+                aria-label="Folder"
+                className={filterSelectClass}
+              >
+                <option value="ALL">
+                  All folders ({scopedContacts.length})
+                </option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Rep Filter (for Admins/Managers) */}
+              {role !== 'Rep' && (
+                <select
+                  value={selectedRepFilter}
+                  onChange={(e) => setSelectedRepFilter(e.target.value)}
+                  aria-label="Owner"
+                  className={filterSelectClass}
+                >
+                  <option value="ALL">All owners</option>
+                  {availableReps.map((rep) => (
+                    <option key={rep} value={rep}>
+                      {rep}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+
+            {/* Pipeline summary strip (plain stats) */}
+            <dl className="flex flex-wrap items-end gap-x-10 gap-y-3 border-y border-line py-3">
+              <div>
+                <dt className="text-small text-fg-tertiary">Total pipeline</dt>
+                <dd className="mt-0.5 text-h2 text-fg tabular-nums">
+                  {telemetry.totalLeads.toLocaleString()}{' '}
+                  <span className="text-small font-normal text-fg-tertiary">prospects</span>
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-small text-fg-tertiary">In cadence</dt>
+                <dd className="mt-0.5 text-h2 text-fg tabular-nums">
+                  {telemetry.inCadenceCount.toLocaleString()}{' '}
+                  <span className="text-small font-normal text-fg-tertiary">
+                    working, {telemetry.warmCallbacks} callbacks
+                  </span>
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-small text-fg-tertiary">Meetings booked</dt>
+                <dd className="mt-0.5 text-h2 text-fg tabular-nums">
+                  {telemetry.bookedCount.toLocaleString()}{' '}
+                  <span className="text-small font-normal text-success-fg">
+                    ${telemetry.bookedValueUsd.toLocaleString()} booked
+                  </span>
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-small text-fg-tertiary">
+                  Weighted value
+                </dt>
+                <dd className="mt-0.5 text-h2 text-fg tabular-nums">
+                  ${telemetry.weightedPipelineUsd.toLocaleString()}{' '}
+                  <span className="text-small font-normal text-fg-tertiary">est. ARR</span>
+                </dd>
+              </div>
+            </dl>
           </div>
 
           {/* 2. HORIZONTAL KANBAN BOARD WITH INLINE LABEL EDITING + ADD STAGE COLUMN */}
+          {view === 'board' ? (
           <div className="flex-1 min-h-0 overflow-x-auto pb-2">
-            <div className="flex gap-4 h-full min-w-max">
-              {stages.map((col, colIndex) => {
+            <div className="flex gap-3 h-full min-w-max">
+              {stages.map((col) => {
                 const cards = contactsByStage[col.statusValue] || [];
                 const colPage = columnPageMap[col.id] || 1;
                 const totalColPages = Math.max(
@@ -640,17 +721,17 @@ export default function PipelineKanbanHub() {
                     onDragOver={(e) => handleDragOver(e, col.id)}
                     onDragLeave={() => setDragOverColumnId(null)}
                     onDrop={(e) => handleDrop(e, col.statusValue)}
-                    className={`w-[305px] shrink-0 flex flex-col rounded-2xl border transition-all ${
+                    className={`w-[280px] shrink-0 flex flex-col rounded-lg border transition-colors duration-150 ${
                       isDragTarget
-                        ? 'bg-zinc-100/90 border-zinc-950 ring-2 ring-zinc-950/10'
-                        : 'bg-zinc-100/60 border-zinc-200/90'
+                        ? 'bg-selected border-line-strong'
+                        : 'bg-subtle/60 border-line'
                     }`}
                   >
                     {/* Column Header (Supports 1-Click Inline Label & Subtitle Editing) */}
-                    <div className="p-3.5 border-b border-zinc-200/80 bg-white rounded-t-2xl space-y-1.5">
+                    <div className="px-3 py-2.5 border-b border-line space-y-0.5">
                       {isEditingThisHeader ? (
                         <div className="space-y-2">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1">
                             <input
                               type="text"
                               autoFocus
@@ -660,25 +741,26 @@ export default function PipelineKanbanHub() {
                                 if (e.key === 'Enter') saveInlineStageEdit(col.id);
                                 if (e.key === 'Escape') setEditingStageId(null);
                               }}
-                              placeholder="Stage Label..."
-                              className="flex-1 px-2.5 py-1 rounded-lg border border-zinc-900 text-xs font-bold text-zinc-950 focus:outline-none"
+                              placeholder="Stage name"
+                              className="focus-ring h-8 min-w-0 flex-1 rounded-sm border border-line-strong bg-surface px-2.5 text-body text-fg"
                             />
-                            <button
-                              type="button"
+                            <IconButton
+                              size="sm"
+                              variant="primary"
                               onClick={() => saveInlineStageEdit(col.id)}
-                              className="p-1.5 rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
-                              title="Save stage label"
+                              label="Save stage label"
+                              className="cursor-pointer"
                             >
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
+                              <Check className="size-4" />
+                            </IconButton>
+                            <IconButton
+                              size="sm"
                               onClick={() => setEditingStageId(null)}
-                              className="p-1.5 rounded-lg bg-zinc-100 text-zinc-600 hover:bg-zinc-200 cursor-pointer"
-                              title="Cancel"
+                              label="Cancel"
+                              className="cursor-pointer"
                             >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                              <X className="size-4" />
+                            </IconButton>
                           </div>
                           <input
                             type="text"
@@ -687,8 +769,8 @@ export default function PipelineKanbanHub() {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') saveInlineStageEdit(col.id);
                             }}
-                            placeholder="Stage description..."
-                            className="w-full px-2.5 py-1 rounded-lg border border-zinc-200 text-[11px] text-zinc-600 focus:outline-none"
+                            placeholder="Stage description"
+                            className="focus-ring h-8 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg-secondary"
                           />
                         </div>
                       ) : (
@@ -698,36 +780,34 @@ export default function PipelineKanbanHub() {
                               type="button"
                               onClick={() => startEditingStageHeader(col)}
                               title="Click to rename stage label"
-                              className="group/title flex items-center gap-2 text-left cursor-pointer min-w-0"
+                              className="focus-ring group/title flex items-center gap-2 rounded-sm text-left cursor-pointer min-w-0"
                             >
                               <span
-                                className={`w-2.5 h-2.5 rounded-full shrink-0 ${col.dotColor}`}
+                                className={`size-2 rounded-full shrink-0 ${stageDotClass(col.dotColor)}`}
                               />
-                              <h2 className="text-xs font-bold text-zinc-950 tracking-tight truncate group-hover/title:underline">
+                              <h2 className="text-body-strong text-fg truncate">
                                 {col.label}
                               </h2>
-                              <Pencil className="w-3 h-3 text-zinc-300 group-hover/title:text-zinc-700 opacity-0 group-hover/title:opacity-100 transition shrink-0" />
-                            </button>
-
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {stageValue > 0 && (
-                                <span className="text-[10px] font-mono text-zinc-400">
-                                  ${stageValue.toLocaleString()}
-                                </span>
-                              )}
-                              <span className="px-2 py-0.5 rounded-full bg-zinc-950 text-white font-mono text-[10px] font-bold">
+                              <span className="text-small text-fg-tertiary tabular-nums">
                                 {cards.length}
                               </span>
-                            </div>
+                              <Pencil className="size-3.5 text-fg-tertiary opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
+                            </button>
+
+                            {stageValue > 0 && (
+                              <span className="text-small text-fg-secondary tabular-nums shrink-0">
+                                ${stageValue.toLocaleString()}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <p
                               onClick={() => startEditingStageHeader(col)}
-                              className="text-[11px] text-zinc-400 truncate cursor-pointer hover:text-zinc-600"
+                              className="text-caption text-fg-tertiary truncate cursor-pointer hover:text-fg-secondary"
                             >
                               {col.subtitle}
                             </p>
-                            <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+                            <span className="text-caption text-fg-tertiary tabular-nums shrink-0" title="Win probability">
                               {Math.round(col.dealProbability * 100)}%
                             </span>
                           </div>
@@ -736,30 +816,23 @@ export default function PipelineKanbanHub() {
                     </div>
 
                     {/* Cards Container */}
-                    <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
                       {cards.length === 0 ? (
-                        <div className="h-36 rounded-xl border border-dashed border-zinc-300/80 flex flex-col items-center justify-center p-4 text-center text-xs text-zinc-400">
-                          <span>Drag a prospect card here</span>
-                          <span className="text-[11px] text-zinc-400 mt-0.5">
+                        <div className="h-28 rounded-lg border border-dashed border-line-strong flex flex-col items-center justify-center p-4 text-center text-small text-fg-tertiary">
+                          <span>Drag a card here</span>
+                          <span className="text-caption mt-0.5">
                             to move to {col.label}
                           </span>
                         </div>
                       ) : (
                         paginatedCards.map((lead) => {
-                          const prevCol =
-                            colIndex > 0 ? stages[colIndex - 1] : null;
-                          const nextCol =
-                            colIndex < stages.length - 1
-                              ? stages[colIndex + 1]
-                              : null;
-
                           return (
                             <div
                               key={lead.id}
                               draggable
                               onDragStart={(e) => handleDragStart(e, lead.id)}
                               onClick={() => setActiveLeadId(lead.id)}
-                              className={`group bg-white rounded-xl p-3.5 border border-zinc-200/90 hover:border-zinc-900 shadow-2xs transition cursor-grab active:cursor-grabbing space-y-2.5 ${
+                              className={`group bg-surface rounded-lg p-3 border border-line hover:border-line-strong shadow-xs transition-colors duration-150 cursor-grab active:cursor-grabbing space-y-2 ${
                                 !canExport ? 'select-none' : ''
                               }`}
                             >
@@ -767,7 +840,7 @@ export default function PipelineKanbanHub() {
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-bold text-zinc-950 truncate">
+                                    <span className="text-body-strong text-fg truncate">
                                       {lead.name}
                                     </span>
                                     {lead.linkedinUrl && (
@@ -777,57 +850,70 @@ export default function PipelineKanbanHub() {
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         title="Open LinkedIn Profile"
-                                        className="px-1.5 py-0.2 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-mono text-[10px] shrink-0"
+                                        aria-label="Open LinkedIn profile"
+                                        className="focus-ring rounded-sm text-fg-tertiary hover:text-fg shrink-0"
                                       >
-                                        in
+                                        <LinkedinIcon className="size-3.5" />
                                       </a>
                                     )}
                                   </div>
-                                  <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                                  <div className="text-small text-fg-tertiary truncate">
                                     {lead.title}
                                   </div>
                                 </div>
 
-                                {/* Rep Assignment Badge or 1-Click Reassign Dropdown (Supervisor, Manager, Admin, Super Admin) */}
-                                {canReassign ? (
-                                  <select
-                                    value={lead.assignedRep || 'Emil Halili'}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      handleReassignLead(lead.id, e.target.value);
-                                    }}
-                                    title="Reassign lead to another Rep / Agent (Supervisor, Manager, Admin, Super Admin)"
-                                    className="px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-800 font-mono text-[10px] font-semibold shrink-0 cursor-pointer border border-zinc-200 transition focus:outline-none max-w-[115px] truncate"
-                                  >
-                                    {availableReps.map((rep) => (
-                                      <option
-                                        key={rep}
-                                        value={rep}
-                                        className="bg-white text-zinc-900"
-                                      >
-                                        👤 {rep}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-mono text-[10px] shrink-0">
+                                {/* Owner + overflow menu (Call, Email, Move to, Reassign) */}
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <span className="text-caption text-fg-secondary">
                                     {lead.assignedRep?.split(' ')[0] || 'Rep'}
                                   </span>
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="-my-1 -mr-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100 [@media(hover:none)]:opacity-100"
+                                  >
+                                    <Menu
+                                      label={`Actions for ${lead.name}`}
+                                      items={buildLeadMenuItems(lead)}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Company + Website */}
+                              <div className="flex items-center justify-between gap-2 text-small">
+                                <span className="text-fg-secondary truncate">
+                                  {lead.company}
+                                </span>
+                                {lead.website && (
+                                  <a
+                                    href={
+                                      lead.website.startsWith('http')
+                                        ? lead.website
+                                        : `https://${lead.website}`
+                                    }
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="focus-ring inline-flex min-w-0 items-center gap-1 rounded-sm text-caption text-fg-tertiary hover:text-fg hover:underline shrink"
+                                  >
+                                    <Globe className="size-3 shrink-0" aria-hidden />
+                                    <span className="truncate">
+                                      {lead.website
+                                        .replace(/^https?:\/\//, '')
+                                        .replace(/\/.*$/, '')}
+                                    </span>
+                                  </a>
                                 )}
                               </div>
 
-                              {/* Editable Deal Value Badge Row */}
+                              {/* Editable Deal Value + Day in cadence */}
                               <div
                                 className="flex items-center justify-between gap-2"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <span className="text-[10px] font-mono text-zinc-400">
-                                  Deal Value (USD)
-                                </span>
                                 {editingDealCardId === lead.id ? (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[11px] font-mono font-bold text-zinc-500">
+                                    <span className="text-small text-fg-tertiary">
                                       $
                                     </span>
                                     <input
@@ -850,7 +936,8 @@ export default function PipelineKanbanHub() {
                                           setEditingDealCardId(null);
                                         }
                                       }}
-                                      className="w-20 px-1.5 py-0.5 rounded border border-zinc-900 text-[11px] font-mono font-bold text-zinc-950 focus:outline-none"
+                                      aria-label="Deal value"
+                                      className="focus-ring h-7 w-20 rounded-sm border border-line-strong bg-surface px-1.5 text-small tabular-nums text-fg"
                                     />
                                     <button
                                       type="button"
@@ -860,18 +947,18 @@ export default function PipelineKanbanHub() {
                                           editingDealInput
                                         )
                                       }
-                                      className="p-1 rounded bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
+                                      className="focus-ring inline-flex size-7 items-center justify-center rounded-md bg-action text-action-fg hover:bg-action-hover cursor-pointer"
                                       title="Save Deal Value"
                                     >
-                                      <Check className="w-2.5 h-2.5" />
+                                      <Check className="size-3.5" />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setEditingDealCardId(null)}
-                                      className="p-1 rounded bg-zinc-100 text-zinc-600 hover:bg-zinc-200 cursor-pointer"
+                                      className="focus-ring inline-flex size-7 items-center justify-center rounded-md text-fg-secondary hover:bg-subtle cursor-pointer"
                                       title="Cancel"
                                     >
-                                      <X className="w-2.5 h-2.5" />
+                                      <X className="size-3.5" />
                                     </button>
                                   </div>
                                 ) : (
@@ -884,107 +971,26 @@ export default function PipelineKanbanHub() {
                                       );
                                     }}
                                     title="Click to manually edit this lead's Deal Value ($)"
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono text-[11px] font-bold transition cursor-pointer"
+                                    className="focus-ring group/val -ml-1 inline-flex items-center gap-1 rounded-sm px-1 py-0.5 text-body-strong tabular-nums text-fg hover:bg-subtle transition-colors cursor-pointer"
                                   >
                                     <span>
                                       ${getContactDealValue(lead).toLocaleString()}
                                     </span>
-                                    <Pencil className="w-2.5 h-2.5 text-emerald-600" />
+                                    <Pencil className="size-3 text-fg-tertiary opacity-0 group-hover/val:opacity-100 transition-opacity" />
                                   </button>
                                 )}
+                                <Badge>Day {lead.cadenceDay || 1}</Badge>
                               </div>
 
-                              {/* Company + Website */}
-                              <div className="p-2 rounded-lg bg-zinc-50/80 border border-zinc-100 space-y-1">
-                                <div className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="font-semibold text-zinc-900 truncate">
-                                    {lead.company}
+                              {/* Phone + Folder */}
+                              <div className="flex items-center justify-between gap-2 text-caption text-fg-tertiary">
+                                <span className="font-mono shrink-0">{lead.phone}</span>
+                                {lead.folderName && (
+                                  <span className="flex min-w-0 items-center gap-1">
+                                    <FolderKanban className="size-3 shrink-0" aria-hidden />
+                                    <span className="truncate">{lead.folderName}</span>
                                   </span>
-                                  {lead.website && (
-                                    <a
-                                      href={
-                                        lead.website.startsWith('http')
-                                          ? lead.website
-                                          : `https://${lead.website}`
-                                      }
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-600 hover:text-zinc-950 underline shrink-0"
-                                    >
-                                      <Globe className="w-2.5 h-2.5 text-zinc-400" />
-                                      <span>
-                                        {lead.website
-                                          .replace(/^https?:\/\//, '')
-                                          .replace(/\/.*$/, '')}
-                                      </span>
-                                    </a>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500">
-                                  <span className="truncate">{lead.phone}</span>
-                                  <span>Day {lead.cadenceDay || 1}</span>
-                                </div>
-                              </div>
-
-                              {/* Folder Tag if present */}
-                              {lead.folderName && (
-                                <div className="flex items-center gap-1 text-[10px] text-zinc-500 truncate">
-                                  <FolderKanban className="w-3 h-3 text-zinc-400 shrink-0" />
-                                  <span className="truncate">{lead.folderName}</span>
-                                </div>
-                              )}
-
-                              {/* Bottom Quick Actions: Move Left / Dial / Email / Move Right */}
-                              <div
-                                className="pt-2 border-t border-zinc-100 flex items-center justify-between gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex items-center gap-1">
-                                  {prevCol && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleMoveStage(lead.id, prevCol.statusValue)
-                                      }
-                                      title={`Move back to ${prevCol.label}`}
-                                      className="p-1 rounded-md border border-zinc-200 hover:border-zinc-900 text-zinc-600 hover:text-zinc-950 cursor-pointer"
-                                    >
-                                      <ChevronLeft className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                  {nextCol && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleMoveStage(lead.id, nextCol.statusValue)
-                                      }
-                                      title={`Advance to ${nextCol.label}`}
-                                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md border border-zinc-200 hover:border-zinc-900 text-[10px] font-semibold text-zinc-700 hover:text-zinc-950 cursor-pointer"
-                                    >
-                                      <span>Next Stage</span>
-                                      <ChevronRight className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                  <Link
-                                    href="/outreach/email"
-                                    title="Open in Cold Email Studio"
-                                    className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
-                                  >
-                                    <Mail className="w-3 h-3" />
-                                  </Link>
-                                  <Link
-                                    href="/dialer"
-                                    title="Dial on Calling Floor"
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[10px] font-semibold"
-                                  >
-                                    <PhoneCall className="w-2.5 h-2.5 text-emerald-400" />
-                                    <span>Dial</span>
-                                  </Link>
-                                </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -994,7 +1000,7 @@ export default function PipelineKanbanHub() {
 
                     {/* 25-Per-Page Column Footer Pagination */}
                     {cards.length > KANBAN_PAGE_SIZE && (
-                      <div className="px-3 py-2 border-t border-zinc-200/80 bg-white rounded-b-2xl flex items-center justify-between text-[11px]">
+                      <div className="px-2 py-1.5 border-t border-line flex items-center justify-between text-caption">
                         <button
                           type="button"
                           disabled={safeColPage <= 1}
@@ -1004,11 +1010,12 @@ export default function PipelineKanbanHub() {
                               [col.id]: Math.max(1, safeColPage - 1),
                             }))
                           }
-                          className="px-2 py-0.5 rounded border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-35 cursor-pointer"
+                          className="focus-ring inline-flex h-7 items-center gap-0.5 rounded-md px-1.5 text-fg-secondary hover:bg-surface hover:text-fg disabled:opacity-40 cursor-pointer"
                         >
-                          &larr; Prev 25
+                          <ChevronLeft className="size-3.5" />
+                          Previous
                         </button>
-                        <span className="font-mono text-zinc-500">
+                        <span className="text-fg-tertiary tabular-nums">
                           {safeColPage}/{totalColPages} ({cards.length})
                         </span>
                         <button
@@ -1020,9 +1027,10 @@ export default function PipelineKanbanHub() {
                               [col.id]: Math.min(totalColPages, safeColPage + 1),
                             }))
                           }
-                          className="px-2 py-0.5 rounded bg-zinc-950 text-white font-semibold disabled:opacity-35 cursor-pointer"
+                          className="focus-ring inline-flex h-7 items-center gap-0.5 rounded-md px-1.5 text-fg-secondary hover:bg-surface hover:text-fg disabled:opacity-40 cursor-pointer"
                         >
-                          Next 25 &rarr;
+                          Next
+                          <ChevronRight className="size-3.5" />
                         </button>
                       </div>
                     )}
@@ -1031,110 +1039,200 @@ export default function PipelineKanbanHub() {
               })}
 
               {/* Quick "+ Add Pipeline Stage" Column Card at the end of the board */}
-              <div className="w-[270px] shrink-0">
+              <div className="w-[240px] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsStageManagerOpen(true)}
-                  className="w-full h-36 rounded-2xl border-2 border-dashed border-zinc-300 hover:border-zinc-950 bg-white/60 hover:bg-white transition flex flex-col items-center justify-center gap-2 p-4 text-center cursor-pointer group"
+                  className="focus-ring w-full h-28 rounded-lg border border-dashed border-line-strong hover:bg-surface transition-colors flex flex-col items-center justify-center gap-1.5 p-4 text-center cursor-pointer"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-zinc-100 group-hover:bg-zinc-950 text-zinc-700 group-hover:text-white flex items-center justify-center transition">
-                    <Plus className="w-4 h-4" />
+                  <Plus className="size-4 text-fg-secondary" />
+                  <div className="text-body-strong text-fg">
+                    Add stage
                   </div>
-                  <div className="text-xs font-bold text-zinc-900">
-                    + Add Pipeline Stage
-                  </div>
-                  <p className="text-[11px] text-zinc-400">
-                    Add custom stages, edit labels, or reorder columns
+                  <p className="text-caption text-fg-tertiary">
+                    Add, rename or reorder stages
                   </p>
                 </button>
               </div>
             </div>
           </div>
+          ) : (
+          /* 2b. TABLE VIEW: one row per lead across all stages (same filters/search) */
+          <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-line bg-surface shadow-xs">
+            <table className="w-full border-collapse text-left text-body">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-subtle text-caption text-fg-tertiary whitespace-nowrap">
+                  <th className="h-10 px-4 font-medium">Name</th>
+                  <th className="h-10 px-3 font-medium">Company</th>
+                  <th className="h-10 px-3 font-medium">Stage</th>
+                  <th className="h-10 px-3 font-medium">Owner</th>
+                  <th className="h-10 px-3 font-medium text-right">Value</th>
+                  <th className="h-10 px-3 font-medium">Day in cadence</th>
+                  <th className="h-10 px-3 font-medium text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredContacts.length === 0 ? (
+                  <tr className="border-t border-line">
+                    <td colSpan={7} className="py-12">
+                      <EmptyState
+                        icon={<FolderKanban />}
+                        title="No matching leads"
+                        description="Try a different search or clear a filter."
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  stages.flatMap((col) =>
+                    (contactsByStage[col.statusValue] || []).map((lead) => (
+                      <tr
+                        key={lead.id}
+                        onClick={() => setActiveLeadId(lead.id)}
+                        className={`h-12 border-t border-line hover:bg-subtle cursor-pointer transition-colors duration-150 ${
+                          !canExport ? 'select-none' : ''
+                        }`}
+                      >
+                        <td className="py-1.5 px-4">
+                          <span className="block max-w-[240px] truncate text-body-strong text-fg">
+                            {lead.name}
+                          </span>
+                          <span className="block max-w-[240px] truncate text-small text-fg-tertiary">
+                            {lead.title}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <span className="block max-w-[200px] truncate text-fg-secondary">
+                            {lead.company}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap text-fg">
+                            <span
+                              className={`size-2 rounded-full shrink-0 ${stageDotClass(col.dotColor)}`}
+                            />
+                            {col.label}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3 whitespace-nowrap text-fg-secondary">
+                          {lead.assignedRep || 'Unassigned'}
+                        </td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-fg">
+                          ${getContactDealValue(lead).toLocaleString()}
+                        </td>
+                        <td className="py-1.5 px-3 whitespace-nowrap tabular-nums text-fg-secondary">
+                          Day {lead.cadenceDay || 1}
+                        </td>
+                        <td className="py-1.5 px-3 text-right">
+                          <div
+                            className="inline-flex"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Menu
+                              label={`Actions for ${lead.name}`}
+                              items={buildLeadMenuItems(lead)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+          )}
         </main>
       </div>
 
       {/* 3. MODAL: EDIT STAGE LABELS, REORDER & ADD CUSTOM PIPELINE STAGES */}
-      {isStageManagerOpen && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-2xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <Dialog
+        open={isStageManagerOpen}
+        onClose={() => setIsStageManagerOpen(false)}
+        title="Edit pipeline stages"
+        size="lg"
+        bare
+      >
+          <div className="flex flex-col">
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-zinc-950 text-white flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-line flex items-start justify-between gap-4">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400">
-                  PIPELINE STAGE STUDIO
-                </span>
-                <h3 className="text-base font-bold mt-0.5">
-                  Customize Pipeline Stages &amp; Edit Labels
+                <h3 className="text-h2 text-fg">
+                  Edit pipeline stages
                 </h3>
+                <p className="text-small text-fg-secondary mt-0.5">
+                  Add, rename, reorder or remove the columns on your board.
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     const reset = resetPipelineStagesToDefault();
                     setStages([...reset]);
                   }}
                   title="Reset stages to default"
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium cursor-pointer border border-zinc-800"
+                  icon={<RotateCcw />}
                 >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Defaults</span>
-                </button>
-                <button
-                  type="button"
+                  Reset defaults
+                </Button>
+                <IconButton
+                  size="sm"
                   onClick={() => setIsStageManagerOpen(false)}
-                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+                  label="Close"
+                  className="cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
-                </button>
+                  <X className="size-4" />
+                </IconButton>
               </div>
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-body">
               {/* Section 1: Add a New Custom Stage */}
-              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 space-y-3.5">
-                <div className="font-bold text-zinc-950 flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" />
-                  <span>Add a New Pipeline Stage</span>
-                </div>
+              <section className="p-4 rounded-lg border border-line space-y-3">
+                <h4 className="text-h3 text-fg">
+                  Add a stage
+                </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">
-                      Stage Name / Label
+                    <label className="block text-small font-medium text-fg-secondary mb-1">
+                      Stage name
                     </label>
                     <input
                       type="text"
                       value={newStageLabel}
                       onChange={(e) => setNewStageLabel(e.target.value)}
                       placeholder="e.g. Proposal Sent, Demo Completed, Contract Out"
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-950 font-medium focus:outline-none focus:border-zinc-950"
+                      className={fieldClass}
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">
-                      Subtitle / Helper Text
+                    <label className="block text-small font-medium text-fg-secondary mb-1">
+                      Description
                     </label>
                     <input
                       type="text"
                       value={newStageSubtitle}
                       onChange={(e) => setNewStageSubtitle(e.target.value)}
                       placeholder="e.g. Pricing proposal shared with decision maker"
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-800 focus:outline-none focus:border-zinc-950"
+                      className={fieldClass}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">
-                      Color Indicator
+                    <label className="block text-small font-medium text-fg-secondary mb-1">
+                      Color
                     </label>
                     <select
                       value={newStageColorIdx}
                       onChange={(e) => setNewStageColorIdx(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-900 font-medium focus:outline-none"
+                      className={`${fieldClass} cursor-pointer`}
                     >
                       {STAGE_COLOR_PALETTE.map((c, idx) => (
                         <option key={c.name} value={idx}>
@@ -1145,8 +1243,8 @@ export default function PipelineKanbanHub() {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">
-                      Win Probability (%)
+                    <label className="block text-small font-medium text-fg-secondary mb-1">
+                      Win probability (%)
                     </label>
                     <input
                       type="number"
@@ -1154,30 +1252,29 @@ export default function PipelineKanbanHub() {
                       max={100}
                       value={newStageProb}
                       onChange={(e) => setNewStageProb(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-zinc-900 font-mono focus:outline-none"
+                      className={`${fieldClass} tabular-nums`}
                     />
                   </div>
 
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
                     onClick={handleCreateCustomStage}
                     disabled={!newStageLabel.trim()}
-                    className="py-2 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold transition cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5"
+                    icon={<Plus />}
                   >
-                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Add Stage Column</span>
-                  </button>
+                    Add stage
+                  </Button>
                 </div>
-              </div>
+              </section>
 
               {/* Section 2: Edit Existing Stages (Rename Label, Subtitle, Color, Probability, Order, Delete) */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-zinc-950">
-                    Active Pipeline Stages ({stages.length})
-                  </span>
-                  <span className="text-zinc-400">
-                    Edit any label below—leads in that stage update automatically
+              <section className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-h3 text-fg">
+                    Stages <span className="text-small font-normal text-fg-tertiary tabular-nums">({stages.length})</span>
+                  </h4>
+                  <span className="text-small text-fg-tertiary">
+                    Rename a stage and its leads update automatically.
                   </span>
                 </div>
 
@@ -1185,13 +1282,13 @@ export default function PipelineKanbanHub() {
                   {stages.map((st, idx) => (
                     <div
                       key={st.id}
-                      className="p-3.5 rounded-xl border border-zinc-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="p-3 rounded-lg border border-line bg-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                         {/* Stage Color Dot Selector */}
                         <div className="sm:col-span-3 flex items-center gap-2">
                           <span
-                            className={`w-3 h-3 rounded-full shrink-0 ${st.dotColor}`}
+                            className={`size-2.5 rounded-full shrink-0 ${stageDotClass(st.dotColor)}`}
                           />
                           <select
                             value={st.dotColor}
@@ -1208,11 +1305,12 @@ export default function PipelineKanbanHub() {
                                 setStages([...updated]);
                               }
                             }}
-                            className="px-2 py-1 rounded-lg border border-zinc-200 text-[11px] text-zinc-700 bg-zinc-50 focus:outline-none w-full"
+                            aria-label="Color"
+                            className="focus-ring h-8 w-full rounded-sm border border-line-strong bg-surface px-2 text-small text-fg cursor-pointer"
                           >
                             {STAGE_COLOR_PALETTE.map((p) => (
                               <option key={p.dotColor} value={p.dotColor}>
-                                {p.name}
+                                {stagePaletteLabel(p.name)}
                               </option>
                             ))}
                           </select>
@@ -1230,7 +1328,8 @@ export default function PipelineKanbanHub() {
                               setStages([...updated]);
                               setContacts(getStoredContacts());
                             }}
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 font-bold text-zinc-950 focus:outline-none focus:border-zinc-950"
+                            aria-label="Stage name"
+                            className="focus-ring h-8 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-body-strong text-fg"
                             placeholder="Stage Label"
                           />
                         </div>
@@ -1247,7 +1346,8 @@ export default function PipelineKanbanHub() {
                               });
                               setStages([...updated]);
                             }}
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-600 focus:outline-none focus:border-zinc-950"
+                            aria-label="Stage description"
+                            className="focus-ring h-8 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg-secondary"
                             placeholder="Subtitle"
                           />
                         </div>
@@ -1270,119 +1370,126 @@ export default function PipelineKanbanHub() {
                               });
                               setStages([...updated]);
                             }}
-                            className="w-14 px-2 py-1.5 rounded-lg border border-zinc-200 font-mono text-zinc-900 text-right focus:outline-none"
+                            aria-label="Win probability"
+                            className="focus-ring h-8 w-14 rounded-sm border border-line-strong bg-surface px-2 text-right text-small tabular-nums text-fg"
                           />
-                          <span className="text-zinc-400 font-mono">%</span>
+                          <span className="text-small text-fg-tertiary">%</span>
                         </div>
                       </div>
 
                       {/* Reorder Left/Right & Delete Controls */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <IconButton
+                          size="sm"
                           disabled={idx === 0}
                           onClick={() => {
                             const updated = movePipelineStageOrder(st.id, 'left');
                             setStages([...updated]);
                           }}
-                          title="Move column left"
-                          className="p-1.5 rounded-lg border border-zinc-200 hover:border-zinc-900 text-zinc-600 disabled:opacity-30 cursor-pointer"
+                          label="Move column left"
+                          className="cursor-pointer disabled:opacity-30"
                         >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
+                          <ChevronLeft className="size-4" />
+                        </IconButton>
+                        <IconButton
+                          size="sm"
                           disabled={idx === stages.length - 1}
                           onClick={() => {
                             const updated = movePipelineStageOrder(st.id, 'right');
                             setStages([...updated]);
                           }}
-                          title="Move column right"
-                          className="p-1.5 rounded-lg border border-zinc-200 hover:border-zinc-900 text-zinc-600 disabled:opacity-30 cursor-pointer"
+                          label="Move column right"
+                          className="cursor-pointer disabled:opacity-30"
                         >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
+                          <ChevronRight className="size-4" />
+                        </IconButton>
+                        <IconButton
+                          size="sm"
                           disabled={stages.length <= 2}
                           onClick={() => {
                             const updated = deletePipelineStage(st.id);
                             setStages([...updated]);
                             setContacts(getStoredContacts());
                           }}
-                          title="Delete stage column"
-                          className="p-1.5 rounded-lg border border-zinc-200 hover:border-red-500 text-zinc-400 hover:text-red-600 disabled:opacity-30 cursor-pointer"
+                          label="Delete stage column"
+                          className="cursor-pointer hover:text-danger-fg hover:bg-danger-bg disabled:opacity-30"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <Trash2 className="size-4" />
+                        </IconButton>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-3.5 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between">
-              <span className="text-xs text-zinc-500">
-                Tip: You can also click any column title directly on the Kanban board to rename it inline.
+            <div className="px-6 py-3 border-t border-line flex items-center justify-between gap-3">
+              <span className="text-small text-fg-tertiary">
+                Tip: click a column name on the board to rename it inline.
               </span>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={() => setIsStageManagerOpen(false)}
-                className="px-5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold cursor-pointer"
               >
                 Done
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Dialog>
 
       {/* 4. SLIDE-OVER PROSPECT INSPECTOR & FOOTPRINT DRAWER */}
-      {activeLead && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/50 backdrop-blur-xs flex justify-end">
-          <div className="bg-white w-full max-w-lg h-full shadow-2xl border-l border-zinc-200 flex flex-col justify-between overflow-hidden">
+      <Drawer
+        open={!!activeLead}
+        onClose={() => setActiveLeadId(null)}
+        label={activeLead ? activeLead.name : 'Lead details'}
+        bare
+      >
+        {activeLead && (
+          <div className="flex h-full flex-col justify-between overflow-hidden">
             {/* Drawer Header */}
-            <div className="p-6 bg-zinc-950 text-white flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-zinc-800 text-emerald-400 font-mono text-[10px]">
-                    {activeLead.id}
-                  </span>
-                  <span className="text-xs text-zinc-400">
-                    Assigned to{' '}
-                    <strong className="text-white">{activeLead.assignedRep}</strong>
-                  </span>
+            <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <Avatar name={activeLead.name} size="lg" />
+                <div className="min-w-0 space-y-0.5">
+                  <h2 className="text-h2 text-fg truncate">{activeLead.name}</h2>
+                  <p className="text-small text-fg-secondary truncate">
+                    {activeLead.title} at <span className="text-fg">{activeLead.company}</span>
+                  </p>
+                  <div className="flex items-center gap-2 text-caption text-fg-tertiary">
+                    <span className="font-mono">
+                      {activeLead.id}
+                    </span>
+                    <span>
+                      Owner{' '}
+                      <span className="text-fg-secondary">{activeLead.assignedRep}</span>
+                    </span>
+                  </div>
                 </div>
-                <h2 className="text-lg font-bold">{activeLead.name}</h2>
-                <p className="text-xs text-zinc-300">
-                  {activeLead.title} at <strong>{activeLead.company}</strong>
-                </p>
               </div>
-              <button
-                type="button"
+              <IconButton
                 onClick={() => setActiveLeadId(null)}
-                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+                label="Close"
+                className="cursor-pointer"
               >
-                <X className="w-4 h-4" />
-              </button>
+                <X className="size-4" />
+              </IconButton>
             </div>
 
             {/* Drawer Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-body">
               {/* Stage Selector Pills (Dynamically reflects custom & renamed stages!) */}
-              <div className="space-y-2">
+              <section className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block font-bold text-zinc-900">
-                    Pipeline Kanban Stage
+                  <label className="block text-h3 text-fg">
+                    Stage
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsStageManagerOpen(true)}
-                    className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-950 underline cursor-pointer"
+                    className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg underline underline-offset-2 cursor-pointer"
                   >
-                    + Customize Stages
+                    Edit stages
                   </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -1397,37 +1504,38 @@ export default function PipelineKanbanHub() {
                         onClick={() =>
                           handleMoveStage(activeLead.id, col.statusValue)
                         }
-                        className={`px-2.5 py-2 rounded-xl border text-left font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                        aria-pressed={current}
+                        className={`focus-ring h-9 px-2.5 rounded-md border text-left text-small transition-colors cursor-pointer flex items-center gap-2 ${
                           current
-                            ? 'bg-zinc-950 text-white border-zinc-950'
-                            : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:border-zinc-400'
+                            ? 'bg-subtle text-fg border-action font-medium'
+                            : 'bg-surface text-fg-secondary border-line-strong hover:text-fg'
                         }`}
                       >
                         <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${col.dotColor}`}
+                          className={`size-2 rounded-full shrink-0 ${stageDotClass(col.dotColor)}`}
                         />
                         <span className="truncate">{col.label}</span>
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              </section>
 
               {/* Deal Value ($) & Rep Reassignment Control Card */}
-              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 space-y-3.5">
+              <section className="p-4 rounded-lg border border-line space-y-4">
                 {/* Manual Deal Value Editor */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-zinc-900">
-                      Lead Deal Value (USD)
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-small font-medium text-fg">
+                      Deal value (USD)
                     </label>
-                    <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                      Editable by Admin &amp; Assigned User
+                    <span className="text-caption text-fg-tertiary">
+                      Admins and the owner can edit
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-zinc-500">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-tertiary">
                         $
                       </span>
                       <input
@@ -1441,31 +1549,32 @@ export default function PipelineKanbanHub() {
                             handleSaveDealValue(activeLead.id, drawerDealInput);
                           }
                         }}
-                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-zinc-300 bg-white font-mono font-bold text-zinc-950 focus:outline-none focus:border-zinc-950"
+                        aria-label="Deal value"
+                        className={`${fieldClass} pl-7 tabular-nums`}
                       />
                     </div>
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
                       onClick={() =>
                         handleSaveDealValue(activeLead.id, drawerDealInput)
                       }
-                      className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold cursor-pointer shrink-0"
+                      className="shrink-0"
                     >
-                      Update Value
-                    </button>
+                      Update value
+                    </Button>
                   </div>
                 </div>
 
                 {/* Lead Reassignment Selector (Supervisor, Manager, Admin, Super Admin) */}
-                <div className="pt-3 border-t border-zinc-200/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-zinc-900">
-                      Assigned SDR / Agent
+                <div className="pt-4 border-t border-line space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-small font-medium text-fg">
+                      Owner
                     </label>
-                    <span className="text-[10px] font-mono text-zinc-500">
+                    <span className="text-caption text-fg-tertiary">
                       {canReassign
-                        ? `${role} Clearance: Reassign Enabled`
-                        : 'Supervisor / Manager / Admin Only'}
+                        ? `${role} can reassign`
+                        : 'Supervisor, manager or admin only'}
                     </span>
                   </div>
 
@@ -1476,70 +1585,74 @@ export default function PipelineKanbanHub() {
                         onChange={(e) =>
                           handleReassignLead(activeLead.id, e.target.value)
                         }
-                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white font-semibold text-zinc-950 focus:outline-none focus:border-zinc-950 cursor-pointer"
+                        aria-label="Owner"
+                        className={`${fieldClass} cursor-pointer`}
                       >
                         {availableReps.map((rep) => (
                           <option key={rep} value={rep}>
-                            👤 {rep}
+                            {rep}
                           </option>
                         ))}
                       </select>
 
                       {/* Quick Add New Rep/User to Workspace & Assign */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <input
                           type="text"
                           value={newAgentRosterInput}
                           onChange={(e) =>
                             setNewAgentRosterInput(e.target.value)
                           }
-                          placeholder="Or add new agent name to assign..."
-                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-[11px] text-zinc-900 focus:outline-none focus:border-zinc-900"
+                          placeholder="Or add a new rep and assign"
+                          aria-label="New rep name"
+                          className="focus-ring h-8 min-w-0 flex-1 rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg placeholder:text-fg-disabled"
                         />
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() =>
                             handleAddNewAgentAndAssign(activeLead.id)
                           }
                           disabled={!newAgentRosterInput.trim()}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-semibold disabled:opacity-40 cursor-pointer shrink-0"
+                          icon={<UserPlus className="text-fg-secondary" />}
+                          className="shrink-0"
                         >
-                          + Add &amp; Assign
-                        </button>
+                          Add and assign
+                        </Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="px-3 py-2 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-700 font-mono flex items-center justify-between">
-                      <span>👤 {activeLead.assignedRep || 'Emil Halili'}</span>
-                      <span className="text-[10px] text-zinc-400">
-                        Switch to Supervisor/Manager/Admin to reassign
+                    <div className="px-3 py-2 rounded-md bg-subtle border border-line flex items-center justify-between gap-2">
+                      <span className="text-body text-fg">{activeLead.assignedRep || 'Emil Halili'}</span>
+                      <span className="text-caption text-fg-tertiary">
+                        Ask a supervisor, manager or admin to reassign
                       </span>
                     </div>
                   )}
                 </div>
 
                 {reassignToast && (
-                  <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px] flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <div className="px-3 py-2 rounded-md bg-success-bg text-success-fg text-small flex items-center gap-1.5" role="status">
+                    <Check className="size-4" />
                     <span>{reassignToast}</span>
                   </div>
                 )}
-              </div>
+              </section>
 
               {/* Direct Contact & Links Card */}
-              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">Direct / Mobile Phone</span>
-                  <span className="font-mono font-bold text-zinc-950">
+              <section className="p-4 rounded-lg border border-line space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-small text-fg-tertiary">Phone</span>
+                  <span className="font-mono text-small text-fg">
                     {activeLead.phone}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">Verified Work Email</span>
-                  <span className="font-mono text-zinc-900">{activeLead.email}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-small text-fg-tertiary">Email</span>
+                  <span className="font-mono text-small text-fg truncate">{activeLead.email}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">Company Website</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-small text-fg-tertiary">Website</span>
                   {activeLead.website ? (
                     <a
                       href={
@@ -1549,112 +1662,112 @@ export default function PipelineKanbanHub() {
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-mono text-zinc-900 underline"
+                      className="focus-ring inline-flex min-w-0 items-center gap-1 rounded-sm text-small text-fg hover:underline"
                     >
-                      <Globe className="w-3 h-3" />
-                      <span>{activeLead.website}</span>
+                      <Globe className="size-3.5 shrink-0 text-fg-secondary" aria-hidden />
+                      <span className="truncate">{activeLead.website}</span>
                     </a>
                   ) : (
-                    <span className="text-zinc-400">N/A</span>
+                    <span className="text-small text-fg-disabled">N/A</span>
                   )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500">LinkedIn Profile</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-small text-fg-tertiary">LinkedIn</span>
                   {activeLead.linkedinUrl ? (
                     <a
                       href={activeLead.linkedinUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-mono text-sky-700 underline"
+                      className="focus-ring inline-flex items-center gap-1 rounded-sm text-small text-fg hover:underline"
                     >
-                      <span>Open LinkedIn Profile</span>
-                      <ExternalLink className="w-3 h-3" />
+                      <span>Open profile</span>
+                      <ExternalLink className="size-3.5 text-fg-secondary" aria-hidden />
                     </a>
                   ) : (
-                    <span className="text-zinc-400">N/A</span>
+                    <span className="text-small text-fg-disabled">N/A</span>
                   )}
                 </div>
                 {activeLead.folderName && (
-                  <div className="flex items-center justify-between pt-1 border-t border-zinc-200/60">
-                    <span className="text-zinc-500">ICP Source Folder</span>
-                    <span className="font-medium text-zinc-900">
+                  <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-line">
+                    <span className="text-small text-fg-tertiary">Source list</span>
+                    <span className="text-small text-fg">
                       {activeLead.folderName}
                     </span>
                   </div>
                 )}
-              </div>
+              </section>
 
               {/* Add Pipeline Note */}
-              <div className="space-y-2">
-                <label className="block font-bold text-zinc-900">
-                  Log Deal / Call Note
+              <section className="space-y-2">
+                <label className="block text-h3 text-fg">
+                  Log a note
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="Add qualification note or next steps..."
-                    className="flex-1 px-3 py-2 rounded-xl border border-zinc-200 text-zinc-900 focus:outline-none focus:border-zinc-950"
+                    placeholder="Add a qualification note or next steps"
+                    aria-label="Note"
+                    className={`${fieldClass} flex-1`}
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
                     onClick={handleSaveLeadNote}
-                    className="px-4 py-2 rounded-xl bg-zinc-950 text-white font-semibold cursor-pointer"
                   >
                     Save
-                  </button>
+                  </Button>
                 </div>
                 {activeLead.leadNotes && (
-                  <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/70 text-zinc-700 whitespace-pre-line leading-relaxed">
+                  <div className="p-3 rounded-lg bg-subtle text-fg-secondary text-body whitespace-pre-line">
                     {activeLead.leadNotes}
                   </div>
                 )}
-              </div>
+              </section>
 
               {/* Historical Activity Footprint */}
-              <div className="space-y-2.5">
-                <div className="font-bold text-zinc-900">
-                  Activity &amp; Stage Footprint ({activeLead.footprint?.length || 0})
-                </div>
+              <section className="space-y-2.5">
+                <h3 className="text-h3 text-fg">
+                  Activity <span className="text-small font-normal text-fg-tertiary tabular-nums">({activeLead.footprint?.length || 0})</span>
+                </h3>
                 <div className="space-y-2">
                   {(activeLead.footprint || []).map((fp) => (
                     <div
                       key={fp.id}
-                      className="p-3 rounded-xl border border-zinc-200/80 bg-white space-y-1"
+                      className="p-3 rounded-lg border border-line bg-surface space-y-1"
                     >
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-zinc-900">{fp.title}</span>
-                        <span className="font-mono text-zinc-400">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-small font-medium text-fg">{fp.title}</span>
+                        <span className="text-caption text-fg-tertiary tabular-nums shrink-0">
                           {fp.timestamp}
                         </span>
                       </div>
-                      <p className="text-zinc-600 leading-relaxed">{fp.summary}</p>
+                      <p className="text-small text-fg-secondary">{fp.summary}</p>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             </div>
 
             {/* Drawer Footer */}
-            <div className="p-4 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between gap-2">
+            <div className="px-5 py-3 border-t border-line flex items-center justify-between gap-2">
               <Link
                 href="/contacts"
-                className="px-4 py-2.5 rounded-xl border border-zinc-300 bg-white text-xs font-semibold text-zinc-800 hover:bg-zinc-100"
+                className={buttonClasses('secondary', 'md')}
               >
-                Open in Global Contacts
+                Open in contacts
               </Link>
               <Link
                 href="/dialer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-950 text-white text-xs font-bold hover:bg-zinc-800"
+                className={buttonClasses('primary', 'md')}
               >
-                <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Launch Calling Floor</span>
+                <PhoneCall className="size-4" aria-hidden />
+                <span>Open dialer</span>
               </Link>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Drawer>
     </div>
   );
 }

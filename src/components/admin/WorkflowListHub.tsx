@@ -34,8 +34,10 @@ import {
   Share2,
   Bot,
   PhoneCall,
-  Calendar
+  Calendar,
+  Workflow
 } from 'lucide-react';
+import { Badge, Button } from '@/components/ui';
 import { ProjectFolderRecord, WorkflowRecord } from '@/lib/db';
 import ProjectModal from '../panels/ProjectManagerModal';
 import {
@@ -45,6 +47,13 @@ import {
 } from '../panels/WorkflowActionModals';
 import TemplateGalleryModal from '../panels/TemplateGalleryModal';
 import { WorkflowTemplate, PRELOADED_WORKFLOW_TEMPLATES } from '@/lib/workflowTemplates';
+
+const menuItem =
+  'focus-ring w-full px-3 py-1.5 text-left text-body text-fg hover:bg-subtle flex items-center gap-2 transition-colors cursor-pointer';
+const menuItemDanger =
+  'focus-ring w-full px-3 py-1.5 text-left text-body text-danger-fg hover:bg-danger-bg flex items-center gap-2 transition-colors cursor-pointer';
+const menuIcon = 'h-4 w-4 shrink-0 text-fg-secondary';
+const checkboxCls = 'focus-ring h-4 w-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer';
 
 interface WorkflowListHubProps {
   onOpenCanvas: (workflowId?: string) => void;
@@ -362,73 +371,91 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
   };
 
   return (
-    <div className="space-y-6" ref={menuRef}>
-      {/* Top Breadcrumb Navigation & Global Settings Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/80 pb-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-stone-500">
-          <span className="font-bold text-stone-900">Automation</span>
-          <span>/</span>
-          <span className="text-[#ED1C24] font-bold">Workflows</span>
-          <span>•</span>
-          <span className="hover:text-stone-800 transition-colors cursor-pointer">Campaign</span>
-          <span>•</span>
-          <span className="hover:text-stone-800 transition-colors cursor-pointer">Triggers</span>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
+    <div className="space-y-4" ref={menuRef}>
+      {/* Toolbar: status tabs, search and actions */}
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line">
+        <div className="flex items-center gap-6 text-body">
           <button
-            onClick={() => onOpenCanvas()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-black text-white font-bold transition-all shadow-xs cursor-pointer"
+            onClick={() => setActiveTab('all')}
+            className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'all' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+            }`}
           >
-            <Zap className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-            <span>Launch Studio Canvas</span>
+            <span>All workflows</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('needs_review')}
+            className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'needs_review' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+            }`}
+          >
+            <span>Needs review</span>
+            <span className="text-caption tabular-nums text-fg-tertiary">3</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('deleted')}
+            className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'deleted' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+            }`}
+          >
+            <span>Deleted</span>
+          </button>
+
+          <button className="focus-ring -mb-px h-10 border-b-2 border-transparent text-fg-tertiary hover:text-fg transition-colors cursor-pointer flex items-center gap-1">
+            <Plus className="h-3.5 w-3.5" />
+            <span>Smart list</span>
           </button>
         </div>
-      </div>
 
-      {/* Main Page Title & Primary Actions (Matches Screenshot) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-stone-900 tracking-tight">Workflow List</h1>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Manage automation project folders, inbound webhook pipelines, and visual execution flows.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {/* Create Folder Button */}
-          <button
+        <div className="flex flex-wrap items-center gap-2 pb-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-tertiary" />
+            <input
+              type="text"
+              placeholder="Search workflows or folders"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="focus-ring h-8 w-56 pl-8 pr-3 rounded-sm bg-surface border border-line-strong text-small text-fg placeholder:text-fg-disabled"
+            />
+          </div>
+          <Button size="sm" variant="ghost" icon={<SlidersHorizontal className="h-4 w-4" />}>
+            Filters
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onOpenCanvas()} icon={<Workflow className="h-4 w-4" />}>
+            Open canvas
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => {
               setEditingProject(null);
               setIsFolderModalOpen(true);
             }}
-            className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-xs font-bold text-stone-800 flex items-center gap-2 shadow-2xs transition-colors cursor-pointer"
+            icon={<FolderPlus className="h-4 w-4" />}
           >
-            <FolderPlus className="h-4 w-4 text-stone-500" />
-            <span>Create Folder</span>
-          </button>
+            New folder
+          </Button>
 
-          {/* + Create Workflow Button with Dropdown (Highlighted in Red in Screenshot) */}
+          {/* New workflow with dropdown */}
           <div className="relative">
-            <button
+            <Button
+              size="sm"
+              variant="brand"
               onClick={() => setIsCreateMenuOpen((v) => !v)}
-              className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+              icon={<Plus className="h-4 w-4" />}
             >
-              <Plus className="h-4 w-4" />
-              <span>Create Workflow</span>
-              <ChevronDown className="h-3.5 w-3.5 ml-0.5" />
-            </button>
+              New workflow
+              <ChevronDown className="h-3.5 w-3.5 -ml-1" />
+            </Button>
 
-            {/* Dropdown Menu (Matches red highlighted popup in Screenshot) */}
             {isCreateMenuOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-72 rounded-2xl bg-white border border-stone-200 shadow-xl py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs divide-y divide-stone-100">
+              <div className="absolute right-0 top-full mt-1.5 w-72 rounded-md bg-surface border border-line shadow-md py-1 z-30 divide-y divide-line">
                 <div className="py-1">
-                  <button
-                    onClick={() => handleCreateWorkflow('scratch')}
-                    className="w-full px-3.5 py-2 text-left hover:bg-stone-50 text-stone-900 font-bold flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4 text-[#ED1C24]" />
-                    <span>Start from Scratch</span>
+                  <button onClick={() => handleCreateWorkflow('scratch')} className={menuItem}>
+                    <Plus className={menuIcon} />
+                    <span>Start from scratch</span>
                   </button>
 
                   <button
@@ -436,17 +463,17 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       setIsTemplateGalleryOpen(true);
                       setIsCreateMenuOpen(false);
                     }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-[#ED1C24] font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <Sparkles className="h-4 w-4 fill-rose-100" />
-                    <span>Browse 15+ Outbound Templates...</span>
+                    <Sparkles className={menuIcon} />
+                    <span>Browse outbound templates</span>
                   </button>
                 </div>
 
                 {/* Outbound Cadences Quick-Picks */}
                 <div className="py-1">
-                  <div className="px-3.5 py-1 text-[10px] font-mono uppercase tracking-wider text-stone-400 font-bold">
-                    Cadences & After-Call Dispositions
+                  <div className="px-3 pt-1.5 pb-1 text-caption text-fg-tertiary">
+                    Cadences and after-call dispositions
                   </div>
 
                   <button
@@ -454,10 +481,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       const tpl = PRELOADED_WORKFLOW_TEMPLATES.find((t) => t.id === 'tpl-cadence-21day-master');
                       if (tpl) handleDeployTemplate(tpl);
                     }}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-stone-50 text-stone-800 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                    <span>21-Day Multi-Channel Blueprint</span>
+                    <Zap className={menuIcon} />
+                    <span>21-day multi-channel cadence</span>
                   </button>
 
                   <button
@@ -465,10 +492,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       const tpl = PRELOADED_WORKFLOW_TEMPLATES.find((t) => t.id === 'tpl-meeting-booked-vip');
                       if (tpl) handleDeployTemplate(tpl);
                     }}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-stone-50 text-stone-800 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Meeting Booked VIP (SMS+Email+LI)</span>
+                    <CheckCircle2 className={menuIcon} />
+                    <span>Meeting booked VIP (SMS, email, LinkedIn)</span>
                   </button>
 
                   <button
@@ -476,10 +503,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       const tpl = PRELOADED_WORKFLOW_TEMPLATES.find((t) => t.id === 'tpl-cadence-day3-vm-email-synergy');
                       if (tpl) handleDeployTemplate(tpl);
                     }}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-stone-50 text-stone-800 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <PhoneCall className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Day 3: Voicemail + Email Synergy</span>
+                    <PhoneCall className={menuIcon} />
+                    <span>Day 3: voicemail and email</span>
                   </button>
 
                   <button
@@ -487,20 +514,17 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       const tpl = PRELOADED_WORKFLOW_TEMPLATES.find((t) => t.id === 'tpl-followup-calendar-nudge');
                       if (tpl) handleDeployTemplate(tpl);
                     }}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-stone-50 text-stone-800 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <Calendar className="h-3.5 w-3.5 text-purple-600" />
-                    <span>Follow-up: 1-Click Calendar Link</span>
+                    <Calendar className={menuIcon} />
+                    <span>Follow-up: one-click calendar link</span>
                   </button>
                 </div>
 
                 <div className="py-1">
-                  <button
-                    onClick={() => handleCreateWorkflow('elevenlabs')}
-                    className="w-full px-3.5 py-2 text-left hover:bg-stone-50 text-stone-700 flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Bot className="h-4 w-4 text-purple-600" />
-                    <span>VoiceChatbot (ElevenLabs)</span>
+                  <button onClick={() => handleCreateWorkflow('elevenlabs')} className={menuItem}>
+                    <Bot className={menuIcon} />
+                    <span>Voice chatbot (ElevenLabs)</span>
                   </button>
 
                   <button
@@ -508,10 +532,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       setIsTemplateGalleryOpen(true);
                       setIsCreateMenuOpen(false);
                     }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-stone-50 text-stone-700 flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <Layers className="h-4 w-4 text-blue-600" />
-                    <span>Select a Recipe</span>
+                    <Layers className={menuIcon} />
+                    <span>Select a recipe</span>
                   </button>
 
                   <button
@@ -519,20 +543,18 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       setIsTemplateGalleryOpen(true);
                       setIsCreateMenuOpen(false);
                     }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-stone-50 text-stone-700 flex items-center gap-2 transition-colors cursor-pointer"
+                    className={menuItem}
                   >
-                    <FileCode2 className="h-4 w-4 text-emerald-600" />
-                    <span>Select from Template</span>
+                    <FileCode2 className={menuIcon} />
+                    <span>Select from template</span>
                   </button>
                 </div>
 
                 <div className="py-1">
-                  <button
-                    onClick={() => handleCreateWorkflow('scratch')}
-                    className="w-full px-3.5 py-2 text-left hover:bg-stone-50 text-stone-500 text-[11px] flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Home className="h-3.5 w-3.5 text-stone-400" />
-                    <span>Properties based workflow (Beta)</span>
+                  <button onClick={() => handleCreateWorkflow('scratch')} className={`${menuItem} text-fg-secondary`}>
+                    <Home className={menuIcon} />
+                    <span>Properties-based workflow</span>
+                    <Badge className="ml-auto">Beta</Badge>
                   </button>
                 </div>
               </div>
@@ -541,127 +563,60 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
         </div>
       </div>
 
-      {/* Tabs & Search Filter Bar (Matches Screenshot) */}
-      <div className="space-y-4">
-        {/* Status Tabs */}
-        <div className="flex items-center justify-between border-b border-stone-200">
-          <div className="flex items-center gap-6 text-xs font-bold">
+      {/* Folder breadcrumb (Home > Folder) */}
+      <nav aria-label="Folder path" className="flex items-center gap-1.5 text-small text-fg-secondary">
+        <button
+          onClick={() => setCurrentFolderId(null)}
+          className={`focus-ring rounded-sm flex items-center gap-1 hover:text-fg transition-colors cursor-pointer ${
+            currentFolderId === null ? 'text-fg' : ''
+          }`}
+        >
+          <Home className="h-3.5 w-3.5" />
+          <span>Home</span>
+        </button>
+
+        {currentFolder && (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 text-fg-tertiary" />
+            <span className="text-fg flex items-center gap-1.5">
+              <Folder className="h-3.5 w-3.5 text-fg-secondary" />
+              <span>{currentFolder.name}</span>
+            </span>
             <button
-              onClick={() => setActiveTab('all')}
-              className={`pb-3 transition-colors cursor-pointer relative ${
-                activeTab === 'all' ? 'text-[#ED1C24]' : 'text-stone-500 hover:text-stone-900'
-              }`}
+              onClick={() => setCurrentFolderId(null)}
+              className="focus-ring rounded-sm ml-2 text-small text-fg-tertiary hover:text-fg underline-offset-2 hover:underline"
             >
-              <span>All Workflows</span>
-              {activeTab === 'all' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ED1C24]" />
-              )}
+              Back to all folders
             </button>
+          </>
+        )}
+      </nav>
 
-            <button
-              onClick={() => setActiveTab('needs_review')}
-              className={`pb-3 transition-colors cursor-pointer relative ${
-                activeTab === 'needs_review' ? 'text-[#ED1C24]' : 'text-stone-500 hover:text-stone-900'
-              }`}
-            >
-              <span>Needs Review (3)</span>
-              {activeTab === 'needs_review' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ED1C24]" />
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('deleted')}
-              className={`pb-3 transition-colors cursor-pointer relative ${
-                activeTab === 'deleted' ? 'text-[#ED1C24]' : 'text-stone-500 hover:text-stone-900'
-              }`}
-            >
-              <span>Deleted</span>
-              {activeTab === 'deleted' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ED1C24]" />
-              )}
-            </button>
-
-            <button className="pb-3 text-stone-400 hover:text-stone-700 transition-colors cursor-pointer flex items-center gap-1 font-medium">
-              <Plus className="h-3.5 w-3.5" />
-              <span>Smart List</span>
-            </button>
-          </div>
-
-          {/* Search and Filters */}
-          <div className="flex items-center gap-2 pb-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
-              <input
-                type="text"
-                placeholder="Search workflows or folders..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-3 py-1.5 rounded-xl bg-white border border-stone-200 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#ED1C24] w-56"
-              />
-            </div>
-            <button className="px-3 py-1.5 rounded-xl bg-white border border-stone-200 text-stone-700 hover:bg-stone-50 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              <span>Advanced Filters</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Breadcrumb Path (Home > Folder) */}
-        <div className="flex items-center gap-2 text-xs font-medium text-stone-500">
-          <button
-            onClick={() => setCurrentFolderId(null)}
-            className={`flex items-center gap-1 hover:text-stone-900 transition-colors cursor-pointer ${
-              currentFolderId === null ? 'font-bold text-stone-900' : ''
-            }`}
-          >
-            <Home className="h-3.5 w-3.5" />
-            <span>Home</span>
-          </button>
-
-          {currentFolder && (
-            <>
-              <span>/</span>
-              <span className="font-bold text-stone-900 flex items-center gap-1.5">
-                <Folder className="h-3.5 w-3.5 text-[#ED1C24]" />
-                <span>{currentFolder.name}</span>
-              </span>
-              <button
-                onClick={() => setCurrentFolderId(null)}
-                className="ml-2 text-[11px] text-stone-400 hover:text-stone-700 underline"
-              >
-                (Back to all folders)
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Table Container (Matches Enterprise Table Layout from Screenshot) */}
-      <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-2xs">
+      {/* Table */}
+      <div className="rounded-lg border border-line bg-surface overflow-x-auto shadow-xs">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-stone-100 bg-stone-50/70 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              <th className="py-3 px-4 w-10">
-                <input type="checkbox" className="rounded text-[#ED1C24] focus:ring-[#ED1C24]" />
+            <tr className="bg-subtle text-caption text-fg-tertiary">
+              <th className="h-9 px-4 w-10 font-medium">
+                <input type="checkbox" className={checkboxCls} />
               </th>
-              <th className="py-3 px-4">Name</th>
-              <th className="py-3 px-4">Status</th>
-              <th className="py-3 px-4">Total Enrolled</th>
-              <th className="py-3 px-4">Active Enrolled</th>
-              <th className="py-3 px-4">Last Updated</th>
-              <th className="py-3 px-4">Created On</th>
-              <th className="py-3 px-4">Stats</th>
-              <th className="py-3 px-4 text-right w-12">Actions</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium">Name</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium">Status</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium text-right">Total enrolled</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium text-right">Active enrolled</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium">Last updated</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium">Created</th>
+              <th className="h-9 px-4 whitespace-nowrap font-medium">Success rate</th>
+              <th className="h-9 px-4 w-12"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-stone-100 text-xs">
+          <tbody className="text-body">
             {isLoading ? (
-              <tr>
-                <td colSpan={9} className="py-12 text-center text-stone-400">
-                  <div className="inline-block h-5 w-5 rounded-full border-2 border-[#ED1C24] border-t-transparent animate-spin" />
-                  <p className="mt-2 text-xs">Loading workflow directory...</p>
+              <tr className="border-t border-line">
+                <td colSpan={9} className="py-12 text-center text-fg-tertiary">
+                  <div className="inline-block h-5 w-5 rounded-full border-2 border-ink-300 border-t-transparent animate-spin" />
+                  <p className="mt-2 text-small">Loading workflows...</p>
                 </td>
               </tr>
             ) : (
@@ -675,68 +630,60 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                     <tr
                       key={proj.id}
                       onClick={() => setCurrentFolderId(proj.id)}
-                      className="hover:bg-stone-50/80 transition-colors cursor-pointer group"
+                      className="border-t border-line hover:bg-subtle transition-colors cursor-pointer group"
                     >
-                      <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" className="rounded text-[#ED1C24]" />
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" className={checkboxCls} />
                       </td>
 
                       {/* Name Column with Folder Icon */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div
-                            className="p-1.5 rounded-lg text-white"
-                            style={{ backgroundColor: proj.color || '#ED1C24' }}
-                          >
-                            <Folder className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <span className="font-bold text-stone-900 group-hover:text-[#ED1C24] transition-colors">
-                              {proj.name}
-                            </span>
+                          <Folder className="h-4 w-4 shrink-0 text-fg-secondary" />
+                          <div className="min-w-0">
+                            <span className="text-body-strong text-fg">{proj.name}</span>
                             {proj.description && (
-                              <p className="text-[11px] text-stone-400 line-clamp-1">{proj.description}</p>
+                              <p className="text-small text-fg-secondary line-clamp-1">{proj.description}</p>
                             )}
                           </div>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 ml-1">
+                          <span className="text-small tabular-nums text-fg-tertiary ml-1 whitespace-nowrap">
                             {folderWfs.length} workflows
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-stone-400 font-mono">Folder</td>
-                      <td className="py-3.5 px-4 font-mono text-stone-600">{folderWfs.length * 12}</td>
-                      <td className="py-3.5 px-4 font-mono text-stone-600">{folderWfs.length * 8}</td>
-                      <td className="py-3.5 px-4 text-stone-500 font-mono text-[11px]">
+                      <td className="py-3 px-4 text-small text-fg-secondary">Folder</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{folderWfs.length * 12}</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{folderWfs.length * 8}</td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(proj.updatedAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3.5 px-4 text-stone-500 font-mono text-[11px]">
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(proj.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="text-[11px] font-mono text-emerald-600 font-semibold">99.2% ok</span>
-                      </td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">99.2%</td>
 
                       {/* Three-Dot Menu */}
-                      <td className="py-3.5 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => setOpenItemMenuId(isMenuOpen ? null : proj.id)}
-                          className="p-1 rounded-md text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-colors"
+                          aria-label="Folder actions"
+                          className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-fg hover:bg-subtle transition-colors"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
 
                         {isMenuOpen && (
-                          <div className="absolute right-4 top-8 w-48 rounded-xl bg-white border border-stone-200 shadow-xl py-1 z-20 text-xs text-left">
+                          <div className="absolute right-4 top-10 w-48 rounded-md bg-surface border border-line shadow-md py-1 z-20 text-left">
                             <button
                               onClick={() => {
                                 setCurrentFolderId(proj.id);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-800 font-semibold flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <Folder className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Open Folder</span>
+                              <Folder className={menuIcon} />
+                              <span>Open folder</span>
                             </button>
 
                             <button
@@ -745,10 +692,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 setIsFolderModalOpen(true);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-700 flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <Edit className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Edit Folder</span>
+                              <Edit className={menuIcon} />
+                              <span>Edit folder</span>
                             </button>
 
                             <button
@@ -756,10 +703,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 handleDeleteProject(proj.id, proj.name);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+                              className={menuItemDanger}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              <span>Delete Folder</span>
+                              <Trash2 className="h-4 w-4" />
+                              <span>Delete folder</span>
                             </button>
                           </div>
                         )}
@@ -776,82 +723,77 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                     <tr
                       key={wf.id}
                       onClick={() => onOpenCanvas(wf.id)}
-                      className="hover:bg-stone-50/80 transition-colors cursor-pointer group"
+                      className="border-t border-line hover:bg-subtle transition-colors cursor-pointer group"
                     >
-                      <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" className="rounded text-[#ED1C24]" />
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" className={checkboxCls} />
                       </td>
 
                       {/* Workflow Name with Icon */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-1.5 rounded-lg bg-stone-100 text-stone-800 border border-stone-200/80">
-                            <Zap className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <span className="font-bold text-stone-900 group-hover:text-[#ED1C24] transition-colors">
-                              {wf.name}
-                            </span>
+                          <Workflow className="h-4 w-4 shrink-0 text-fg-secondary" />
+                          <div className="min-w-0">
+                            <span className="text-body-strong text-fg">{wf.name}</span>
                             {wf.description && (
-                              <p className="text-[11px] text-stone-400 line-clamp-1">{wf.description}</p>
+                              <p className="text-small text-fg-secondary line-clamp-1">{wf.description}</p>
                             )}
                           </div>
                         </div>
                       </td>
 
                       {/* Active Status Switch */}
-                      <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleToggleActive(wf)}
-                            className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                              wf.active ? 'bg-emerald-500' : 'bg-stone-300'
+                            className={`focus-ring w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                              wf.active ? 'bg-action' : 'bg-ink-300'
                             }`}
                           >
                             <div
-                              className={`bg-white w-3.5 h-3.5 rounded-full shadow-md transform transition-transform ${
+                              className={`bg-surface w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform ${
                                 wf.active ? 'translate-x-3.5' : 'translate-x-0'
                               }`}
                             />
                           </button>
-                          <span className={`text-[11px] font-mono font-semibold ${wf.active ? 'text-emerald-700' : 'text-stone-400'}`}>
+                          <Badge tone={wf.active ? 'success' : 'neutral'}>
                             {wf.active ? 'Published' : 'Draft'}
-                          </span>
+                          </Badge>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono text-stone-600">42</td>
-                      <td className="py-3.5 px-4 font-mono text-stone-600">38</td>
-                      <td className="py-3.5 px-4 text-stone-500 font-mono text-[11px]">
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">42</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">38</td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(wf.updatedAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3.5 px-4 text-stone-500 font-mono text-[11px]">
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(wf.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className="text-[11px] font-mono text-emerald-600 font-semibold">100% ok</span>
-                      </td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">100%</td>
 
                       {/* Three-Dot Menu */}
-                      <td className="py-3.5 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => setOpenItemMenuId(isMenuOpen ? null : wf.id)}
-                          className="p-1 rounded-md text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-colors"
+                          aria-label="Workflow actions"
+                          className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-fg hover:bg-subtle transition-colors"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
 
                         {isMenuOpen && (
-                          <div className="absolute right-4 top-8 w-48 rounded-xl bg-white border border-stone-200 shadow-xl py-1 z-20 text-xs text-left">
+                          <div className="absolute right-4 top-10 w-48 rounded-md bg-surface border border-line shadow-md py-1 z-20 text-left">
                             <button
                               onClick={() => {
                                 onOpenCanvas(wf.id);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-900 font-bold flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <ExternalLink className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Open in Canvas</span>
+                              <ExternalLink className={menuIcon} />
+                              <span>Open in canvas</span>
                             </button>
 
                             <button
@@ -859,10 +801,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 setDuplicatingWorkflow(wf);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-700 flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <Copy className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Duplicate Workflow</span>
+                              <Copy className={menuIcon} />
+                              <span>Duplicate</span>
                             </button>
 
                             <button
@@ -870,10 +812,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 setMovingWorkflow(wf);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-700 flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <FolderInput className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Move to Folder...</span>
+                              <FolderInput className={menuIcon} />
+                              <span>Move to folder</span>
                             </button>
 
                             <button
@@ -881,10 +823,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 setSettingsWorkflow(wf);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-stone-50 text-stone-700 flex items-center gap-2"
+                              className={menuItem}
                             >
-                              <Settings className="h-3.5 w-3.5 text-stone-500" />
-                              <span>Rename / Settings</span>
+                              <Settings className={menuIcon} />
+                              <span>Rename and settings</span>
                             </button>
 
                             <button
@@ -892,10 +834,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                                 handleDeleteWorkflow(wf.id);
                                 setOpenItemMenuId(null);
                               }}
-                              className="w-full px-3 py-1.5 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+                              className={menuItemDanger}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              <span>Delete Workflow</span>
+                              <Trash2 className="h-4 w-4" />
+                              <span>Delete workflow</span>
                             </button>
                           </div>
                         )}

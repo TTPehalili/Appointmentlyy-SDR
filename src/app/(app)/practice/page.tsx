@@ -2,18 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Users, 
-  ArrowRight, 
-  Flame, 
-  SlidersHorizontal,
+import {
+  ArrowRight,
   Building,
-  Target,
-  Globe,
+  Mic,
   PhoneCall
 } from 'lucide-react';
 import { SPARRING_PERSONAS, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
 import { RepAccentKey } from '@/lib/repVoices';
+import { Badge, PageHeader, SegmentedControl, Select, buttonClasses, type Tone } from '@/components/ui';
+
+const DIFFICULTY_TONE: Record<string, Tone> = {
+  Beginner: 'success',
+  Intermediate: 'neutral',
+  Advanced: 'warning',
+  Nightmare: 'danger',
+};
 
 export default function SparringLobbyPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
@@ -42,180 +46,135 @@ export default function SparringLobbyPage() {
     localStorage.setItem('sparring_rep_accent', a);
   };
 
-  const filteredPersonas = selectedDifficulty === 'all' 
-    ? SPARRING_PERSONAS 
+  const filteredPersonas = selectedDifficulty === 'all'
+    ? SPARRING_PERSONAS
     : SPARRING_PERSONAS.filter(p => p.difficulty.toLowerCase() === selectedDifficulty.toLowerCase());
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50/70 font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <main className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8 space-y-6">
-          
-          {/* Header Banner */}
-          <div className="rounded-xl p-5 bg-white border border-zinc-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 block mb-1">
-                VOICE SIMULATION ARENA
-              </span>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
-                AI Sparring Arena — 10 Buyer Personas
-              </h1>
-              <p className="text-xs text-zinc-500 mt-1 max-w-2xl leading-relaxed">
-                Dial in to simulate realistic B2B cold calls. Practice unscripted objection handling against adversarial buyer personas and receive automated ARM rubric grading.
-              </p>
-            </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
 
-            <Link
-              href="/dialer"
-              className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs transition-colors flex items-center gap-1.5 shrink-0 shadow-xs"
-            >
-              <span>Calling Floor</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
+          <PageHeader
+            className="pb-0"
+            title="Sparring Arena"
+            count={SPARRING_PERSONAS.length}
+            description="Practice cold calls with an AI buyer, then get a scorecard on how you handled the objection."
+            secondaryActions={
+              <Link href="/dialer" className={buttonClasses('secondary', 'md')}>
+                <span>Calling floor</span>
+                <ArrowRight aria-hidden />
+              </Link>
+            }
+          />
 
-          {/* Filter Controls & Country Voice Switcher */}
-          <div className="flex items-center justify-between gap-4 flex-wrap bg-white border border-zinc-200 rounded-xl px-4 py-3 shadow-xs">
-            <div className="flex items-center gap-4 flex-wrap">
-              {/* Rep Voice Accent Switcher */}
+          {/* Filter controls and voice settings */}
+          <div className="flex items-center justify-between gap-x-6 gap-y-3 flex-wrap border-b border-line pb-4">
+            <div className="flex items-center gap-x-6 gap-y-3 flex-wrap">
+              {/* Rep voice accent */}
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
-                  <Users className="h-3.5 w-3.5 text-[#ED1C24]" />
-                  <span>Rep Voice:</span>
-                </div>
-                <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg text-xs font-medium border border-zinc-200">
-                  <button
-                    type="button"
-                    onClick={() => handleRepAccentChange('arabic')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
-                      selectedRepAccent === 'arabic'
-                        ? 'bg-zinc-950 text-white font-bold shadow-2xs'
-                        : 'text-zinc-600 hover:text-zinc-950'
-                    }`}
-                  >
-                    <span>🇦🇪</span>
-                    <span>Arabic Accent</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRepAccentChange('filipino')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
-                      selectedRepAccent === 'filipino'
-                        ? 'bg-zinc-950 text-white font-bold shadow-2xs'
-                        : 'text-zinc-600 hover:text-zinc-950'
-                    }`}
-                  >
-                    <span>🇵🇭</span>
-                    <span>Filipino Accent</span>
-                  </button>
-                </div>
+                <span className="text-small text-fg-secondary">Your voice</span>
+                <SegmentedControl
+                  size="sm"
+                  label="Your voice accent"
+                  value={selectedRepAccent}
+                  onChange={(v) => handleRepAccentChange(v as RepAccentKey)}
+                  items={[
+                    { value: 'arabic', label: 'Arabic accent' },
+                    { value: 'filipino', label: 'Filipino accent' },
+                  ]}
+                />
               </div>
 
-              {/* Country Voice Accent Dropdown Selector */}
-              <div className="flex items-center gap-2 border-l border-zinc-200 pl-4">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
-                  <Globe className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>Buyer Voice Accent:</span>
-                </div>
-                <div className="relative inline-block">
-                  <select
+              {/* Buyer accent */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="buyer-accent" className="text-small text-fg-secondary whitespace-nowrap">Buyer accent</label>
+                <div className="w-56">
+                  <Select
+                    id="buyer-accent"
                     value={selectedCountry}
                     onChange={(e) => handleCountryChange(e.target.value as SparringCountry)}
-                    className="bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 text-xs font-medium py-1.5 pl-3 pr-7 rounded-lg transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                    className="h-8 text-small"
                   >
-                    <option value="USA">🇺🇸 USA (American Accent)</option>
-                    <option value="Australia">🇦🇺 Australia (Australian Accent)</option>
-                    <option value="UK">🇬🇧 UK (British Accent)</option>
-                  </select>
+                    <option value="USA">USA (American accent)</option>
+                    <option value="Australia">Australia (Australian accent)</option>
+                    <option value="UK">UK (British accent)</option>
+                  </Select>
                 </div>
               </div>
             </div>
 
-            {/* Difficulty Filter */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 text-xs font-semibold text-zinc-500">
-                <SlidersHorizontal className="h-3 w-3 text-zinc-400" />
-                <span className="hidden sm:inline">Difficulty:</span>
-              </div>
-              <div className="flex items-center gap-1">
-                {['all', 'beginner', 'intermediate', 'advanced', 'nightmare'].map((lvl) => (
-                  <button
-                    key={lvl}
-                    onClick={() => setSelectedDifficulty(lvl)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
-                      selectedDifficulty === lvl
-                        ? 'bg-zinc-900 text-white font-semibold shadow-xs'
-                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80 hover:text-zinc-950'
-                    }`}
-                  >
-                    {lvl}
-                  </button>
-                ))}
-              </div>
+            {/* Difficulty filter */}
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-small text-fg-secondary">Difficulty</span>
+              <SegmentedControl
+                size="sm"
+                label="Difficulty"
+                value={selectedDifficulty}
+                onChange={setSelectedDifficulty}
+                items={['all', 'beginner', 'intermediate', 'advanced', 'nightmare'].map((lvl) => ({
+                  value: lvl,
+                  label: <span className="capitalize">{lvl}</span>,
+                }))}
+              />
             </div>
           </div>
 
-          {/* 10 Personas Grid */}
+          {/* Personas grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredPersonas.map((persona) => {
               return (
                 <div
                   key={persona.id}
-                  className="rounded-xl bg-white border border-zinc-200 hover:border-zinc-300 p-5 flex flex-col justify-between transition-all shadow-xs"
+                  className="rounded-lg bg-surface border border-line hover:border-line-strong p-5 flex flex-col justify-between transition-colors duration-150 shadow-xs"
                 >
-                  <div className="space-y-3.5">
+                  <div className="space-y-3">
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-bold text-sm text-zinc-950">
+                      <div className="min-w-0">
+                        <h2 className="text-h3 text-fg">
                           {persona.name}
-                        </h3>
-                        <p className="text-xs text-zinc-500">
+                        </h2>
+                        <p className="text-small text-fg-secondary">
                           {persona.title}
                         </p>
                       </div>
 
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium border bg-zinc-50 text-zinc-700 border-zinc-200">
+                      <Badge tone={DIFFICULTY_TONE[persona.difficulty] ?? 'neutral'}>
                         {persona.difficulty}
-                      </span>
+                      </Badge>
                     </div>
 
                     {/* Metadata */}
-                    <div className="space-y-1 pt-2 border-t border-zinc-100 text-xs">
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <Building className="h-3.5 w-3.5 text-zinc-400" />
+                    <div className="space-y-1 text-small text-fg-secondary">
+                      <div className="flex items-center gap-2">
+                        <Building className="size-4 text-fg-tertiary" aria-hidden />
                         <span>{persona.companyType}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <Target className="h-3.5 w-3.5 text-zinc-400" />
-                        <span className="font-medium text-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Mic className="size-4 text-fg-tertiary" aria-hidden />
+                        <span>
                           {getPersonaVoiceByCountry(persona, selectedCountry).accentLabel}
                         </span>
                       </div>
                     </div>
 
-                    {/* Scenario */}
-                    <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200/70 text-xs space-y-1">
-                      <div className="font-semibold text-zinc-700 text-[11px] flex items-center gap-1">
-                        <Flame className="h-3 w-3 text-zinc-500" />
-                        <span>Core Objection</span>
-                      </div>
-                      <p className="text-zinc-600 text-xs leading-relaxed italic">
-                        "{persona.coreObjection}"
-                      </p>
-                    </div>
+                    {/* Core objection */}
+                    <blockquote className="border-l-2 border-line-strong pl-3 text-body text-fg-secondary">
+                      &ldquo;{persona.coreObjection}&rdquo;
+                    </blockquote>
                   </div>
 
-                  {/* Start Sparring CTA */}
-                  <div className="mt-4 pt-3 border-t border-zinc-100">
+                  {/* Start sparring CTA */}
+                  <div className="mt-5">
                     <Link
                       href={`/practice/${persona.id}?country=${selectedCountry}&repAccent=${selectedRepAccent}`}
-                      className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                      className={buttonClasses('secondary', 'md', 'w-full')}
                     >
-                      <PhoneCall className="h-3.5 w-3.5" />
-                      <span>Start Sparring Call</span>
+                      <PhoneCall aria-hidden />
+                      <span>Start sparring call</span>
                     </Link>
                   </div>
                 </div>

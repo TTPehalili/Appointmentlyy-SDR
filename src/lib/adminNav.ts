@@ -45,6 +45,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     label: 'Data',
     items: [
+      { id: 'lead-credits', label: 'Lead credits & quota', href: '/admin/lead-credits', permission: 'admin', keywords: 'icp quota top up credits records stage master engine key' },
       { id: 'leads', label: 'Leads & cadences', href: '/admin/leads', permission: 'admin', controlSection: 'leads', keywords: 'leads cadence crm csv' },
       { id: 'campaign-leads', label: 'Campaign leads', href: '/admin/campaigns/enterprise-outbound/leads', permission: 'admin', keywords: 'campaign batch assign' },
     ],

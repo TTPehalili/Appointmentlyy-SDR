@@ -14,8 +14,22 @@ import {
   Plus,
   AlertCircle,
   PhoneCall,
-  Mail
+  Mail,
+  Lightbulb
 } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  buttonClasses,
+  EmptyState,
+  Field,
+  InlineError,
+  PageHeader,
+  Select,
+  StatusDot,
+  Tabs,
+  Textarea,
+} from '@/components/ui';
 import { ExtractedArmEntry, SynthesizedPlaybookResult } from '@/lib/parsers/armExtractor';
 import OutboundFrameworkManager from '@/components/admin/OutboundFrameworkManager';
 
@@ -112,322 +126,245 @@ export default function AdminFrameworksPage() {
     }
   };
 
+
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans">
+    <div className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Playbooks"
+        description="Manage outbound frameworks and turn training documents into scripts, rebuttals and cadences."
+        meta={
+          <span className="text-small text-fg-tertiary">
+            Model <span className="text-fg-secondary">Gemini 3.5 Flash</span>
+          </span>
+        }
+        tabs={
+          <Tabs
+            label="Playbook views"
+            value={activeView}
+            onChange={(v) => setActiveView(v as 'frameworks' | 'uploader')}
+            items={[
+              { value: 'frameworks', label: 'Outbound frameworks' },
+              { value: 'uploader', label: 'Upload playbook' },
+            ]}
+          />
+        }
+      />
 
-      {/* SUB-HEADER / VIEW SELECTOR */}
-      <div className="bg-white border-b border-zinc-200 px-6 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1 p-1 bg-zinc-100 rounded-lg text-xs font-medium border border-zinc-200/60 w-fit">
-            <button
-              type="button"
-              onClick={() => setActiveView('frameworks')}
-              className={`px-3.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${activeView === 'frameworks'
-                ? 'bg-white text-zinc-950 font-bold shadow-xs'
-                : 'text-zinc-600 hover:text-zinc-950'
-                }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Outbound Guru Frameworks Studio</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveView('uploader')}
-              className={`px-3.5 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${activeView === 'uploader'
-                ? 'bg-white text-zinc-950 font-bold shadow-xs'
-                : 'text-zinc-600 hover:text-zinc-950'
-                }`}
-            >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>Playbook Document Ingestion</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500">
-            <span>Floor Model:</span>
-            <span className="font-semibold text-zinc-800 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
-              Gemini 3.5 Flash
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* MAIN CONTENT AREA */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        {activeView === 'frameworks' ? (
-          <OutboundFrameworkManager />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Upload Form (5 cols) */}
-            <div className="lg:col-span-5 flex flex-col gap-6">
-              <form onSubmit={handleUpload} className="bg-white border border-zinc-200 rounded-xl p-5 shadow-2xs flex flex-col gap-4">
-                <div>
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-900 flex items-center gap-2">
-                    <UploadCloud className="h-4 w-4 text-zinc-700" />
-                    Upload Framework Playbook
-                  </h2>
-                  <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-                    Upload sales training docs (.pdf, .docx, .md) to automatically parse into structured [A], [R], [M] entries.
-                  </p>
-                </div>
-
-                {/* Campaign Select */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase tracking-wider">
-                    Target Campaign
-                  </label>
-                  <select
-                    value={campaign}
-                    onChange={(e) => setCampaign(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-lg p-2.5 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900/10 focus:border-zinc-400"
-                  >
-                    <option value="enterprise-outbound">Enterprise Outbound BDM</option>
-                    <option value="bpo-accelerator">BPO Client Acquisition</option>
-                    <option value="saas-discovery">SaaS Inbound SDR</option>
-                  </select>
-                </div>
-
-                {/* File Drop Area */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase tracking-wider">
-                    Document File
-                  </label>
-                  <label className="border border-dashed border-zinc-300 hover:border-zinc-500 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-zinc-50/50">
-                    <FileText className="h-8 w-8 text-zinc-400 mb-2" />
-                    <span className="text-xs font-bold text-zinc-800">
-                      {file ? file.name : 'Choose a file or drag & drop'}
-                    </span>
-                    <span className="text-[10px] text-zinc-500 mt-1">
-                      PDF, DOCX, TXT, or MD up to 10MB
-                    </span>
-                    <input
-                      type="file"
-                      onChange={handleFileChange}
-                      accept=".pdf,.docx,.txt,.md"
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {/* Text Fallback */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase tracking-wider">
-                    Or Paste Text Directly
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={rawText}
-                    onChange={(e) => setRawText(e.target.value)}
-                    placeholder="Paste script rules, rebuttal notes, or raw objection training material here..."
-                    className="w-full bg-white border border-zinc-200 rounded-lg p-2.5 text-xs text-zinc-900 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-900/10 focus:border-zinc-400"
-                  />
-                </div>
-
-                {errorMsg && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{errorMsg}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isUploading}
-                  className="w-full py-2.5 px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 text-white font-medium text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
-                >
-                  {isUploading ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Parsing & Vectorizing with Gemini...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Parse Document with Gemini</span>
-                    </>
-                  )}
-                </button>
-              </form>
-            </div>
-
-            {/* Right Column: Output Entries (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-zinc-200 rounded-xl p-5 shadow-2xs flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-200 gap-2">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 flex items-center gap-2">
-                    <Database className="h-4 w-4 text-zinc-700" />
-                    <span>Synthesized Playbook Assets</span>
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    {uploadResult
-                      ? `${uploadResult.fileName} • ${uploadResult.synthesized?.companyName || 'Custom Tenant'}`
-                      : 'Ready for document ingestion'}
-                  </p>
-                </div>
-
-                {uploadResult && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold font-mono flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                      GLOBAL SYNC ACTIVE
-                    </span>
-                  </div>
-                )}
+      {activeView === 'frameworks' ? (
+        <OutboundFrameworkManager />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left column: upload form */}
+          <div className="lg:col-span-5 flex flex-col gap-6">
+            <form onSubmit={handleUpload} className="bg-surface border border-line rounded-lg p-5 shadow-xs flex flex-col gap-4">
+              <div>
+                <h2 className="text-h3 text-fg">Upload a playbook</h2>
+                <p className="text-small text-fg-secondary mt-1">
+                  Upload sales training docs (.pdf, .docx, .md). AI turns them into structured acknowledge, respond and move entries.
+                </p>
               </div>
 
-              {/* Sub-Tabs for Synthesized Sections */}
+              {/* Campaign select */}
+              <Field label="Campaign" htmlFor="playbook-campaign">
+                <Select
+                  id="playbook-campaign"
+                  value={campaign}
+                  onChange={(e) => setCampaign(e.target.value)}
+                >
+                  <option value="enterprise-outbound">Enterprise Outbound BDM</option>
+                  <option value="bpo-accelerator">BPO Client Acquisition</option>
+                  <option value="saas-discovery">SaaS Inbound SDR</option>
+                </Select>
+              </Field>
+
+              {/* File drop area */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-body-strong text-fg">Document</span>
+                <label className="focus-within:shadow-[var(--focus-ring)] border border-dashed border-line-strong hover:border-fg-disabled hover:bg-subtle rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition-colors duration-150 bg-app">
+                  <FileText className="h-8 w-8 text-line-strong mb-2" aria-hidden />
+                  <span className="text-body-strong text-fg">
+                    {file ? file.name : 'Choose a file or drag and drop'}
+                  </span>
+                  <span className="text-small text-fg-tertiary mt-1">
+                    PDF, DOCX, TXT or MD up to 10MB
+                  </span>
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".pdf,.docx,.txt,.md"
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+
+              {/* Text fallback */}
+              <Field label="Or paste text" htmlFor="playbook-text">
+                <Textarea
+                  id="playbook-text"
+                  rows={4}
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
+                  placeholder="Paste script rules, rebuttal notes, or raw objection training material here..."
+                />
+              </Field>
+
+              {errorMsg && <InlineError message={errorMsg} />}
+
+              <Button
+                type="submit"
+                variant="brand"
+                disabled={isUploading}
+                className="w-full"
+                icon={
+                  isUploading ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )
+                }
+              >
+                {isUploading ? 'Parsing document...' : 'Parse document'}
+              </Button>
+            </form>
+          </div>
+
+          {/* Right column: output entries */}
+          <div className="lg:col-span-7 bg-surface border border-line rounded-lg p-5 shadow-xs flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+              <div>
+                <h3 className="text-h3 text-fg">Generated playbook</h3>
+                <p className="text-small text-fg-secondary mt-0.5">
+                  {uploadResult
+                    ? `${uploadResult.fileName} • ${uploadResult.synthesized?.companyName || 'Custom Tenant'}`
+                    : 'Waiting for a document'}
+                </p>
+              </div>
+
               {uploadResult && (
-                <div className="flex items-center gap-1 p-1 bg-zinc-100 rounded-lg text-xs font-medium border border-zinc-200">
-                  <button
-                    type="button"
-                    onClick={() => setResultsSubTab('arm')}
-                    className={`flex-1 py-1 px-2.5 rounded text-center transition-all ${resultsSubTab === 'arm' ? 'bg-white text-zinc-900 font-bold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
-                      }`}
-                  >
-                    Objections & Rebuttals ({uploadResult.entries.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setResultsSubTab('scripts')}
-                    className={`flex-1 py-1 px-2.5 rounded text-center transition-all ${resultsSubTab === 'scripts' ? 'bg-white text-zinc-900 font-bold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
-                      }`}
-                  >
-                    Calling Teleprompter ({uploadResult.synthesized?.phoneScripts?.length || 4})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setResultsSubTab('cadence')}
-                    className={`flex-1 py-1 px-2.5 rounded text-center transition-all ${resultsSubTab === 'cadence' ? 'bg-white text-zinc-900 font-bold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
-                      }`}
-                  >
-                    Email Cadence ({uploadResult.synthesized?.emailCadence?.length || 3})
-                  </button>
-                </div>
-              )}
-
-              {uploadResult ? (
-                <div className="space-y-3 overflow-y-auto max-h-[580px] pr-1">
-
-                  {/* TAB 1: ARM REBUTTALS */}
-                  {resultsSubTab === 'arm' && (
-                    <div className="space-y-3">
-                      {uploadResult.entries.map((entry, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3.5 rounded-lg bg-zinc-50 border border-zinc-200 flex flex-col gap-2.5 text-xs"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-zinc-900 px-2 py-0.5 rounded bg-zinc-200 border border-zinc-300">
-                              {entry.objection_category}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">
-                              Trigger: "{entry.objection_trigger}"
-                            </span>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <div className="flex gap-2">
-                              <span className="px-1.5 py-0.2 rounded bg-zinc-200 text-zinc-800 font-black text-[10px] shrink-0 border border-zinc-300">
-                                [A]
-                              </span>
-                              <p className="text-zinc-700 italic">"{entry.arm_acknowledge}"</p>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <span className="px-1.5 py-0.2 rounded bg-zinc-200 text-zinc-800 font-black text-[10px] shrink-0 border border-zinc-300">
-                                [R]
-                              </span>
-                              <p className="text-zinc-800 font-medium">"{entry.arm_respond}"</p>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <span className="px-1.5 py-0.2 rounded bg-zinc-200 text-zinc-800 font-black text-[10px] shrink-0 border border-zinc-300">
-                                [M]
-                              </span>
-                              <p className="text-zinc-800 font-medium">"{entry.arm_move}"</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* TAB 2: COLD CALL TELEPROMPTER */}
-                  {resultsSubTab === 'scripts' && (
-                    <div className="space-y-3">
-                      {(uploadResult.synthesized?.phoneScripts || []).map((script) => (
-                        <div key={script.step} className="p-3.5 rounded-lg bg-zinc-50 border border-zinc-200 space-y-2 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-zinc-900">{script.name}</span>
-                            <span className="text-[10px] font-mono text-zinc-500">{script.goal}</span>
-                          </div>
-                          <p className="p-2.5 rounded bg-white border border-zinc-200 text-zinc-800 font-medium leading-relaxed">
-                            {script.spokenText}
-                          </p>
-                          <p className="text-[11px] text-zinc-500 italic">
-                            💡 Delivery Tip: {script.deliveryTip}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* TAB 3: EMAIL CADENCE */}
-                  {resultsSubTab === 'cadence' && (
-                    <div className="space-y-3">
-                      {(uploadResult.synthesized?.emailCadence || []).map((email) => (
-                        <div key={email.touchNumber} className="p-3.5 rounded-lg bg-zinc-50 border border-zinc-200 space-y-2 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-zinc-900">Day {email.day} • {email.stepName}</span>
-                            <span className="text-[10px] font-mono bg-zinc-200 px-2 py-0.5 rounded text-zinc-700">Subject: {email.subject}</span>
-                          </div>
-                          <div className="p-2.5 rounded bg-white border border-zinc-200 text-zinc-800 whitespace-pre-line leading-relaxed font-sans">
-                            {email.body}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Quick Action Navigation Bar */}
-                  <div className="pt-3 border-t border-zinc-200 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Live in Cockpit & Sparring
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href="/dialer"
-                        className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs"
-                      >
-                        <PhoneCall className="h-3 w-3" />
-                        <span>Open Boris Cockpit</span>
-                      </Link>
-                      <Link
-                        href="/practice"
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs"
-                      >
-                        <Sparkles className="h-3 w-3 text-emerald-200" />
-                        <span>Test Sparring</span>
-                      </Link>
-                    </div>
-                  </div>
-
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center py-20 text-center text-zinc-400">
-                  <FileText className="h-8 w-8 text-zinc-300 mb-2" />
-                  <p className="text-xs font-semibold text-zinc-700">No document processed yet in this session</p>
-                  <p className="text-xs text-zinc-500 mt-1 max-w-sm">
-                    Upload your company training doc, scripts, or cadence on the left. The AI will synthesize it globally across Boris Cockpit, Sparring, and Email Studio.
-                  </p>
-                </div>
+                <Badge tone="success">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden />
+                  Synced everywhere
+                </Badge>
               )}
             </div>
+
+            {/* Sub-tabs for generated sections */}
+            {uploadResult && (
+              <Tabs
+                label="Generated sections"
+                value={resultsSubTab}
+                onChange={(v) => setResultsSubTab(v as 'arm' | 'scripts' | 'cadence')}
+                items={[
+                  { value: 'arm', label: 'Objections and rebuttals', count: uploadResult.entries.length },
+                  { value: 'scripts', label: 'Call scripts', count: uploadResult.synthesized?.phoneScripts?.length || 4 },
+                  { value: 'cadence', label: 'Email cadence', count: uploadResult.synthesized?.emailCadence?.length || 3 },
+                ]}
+              />
+            )}
+
+            {uploadResult ? (
+              <div className="space-y-3 overflow-y-auto max-h-[580px] pr-1">
+
+                {/* TAB 1: ARM REBUTTALS */}
+                {resultsSubTab === 'arm' && (
+                  <div className="space-y-3">
+                    {uploadResult.entries.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-md bg-app border border-line flex flex-col gap-3 text-small"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-body-strong text-fg">
+                            {entry.objection_category}
+                          </span>
+                          <span className="text-small text-fg-tertiary">
+                            Trigger: "{entry.objection_trigger}"
+                          </span>
+                        </div>
+
+                        <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5">
+                          <dt className="text-caption text-fg-tertiary pt-px">Acknowledge</dt>
+                          <dd className="text-fg-secondary">"{entry.arm_acknowledge}"</dd>
+                          <dt className="text-caption text-fg-tertiary pt-px">Respond</dt>
+                          <dd className="text-fg">"{entry.arm_respond}"</dd>
+                          <dt className="text-caption text-fg-tertiary pt-px">Move</dt>
+                          <dd className="text-fg">"{entry.arm_move}"</dd>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* TAB 2: COLD CALL TELEPROMPTER */}
+                {resultsSubTab === 'scripts' && (
+                  <div className="space-y-3">
+                    {(uploadResult.synthesized?.phoneScripts || []).map((script) => (
+                      <div key={script.step} className="p-4 rounded-md bg-app border border-line space-y-2 text-small">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-body-strong text-fg">{script.name}</span>
+                          <span className="text-small text-fg-tertiary">{script.goal}</span>
+                        </div>
+                        <p className="p-3 rounded-sm bg-surface border border-line text-body text-fg">
+                          {script.spokenText}
+                        </p>
+                        <p className="text-small text-fg-tertiary flex items-start gap-1.5">
+                          <Lightbulb className="h-3.5 w-3.5 mt-0.5 shrink-0 text-fg-secondary" aria-hidden />
+                          <span>Delivery tip: {script.deliveryTip}</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* TAB 3: EMAIL CADENCE */}
+                {resultsSubTab === 'cadence' && (
+                  <div className="space-y-3">
+                    {(uploadResult.synthesized?.emailCadence || []).map((email) => (
+                      <div key={email.touchNumber} className="p-4 rounded-md bg-app border border-line space-y-2 text-small">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-body-strong text-fg">Day {email.day} &middot; {email.stepName}</span>
+                          <span className="text-small text-fg-secondary">Subject: {email.subject}</span>
+                        </div>
+                        <div className="p-3 rounded-sm bg-surface border border-line text-body text-fg whitespace-pre-line">
+                          {email.body}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick action navigation bar */}
+                <div className="pt-3 border-t border-line flex flex-wrap items-center justify-between gap-2">
+                  <StatusDot tone="success" label="Live in the dialer and Practice" className="text-small" />
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/dialer"
+                      className={buttonClasses('secondary', 'sm')}
+                    >
+                      <PhoneCall className="h-3.5 w-3.5" aria-hidden />
+                      <span>Open dialer</span>
+                    </Link>
+                    <Link
+                      href="/practice"
+                      className={buttonClasses('secondary', 'sm')}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                      <span>Test in Practice</span>
+                    </Link>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <EmptyState
+                icon={<FileText />}
+                title="No document processed yet"
+                description="Upload a training doc, script or cadence. AI applies it across the dialer, Practice and email."
+              />
+            )}
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }

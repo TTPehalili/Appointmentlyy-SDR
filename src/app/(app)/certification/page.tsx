@@ -3,18 +3,15 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { 
-  Award, 
-  CheckCircle, 
-  ShieldCheck, 
-  Sparkles, 
-  ArrowRight, 
-  Clock, 
-  Send, 
-  Trophy, 
-  Lock, 
-  RotateCcw 
+import {
+  Award,
+  Info,
+  Sparkles,
+  ArrowRight,
+  Send,
+  Trophy
 } from 'lucide-react';
+import { Badge, Button, Card, PageHeader, Textarea, Tooltip, buttonClasses } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 export default function CertificationGatePage() {
@@ -83,153 +80,155 @@ export default function CertificationGatePage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#F2F0EF] font-sans antialiased text-[#222021]">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <main className="flex-1 overflow-y-auto px-8 py-8 space-y-6">
-          {/* Header Banner */}
-          <div className="rounded-2xl p-6 bg-white border border-[#222021]/10 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ED1C24]/10 border border-[#ED1C24]/20 text-[#ED1C24] text-[11px] font-bold tracking-wide uppercase mb-2">
-                <ShieldCheck className="h-3 w-3" />
-                <span>Certification Gate</span>
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-[#222021]">
-                B2B Outbound SDR Certification Exam
-              </h1>
-              <p className="text-xs text-[#6b6968] mt-1 leading-relaxed">
-                Reps must achieve a minimum composite score of 80% across 3 verified sparring scenarios to earn an enterprise credential and unlock live softphone outbound dialer credentials.
-              </p>
-            </div>
-
-            {certificateId && (
-              <Link
-                href={`/certificate/${certificateId}`}
-                className="px-4 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs transition-colors flex items-center gap-1.5 shadow-2xs shrink-0"
-              >
-                <Trophy className="h-4 w-4" />
-                <span>View Certificate</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            )}
-          </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
+          <PageHeader
+            className="pb-0"
+            title="Certification"
+            description="Score 80% or more across 3 practice scenarios to earn your certificate and unlock the live dialer."
+            secondaryActions={
+              certificateId ? (
+                <Link
+                  href={`/certificate/${certificateId}`}
+                  className={buttonClasses('primary', 'md')}
+                >
+                  <Trophy aria-hidden />
+                  <span>View certificate</span>
+                  <ArrowRight aria-hidden />
+                </Link>
+              ) : undefined
+            }
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: Attempt Tracker & Rules */}
+            {/* Left column: requirements and attempt history */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              <div className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-4">
-                <h3 className="text-sm font-bold text-[#222021] flex items-center gap-2">
-                  <Award className="h-4 w-4 text-[#ED1C24]" />
-                  <span>Certification Requirements</span>
-                </h3>
+              <Card className="p-5 space-y-4">
+                <h2 className="text-h3 text-fg flex items-center gap-2">
+                  <Award className="size-4 text-fg-secondary" aria-hidden />
+                  <span>Requirements</span>
+                </h2>
 
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10">
-                    <span className="text-[#6b6968]">Passing Threshold</span>
-                    <span className="font-bold text-[#222021]">80% Composite</span>
+                <dl className="divide-y divide-line text-body">
+                  <div className="flex items-center justify-between py-2 first:pt-0">
+                    <dt className="text-fg-secondary">Pass mark</dt>
+                    <dd className="text-fg tabular-nums">80% overall</dd>
                   </div>
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10">
-                    <span className="text-[#6b6968]">Max Attempts Allowed</span>
-                    <span className="font-bold text-[#222021]">{maxAttempts} per quarter</span>
+                  <div className="flex items-center justify-between py-2">
+                    <dt className="text-fg-secondary">Attempts allowed</dt>
+                    <dd className="text-fg tabular-nums">{maxAttempts} per quarter</dd>
                   </div>
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10">
-                    <span className="text-[#6b6968]">Audio Pipeline</span>
-                    <span className="font-bold text-[#222021]">ElevenLabs STT</span>
+                  <div className="flex items-center justify-between py-2 last:pb-0">
+                    <dt className="text-fg-secondary">Speech to text</dt>
+                    <dd className="text-fg">ElevenLabs</dd>
                   </div>
-                </div>
+                </dl>
 
-                <div className="pt-2 border-t border-[#222021]/10 space-y-2">
-                  <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#6b6968]">
-                    EXAMINATION HISTORY
-                  </span>
-                  <div className="space-y-1.5">
+                <div className="pt-4 border-t border-line space-y-2">
+                  <h3 className="text-small text-fg-tertiary">
+                    Attempt history
+                  </h3>
+                  <ul className="divide-y divide-line">
                     {attempts.map((att, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-[#F2F0EF] text-xs">
-                        <span className="font-medium text-[#222021]">Attempt {att.number}</span>
-                        <span className={`font-bold ${att.score >= 80 ? 'text-emerald-600' : 'text-[#ED1C24]'}`}>
-                          {att.score}% {att.score >= 80 ? 'PASSED' : 'REMEDIATE'}
+                      <li key={idx} className="flex items-center justify-between py-2 text-body">
+                        <span className="text-fg">Attempt {att.number}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="tabular-nums text-fg-secondary">{att.score}%</span>
+                          <Badge tone={att.score >= 80 ? 'success' : 'danger'}>
+                            {att.score >= 80 ? 'Passed' : 'Needs work'}
+                          </Badge>
                         </span>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
-              </div>
+              </Card>
             </div>
 
-            {/* Right Column: Interactive Evaluation Bench */}
+            {/* Right column: evaluation bench */}
             <div className="lg:col-span-8 flex flex-col gap-4">
-              <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
+              <Card className="p-6 space-y-5">
                 <div>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#ED1C24]">
-                    SCENARIO 1 OF 3: EXECUTIVE BUDGET SKEPTICISM
+                  <span className="text-small text-fg-tertiary">
+                    Scenario 1 of 3: executive budget skepticism
                   </span>
-                  <h3 className="text-lg font-black text-[#222021] mt-1">
-                    Defend Value Proposition Against Immediate Cost-Cutting Objection
-                  </h3>
+                  <h2 className="text-h2 text-fg mt-1">
+                    Defend your value against an immediate cost-cutting objection
+                  </h2>
                 </div>
 
-                {/* Boris Objection Box */}
-                <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#ED1C24]">
-                    <span>AI Boris (VP of Operations Prompt)</span>
-                  </div>
-                  <p className="text-sm font-semibold text-[#222021] leading-relaxed">
-                    "{borisPrompt}"
-                  </p>
+                {/* Buyer objection */}
+                <div className="space-y-1.5">
+                  <span className="text-small text-fg-tertiary">
+                    AI Boris, VP of Operations
+                  </span>
+                  <blockquote className="border-l-2 border-line-strong pl-3 text-body-strong text-fg">
+                    &ldquo;{borisPrompt}&rdquo;
+                  </blockquote>
                 </div>
 
-                {/* Rep Response Input */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-[#222021] block">
-                    Your Spoken ARM Response Track:
+                {/* Rep response input */}
+                <div className="space-y-1.5">
+                  <label htmlFor="cert-response" className="text-body-strong text-fg flex items-center gap-1.5">
+                    <span>Your response</span>
+                    <Tooltip content="Use the A.R.M. method: Acknowledge the objection, Respond with value, then Move to a next step.">
+                      <Info className="size-3.5 text-fg-tertiary" aria-label="About the A.R.M. method" />
+                    </Tooltip>
                   </label>
-                  <textarea
+                  <Textarea
+                    id="cert-response"
                     rows={4}
                     value={repResponse}
                     onChange={(e) => setRepResponse(e.target.value)}
                     placeholder="[Acknowledge tactical empathy] -> [Respond with ROI differentiator] -> [Move with micro-commitment CTA]..."
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/10 rounded-xl p-3 text-xs text-[#222021] font-mono focus:outline-none focus:bg-white focus:border-[#ED1C24]"
                   />
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center justify-between pt-2">
-                  <button
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setRepResponse('Completely understand the mandate to cut 20% in outsourced spend. The reason demand gen teams run our copilot is that it doubles booked meetings on existing headcount rather than adding agency seats. If we could show you a 5-minute diagnostic of how this eliminates rep ramp latency next Tuesday, would that be worth a quick look?');
                     }}
-                    className="text-xs text-[#6b6968] hover:text-[#222021] flex items-center gap-1"
+                    icon={<Sparkles aria-hidden />}
                   >
-                    <Sparkles className="h-3.5 w-3.5 text-[#ED1C24]" />
-                    <span>Insert Master ARM Template</span>
-                  </button>
+                    Insert example answer
+                  </Button>
 
-                  <button
+                  <Button
+                    variant="brand"
                     onClick={handleSimulateCall}
                     disabled={isEvaluating || !repResponse.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all"
+                    loading={isEvaluating}
+                    icon={<Send aria-hidden />}
                   >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>{isEvaluating ? 'Evaluating with Gemini...' : 'Submit Response for Rubric Grading'}</span>
-                  </button>
+                    {isEvaluating ? 'Grading your answer...' : 'Submit for grading'}
+                  </Button>
                 </div>
 
-                {/* Scorecard Results */}
+                {/* Score result */}
                 {currentScore !== null && (
-                  <div className="mt-4 p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#222021]">Rubric Score</span>
-                      <span className={`text-base font-black ${currentScore >= 80 ? 'text-emerald-600' : 'text-[#ED1C24]'}`}>
-                        {currentScore}% {currentScore >= 80 ? '— CERTIFICATION PASSED' : '— REMEDIATION REQUIRED'}
+                  <div className="rounded-lg border border-line bg-subtle p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-body-strong text-fg">Your score</span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-h2 tabular-nums text-fg">{currentScore}%</span>
+                        <Badge tone={currentScore >= 80 ? 'success' : 'danger'}>
+                          {currentScore >= 80 ? 'Certification passed' : 'Needs another attempt'}
+                        </Badge>
                       </span>
                     </div>
-                    <p className="text-xs text-[#6b6968] leading-relaxed">
+                    <p className="text-body text-fg-secondary">
                       {evaluationFeedback}
                     </p>
                   </div>
                 )}
-              </div>
+              </Card>
             </div>
           </div>
         </main>

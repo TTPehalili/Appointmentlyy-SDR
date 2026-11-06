@@ -1,17 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import {
-  DollarSign,
-  CheckCircle2,
-  Plus,
-  Send,
-  Trash2,
-  Printer,
-  Eye,
-  ExternalLink,
-  Sparkles,
-} from 'lucide-react';
+import { CheckCircle2, Plus, Send, Trash2, Printer, Eye, ExternalLink } from 'lucide-react';
+import { Badge, Button, buttonClasses, Card, CardHeader, Dialog, Field, IconButton, Input, PageHeader } from '@/components/ui';
 import {
   SystemInvoice,
   InvoiceLineItem,
@@ -259,122 +250,88 @@ export default function BillingInvoiceManager() {
       ? 'Recurring Month 2+ billing: $249/mo BYOK platform access + selected ICP Data Cloud volume tier.'
       : 'On-demand ICP credit top-up. Credited immediately upon Wise transfer confirmation.';
 
+  const presetClass = (active: boolean) =>
+    `focus-ring flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-small transition-colors ${
+      active
+        ? 'border-fg bg-selected text-fg font-medium'
+        : 'border-line bg-surface text-fg hover:bg-subtle'
+    }`;
+
   return (
     <div className="space-y-6">
-      {/* 1. Top Studio Header */}
-      <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 text-white text-xs font-bold tracking-wide uppercase mb-1.5">
-            <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Super Admin Manual Invoice Generator &amp; Dispatcher</span>
-          </div>
-          <h2 className="text-xl font-bold text-zinc-950 tracking-tight">
-            Client Onboarding ($2,500), Month 2+ BYOK ($249), &amp; ICP Tap-Up Invoicing
-          </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Manually input client details, preview the ultra-minimalist Appointmentlyy invoice live, email it directly inside the tool, and 1-click provision ICP credits upon Wise payment.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <a
-            href={WISE_PAYMENT_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 transition"
-          >
-            <span>Wise Link (@emilhalilih)</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-zinc-300 text-zinc-800 hover:bg-zinc-50 cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Print / PDF</span>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Billing"
+        description="Create client invoices, send them by email and credit ICP records once the Wise transfer lands."
+        secondaryActions={
+          <>
+            <a
+              href={WISE_PAYMENT_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonClasses('ghost', 'md')}
+            >
+              <span>Wise link (@emilhalilih)</span>
+              <ExternalLink />
+            </a>
+            <Button variant="secondary" onClick={() => window.print()} icon={<Printer />}>
+              Print / PDF
+            </Button>
+          </>
+        }
+      />
 
       {dispatchBanner && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 rounded-xl p-4 flex items-center justify-between gap-3 text-xs font-medium">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-success-fg/20 bg-success-bg p-4 text-small text-success-fg">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{dispatchBanner.text}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setDispatchBanner(null)}
-            className="text-emerald-700 hover:underline cursor-pointer"
-          >
+          <Button size="sm" variant="ghost" onClick={() => setDispatchBanner(null)}>
             Dismiss
-          </button>
+          </Button>
         </div>
       )}
 
       {/* 2. SIDE-BY-SIDE MANUAL INVOICE BUILDER (LEFT) & LIVE ULTRA-MINIMALIST PREVIEW (RIGHT) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
         {/* LEFT 5 COLS: Manual Client Input & Preset / Line Item Form */}
-        <div className="lg:col-span-5 bg-white border border-zinc-200 rounded-2xl p-5 shadow-2xs space-y-5">
+        <Card className="space-y-5 p-5 lg:col-span-5">
           {/* Commercial Preset Switcher */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">
-              1. Choose Commercial Invoice Preset
-            </label>
+            <h3 className="text-h3 text-fg">Invoice type</h3>
             <div className="grid grid-cols-1 gap-2">
               <button
                 type="button"
                 onClick={() => applyPreset('onboarding_month1')}
-                className={`text-left px-3.5 py-2.5 rounded-xl border text-xs transition cursor-pointer flex items-center justify-between ${
-                  scenario === 'onboarding_month1'
-                    ? 'bg-zinc-950 text-white border-zinc-950 font-semibold'
-                    : 'bg-zinc-50 text-zinc-800 border-zinc-200 hover:bg-zinc-100'
-                }`}
+                className={presetClass(scenario === 'onboarding_month1')}
               >
-                <span>
-                  1. New Customer Signup — Month 1 ($2,500 Setup + Free 8k ICP)
-                </span>
-                <span className="font-mono font-bold">$2,500</span>
+                <span>New customer, month 1 ($2,500 setup + 8k ICP records included)</span>
+                <span className="tabular-nums">$2,500</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => applyPreset('renewal_month2')}
-                className={`text-left px-3.5 py-2.5 rounded-xl border text-xs transition cursor-pointer flex items-center justify-between ${
-                  scenario === 'renewal_month2'
-                    ? 'bg-zinc-950 text-white border-zinc-950 font-semibold'
-                    : 'bg-zinc-50 text-zinc-800 border-zinc-200 hover:bg-zinc-100'
-                }`}
+                className={presetClass(scenario === 'renewal_month2')}
               >
-                <span>2. Month 2+ Subscription ($249 BYOK + Paid ICP Volume)</span>
-                <span className="font-mono font-bold">
-                  ${249 + month2VolumePack.price}
-                </span>
+                <span>Month 2+ subscription ($249 BYOK + paid ICP volume)</span>
+                <span className="tabular-nums">${249 + month2VolumePack.price}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => applyPreset('icp_topup')}
-                className={`text-left px-3.5 py-2.5 rounded-xl border text-xs transition cursor-pointer flex items-center justify-between ${
-                  scenario === 'icp_topup'
-                    ? 'bg-zinc-950 text-white border-zinc-950 font-semibold'
-                    : 'bg-zinc-50 text-zinc-800 border-zinc-200 hover:bg-zinc-100'
-                }`}
+                className={presetClass(scenario === 'icp_topup')}
               >
-                <span>3. Standalone ICP Quota Tap-Up ($50 / $75 / $150)</span>
-                <span className="font-mono font-bold">
-                  ${month2VolumePack.price || 75}
-                </span>
+                <span>ICP record top-up ($50 / $75 / $150)</span>
+                <span className="tabular-nums">${month2VolumePack.price || 75}</span>
               </button>
             </div>
 
             {/* Volume Tier Selector for Month 2+ or Tap-Up */}
             {(scenario === 'renewal_month2' || scenario === 'icp_topup') && (
-              <div className="pt-2 space-y-1.5">
-                <div className="text-xs font-semibold text-zinc-600">
-                  Select ICP Record Volume Tier:
-                </div>
+              <div className="space-y-1.5 pt-2">
+                <div className="text-caption text-fg-tertiary">ICP record volume</div>
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     ...(scenario === 'renewal_month2'
@@ -394,10 +351,10 @@ export default function BillingInvoiceManager() {
                           setMonth2VolumePack(pack);
                           applyPreset(scenario, pack);
                         }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border cursor-pointer ${
+                        className={`focus-ring h-8 rounded-full border px-3 text-small transition-colors ${
                           active
-                            ? 'bg-zinc-900 text-white border-zinc-900'
-                            : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                            ? 'border-fg bg-selected text-fg font-medium'
+                            : 'border-line bg-surface text-fg-secondary hover:bg-subtle'
                         }`}
                       >
                         {opt.label}
@@ -410,169 +367,124 @@ export default function BillingInvoiceManager() {
           </div>
 
           {/* Client Information Inputs */}
-          <div className="space-y-3 pt-3 border-t border-zinc-100 text-xs">
-            <label className="block font-bold uppercase tracking-wider text-zinc-500">
-              2. Manually Input Client Details
-            </label>
+          <div className="space-y-3 border-t border-line pt-4">
+            <h3 className="text-h3 text-fg">Client details</h3>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Company / Client Name
-                </label>
-                <input
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Company name">
+                <Input
                   type="text"
                   value={tenantName}
                   onChange={(e) => setTenantName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900"
                   placeholder="Apex Global BPO"
                 />
-              </div>
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Workspace Code
-                </label>
-                <input
+              </Field>
+              <Field label="Workspace code">
+                <Input
+                  mono
                   type="text"
                   value={tenantCode}
                   onChange={(e) => setTenantCode(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900 font-mono"
                   placeholder="APEX-GLOBAL"
                 />
-              </div>
+              </Field>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Client Contact Name
-                </label>
-                <input
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Contact name">
+                <Input
                   type="text"
                   value={clientContactName}
                   onChange={(e) => setClientContactName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900"
                   placeholder="Julian Vance"
                 />
-              </div>
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Client Email Address
-                </label>
-                <input
+              </Field>
+              <Field label="Email">
+                <Input
                   type="email"
                   value={clientEmail}
                   onChange={(e) => setClientEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900"
                   placeholder="julian@company.com"
                 />
-              </div>
+              </Field>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5">
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Invoice #
-                </label>
-                <input
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Invoice number">
+                <Input
+                  mono
                   type="text"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900 font-mono"
                 />
-              </div>
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  Issue Date
-                </label>
-                <input
+              </Field>
+              <Field label="Issue date">
+                <Input
                   type="text"
                   value={issueDate}
                   onChange={(e) => setIssueDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900"
                 />
-              </div>
-              <div>
-                <label className="block font-medium text-zinc-700 mb-1">
-                  ICP Credits Included
-                </label>
-                <input
+              </Field>
+              <Field label="ICP credits included">
+                <Input
                   type="number"
                   value={creditsToProvision}
                   onChange={(e) => setCreditsToProvision(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 text-zinc-900 font-mono"
+                  className="tabular-nums"
                 />
-              </div>
+              </Field>
             </div>
           </div>
 
           {/* Line Items Editor */}
-          <div className="space-y-2.5 pt-3 border-t border-zinc-100 text-xs">
+          <div className="space-y-2.5 border-t border-line pt-4">
             <div className="flex items-center justify-between">
-              <label className="font-bold uppercase tracking-wider text-zinc-500">
-                3. Invoice Line Items
-              </label>
-              <button
-                type="button"
-                onClick={handleAddCustomLineItem}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-900 hover:underline cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Line Item</span>
-              </button>
+              <h3 className="text-h3 text-fg">Line items</h3>
+              <Button size="sm" variant="ghost" onClick={handleAddCustomLineItem} icon={<Plus />}>
+                Add line item
+              </Button>
             </div>
 
             <div className="space-y-2">
               {lineItems.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5"
-                >
+                <div key={idx} className="space-y-1.5 rounded-md border border-line bg-subtle p-2.5">
                   <div className="flex items-center gap-2">
-                    <input
+                    <Input
                       type="text"
                       value={item.description}
-                      onChange={(e) =>
-                        handleUpdateLineItem(idx, 'description', e.target.value)
-                      }
-                      className="flex-1 px-2.5 py-1.5 rounded border border-zinc-300 bg-white text-zinc-900 font-medium"
+                      onChange={(e) => handleUpdateLineItem(idx, 'description', e.target.value)}
+                      className="flex-1"
                       placeholder="Line item description"
                     />
-                    <div className="relative w-28">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 font-mono">
+                    <div className="relative w-28 shrink-0">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-small text-fg-tertiary">
                         $
                       </span>
-                      <input
+                      <Input
                         type="number"
                         value={item.amountUsd}
-                        onChange={(e) =>
-                          handleUpdateLineItem(
-                            idx,
-                            'amountUsd',
-                            Number(e.target.value)
-                          )
-                        }
-                        className="w-full pl-6 pr-2 py-1.5 rounded border border-zinc-300 bg-white text-zinc-900 font-mono text-right"
+                        onChange={(e) => handleUpdateLineItem(idx, 'amountUsd', Number(e.target.value))}
+                        className="pl-6 pr-2 text-right tabular-nums"
                       />
                     </div>
                     {lineItems.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLineItem(idx)}
-                        className="p-1 text-zinc-400 hover:text-red-600 cursor-pointer"
+                      <IconButton
+                        label="Remove line item"
                         title="Remove line item"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveLineItem(idx)}
+                        className="hover:text-danger-fg"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        <Trash2 />
+                      </IconButton>
                     )}
                   </div>
-                  <input
+                  <Input
                     type="text"
                     value={item.subtext || ''}
-                    onChange={(e) =>
-                      handleUpdateLineItem(idx, 'subtext', e.target.value)
-                    }
-                    className="w-full px-2.5 py-1 rounded border border-zinc-200 bg-white text-zinc-500 text-xs"
+                    onChange={(e) => handleUpdateLineItem(idx, 'subtext', e.target.value)}
+                    className="h-8 text-small text-fg-secondary"
                     placeholder="Optional subtext (e.g. Included in Month 1)"
                   />
                 </div>
@@ -581,32 +493,32 @@ export default function BillingInvoiceManager() {
           </div>
 
           {/* Send Button */}
-          <button
-            type="button"
+          <Button
+            variant="brand"
+            size="lg"
             disabled={sendingEmail}
+            loading={sendingEmail}
             onClick={handleSendInvoiceToClient}
-            className="w-full py-3 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition cursor-pointer disabled:opacity-50"
+            icon={<Send />}
+            className="w-full"
           >
-            <Send className="w-3.5 h-3.5 text-emerald-400" />
-            <span>
+            <span className="truncate">
               {sendingEmail
-                ? 'Dispatching Branded Invoice Email...'
-                : `Send Invoice (${invoiceNumber} • $${totalAmountUsd.toLocaleString(
+                ? 'Sending invoice...'
+                : `Send invoice (${invoiceNumber} • $${totalAmountUsd.toLocaleString(
                     'en-US',
                     { minimumFractionDigits: 2 }
                   )} USD) to ${clientEmail || 'Client'}`}
             </span>
-          </button>
-        </div>
+          </Button>
+        </Card>
 
         {/* RIGHT 7 COLS: Live Ultra-Minimalist Invoice Preview */}
-        <div className="lg:col-span-7 space-y-2">
+        <div className="space-y-2 lg:col-span-7">
           <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-              Live Ultra-Minimalist Invoice Preview (Matches Email &amp; PDF)
-            </span>
-            <span className="text-xs font-mono text-zinc-500">
-              Total Due: ${totalAmountUsd.toFixed(2)} USD
+            <span className="text-caption text-fg-tertiary">Live preview (matches email and PDF)</span>
+            <span className="text-small tabular-nums text-fg-secondary">
+              Total due: ${totalAmountUsd.toFixed(2)} USD
             </span>
           </div>
 
@@ -624,90 +536,78 @@ export default function BillingInvoiceManager() {
       </div>
 
       {/* 3. SYSTEM INVOICE LEDGER & 1-CLICK WISE PAYMENT APPROVAL */}
-      <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-zinc-950">
-              Dispatched Invoices &amp; Wise Credit Provisioning Ledger
-            </h3>
-            <p className="text-xs text-zinc-500">
-              When a client completes their Wise transfer, click &ldquo;Mark Paid &amp; Credit Records&rdquo; to automatically provision their ICP quota.
-            </p>
-          </div>
-        </div>
+      <Card className="overflow-hidden">
+        <CardHeader
+          className="pb-4"
+          title="Sent invoices"
+          description="When a client completes their Wise transfer, click “Mark paid & credit records” to add their ICP quota."
+        />
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full border-collapse text-left text-small">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 font-semibold text-zinc-500">
-                <th className="py-3 px-4">Invoice #</th>
-                <th className="py-3 px-4">Client &amp; Recipient</th>
-                <th className="py-3 px-4">Amount (USD)</th>
-                <th className="py-3 px-4">ICP Credits Attached</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr className="bg-subtle text-caption text-fg-tertiary">
+                <th className="px-4 py-2.5 font-medium">Invoice</th>
+                <th className="px-4 py-2.5 font-medium">Client</th>
+                <th className="px-4 py-2.5 text-right font-medium">Amount (USD)</th>
+                <th className="px-4 py-2.5 font-medium">ICP credits</th>
+                <th className="px-4 py-2.5 font-medium">Status</th>
+                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody>
               {invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-zinc-50/70">
-                  <td className="py-3.5 px-4 font-mono font-bold text-zinc-900">
-                    <div>{inv.invoiceNumber}</div>
-                    <div className="font-normal text-zinc-400">{inv.issueDate}</div>
+                <tr key={inv.id} className="border-t border-line hover:bg-subtle">
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-fg">{inv.invoiceNumber}</div>
+                    <div className="text-fg-tertiary">{inv.issueDate}</div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <div className="font-bold text-zinc-900">{inv.tenantName}</div>
-                    <div className="text-zinc-500">
+                  <td className="px-4 py-3">
+                    <div className="text-body-strong text-fg">{inv.tenantName}</div>
+                    <div className="text-fg-secondary">
                       {inv.clientContactName} &bull; {inv.clientEmail}
                     </div>
                   </td>
-                  <td className="py-3.5 px-4 font-mono font-bold text-zinc-950">
+                  <td className="px-4 py-3 text-right tabular-nums text-fg">
                     $
                     {inv.totalAmountUsd.toLocaleString('en-US', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </td>
-                  <td className="py-3.5 px-4 font-mono">
+                  <td className="px-4 py-3 tabular-nums text-fg-secondary">
                     {inv.creditsToProvision > 0 ? (
-                      <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800 border border-zinc-200 font-semibold">
-                        +{inv.creditsToProvision.toLocaleString()} records
-                      </span>
+                      <span className="text-fg">+{inv.creditsToProvision.toLocaleString()} records</span>
                     ) : (
-                      <span className="text-zinc-400">BYOK Platform Only</span>
+                      <span>BYOK platform only</span>
                     )}
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="px-4 py-3">
                     {inv.status === 'Paid' ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>Paid &amp; Provisioned</span>
-                      </span>
+                      <Badge tone="success">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Paid &amp; provisioned</span>
+                      </Badge>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                      <Badge tone="warning">
                         <span>{inv.status}</span>
-                      </span>
+                      </Badge>
                     )}
                   </td>
-                  <td className="py-3.5 px-4 text-right">
+                  <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPreviewInvoice(inv)}
-                        className="px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold cursor-pointer inline-flex items-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View</span>
-                      </button>
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedPreviewInvoice(inv)} icon={<Eye />}>
+                        View
+                      </Button>
                       {inv.status !== 'Paid' && (
-                        <button
-                          type="button"
+                        <Button
+                          size="sm"
+                          variant="primary"
                           onClick={() => handleMarkPaidAndCredit(inv.id)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer inline-flex items-center gap-1"
+                          icon={<CheckCircle2 />}
                         >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Mark Paid &amp; Credit Records</span>
-                        </button>
+                          Mark paid &amp; credit records
+                        </Button>
                       )}
                     </div>
                   </td>
@@ -716,27 +616,25 @@ export default function BillingInvoiceManager() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* Modal to View Any Saved Invoice */}
-      {selectedPreviewInvoice && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="max-w-2xl w-full space-y-3">
+      <Dialog
+        open={selectedPreviewInvoice !== null}
+        onClose={() => setSelectedPreviewInvoice(null)}
+        title={selectedPreviewInvoice ? `Invoice ${selectedPreviewInvoice.invoiceNumber}` : 'Invoice preview'}
+        size="lg"
+        bare
+      >
+        {selectedPreviewInvoice && (
+          <div className="space-y-3 p-4">
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-3.5 py-1.5 rounded-lg bg-white text-zinc-900 text-xs font-bold shadow cursor-pointer"
-              >
-                Print / Save PDF
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedPreviewInvoice(null)}
-                className="px-3.5 py-1.5 rounded-lg bg-zinc-900 text-white text-xs font-bold shadow cursor-pointer"
-              >
-                Close Preview
-              </button>
+              <Button size="sm" variant="secondary" onClick={() => window.print()} icon={<Printer />}>
+                Print / save PDF
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => setSelectedPreviewInvoice(null)}>
+                Close preview
+              </Button>
             </div>
             <MinimalistInvoiceCard
               invoiceNumber={selectedPreviewInvoice.invoiceNumber}
@@ -749,8 +647,8 @@ export default function BillingInvoiceManager() {
               ticketId={selectedPreviewInvoice.ticketId}
             />
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   );
 }

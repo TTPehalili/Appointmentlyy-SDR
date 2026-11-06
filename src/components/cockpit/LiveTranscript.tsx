@@ -24,27 +24,27 @@ export default function LiveTranscript({
   }, [transcript, interimText]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200 shrink-0">
-        <span className="text-[10px] font-bold text-slate-600 tracking-wider uppercase font-mono">
-          DIARIZED STREAM (SCRIBE V2)
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex shrink-0 items-center justify-between border-b border-line pb-2">
+        <span className="text-caption text-fg-tertiary">
+          Live transcript
         </span>
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5">
-          {isListening && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-          PCM 16kHz
+        <span className="flex items-center gap-1.5 text-caption text-fg-tertiary">
+          {isListening && <span className="size-1.5 rounded-full bg-success-500 animate-pulse-soft" />}
+          {isListening ? 'Listening' : 'Standby'}
         </span>
       </div>
 
       {/* Transcript Log Container */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 text-xs font-mono select-text"
+        className="flex-1 select-text space-y-2 overflow-y-auto rounded-md border border-line bg-surface p-2.5 text-small"
       >
         {transcript.length === 0 && !interimText && (
-          <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 p-4">
-            <Radio className="h-5 w-5 mb-1.5 text-slate-300" />
-            <p className="text-[11px]">Audio stream standby.</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Click Dial to start live transcription.</p>
+          <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+            <Radio className="mb-1.5 size-5 text-fg-disabled" />
+            <p className="text-small text-fg-secondary">Audio stream on standby.</p>
+            <p className="mt-0.5 text-caption text-fg-tertiary">Start a call to see the live transcript.</p>
           </div>
         )}
 
@@ -54,21 +54,21 @@ export default function LiveTranscript({
             <div key={entry.id} className="leading-snug">
               <div className="flex items-baseline gap-1.5">
                 <span
-                  className={`text-[9px] px-1 py-0.2 rounded font-bold uppercase shrink-0 font-mono ${
+                  className={`inline-flex h-5 shrink-0 items-center rounded-sm px-1.5 text-caption ${
                     isRep
-                      ? 'bg-slate-100 text-slate-700 border border-slate-200'
-                      : 'bg-[#ED1C24]/10 text-[#ED1C24] border border-[#ED1C24]/20'
+                      ? 'bg-subtle text-fg-secondary'
+                      : 'bg-selected text-brand-text'
                   }`}
                 >
-                  {isRep ? '[You]' : '[Prospect]'}
+                  {isRep ? 'You' : 'Prospect'}
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                <span className="shrink-0 text-caption tabular-nums text-fg-tertiary">
                   {entry.timestamp}
                 </span>
               </div>
               <p
                 className={`mt-0.5 pl-1 ${
-                  isRep ? 'text-slate-600 font-normal' : 'text-slate-900 font-medium'
+                  isRep ? 'font-normal text-fg-secondary' : 'font-medium text-fg'
                 }`}
               >
                 {entry.text}
@@ -78,11 +78,11 @@ export default function LiveTranscript({
         })}
 
         {interimText && (
-          <div className="leading-snug pt-1 border-t border-slate-100">
-            <span className="text-[9px] px-1 py-0.2 rounded font-bold uppercase font-mono bg-amber-50 text-amber-800 border border-amber-200 mr-1.5">
-              [Live...]
+          <div className="border-t border-line pt-1 leading-snug">
+            <span className="mr-1.5 inline-flex h-5 items-center rounded-sm bg-warning-bg px-1.5 text-caption text-warning-fg">
+              Live
             </span>
-            <span className="text-slate-700 italic animate-pulse">
+            <span className="italic text-fg-secondary animate-pulse-soft">
               &quot;{interimText}&quot;
             </span>
           </div>

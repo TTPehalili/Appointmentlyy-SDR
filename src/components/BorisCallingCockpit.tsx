@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   Copy,
   Check,
-  Sparkles,
   ShieldAlert,
   Volume2,
   Globe,
@@ -30,9 +29,11 @@ import {
   Briefcase,
   RotateCcw,
   FileText,
-  UploadCloud
+  UploadCloud,
+  Lightbulb
 } from 'lucide-react';
 import Link from 'next/link';
+import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, buttonClasses } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
   CADENCE_TOUCHES,
@@ -784,7 +785,7 @@ export default function BorisCallingCockpit() {
 
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
 
       {/* 2. MAIN APP SHELL */}
@@ -795,113 +796,102 @@ export default function BorisCallingCockpit() {
         <main className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
           {/* TOP FLOOR HEADER & UTILITY BAR */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-zinc-200">
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                📞
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold tracking-tight text-zinc-950">
-                    Calling Floor
-                  </h1>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
-                    {partnerName}
+          <PageHeader
+            title="Calling floor"
+            description={`Current account: ${partnerName}`}
+            className="pb-2"
+            secondaryActions={
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsDailyReportOpen(true)}
+                  icon={<BarChart3 className="text-fg-secondary" />}
+                >
+                  <span>Activity</span>
+                  <span className="rounded-sm bg-subtle px-1.5 text-caption tabular-nums leading-5 text-fg-secondary">
+                    {completedActivityCount}
                   </span>
-                </div>
-              </div>
-            </div>
+                </Button>
 
-            {/* Quick Action Buttons */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setIsDailyReportOpen(true)}
-                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-              >
-                <BarChart3 className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Activity</span>
-                <span className="px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-900 text-[10px] font-mono font-bold border border-zinc-200">
-                  {completedActivityCount}
-                </span>
-              </button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsCadenceModalOpen(true)}
+                  icon={<Clock className="text-fg-secondary" />}
+                >
+                  Cadence
+                </Button>
 
-              <button
-                type="button"
-                onClick={() => setIsCadenceModalOpen(true)}
-                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-300 font-medium text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-              >
-                <Clock className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Cadence</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCalendlyModal(true)}
-                className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <Calendar className="w-3.5 h-3.5 text-white/80" />
-                <span>Calendly</span>
-              </button>
-            </div>
-          </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowCalendlyModal(true)}
+                  icon={<Calendar className="text-fg-secondary" />}
+                >
+                  Calendly
+                </Button>
+              </>
+            }
+          />
 
           {/* ACTIVITY BANNER NOTIFICATION */}
           {activityToast && (
-            <div className="p-2.5 px-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-bold flex items-center justify-between shadow-2xs animate-in fade-in">
+            <div className="flex items-center justify-between rounded-lg border border-success-500/40 bg-success-bg px-3.5 py-2 text-small font-medium text-success-fg animate-in fade-in">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="size-4 shrink-0 text-success-fg" />
                 <span>{activityToast}</span>
               </div>
-              <button
-                type="button"
+              <IconButton
+                label="Dismiss"
+                size="sm"
                 onClick={() => setActivityToast(null)}
-                className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                className="text-success-fg hover:bg-success-bg hover:text-success-fg"
               >
-                <X className="h-4 w-4" />
-              </button>
+                <X />
+              </IconButton>
             </div>
           )}
 
           {/* ========================================================================= */}
           {/* SECTION 1: UNIFIED LEAD HEADER, INLINE DIALER & 1-CLICK DISPOSITIONS      */}
           {/* ========================================================================= */}
-          <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="bg-surface border border-line rounded-lg p-4 shadow-xs space-y-3">
 
             {/* Main Unified Lead & Dialer Row */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
 
-              {/* LEFT: Prospect Identity + Inline Click-to-Call right next to Lead Info */}
+              {/* LEFT: Prospect Identity */}
               <div className="flex flex-wrap items-center gap-4 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-11 w-11 rounded-xl bg-zinc-900 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-subtle text-body-strong text-ink-700">
                     {customerName.charAt(0)}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base sm:text-lg font-black text-zinc-950 tracking-tight truncate">
+                      <h2 className="truncate text-h2 text-fg">
                         {customerName}
                       </h2>
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 font-semibold">
+                      <span className="text-small tabular-nums text-fg-secondary">
                         {headcount}
                       </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-500">
-                        #{currentLeadIndex + 1}/{leadsQueue.length}
+                      <span className="text-small tabular-nums text-fg-tertiary">
+                        {currentLeadIndex + 1} of {leadsQueue.length}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap text-xs text-zinc-600 mt-0.5">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-3 text-small text-fg-secondary">
                       <span className="truncate">
-                        {title} at <strong className="text-zinc-900 font-bold">{partnerName}</strong>
+                        {title} at <span className="text-body-strong text-fg">{partnerName}</span>
                       </span>
                       {leadWebsite && (
                         <a
                           href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-0.5"
+                          className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
                         >
-                          <Globe className="w-3 h-3" />
-                          <span>Web</span>
+                          <Globe className="size-3.5" />
+                          <span>Website</span>
                         </a>
                       )}
                       {leadLinkedinUrl && (
@@ -909,18 +899,21 @@ export default function BorisCallingCockpit() {
                           href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] font-medium text-[#0077b5] hover:underline flex items-center gap-0.5"
+                          className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
                         >
-                          <LinkedinIcon className="w-3 h-3" />
+                          <LinkedinIcon className="size-3.5" />
                           <span>LinkedIn</span>
                         </a>
                       )}
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* INLINE CLICK-TO-CALL PILL (Right beside Lead Identity) */}
-                <div className="flex items-center gap-1.5 pl-0 sm:pl-3 sm:border-l border-zinc-200">
+              {/* RIGHT: Click-to-Call + Compact Email Input + Send Invite + Prev/Next Lead */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* INLINE CLICK-TO-CALL (the one crimson action on this screen) */}
+                <div className="flex items-center gap-2">
                   <a
                     href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
                     onClick={() => {
@@ -930,96 +923,92 @@ export default function BorisCallingCockpit() {
                       }
                       setIsCallingActive(true);
                     }}
-                    className={`py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs ${isCallingActive
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
+                    className="focus-ring inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover"
                   >
-                    <PhoneCall className="w-3.5 h-3.5 shrink-0" />
-                    <span>{isCallingActive ? `Calling (${callTimerSeconds}s)` : 'Call'}</span>
-                    <span className="font-mono text-[11px] opacity-90 border-l border-white/25 pl-2">
-                      {phone || 'No Phone'}
+                    {isCallingActive ? (
+                      <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
+                    ) : (
+                      <PhoneCall className="size-4 shrink-0" />
+                    )}
+                    <span className="tabular-nums" aria-live="polite">{isCallingActive ? `Calling (${callTimerSeconds}s)` : 'Call'}</span>
+                    <span className="border-l border-action-brand-fg/30 pl-2 font-mono text-small">
+                      {phone || 'No phone'}
                     </span>
                   </a>
 
                   {isCallingActive && (
-                    <button
-                      type="button"
+                    <IconButton
+                      label="Hang up"
+                      variant="danger"
+                      className="size-10"
                       onClick={() => setIsCallingActive(false)}
-                      className="p-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer shadow-xs"
-                      title="Hang up"
                     >
-                      <PhoneOff className="w-3.5 h-3.5" />
-                    </button>
+                      <PhoneOff />
+                    </IconButton>
                   )}
                 </div>
-              </div>
 
-              {/* RIGHT: Compact Email Input + Send Invite + Prev/Next Lead */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center bg-zinc-50 border border-zinc-200 rounded-xl p-1 gap-1">
+                <div className="flex h-9 items-center gap-1 rounded-md border border-line-strong bg-surface pr-1 focus-within:border-brand-600">
                   <div className="relative flex items-center">
-                    <Mail className="w-3.5 h-3.5 text-zinc-400 ml-2 mr-1.5 shrink-0" />
+                    <Mail className="ml-2.5 mr-2 size-4 shrink-0 text-fg-tertiary" />
                     <input
                       type="email"
                       value={directEmail}
                       onChange={(e) => handleConfirmedEmailChange(e.target.value)}
                       placeholder="prospect@company.com"
-                      className="w-44 sm:w-52 bg-transparent py-1 pr-2 text-xs font-mono font-semibold text-zinc-900 focus:outline-none"
+                      className="w-52 bg-transparent py-1 pr-2 font-mono text-small text-fg placeholder:text-fg-disabled focus:outline-none"
                       title="Edit email to sync globally across Cold Email Studio, Inbox & Calendly"
                     />
                     {emailSavedToast && (
-                      <Check className="w-3.5 h-3.5 text-emerald-600 mr-1.5 shrink-0" />
+                      <Check className="mr-1.5 size-4 shrink-0 text-success-fg" />
                     )}
                   </div>
-                  <button
-                    type="button"
+                  <IconButton
+                    label="Email prospect"
+                    size="sm"
                     onClick={handleOpenQuickEmail}
-                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
                     title="Send follow-up invite or deck"
+                    className="size-7"
                   >
-                    <Send className="w-3 h-3" />
-                    <span>Email</span>
-                  </button>
+                    <Send />
+                  </IconButton>
                 </div>
 
                 {/* Lead Queue Navigation */}
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
+                  <IconButton
+                    label="Previous lead"
+                    variant="secondary"
                     onClick={() => selectLeadAtIndex((currentLeadIndex - 1 + leadsQueue.length) % leadsQueue.length)}
-                    className="p-2 rounded-xl bg-zinc-50 hover:bg-zinc-100 text-zinc-700 border border-zinc-200 text-xs font-medium cursor-pointer transition-colors"
-                    title="Previous Lead"
                   >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
+                    <ChevronLeft />
+                  </IconButton>
+                  <Button
+                    variant="primary"
                     onClick={handleProceedToNextLead}
-                    className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                    title={`Next Lead: ${nextLeadCandidate.name}`}
+                    title={`Next lead: ${nextLeadCandidate.name}`}
                   >
                     <span>Next</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                    <ChevronRight />
+                  </Button>
                 </div>
               </div>
 
             </div>
 
             {/* 1-CLICK CALL DISPOSITION BAR */}
-            <div className="pt-2.5 border-t border-zinc-100 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mr-1">
-                  Outcome:
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-caption text-fg-tertiary">
+                  Outcome
                 </span>
                 {[
-                  { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-emerald-600 text-white border-emerald-600', idleClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' },
-                  { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-amber-600 text-white border-amber-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
-                  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-blue-600 text-white border-blue-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
-                  { label: 'No Answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-zinc-800 text-white border-zinc-800', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
-                  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-purple-600 text-white border-purple-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
-                  { label: 'Not Interested', value: 'Not Interested / Quarantine', activeClass: 'bg-rose-600 text-white border-rose-600', idleClass: 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50' },
+                  { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-success-bg text-success-fg border-success-500/50', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+                  { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-warning-bg text-warning-fg border-warning-400', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+                  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+                  { label: 'No answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+                  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+                  { label: 'Not interested', value: 'Not Interested / Quarantine', activeClass: 'bg-danger-bg text-danger-fg border-danger-fg/40', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
                 ].map((item) => {
                   const isSelected = disposition === item.value;
                   return (
@@ -1027,10 +1016,11 @@ export default function BorisCallingCockpit() {
                       key={item.value}
                       type="button"
                       onClick={() => handleSelectDisposition(item.value)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${isSelected ? item.activeClass : item.idleClass
+                      aria-pressed={isSelected}
+                      className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${isSelected ? item.activeClass : item.idleClass
                         }`}
                     >
-                      {isSelected && <Check className="w-3 h-3" />}
+                      {isSelected && <Check className="size-3.5" />}
                       <span>{item.label}</span>
                     </button>
                   );
@@ -1038,8 +1028,8 @@ export default function BorisCallingCockpit() {
               </div>
 
               {disposition && (
-                <span className="text-[11px] font-mono font-bold text-emerald-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="flex items-center gap-1.5 text-small text-success-fg">
+                  <CheckCircle2 className="size-4 text-success-fg" />
                   <span>Logged: {disposition}</span>
                 </span>
               )}
@@ -1053,11 +1043,11 @@ export default function BorisCallingCockpit() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
             {/* LEFT: STEP-BY-STEP SPOKEN TELEPROMPTER & EYE-LEVEL REBUTTALS (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="lg:col-span-7 bg-surface border border-line rounded-lg p-5 shadow-xs space-y-4">
 
               {/* Top Row: Step Navigation Pills */}
-              <div className="flex flex-wrap items-center justify-between pb-3 border-b border-zinc-100 gap-2">
-                <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex flex-wrap items-center rounded-md border border-line bg-subtle p-0.5" aria-label="Script steps">
                   {scriptSteps.map((st) => {
                     const isStepActive = !activeRebuttal && currentStep === st.step;
                     return (
@@ -1068,9 +1058,10 @@ export default function BorisCallingCockpit() {
                           setSelectedRebuttalId(null);
                           setCurrentStep(st.step);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${isStepActive
-                            ? 'bg-zinc-900 text-white shadow-xs'
-                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900'
+                        aria-pressed={isStepActive}
+                        className={`focus-ring inline-flex h-8 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${isStepActive
+                            ? 'bg-surface text-fg shadow-xs'
+                            : 'text-fg-secondary hover:text-fg'
                           }`}
                       >
                         {st.name}
@@ -1081,30 +1072,31 @@ export default function BorisCallingCockpit() {
 
                 <Link
                   href="/admin/frameworks"
-                  className="text-[11px] font-mono font-semibold text-[#0a66c2] hover:underline flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200"
+                  className={buttonClasses('ghost', 'sm')}
                   title="Upload custom sales playbook to personalize this teleprompter"
                 >
-                  <UploadCloud className="h-3 w-3 text-sky-600" />
-                  <span>Edit Playbook</span>
+                  <UploadCloud />
+                  <span>Edit playbook</span>
                 </Link>
               </div>
 
               {/* Instant 1-Click Rebuttal Trigger Bar (Eye-Level) */}
-              <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-2.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-600" />
-                    <span>Live Objection Rebuttals (Click to View on Teleprompter):</span>
+              <div className="space-y-2">
+                <div className="flex min-h-7 items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-caption text-fg-tertiary">
+                    <ShieldAlert className="size-3.5 text-fg-tertiary" />
+                    <span>Objections: pick one to show its rebuttal on the teleprompter</span>
                   </span>
                   {activeRebuttal && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setSelectedRebuttalId(null)}
-                      className="text-[11px] font-bold text-amber-900 hover:text-zinc-950 bg-white px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1 cursor-pointer"
+                      icon={<X />}
+                      className="h-7 px-2"
                     >
-                      <X className="w-3 h-3" />
-                      <span>Back to Script</span>
-                    </button>
+                      Back to script
+                    </Button>
                   )}
                 </div>
 
@@ -1116,12 +1108,13 @@ export default function BorisCallingCockpit() {
                         key={reb.id}
                         type="button"
                         onClick={() => setSelectedRebuttalId(isSelected ? null : reb.id)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${isSelected
-                            ? 'bg-amber-500 text-zinc-950 border-amber-600 shadow-xs'
-                            : 'bg-white hover:bg-amber-100/70 text-zinc-800 border-amber-300/80'
+                        aria-pressed={isSelected}
+                        className={`focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border px-3 text-small font-medium transition-colors duration-150 ${isSelected
+                            ? 'border-transparent bg-action text-action-fg'
+                            : 'border-line-strong bg-surface text-fg hover:bg-subtle'
                           }`}
                       >
-                        🛡️ {reb.shortLabel}
+                        {reb.shortLabel}
                       </button>
                     );
                   })}
@@ -1130,13 +1123,13 @@ export default function BorisCallingCockpit() {
 
               {/* MAIN TELEPROMPTER DISPLAY: Shows Active Rebuttal at Eye-Level OR Active Script Step */}
               {activeRebuttal ? (
-                <div className="p-5 rounded-2xl bg-zinc-950 text-white font-sans space-y-4 shadow-md border-2 border-amber-500/80 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-amber-500 text-zinc-950 font-mono text-[10px] font-black uppercase">
-                        REBUTTAL • {activeRebuttal.category}
+                <div className="space-y-4 rounded-lg border border-ink-800 bg-ink-950 p-5 font-sans text-ink-50 animate-in fade-in duration-150">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-800 pb-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="inline-flex h-5 items-center rounded-sm bg-ink-800 px-1.5 text-caption text-ink-50">
+                        Rebuttal: {activeRebuttal.category}
                       </span>
-                      <span className="text-xs font-bold text-amber-300">
+                      <span className="text-small text-ink-400">
                         &ldquo;{activeRebuttal.trigger}&rdquo;
                       </span>
                     </div>
@@ -1144,72 +1137,74 @@ export default function BorisCallingCockpit() {
                       <button
                         type="button"
                         onClick={() => copyText(interpolate(activeRebuttal.fullSpoken), 'reb_copy')}
-                        className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1 cursor-pointer"
+                        className="focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-ink-800 px-3 text-small font-medium text-ink-50 transition-colors duration-150 hover:bg-ink-700"
                       >
-                        {copiedKey === 'reb_copy' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedKey === 'reb_copy' ? <Check className="size-4 text-success-500" /> : <Copy className="size-4" />}
                         <span>Copy</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedRebuttalId(null)}
-                        className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        className="focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-ink-50 px-3 text-small font-medium text-ink-900 transition-colors duration-150 hover:bg-ink-200"
                       >
-                        <span>Resume Script</span>
+                        <span>Resume script</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Large Eye-Level ARM Breakdown */}
-                  <div className="space-y-3 text-base sm:text-lg leading-relaxed select-text">
-                    <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 block mb-1">
+                  <div className="space-y-3 select-text text-prompter">
+                    <div className="rounded-md border border-ink-800 bg-ink-900 p-3">
+                      <span className="mb-1 block font-sans text-caption text-ink-400">
                         1. Acknowledge
                       </span>
-                      <p className="text-zinc-100">{interpolate(activeRebuttal.acknowledge)}</p>
+                      <p className="text-ink-50">{interpolate(activeRebuttal.acknowledge)}</p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-400 block mb-1">
+                    <div className="rounded-md border border-ink-800 bg-ink-900 p-3">
+                      <span className="mb-1 block font-sans text-caption text-ink-400">
                         2. Respond
                       </span>
-                      <p className="text-white">{interpolate(activeRebuttal.respond)}</p>
+                      <p className="text-ink-50">{interpolate(activeRebuttal.respond)}</p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-700/60">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block mb-1">
-                        3. Move (Ask for the Close)
+                    <div className="rounded-md border border-ink-800 bg-ink-900 p-3">
+                      <span className="mb-1 block font-sans text-caption text-ink-400">
+                        3. Move: ask for the meeting
                       </span>
-                      <p className="text-emerald-100 font-semibold">{interpolate(activeRebuttal.move)}</p>
+                      <p className="text-ink-50 underline decoration-ai decoration-2 underline-offset-[6px]">{interpolate(activeRebuttal.move)}</p>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {/* The Spoken Script (Large, Readable, Variable-Interpolated) */}
-                  <div className="p-5 rounded-2xl bg-zinc-950 text-white font-sans text-base sm:text-lg leading-relaxed shadow-xs relative">
-                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-800/80 text-xs">
-                      <span className="font-mono font-bold text-zinc-300">
-                        {activeStepData.name} — <span className="text-zinc-400 font-normal">{activeStepData.goal}</span>
+                  <div className="relative rounded-lg bg-ink-950 p-5 font-sans text-ink-50">
+                    <div className="mb-3 flex items-start justify-between gap-2 border-b border-ink-800 pb-3 text-small">
+                      <span className="text-ink-50">
+                        <span className="font-medium">{activeStepData.name}</span>
+                        <span className="text-ink-400">: {activeStepData.goal}</span>
                       </span>
-                      <span className="text-[11px] font-mono text-zinc-500 shrink-0 ml-2">
-                        Step {currentStep}/{scriptSteps.length}
+                      <span className="ml-2 shrink-0 text-caption tabular-nums text-ink-400">
+                        Step {currentStep} of {scriptSteps.length}
                       </span>
                     </div>
 
-                    <p className="select-text">
+                    <p className="select-text text-prompter">
                       {interpolate(activeStepData.spokenText)}
                     </p>
 
-                    <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2">
-                      <span className="text-xs text-zinc-400 italic">
-                        💡 {activeStepData.deliveryTip}
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-ink-800 pt-3">
+                      <span className="flex items-start gap-1.5 text-small text-ink-400">
+                        <Lightbulb className="mt-0.5 size-4 shrink-0 text-ink-400" />
+                        <span>{activeStepData.deliveryTip}</span>
                       </span>
                       <button
                         type="button"
                         onClick={() => copyText(interpolate(activeStepData.spokenText), `step_${currentStep}`)}
-                        className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                        className="focus-ring inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md bg-ink-800 px-3 text-small font-medium text-ink-50 transition-colors duration-150 hover:bg-ink-700"
                       >
-                        {copiedKey === `step_${currentStep}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedKey === `step_${currentStep}` ? <Check className="size-4 text-success-500" /> : <Copy className="size-4" />}
                         <span>Copy</span>
                       </button>
                     </div>
@@ -1220,55 +1215,55 @@ export default function BorisCallingCockpit() {
               {/* COMPACT QUALIFICATION CHECKPOINTS */}
               <div className="space-y-3">
                 {currentStep === 1 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
-                      Quick Qualify: Role Verification
+                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
+                    <span className="block text-caption text-fg-tertiary">
+                      Quick qualify: role check
                     </span>
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => handleSetRole('confirmed')}
-                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'confirmed'
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-600'
+                        className={`py-1.5 px-2.5 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'confirmed'
+                            ? 'bg-success-bg border-success-500/50 text-success-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <Check className="h-3.5 w-3.5" />
-                        <span>Active Role</span>
+                        <Check className="size-3.5" />
+                        <span>Active role</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetRole('promoted')}
-                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'promoted'
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-blue-600'
+                        className={`py-1.5 px-2.5 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'promoted'
+                            ? 'bg-action border-transparent text-action-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>New Title</span>
+                        <span>New title</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetRole('changed')}
-                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'changed'
-                            ? 'bg-zinc-800 border-zinc-800 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-800'
+                        className={`py-1.5 px-2.5 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'changed'
+                            ? 'bg-action border-transparent text-action-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X className="size-3.5" />
                         <span>Referral</span>
                       </button>
                     </div>
 
                     {roleStatus === 'promoted' && (
-                      <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                      <div className="flex items-center gap-2 rounded-md border border-line bg-surface p-2">
                         <input
                           type="text"
                           value={promotedTitleInput}
                           onChange={(e) => setPromotedTitleInput(e.target.value)}
                           placeholder="New title (e.g. VP Operations)"
-                          className="flex-1 bg-white border border-blue-300 rounded px-2.5 py-1 text-xs text-zinc-900"
+                          className="focus-ring h-8 flex-1 rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg placeholder:text-fg-disabled"
                         />
                         <button
                           type="button"
@@ -1280,7 +1275,7 @@ export default function BorisCallingCockpit() {
                               setNotesDraft(buildNotes({ cTitle: promotedTitleInput.trim(), tel: nextTel }));
                             }
                           }}
-                          className="px-3 py-1 rounded bg-blue-600 text-white text-xs font-bold cursor-pointer"
+                          className={buttonClasses('primary', 'sm', 'cursor-pointer')}
                         >
                           Save
                         </button>
@@ -1288,13 +1283,13 @@ export default function BorisCallingCockpit() {
                     )}
 
                     {roleStatus === 'changed' && (
-                      <div className="p-2 bg-zinc-100 border border-zinc-300 rounded-lg flex items-center gap-2">
+                      <div className="flex items-center gap-2 rounded-md border border-line bg-surface p-2">
                         <input
                           type="text"
                           value={referralContactInput}
                           onChange={(e) => setReferralContactInput(e.target.value)}
                           placeholder="Referral name & contact"
-                          className="flex-1 bg-white border border-zinc-300 rounded px-2.5 py-1 text-xs text-zinc-900"
+                          className="focus-ring h-8 flex-1 rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg placeholder:text-fg-disabled"
                         />
                         <button
                           type="button"
@@ -1303,7 +1298,7 @@ export default function BorisCallingCockpit() {
                             setTelemetry(nextTel);
                             setNotesDraft(buildNotes({ tel: nextTel, disp: 'Referral / Update Contact' }));
                           }}
-                          className="px-3 py-1 rounded bg-zinc-800 text-white text-xs font-bold cursor-pointer"
+                          className={buttonClasses('primary', 'sm', 'cursor-pointer')}
                         >
                           Save
                         </button>
@@ -1313,54 +1308,54 @@ export default function BorisCallingCockpit() {
                 )}
 
                 {currentStep === 2 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
-                      Quick Qualify: Lead Source
+                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
+                    <span className="block text-caption text-fg-tertiary">
+                      Quick qualify: lead source
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => handleSetOA(!recognizedOA)}
-                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${recognizedOA
-                            ? 'bg-purple-600 border-purple-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-purple-600'
+                        className={`py-1.5 px-3 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-between cursor-pointer ${recognizedOA
+                            ? 'bg-action border-transparent text-action-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>Uses Lead Brokers</span>
-                        {recognizedOA ? <Check className="h-3.5 w-3.5" /> : null}
+                        <span>Uses lead brokers</span>
+                        {recognizedOA ? <Check className="size-3.5" /> : null}
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSetPriceTrap(priceTrapStatus === 'confirmed' ? 'denial' : 'confirmed')}
-                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-between cursor-pointer ${priceTrapStatus === 'confirmed'
-                            ? 'bg-red-600 border-red-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-red-600'
+                        className={`py-1.5 px-3 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-between cursor-pointer ${priceTrapStatus === 'confirmed'
+                            ? 'bg-danger-bg border-danger-fg/40 text-danger-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>Shared Lead Pain</span>
-                        {priceTrapStatus === 'confirmed' ? <Check className="h-3.5 w-3.5" /> : null}
+                        <span>Shared lead pain</span>
+                        {priceTrapStatus === 'confirmed' ? <Check className="size-3.5" /> : null}
                       </button>
                     </div>
                   </div>
                 )}
 
                 {currentStep === 3 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
+                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500">
-                        Quick Qualify: Core Service &amp; Pitch
+                      <span className="text-caption text-fg-tertiary">
+                        Quick qualify: core service and pitch
                       </span>
                       <button
                         type="button"
                         onClick={handleToggleProblemFix}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border flex items-center gap-1 transition-colors cursor-pointer ${telemetry.problemFixDiscussed
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
+                        className={`px-2.5 py-1 rounded-md text-small font-medium focus-ring border flex items-center gap-1 transition-colors cursor-pointer ${telemetry.problemFixDiscussed
+                            ? 'bg-success-bg border-success-500/50 text-success-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <Check className="h-3 w-3" />
-                        <span>Value Pitched</span>
+                        <Check className="size-3.5" />
+                        <span>Value pitched</span>
                       </button>
                     </div>
 
@@ -1370,9 +1365,9 @@ export default function BorisCallingCockpit() {
                           key={serv}
                           type="button"
                           onClick={() => handleSetService(serv)}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${telemetry.primaryService === serv
-                              ? 'bg-zinc-900 border-zinc-900 text-white'
-                              : 'bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400'
+                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${telemetry.primaryService === serv
+                              ? 'bg-action border-transparent text-action-fg'
+                              : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                             }`}
                         >
                           {serv}
@@ -1383,9 +1378,9 @@ export default function BorisCallingCockpit() {
                 )}
 
                 {currentStep === 4 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 space-y-2">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
-                      Quick Qualify: Lock Demo Slot
+                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
+                    <span className="block text-caption text-fg-tertiary">
+                      Quick qualify: lock a demo slot
                     </span>
                     <div className="grid grid-cols-3 gap-1.5">
                       {['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM'].map((slot) => (
@@ -1393,12 +1388,12 @@ export default function BorisCallingCockpit() {
                           key={slot}
                           type="button"
                           onClick={() => handleSelectSlot(slot)}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${bookingSlot === slot
-                              ? 'bg-emerald-600 border-emerald-600 text-white'
-                              : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
+                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${bookingSlot === slot
+                              ? 'bg-success-bg border-success-500/50 text-success-fg'
+                              : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                             }`}
                         >
-                          {slot} {bookingSlot === slot ? '✓' : ''}
+                          {slot}{bookingSlot === slot ? <Check className="ml-1 inline size-3.5 align-[-2px]" /> : null}
                         </button>
                       ))}
                     </div>
@@ -1407,21 +1402,21 @@ export default function BorisCallingCockpit() {
                       <button
                         type="button"
                         onClick={handleToggleAttendance}
-                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors cursor-pointer ${telemetry.attendanceVerified
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-emerald-500'
+                        className={`py-1.5 px-2.5 rounded-md text-small font-medium focus-ring border flex items-center justify-between transition-colors cursor-pointer ${telemetry.attendanceVerified
+                            ? 'bg-success-bg border-success-500/50 text-success-fg'
+                            : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>Calendar Confirmed</span>
-                        {telemetry.attendanceVerified ? <Check className="h-3.5 w-3.5" /> : null}
+                        <span>Calendar confirmed</span>
+                        {telemetry.attendanceVerified ? <Check className="size-3.5" /> : null}
                       </button>
 
                       <input
                         type="tel"
                         value={directMobileInput}
                         onChange={(e) => handleUpdateDirectMobile(e.target.value)}
-                        placeholder="SMS Mobile #"
-                        className="bg-white border border-zinc-300 rounded-lg px-2.5 py-1.5 text-xs text-zinc-900 font-mono focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                        placeholder="Mobile number for SMS"
+                        className="focus-ring h-8 rounded-sm border border-line-strong bg-surface px-2.5 font-mono text-small text-fg placeholder:font-sans placeholder:text-fg-disabled"
                       />
                     </div>
                   </div>
@@ -1436,9 +1431,10 @@ export default function BorisCallingCockpit() {
                       setSelectedRebuttalId(null);
                       setCurrentStep(prev => Math.max(1, prev - 1));
                     }}
-                    className="px-3 py-1.5 rounded-lg border border-zinc-200 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    className={buttonClasses('ghost', 'sm', 'cursor-pointer disabled:opacity-40')}
                   >
-                    ← Back
+                    <ChevronLeft />
+                    <span>Back</span>
                   </button>
 
                   {currentStep < scriptSteps.length ? (
@@ -1448,19 +1444,19 @@ export default function BorisCallingCockpit() {
                         setSelectedRebuttalId(null);
                         setCurrentStep(prev => Math.min(scriptSteps.length, prev + 1));
                       }}
-                      className="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      className={buttonClasses('primary', 'sm', 'cursor-pointer')}
                     >
-                      <span>Next Step</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <span>Next step</span>
+                      <ArrowRight />
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => handleSelectDisposition('Meeting Booked')}
-                      className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      className={buttonClasses('primary', 'sm', 'cursor-pointer')}
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Book Meeting</span>
+                      <Check />
+                      <span>Book meeting</span>
                     </button>
                   )}
                 </div>
@@ -1472,31 +1468,33 @@ export default function BorisCallingCockpit() {
             <div className="lg:col-span-5 space-y-3">
 
               {/* Tab Navigation Segmented Control */}
-              <div className="flex items-center p-1 bg-zinc-100 rounded-xl border border-zinc-200">
+              <div className="flex items-center rounded-md border border-line bg-subtle p-0.5">
                 <button
                   type="button"
                   onClick={() => setActiveRightTab('notes')}
-                  className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeRightTab === 'notes'
-                      ? 'bg-white text-zinc-950 shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-950'
+                  aria-pressed={activeRightTab === 'notes'}
+                  className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'notes'
+                      ? 'bg-surface text-fg shadow-xs'
+                      : 'text-fg-secondary hover:text-fg'
                     }`}
                 >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Notes &amp; CRM</span>
+                  <FileText className="size-4" />
+                  <span>Notes and CRM</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setActiveRightTab('footprint')}
-                  className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeRightTab === 'footprint'
-                      ? 'bg-white text-zinc-950 shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-950'
+                  aria-pressed={activeRightTab === 'footprint'}
+                  className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'footprint'
+                      ? 'bg-surface text-fg shadow-xs'
+                      : 'text-fg-secondary hover:text-fg'
                     }`}
                 >
-                  <Clock className="w-3.5 h-3.5" />
+                  <Clock className="size-4" />
                   <span>History</span>
                   {activeContact?.footprint && activeContact.footprint.length > 0 && (
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-zinc-900 text-white">
+                    <span className="rounded-sm bg-ink-200 px-1.5 text-caption tabular-nums leading-5 text-fg-secondary">
                       {activeContact.footprint.length}
                     </span>
                   )}
@@ -1508,52 +1506,49 @@ export default function BorisCallingCockpit() {
                 <div className="space-y-3 animate-in fade-in duration-150">
 
                   {/* DIRECT LEAD NOTES (FOR NON-CRM CUSTOMERS) */}
-                  <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-2">
+                  <div className="space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm">📌</span>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                          Lead Notes
-                        </h3>
-                      </div>
+                      <h3 className="text-h3 text-fg">
+                        Lead notes
+                      </h3>
                       {leadNoteSavedToast && (
-                        <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 animate-in fade-in">
-                          <Check className="w-3 h-3" /> Saved!
+                        <span className="flex items-center gap-1 text-small text-success-fg animate-in fade-in">
+                          <Check className="size-3.5" /> Saved
                         </span>
                       )}
                     </div>
 
                     <div className="space-y-2">
                       <textarea
-                        rows={2}
+ aria-label="Lead notes"                        rows={2}
                         value={leadNoteInput}
                         onChange={(e) => setLeadNoteInput(e.target.value)}
                         placeholder="Add quick note on this lead..."
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 font-sans"
+                        className="focus-ring w-full rounded-sm border border-line-strong bg-surface p-2.5 font-sans text-body text-fg placeholder:text-fg-disabled"
                       />
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-zinc-400">
-                          Rep: <strong>{repName}</strong>
+                        <span className="text-small text-fg-tertiary">
+                          Rep: <span className="text-fg-secondary">{repName}</span>
                         </span>
-                        <button
-                          type="button"
+                        <Button
+                          variant="primary"
+                          size="sm"
                           onClick={handleSaveLeadNote}
                           disabled={!leadNoteInput.trim()}
-                          className="px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          icon={<Check />}
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Save Note</span>
-                        </button>
+                          Save note
+                        </Button>
                       </div>
                     </div>
 
                     {/* Display existing notes on file */}
                     {activeContact?.leadNotes && (
-                      <div className="mt-2 pt-2 border-t border-zinc-100">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block mb-1">
-                          Saved Notes:
+                      <div className="border-t border-line pt-3">
+                        <span className="mb-1.5 block text-caption text-fg-tertiary">
+                          Saved notes
                         </span>
-                        <div className="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-xs text-zinc-800 leading-relaxed font-sans whitespace-pre-wrap max-h-36 overflow-y-auto">
+                        <div className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-md border border-line bg-subtle p-2.5 font-sans text-small text-fg">
                           {activeContact.leadNotes}
                         </div>
                       </div>
@@ -1561,47 +1556,41 @@ export default function BorisCallingCockpit() {
                   </div>
 
                   {/* AUTO-UPDATING CRM CALL NOTES CARD */}
-                  <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm">📝</span>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                          CRM Call Summary
+                  <div className="space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-h3 text-fg">
+                          CRM call summary
                         </h3>
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                          Auto-Sync
-                        </span>
+                        <Badge tone="success">Auto-sync</Badge>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={handleResetTelemetry}
-                          className="text-[11px] text-zinc-400 hover:text-zinc-700 flex items-center gap-1 cursor-pointer"
                           title="Reset qualification boxes"
+                          icon={<RotateCcw />}
                         >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Reset</span>
-                        </button>
-                        <button
-                          type="button"
+                          Reset
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => copyText(notesDraft, 'notes_copy')}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${copiedKey === 'notes_copy'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-white'
-                            }`}
+                          icon={copiedKey === 'notes_copy' ? <Check className="text-success-fg" /> : <Copy />}
                         >
-                          {copiedKey === 'notes_copy' ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedKey === 'notes_copy' ? 'Copied' : 'Copy CRM'}</span>
-                        </button>
+                          <span>{copiedKey === 'notes_copy' ? 'Copied' : 'Copy for CRM'}</span>
+                        </Button>
                       </div>
                     </div>
 
                     <textarea
-                      rows={7}
+ aria-label="CRM call summary"                      rows={7}
                       value={notesDraft}
                       onChange={(e) => setNotesDraft(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-2.5 text-[11px] leading-relaxed text-zinc-900 font-mono focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 select-text"
+                      className="focus-ring w-full select-text rounded-sm border border-line-strong bg-surface p-2.5 font-sans text-small text-fg placeholder:text-fg-disabled"
                       placeholder="CRM call notes auto-populate here..."
                     />
                   </div>
@@ -1611,25 +1600,24 @@ export default function BorisCallingCockpit() {
 
               {/* TAB 2: HISTORICAL COMMUNICATION FOOTPRINT */}
               {activeRightTab === 'footprint' && (
-                <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs space-y-3 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-zinc-900" />
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                        Touch History
+                <div className="space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between border-b border-line pb-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-h3 text-fg">
+                        Touch history
                       </h3>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-100 text-zinc-800 font-bold border border-zinc-200">
+                      <span className="rounded-sm bg-subtle px-1.5 text-caption tabular-nums leading-5 text-fg-secondary">
                         {activeContact?.footprint?.length || 0}
                       </span>
                     </div>
 
                     <Link
                       href="/contacts"
-                      className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                      className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
                       title="Open full Global Contacts directory"
                     >
-                      <span>All Contacts</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
+                      <span>All contacts</span>
+                      <ExternalLink className="size-3.5" />
                     </Link>
                   </div>
 
@@ -1637,54 +1625,54 @@ export default function BorisCallingCockpit() {
                   <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
                     {activeContact?.footprint && activeContact.footprint.length > 0 ? (
                       activeContact.footprint.map((fp: LeadFootprintItem, idx: number) => {
-                        let badgeColor = 'bg-zinc-100 text-zinc-700 border-zinc-200';
-                        let icon = <Clock className="w-3.5 h-3.5 text-zinc-500" />;
+                        let badgeColor = 'bg-subtle text-fg-secondary';
+                        let icon = <Clock className="size-4 text-fg-secondary" />;
 
                         if (fp.type === 'email') {
-                          badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
-                          icon = <Mail className="w-3.5 h-3.5 text-blue-600" />;
+                          badgeColor = 'bg-subtle text-fg-secondary';
+                          icon = <Mail className="size-4 text-fg-secondary" />;
                         } else if (fp.type === 'call') {
                           if (fp.disposition === 'Meeting Booked') {
-                            badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                            badgeColor = 'bg-success-bg text-success-fg';
                           } else if (fp.disposition === 'Call Back Later') {
-                            badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
+                            badgeColor = 'bg-warning-bg text-warning-fg';
                           } else {
-                            badgeColor = 'bg-rose-50 text-rose-800 border-rose-200';
+                            badgeColor = 'bg-danger-bg text-danger-fg';
                           }
-                          icon = <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />;
+                          icon = <PhoneCall className="size-4 text-fg-secondary" />;
                         } else if (fp.type === 'note') {
-                          badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
-                          icon = <FileText className="w-3.5 h-3.5 text-purple-600" />;
+                          badgeColor = 'bg-subtle text-fg-secondary';
+                          icon = <FileText className="size-4 text-fg-secondary" />;
                         } else if (fp.type === 'linkedin') {
-                          badgeColor = 'bg-sky-50 text-sky-700 border-sky-200';
-                          icon = <LinkedinIcon className="w-3.5 h-3.5 text-sky-600" />;
+                          badgeColor = 'bg-subtle text-fg-secondary';
+                          icon = <LinkedinIcon className="size-4 text-fg-secondary" />;
                         }
 
                         return (
                           <div
                             key={fp.id || idx}
-                            className="p-3 rounded-xl border border-zinc-200 bg-zinc-50/70 hover:bg-zinc-50 transition-colors space-y-1.5"
+                            className="space-y-1.5 rounded-md border border-line bg-surface p-3 transition-colors duration-150 hover:bg-subtle"
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <div className="flex items-center gap-1.5">
                                 {icon}
-                                <span className="text-xs font-bold text-zinc-900">
+                                <span className="text-body-strong text-fg">
                                   {fp.title}
                                 </span>
                               </div>
-                              <span className="text-[10px] font-mono text-zinc-500">
+                              <span className="text-caption tabular-nums text-fg-tertiary">
                                 {fp.timestamp}
                               </span>
                             </div>
 
-                            <p className="text-xs text-zinc-700 leading-relaxed font-sans whitespace-pre-wrap">
+                            <p className="whitespace-pre-wrap font-sans text-small text-fg-secondary">
                               {fp.summary}
                             </p>
 
-                            <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-400 font-mono">
-                              <span>Rep: <strong className="text-zinc-700">{fp.repName}</strong></span>
+                            <div className="flex items-center justify-between pt-1 text-caption text-fg-tertiary">
+                              <span>Rep: <span className="text-fg-secondary">{fp.repName}</span></span>
                               {fp.disposition && (
-                                <span className={`px-1.5 py-0.2 rounded font-bold border ${badgeColor}`}>
+                                <span className={`inline-flex h-5 items-center rounded-sm px-1.5 text-caption ${badgeColor}`}>
                                   {fp.disposition}
                                 </span>
                               )}
@@ -1693,10 +1681,11 @@ export default function BorisCallingCockpit() {
                         );
                       })
                     ) : (
-                      <div className="py-8 text-center text-zinc-400 space-y-1">
-                        <Clock className="w-6 h-6 mx-auto opacity-40" />
-                        <p className="text-xs font-medium">No history yet.</p>
-                      </div>
+                      <EmptyState
+                        icon={<Clock />}
+                        title="No history yet"
+                        className="py-8"
+                      />
                     )}
                   </div>
                 </div>
@@ -1712,138 +1701,131 @@ export default function BorisCallingCockpit() {
       {/* ========================================================================= */}
       {/* QUICK FOLLOW-UP EMAIL COMPOSER MODAL                                      */}
       {/* ========================================================================= */}
-      {isQuickEmailOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-zinc-200 flex flex-col overflow-hidden">
+      <Dialog
+        open={isQuickEmailOpen}
+        onClose={() => setIsQuickEmailOpen(false)}
+        title={`Send a follow-up to ${customerName}`}
+        size="md"
+        dismissible={!isSendingQuickEmail}
+        bare
+      >
+          <div className="flex w-full flex-col">
 
-            <div className="p-4 px-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-zinc-900" />
-                <h3 className="text-sm font-bold text-zinc-900">
-                  Send Follow-Up Invite to {customerName}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQuickEmailOpen(false)}
-                className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <h3 className="text-h3 text-fg">
+                Send a follow-up to {customerName}
+              </h3>
+              <IconButton label="Close" size="sm" onClick={() => setIsQuickEmailOpen(false)}>
+                <X />
+              </IconButton>
             </div>
 
-            <div className="p-5 space-y-3.5 text-xs">
+            <div className="space-y-4 p-5">
               <div>
-                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block mb-1">
-                  Recipient Email (Confirmed on Call)
+                <label className="mb-1.5 block text-caption text-fg-secondary">
+                  Recipient email (confirmed on call)
                 </label>
                 <input
                   type="email"
                   value={directEmail}
                   onChange={(e) => handleConfirmedEmailChange(e.target.value)}
-                  className="w-full text-xs font-mono font-semibold rounded-lg border border-zinc-300 p-2 text-zinc-900"
+                  className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-3 font-mono text-small text-fg"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block mb-1">
-                  Subject Line
+                <label className="mb-1.5 block text-caption text-fg-secondary">
+                  Subject
                 </label>
                 <input
                   type="text"
                   value={quickEmailSubject}
                   onChange={(e) => setQuickEmailSubject(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-zinc-300 p-2 text-zinc-900"
+                  className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-3 text-body text-fg"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block mb-1">
-                  Email Message
+                <label className="mb-1.5 block text-caption text-fg-secondary">
+                  Message
                 </label>
                 <textarea
                   rows={6}
                   value={quickEmailBody}
                   onChange={(e) => setQuickEmailBody(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-zinc-300 p-2 text-zinc-900 resize-none font-sans"
+                  className="focus-ring w-full resize-none rounded-sm border border-line-strong bg-surface p-3 font-sans text-body text-fg"
                 />
               </div>
 
               {quickEmailSuccess && (
-                <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <div className="flex items-center gap-2 rounded-md border border-success-500/40 bg-success-bg p-2.5 text-small font-medium text-success-fg">
+                  <CheckCircle2 className="size-4 text-success-fg" />
                   <span>{quickEmailSuccess}</span>
                 </div>
               )}
             </div>
 
-            <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-line px-5 py-4">
               <a
                 href={`/outreach/email?to=${encodeURIComponent(directEmail)}&name=${encodeURIComponent(customerName)}&company=${encodeURIComponent(partnerName)}&title=${encodeURIComponent(title)}`}
-                className="text-xs font-semibold text-zinc-600 hover:text-zinc-900 underline flex items-center gap-1"
+                className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
               >
                 <span>Open in Cold Email Studio</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="size-3.5" />
               </a>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsQuickEmailOpen(false)}
-                  className="px-3 py-1.5 rounded-xl border border-zinc-300 text-zinc-700 font-semibold text-xs hover:bg-zinc-100 transition-colors cursor-pointer"
-                >
+                <Button variant="secondary" size="sm" onClick={() => setIsQuickEmailOpen(false)}>
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   disabled={isSendingQuickEmail}
                   onClick={handleSendQuickEmail}
-                  className="px-4 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  icon={<Send />}
                 >
-                  <Send className="w-3 h-3" />
-                  <span>{isSendingQuickEmail ? 'Sending...' : 'Send Follow-Up'}</span>
-                </button>
+                  <span>{isSendingQuickEmail ? 'Sending...' : 'Send follow-up'}</span>
+                </Button>
               </div>
             </div>
 
           </div>
-        </div>
-      )}
+      </Dialog>
 
       {/* ========================================================================= */}
       {/* CALENDLY EMBED MODAL                                                      */}
       {/* ========================================================================= */}
-      {showCalendlyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full h-[620px] shadow-2xl border border-zinc-200 flex flex-col overflow-hidden">
-            <div className="p-4 px-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-zinc-900" />
-                <h3 className="text-sm font-bold text-zinc-900">
-                  Book Screen Share for {customerName} ({partnerName})
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
+      <Dialog
+        open={showCalendlyModal}
+        onClose={() => setShowCalendlyModal(false)}
+        title={`Book a screen share with ${customerName} (${partnerName})`}
+        size="lg"
+        className="overflow-hidden"
+        bare
+      >
+          <div className="flex h-[min(620px,calc(100dvh-2rem))] w-full flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <h3 className="text-h3 text-fg">
+                Book a screen share with {customerName} ({partnerName})
+              </h3>
+              <div className="flex items-center gap-1">
                 <a
                   href={`${tenantCalendarLink}?name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(directEmail)}&a1=${encodeURIComponent(partnerName)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-mono flex items-center gap-1 transition-colors"
+                  className={buttonClasses('ghost', 'sm')}
                   title="Open Calendly in a new tab"
                 >
-                  <span>New Tab</span>
-                  <ExternalLink className="h-3 w-3" />
+                  <span>Open in new tab</span>
+                  <ExternalLink />
                 </a>
-                <button
-                  type="button"
-                  onClick={() => setShowCalendlyModal(false)}
-                  className="h-7 w-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-600 flex items-center justify-center cursor-pointer"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                <IconButton label="Close" size="sm" onClick={() => setShowCalendlyModal(false)}>
+                  <X />
+                </IconButton>
               </div>
             </div>
-            <div className="flex-1 bg-white">
+            <div className="flex-1 bg-surface">
               <iframe
                 src={`${tenantCalendarLink}?name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(directEmail)}&a1=${encodeURIComponent(partnerName)}`}
                 width="100%"
@@ -1853,8 +1835,7 @@ export default function BorisCallingCockpit() {
               />
             </div>
           </div>
-        </div>
-      )}
+      </Dialog>
 
       {/* ========================================================================= */}
       {/* CSV IMPORT MODAL                                                          */}

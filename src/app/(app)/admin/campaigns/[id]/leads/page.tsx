@@ -20,6 +20,7 @@ import {
   X,
   Share2
 } from 'lucide-react';
+import { Badge, Button, buttonClasses, Dialog, IconButton, PageHeader, SearchInput, Select, Skeleton } from '@/components/ui';
 import { Lead, CadencePackage } from '@/types';
 import { CadenceGenerator } from '@/lib/cadenceGenerator';
 
@@ -138,116 +139,115 @@ function CampaignLeadsContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+    <div className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Campaign leads"
+        count={filteredLeads.length}
+        description="Import a lead CSV, assign the batch to a rep and generate each lead's cadence."
+        primaryAction={
+          <label className={buttonClasses('brand', 'md', 'relative cursor-pointer focus-within:shadow-[var(--focus-ring)]')}>
+            <UploadCloud className="h-4 w-4" aria-hidden />
+            <span>{isUploading ? 'Importing CSV...' : 'Import leads CSV'}</span>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileUpload}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            />
+          </label>
+        }
+      />
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-8 flex flex-col gap-6">
-        
-        {/* Controls Bar: Upload & Mass Assign */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            {/* CSV Upload */}
-            <label className="relative px-5 py-3 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 cursor-pointer">
-              <UploadCloud className="h-4 w-4" />
-              <span>{isUploading ? 'IMPORTING CSV...' : 'IMPORT LEADS CSV'}</span>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-            </label>
-
-            {/* Rep Assignment Dropdown */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500 font-semibold">Assign Batch To:</span>
-              <select
+      <div className="flex flex-col gap-4">
+        {/* Filter bar: search + batch assignment */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="w-full sm:max-w-md">
+            <SearchInput
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filter leads by name or company"
+              aria-label="Filter leads"
+            />
+          </div>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <label htmlFor="batch-rep" className="text-small text-fg-secondary whitespace-nowrap">Assign batch to</label>
+            <div className="w-56">
+              <Select
+                id="batch-rep"
                 value={selectedRep}
                 onChange={(e) => setSelectedRep(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-900 focus:outline-none focus:border-[#ED1C24]"
               >
                 <option value="Alex Mercer">Alex Mercer (Certified)</option>
                 <option value="Sarah Jenkins">Sarah Jenkins (In Training)</option>
                 <option value="Luca Hayes">Luca Hayes (Super Admin)</option>
-              </select>
+              </Select>
             </div>
-          </div>
-
-          {/* Search Bar */}
-          <div className="relative w-full sm:w-72">
-            <Search className="h-4 w-4 absolute left-3.5 top-3 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Filter leads by name, company..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#ED1C24]"
-            />
           </div>
         </div>
 
-        {/* Lead Table */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Active Prospect Queue ({filteredLeads.length})
+        {/* Lead table */}
+        <div className="rounded-lg border border-line bg-surface shadow-xs overflow-hidden">
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3">
+            <span className="text-h3 text-fg">
+              Prospect queue <span className="text-small tabular-nums text-fg-tertiary">{filteredLeads.length}</span>
             </span>
-            <span className="text-xs text-slate-500">
-              Auto-mapped attributes synced with CRM
+            <span className="text-small text-fg-tertiary">
+              Fields auto-mapped and synced with your CRM
             </span>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="px-6 py-3.5">Prospect Name</th>
-                  <th className="px-6 py-3.5">Company & Title</th>
-                  <th className="px-6 py-3.5">Contact</th>
-                  <th className="px-6 py-3.5">Tech & Outsourcer Context</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5 text-right">Outreach Cadence</th>
+            <table className="w-full border-collapse text-left text-body">
+              <thead>
+                <tr className="h-9 bg-subtle">
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Prospect</th>
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Company and title</th>
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Contact</th>
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Tech and incumbent</th>
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Status</th>
+                  <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary text-right"><span className="sr-only">Cadence</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900">
+                  <tr key={lead.id} className="border-t border-line transition-colors duration-150 hover:bg-subtle">
+                    <td className="px-4 py-2.5 text-body-strong text-fg">
                       {lead.first_name} {lead.last_name}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-800">{lead.company}</div>
-                      <div className="text-[11px] text-slate-500">{lead.title}</div>
+                    <td className="px-4 py-2.5">
+                      <div className="text-fg">{lead.company}</div>
+                      <div className="text-small text-fg-tertiary">{lead.title}</div>
                     </td>
-                    <td className="px-6 py-4 text-slate-600 font-mono text-[11px]">
+                    <td className="px-4 py-2.5 text-small text-fg-secondary">
                       <div>{lead.email}</div>
-                      {lead.phone && <div className="text-slate-400">{lead.phone}</div>}
+                      {lead.phone && <div className="font-mono text-fg-tertiary">{lead.phone}</div>}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-[11px] text-[#ED1C24] font-semibold">
+                    <td className="px-4 py-2.5">
+                      <div className="text-small text-fg">
                         {lead.custom_variables?.['Tech Stack'] || 'Salesforce'}
                       </div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-small text-fg-tertiary">
                         Incumbent: {lead.custom_variables?.['Current Outsourcer'] || 'Agency'}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                        lead.status === 'booked' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        lead.status === 'contacted' ? 'bg-[#ED1C24]/10 text-[#ED1C24] border border-[#ED1C24]/20' :
-                        'bg-slate-100 text-slate-700 border border-slate-200'
-                      }`}>
-                        {lead.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => openCadenceModal(lead)}
-                        className="px-3.5 py-1.5 rounded-lg bg-[#ED1C24]/10 hover:bg-[#ED1C24]/15 text-[#ED1C24] font-bold text-xs border border-[#ED1C24]/20 transition-colors inline-flex items-center gap-1.5"
+                    <td className="px-4 py-2.5">
+                      <Badge
+                        tone={lead.status === 'booked' ? 'success' : lead.status === 'contacted' ? 'brand' : 'neutral'}
+                        className="capitalize"
                       >
-                        <Sparkles className="h-3.5 w-3.5 text-[#ED1C24]" />
-                        <span>GENERATE CADENCE</span>
-                      </button>
+                        {lead.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openCadenceModal(lead)}
+                        icon={<Sparkles className="h-3.5 w-3.5" />}
+                      >
+                        Generate cadence
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -257,101 +257,116 @@ function CampaignLeadsContent() {
         </div>
 
         {/* Cadence Modal */}
-        {selectedCadence && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-8 shadow-2xl flex flex-col gap-6 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+        <Dialog
+          open={selectedCadence !== null}
+          onClose={() => setSelectedCadence(null)}
+          title={selectedCadence ? `Cadence for ${selectedCadence.leadName} (${selectedCadence.company})` : 'Cadence'}
+          size="lg"
+          bare
+        >
+          {selectedCadence && (
+            <div className="flex flex-col">
+              <div className="flex items-start justify-between gap-4 px-6 pt-5">
                 <div>
-                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-[#ED1C24]" />
-                    Multi-Channel Cadence for {selectedCadence.leadName} ({selectedCadence.company})
-                  </h3>
-                  <p className="text-xs text-slate-500">Context-Injected Copy Engineered for Sub-Second Discovery Booking</p>
+                  <h2 id="cadence-title" className="text-h2 text-fg">
+                    Cadence for {selectedCadence.leadName} ({selectedCadence.company})
+                  </h2>
+                  <p className="text-small text-fg-secondary mt-0.5">Call, email and LinkedIn copy written from this lead&apos;s context.</p>
                 </div>
-                <button
-                  onClick={() => setSelectedCadence(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <IconButton label="Close" size="sm" onClick={() => setSelectedCadence(null)}>
+                  <X className="h-4 w-4" />
+                </IconButton>
               </div>
 
-              {/* 1. Cold Call Opener */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#222021] uppercase tracking-wider flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-[#ED1C24]" />
-                    Channel 1: Cold Call Opener & Diagnostic
-                  </span>
-                  <button
-                    onClick={() => copyText(`${selectedCadence.coldCallOpener} ${selectedCadence.diagnosticQuestion}`, 'call')}
-                    className="text-slate-500 hover:text-[#ED1C24] text-xs font-semibold flex items-center gap-1"
-                  >
-                    {copiedKey === 'call' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedKey === 'call' ? 'Copied' : 'Copy'}</span>
-                  </button>
+              <div className="flex flex-col gap-3 px-6 py-5">
+                {/* 1. Cold Call Opener */}
+                <div className="p-4 rounded-lg bg-app border border-line space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg flex items-center gap-1.5">
+                      <Phone className="h-4 w-4 text-fg-secondary" aria-hidden />
+                      Call opener and discovery question
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyText(`${selectedCadence.coldCallOpener} ${selectedCadence.diagnosticQuestion}`, 'call')}
+                      icon={copiedKey === 'call' ? <Check className="h-3.5 w-3.5 text-success-fg" /> : <Copy className="h-3.5 w-3.5" />}
+                    >
+                      {copiedKey === 'call' ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
+                  <p className="text-body text-fg">
+                    "{selectedCadence.coldCallOpener}"
+                  </p>
+                  <p className="text-body text-fg-secondary pt-1">
+                    "{selectedCadence.diagnosticQuestion}"
+                  </p>
                 </div>
-                <p className="text-xs text-slate-800 leading-relaxed font-sans">
-                  "{selectedCadence.coldCallOpener}"
-                </p>
-                <p className="text-xs text-[#222021] italic font-medium pt-1">
-                  "{selectedCadence.diagnosticQuestion}"
-                </p>
-              </div>
 
-              {/* 2. Cold Email */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#222021] uppercase tracking-wider flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-[#ED1C24]" />
-                    Channel 2: 1-to-1 Cold Email Follow-Up
-                  </span>
-                  <button
-                    onClick={() => copyText(`Subject: ${selectedCadence.emailSubject}\n\n${selectedCadence.emailBody}`, 'email')}
-                    className="text-slate-500 hover:text-[#ED1C24] text-xs font-semibold flex items-center gap-1"
-                  >
-                    {copiedKey === 'email' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedKey === 'email' ? 'Copied' : 'Copy'}</span>
-                  </button>
+                {/* 2. Cold Email */}
+                <div className="p-4 rounded-lg bg-app border border-line space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg flex items-center gap-1.5">
+                      <Mail className="h-4 w-4 text-fg-secondary" aria-hidden />
+                      Follow-up email
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyText(`Subject: ${selectedCadence.emailSubject}\n\n${selectedCadence.emailBody}`, 'email')}
+                      icon={copiedKey === 'email' ? <Check className="h-3.5 w-3.5 text-success-fg" /> : <Copy className="h-3.5 w-3.5" />}
+                    >
+                      {copiedKey === 'email' ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
+                  <div className="text-body-strong text-fg">
+                    Subject: {selectedCadence.emailSubject}
+                  </div>
+                  <p className="text-body text-fg-secondary whitespace-pre-line">
+                    {selectedCadence.emailBody}
+                  </p>
                 </div>
-                <div className="text-xs font-bold text-slate-800">
-                  Subject: {selectedCadence.emailSubject}
-                </div>
-                <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed font-sans">
-                  {selectedCadence.emailBody}
-                </p>
-              </div>
 
-              {/* 3. LinkedIn Sequence */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#222021] uppercase tracking-wider flex items-center gap-1.5">
-                    <Share2 className="h-3.5 w-3.5 text-[#ED1C24]" />
-                    Channel 3: LinkedIn Connection Invite
-                  </span>
-                  <button
-                    onClick={() => copyText(selectedCadence.linkedInConnection, 'linkedin')}
-                    className="text-slate-500 hover:text-[#ED1C24] text-xs font-semibold flex items-center gap-1"
-                  >
-                    {copiedKey === 'linkedin' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedKey === 'linkedin' ? 'Copied' : 'Copy'}</span>
-                  </button>
+                {/* 3. LinkedIn Sequence */}
+                <div className="p-4 rounded-lg bg-app border border-line space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg flex items-center gap-1.5">
+                      <Share2 className="h-4 w-4 text-fg-secondary" aria-hidden />
+                      LinkedIn connection invite
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyText(selectedCadence.linkedInConnection, 'linkedin')}
+                      icon={copiedKey === 'linkedin' ? <Check className="h-3.5 w-3.5 text-success-fg" /> : <Copy className="h-3.5 w-3.5" />}
+                    >
+                      {copiedKey === 'linkedin' ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
+                  <p className="text-body text-fg">
+                    "{selectedCadence.linkedInConnection}"
+                  </p>
                 </div>
-                <p className="text-xs text-slate-800 leading-relaxed font-sans">
-                  "{selectedCadence.linkedInConnection}"
-                </p>
               </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </Dialog>
+      </div>
     </div>
   );
 }
 
 export default function CampaignLeadsPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs font-mono text-slate-500">LOADING CAMPAIGN LEADS...</div>}>
+    <Suspense
+      fallback={
+        <div className="px-4 py-6 md:px-8 space-y-4" aria-busy="true">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-4 w-96" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </div>
+      }
+    >
       <CampaignLeadsContent />
     </Suspense>
   );

@@ -2,31 +2,42 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { 
-  Users, 
-  Search, 
-  Download, 
-  Upload, 
-  PhoneCall, 
-  Mail, 
-  Globe, 
-  CheckCircle2, 
-  Clock, 
-  Calendar, 
-  ShieldCheck, 
-  Lock, 
-  ExternalLink, 
-  Filter, 
-  X, 
-  FileText, 
-  MessageSquare, 
-  Check, 
-  Copy, 
-  ChevronRight, 
-  PlusCircle, 
-  Send,
+import {
+  Users,
+  Search,
+  Download,
+  Upload,
+  PhoneCall,
+  Mail,
+  Globe,
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
+  Lock,
+  ExternalLink,
+  X,
+  FileText,
+  Check,
+  Copy,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  PlusCircle,
+  Pencil,
+  UserPlus,
   FolderKanban
 } from 'lucide-react';
+import {
+  Avatar,
+  Badge,
+  Button,
+  buttonClasses,
+  Drawer,
+  EmptyState,
+  FilterChip,
+  IconButton,
+  PageHeader,
+} from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
 import { 
@@ -386,131 +397,120 @@ export default function GlobalContactsManager() {
     }
   };
 
-  // Status color helper
+  // Status dot color helper
   const getStatusBadge = (status: string) => {
     const s = (status || '').toLowerCase();
     if (s.includes('meeting') || s.includes('booked')) {
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      return 'bg-success-500';
     }
     if (s.includes('call back') || s.includes('callback')) {
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-warning-400';
     }
     if (s.includes('voicemail')) {
-      return 'bg-blue-50 text-blue-800 border-blue-200';
+      return 'bg-fg-tertiary';
     }
     if (s.includes('disqualified') || s.includes('dnc') || s.includes('not interested')) {
-      return 'bg-zinc-100 text-zinc-600 border-zinc-200';
+      return 'bg-danger-fg';
     }
-    return 'bg-purple-50 text-purple-800 border-purple-200';
+    return 'bg-fg-disabled';
   };
 
+  const filterSelectClass =
+    'focus-ring h-9 w-auto max-w-[220px] truncate rounded-sm border border-line-strong bg-surface px-3 text-body text-fg cursor-pointer hover:border-fg-disabled transition-colors';
+  const rowIconLinkClass = buttonClasses('ghost', 'sm', 'size-8 px-0');
+
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
-      
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
+
 
       {/* 2. MAIN APP CONTAINER */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
+
 
         {/* Scrollable Directory Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          
-          {/* Header & Role Clearance Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-zinc-200">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-zinc-950 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                  <Users className="w-4 h-4 text-emerald-400" />
-                </div>
-                <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-                  Global Contacts Directory
-                </h1>
-                <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
-                  {tenantName} &bull; {filteredContacts.length} Contacts
-                </span>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                  adminClearance ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                }`}>
-                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  <span>{role} Level</span>
-                </span>
-              </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                Unified multi-touch lead database with built-in notes and historical communication footprints.
-              </p>
-            </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-4">
 
-            {/* Role-Gated Action Buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {canAccessIcp ? (
-                <Link
-                  href="/lead-finder"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-2xs"
-                >
-                  <FolderKanban className="w-3.5 h-3.5" />
-                  <span>ICP List Builder &amp; Folders</span>
-                </Link>
-              ) : (
-                <div
-                  title="ICP List Builder is restricted to Admin/Customers by your organization."
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-400 border border-dashed border-zinc-300 cursor-not-allowed select-none opacity-60"
-                >
-                  <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>ICP List Builder (Admin Only)</span>
-                </div>
-              )}
-
-              {canExportCsv ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setIsCsvModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-zinc-300 text-zinc-800 hover:bg-zinc-100 transition-colors shadow-2xs cursor-pointer"
-                    title="Upload CSV leads into active directory (Admin only)"
+          {/* Header */}
+          <PageHeader
+            className="pb-2"
+            title="Contacts"
+            count={filteredContacts.length}
+            description={`Every lead in ${tenantName}, with notes and touch history.`}
+            meta={
+              <span className="inline-flex items-center gap-1.5 text-small text-fg-tertiary">
+                <ShieldCheck className="size-4 text-fg-tertiary" aria-hidden />
+                {role} access
+              </span>
+            }
+            secondaryActions={
+              <>
+                {canAccessIcp ? (
+                  <Link href="/lead-finder" className={buttonClasses('secondary', 'md')}>
+                    <FolderKanban className="size-4 text-fg-secondary" aria-hidden />
+                    <span>Lead finder</span>
+                  </Link>
+                ) : (
+                  <div
+                    title="ICP List Builder is restricted to Admin/Customers by your organization."
+                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-dashed border-line-strong px-3 text-body text-fg-disabled cursor-not-allowed select-none"
                   >
-                    <Upload className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Import CSV</span>
-                  </button>
+                    <Lock className="size-4" aria-hidden />
+                    <span>Lead finder (admin only)</span>
+                  </div>
+                )}
 
-                  <button
-                    type="button"
+                {canExportCsv && (
+                  <Button
+                    variant="secondary"
                     onClick={() => exportContactsToCsv(filteredContacts)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 transition-colors shadow-2xs cursor-pointer"
                     title="Export filtered directory to RFC 4180 CSV (Admin only)"
+                    icon={<Download className="text-fg-secondary" />}
                   >
-                    <Download className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Export CSV ({filteredContacts.length})</span>
-                  </button>
-                </>
+                    Export ({filteredContacts.length})
+                  </Button>
+                )}
+              </>
+            }
+            primaryAction={
+              canExportCsv ? (
+                <Button
+                  variant="brand"
+                  onClick={() => setIsCsvModalOpen(true)}
+                  title="Upload CSV leads into active directory (Admin only)"
+                  icon={<Upload />}
+                >
+                  Import CSV
+                </Button>
               ) : (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 border border-zinc-200 text-zinc-500 select-none">
-                  <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>CSV Download Locked (Admin Only)</span>
+                <div className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-body text-fg-tertiary select-none">
+                  <Lock className="size-4 text-fg-disabled" aria-hidden />
+                  <span>CSV download locked (admin only)</span>
                 </div>
-              )}
-            </div>
-          </div>
+              )
+            }
+          />
 
           {/* Search & Filter Toolbar */}
-          <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-2xs space-y-3">
+          <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               {/* Search Box */}
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-fg-tertiary" />
                 <input
-                  type="text"
+ aria-label="Search contacts"                  type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by prospect name, company, email, phone, title, status, or folder..."
-                  className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 focus:border-zinc-900 font-medium"
+                  placeholder="Search name, company, email, phone, title, status or folder"
+                  className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface pl-9 pr-9 text-body text-fg placeholder:text-fg-disabled hover:border-fg-disabled transition-colors"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                    aria-label="Clear search"
+                    className="focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-fg-tertiary hover:text-fg"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="size-4" />
                   </button>
                 )}
               </div>
@@ -521,12 +521,13 @@ export default function GlobalContactsManager() {
                 <select
                   value={selectedFolderFilter}
                   onChange={(e) => setSelectedFolderFilter(e.target.value)}
-                  className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                  aria-label="Folder"
+                  className={filterSelectClass}
                 >
-                  <option value="all">📁 All ICP Folders ({folders.length})</option>
+                  <option value="all">All folders ({folders.length})</option>
                   {folders.map((f) => (
                     <option key={f.id} value={f.id}>
-                      📁 {f.name} ({f.totalLeads})
+                      {f.name} ({f.totalLeads})
                     </option>
                   ))}
                 </select>
@@ -535,10 +536,11 @@ export default function GlobalContactsManager() {
                 <select
                   value={selectedStatus}
                   onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                  aria-label="Status"
+                  className={filterSelectClass}
                 >
                   <option value="all">
-                    🎯 All Statuses ({baseContactsBeforeStatus.length})
+                    All statuses ({baseContactsBeforeStatus.length})
                   </option>
                   {availableStatusesWithCounts.map((item) => (
                     <option key={item.status} value={item.status}>
@@ -552,9 +554,10 @@ export default function GlobalContactsManager() {
                   <select
                     value={selectedRepFilter}
                     onChange={(e) => setSelectedRepFilter(e.target.value)}
-                    className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-700 focus:outline-none cursor-pointer hover:bg-zinc-100 transition-colors"
+                    aria-label="Owner"
+                    className={filterSelectClass}
                   >
-                    <option value="all">All Assigned Reps</option>
+                    <option value="all">All owners</option>
                     {uniqueReps.map((r) => (
                       <option key={r} value={r}>
                         {r}
@@ -565,61 +568,28 @@ export default function GlobalContactsManager() {
               </div>
             </div>
 
-            {/* 1-Click Interactive Status Filter Pills Bar */}
-            <div className="pt-2.5 border-t border-zinc-100 flex items-center gap-1.5 flex-wrap text-xs">
-              <span className="text-[11px] font-mono text-zinc-400 mr-1 flex items-center gap-1">
-                <Filter className="w-3 h-3" />
-                <span>Filter by Status:</span>
-              </span>
-
-              <button
-                type="button"
+            {/* 1-Click Interactive Status Filter Chips */}
+            <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Filter by status">
+              <FilterChip
+                label="All"
+                value={String(baseContactsBeforeStatus.length)}
+                active={selectedStatus === 'all'}
                 onClick={() => setSelectedStatus('all')}
-                className={`px-3 py-1 rounded-full font-semibold text-xs border transition cursor-pointer flex items-center gap-1.5 ${
-                  selectedStatus === 'all'
-                    ? 'bg-zinc-950 text-white border-zinc-950 shadow-2xs'
-                    : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-400'
-                }`}
-              >
-                <span>All Contacts</span>
-                <span
-                  className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
-                    selectedStatus === 'all'
-                      ? 'bg-zinc-800 text-emerald-400'
-                      : 'bg-zinc-200/80 text-zinc-700'
-                  }`}
-                >
-                  {baseContactsBeforeStatus.length}
-                </span>
-              </button>
+              />
 
               {availableStatusesWithCounts.map(({ status, count }) => {
                 const isActive =
                   selectedStatus.toLowerCase() === status.toLowerCase();
                 return (
-                  <button
+                  <FilterChip
                     key={status}
-                    type="button"
+                    label={status}
+                    value={String(count)}
+                    active={isActive}
                     onClick={() =>
                       setSelectedStatus(isActive ? 'all' : status)
                     }
-                    className={`px-3 py-1 rounded-full font-semibold text-xs border transition cursor-pointer flex items-center gap-1.5 ${
-                      isActive
-                        ? 'bg-zinc-950 text-white border-zinc-950 shadow-2xs'
-                        : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-900'
-                    }`}
-                  >
-                    <span>{status}</span>
-                    <span
-                      className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
-                        isActive
-                          ? 'bg-zinc-800 text-emerald-400'
-                          : 'bg-zinc-100 text-zinc-600'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  </button>
+                  />
                 );
               })}
             </div>
@@ -627,47 +597,49 @@ export default function GlobalContactsManager() {
 
           {/* Action Toast Banner */}
           {actionBanner && (
-            <div className="px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between">
+            <div className="px-4 py-2.5 rounded-lg bg-success-bg border border-success-500/30 text-success-fg text-body flex items-center justify-between gap-3" role="status">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="size-4 shrink-0" />
                 <span>{actionBanner}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setActionBanner(null)}
-                className="text-emerald-700 hover:text-emerald-950 font-mono text-xs cursor-pointer"
+                aria-label="Dismiss"
+                className="focus-ring rounded-sm p-1 text-success-fg hover:bg-surface/60 cursor-pointer"
               >
-                ✕
+                <X className="size-4" />
               </button>
             </div>
           )}
 
           {/* Bulk Lead Reassignment Command Bar (Supervisor, Manager, Admin, Super Admin) */}
           {canReassign && (
-            <div className="bg-white border border-zinc-200 rounded-2xl px-4 py-3 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="px-2.5 py-1 rounded-lg bg-zinc-950 text-white font-mono text-[10px] font-bold uppercase tracking-wider">
-                  Lead Assignment Console ({role})
+            <div className="bg-surface border border-line rounded-lg px-4 py-3 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="text-body-strong text-fg">
+                  Lead assignment
                 </span>
-                <span className="text-zinc-600">
+                <span className="text-small text-fg-tertiary">({role})</span>
+                <span className="text-small text-fg-secondary">
                   {selectedLeadIds.length > 0 ? (
                     <>
-                      <strong className="text-zinc-950">
+                      <strong className="font-semibold text-fg tabular-nums">
                         {selectedLeadIds.length} lead(s)
                       </strong>{' '}
-                      selected for reassignment
+                      selected
                     </>
                   ) : (
-                    'Select leads using the table checkboxes or use any row dropdown to reassign leads to another rep.'
+                    'Select leads with the checkboxes, or use a row owner menu to reassign one lead.'
                   )}
                 </span>
                 {selectedLeadIds.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setSelectedLeadIds([])}
-                    className="text-zinc-400 hover:text-zinc-900 underline cursor-pointer"
+                    className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg underline underline-offset-2 cursor-pointer"
                   >
-                    Clear Selection
+                    Clear selection
                   </button>
                 )}
               </div>
@@ -676,64 +648,67 @@ export default function GlobalContactsManager() {
                 <select
                   value={bulkTargetRep}
                   onChange={(e) => setBulkTargetRep(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 font-semibold focus:outline-none cursor-pointer"
+                  aria-label="Assign to"
+                  className="focus-ring h-8 rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg cursor-pointer"
                 >
                   {uniqueReps.map((r) => (
                     <option key={r} value={r}>
-                      Assign to: 👤 {r}
+                      Assign to {r}
                     </option>
                   ))}
                 </select>
 
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   disabled={selectedLeadIds.length === 0}
                   onClick={() => handleBulkReassign('single')}
-                  className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 text-white font-bold transition cursor-pointer"
                 >
-                  Reassign Selected ({selectedLeadIds.length})
-                </button>
+                  Reassign selected ({selectedLeadIds.length})
+                </Button>
 
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={selectedLeadIds.length === 0}
                   onClick={() => handleBulkReassign('equal_split')}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-100 disabled:opacity-40 text-zinc-800 font-semibold transition cursor-pointer"
                   title="Split selected leads equally across all workspace reps"
                 >
-                  Split Equally ({uniqueReps.length} Reps)
-                </button>
+                  Split evenly ({uniqueReps.length} reps)
+                </Button>
 
                 {/* Quick Add New Rep/Agent */}
-                <div className="flex items-center gap-1 pl-2 border-l border-zinc-200">
+                <div className="flex items-center gap-1.5 pl-2 border-l border-line">
                   <input
                     type="text"
                     value={newAgentNameInput}
                     onChange={(e) => setNewAgentNameInput(e.target.value)}
-                    placeholder="+ New rep name..."
-                    className="px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-900 w-36 focus:outline-none focus:bg-white focus:border-zinc-900"
+                    placeholder="New rep name"
+                    aria-label="New rep name"
+                    className="focus-ring h-8 w-36 rounded-sm border border-line-strong bg-surface px-2.5 text-small text-fg placeholder:text-fg-disabled"
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={!newAgentNameInput.trim()}
                     onClick={() => handleAddAgentToRoster()}
-                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold cursor-pointer"
+                    icon={<UserPlus className="text-fg-secondary" />}
                   >
-                    + Add Rep
-                  </button>
+                    Add rep
+                  </Button>
                 </div>
               </div>
             </div>
           )}
 
           {/* Contacts Table View (With Anti-Copy Protection for Non-Admins) */}
-          <div className={`bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden ${!canExportCsv ? 'select-none' : ''}`}>
+          <div className={`bg-surface border border-line rounded-lg shadow-xs overflow-hidden ${!canExportCsv ? 'select-none' : ''}`}>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-body">
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-mono text-[10px] uppercase tracking-wider">
+                  <tr className="bg-subtle text-caption text-fg-tertiary whitespace-nowrap">
                     {canReassign && (
-                      <th className="py-3 pl-4 pr-1 w-8">
+                      <th className="h-10 pl-4 pr-1 w-8">
                         <input
                           type="checkbox"
                           checked={
@@ -755,27 +730,29 @@ export default function GlobalContactsManager() {
                             }
                           }}
                           title="Select all 25 leads on this page"
-                          className="rounded border-zinc-300 cursor-pointer"
+                          className="focus-ring size-4 rounded-[4px] border-line-strong accent-ink-900 cursor-pointer"
                         />
                       </th>
                     )}
-                    <th className="py-3 px-4 font-bold">Contact &amp; Role</th>
-                    <th className="py-3 px-4 font-bold">Company &amp; Scale</th>
-                    <th className="py-3 px-4 font-bold">Direct Channels</th>
-                    <th className="py-3 px-4 font-bold">Deal Value ($)</th>
-                    <th className="py-3 px-4 font-bold">Status</th>
-                    <th className="py-3 px-4 font-bold">Assigned Rep</th>
-                    <th className="py-3 px-4 font-bold">Footprint / Touches</th>
-                    <th className="py-3 px-4 font-bold text-right">Actions</th>
+                    <th className="h-10 px-3 font-medium">Name</th>
+                    <th className="h-10 px-3 font-medium">Company</th>
+                    <th className="hidden 2xl:table-cell h-10 px-3 font-medium">Phone and email</th>
+                    <th className="h-10 px-3 font-medium text-right">Value</th>
+                    <th className="h-10 px-3 font-medium">Status</th>
+                    <th className="h-10 px-3 font-medium">Owner</th>
+                    <th className="h-10 px-3 font-medium">Last touch</th>
+                    <th className="h-10 px-3 font-medium text-right"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody>
                   {filteredContacts.length === 0 ? (
-                    <tr>
-                      <td colSpan={canReassign ? 9 : 8} className="text-center py-12 text-zinc-400">
-                        <Users className="w-8 h-8 mx-auto text-zinc-300 mb-2" />
-                        <p className="text-xs font-medium">No matching contacts found.</p>
-                        <p className="text-[11px] text-zinc-400">Try adjusting your search query or filters.</p>
+                    <tr className="border-t border-line">
+                      <td colSpan={canReassign ? 9 : 8} className="py-12">
+                        <EmptyState
+                          icon={<Users />}
+                          title="No matching contacts"
+                          description="Try a different search or clear a filter."
+                        />
                       </td>
                     </tr>
                   ) : (
@@ -785,17 +762,17 @@ export default function GlobalContactsManager() {
                       const isRowSelected = selectedLeadIds.includes(c.id);
 
                       return (
-                        <tr 
-                          key={c.id} 
+                        <tr
+                          key={c.id}
                           onClick={() => setSelectedContact(c)}
-                          className={`hover:bg-zinc-50/80 transition-colors cursor-pointer group ${
-                            isRowSelected ? 'bg-emerald-50/30' : ''
+                          className={`h-12 border-t border-line transition-colors duration-150 cursor-pointer group ${
+                            isRowSelected ? 'bg-selected' : 'hover:bg-subtle'
                           }`}
                         >
                           {/* Checkbox for Bulk Reassignment */}
                           {canReassign && (
                             <td
-                              className="py-3.5 pl-4 pr-1"
+                              className="py-1.5 pl-4 pr-1"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <input
@@ -810,22 +787,21 @@ export default function GlobalContactsManager() {
                                     );
                                   }
                                 }}
-                                className="rounded border-zinc-300 cursor-pointer"
+                                aria-label={`Select ${c.name}`}
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-ink-900 cursor-pointer"
                               />
                             </td>
                           )}
 
                           {/* 1. Contact & Role */}
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="h-8 w-8 rounded-full bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                                {c.name.charAt(0)}
-                              </div>
-                              <div className="min-w-0">
-                                <span className="font-bold text-zinc-950 block truncate group-hover:text-blue-600 transition-colors">
+                          <td className="py-1.5 px-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar name={c.name} />
+                              <div className="min-w-0 max-w-[220px]">
+                                <span className="text-body-strong text-fg block truncate">
                                   {c.name}
                                 </span>
-                                <span className="text-[11px] text-zinc-500 truncate block">
+                                <span className="text-small text-fg-tertiary truncate block">
                                   {c.title}
                                 </span>
                               </div>
@@ -833,35 +809,35 @@ export default function GlobalContactsManager() {
                           </td>
 
                           {/* 2. Company & Scale */}
-                          <td className="py-3.5 px-4">
-                            <span className="font-semibold text-zinc-900 block truncate">
+                          <td className="py-1.5 px-3">
+                            <span className="text-body text-fg block truncate max-w-[180px]">
                               {c.company}
                             </span>
-                            <span className="text-[10px] font-mono text-zinc-500 block">
-                              👥 {c.headcount || '50+ seats'}
+                            <span className="text-small text-fg-tertiary block">
+                              {c.headcount || '50+ seats'}
                             </span>
                           </td>
 
                           {/* 3. Direct Channels */}
-                          <td className="py-3.5 px-4 font-mono text-[11px]">
-                            <div className="space-y-0.5">
-                              <span className="text-zinc-900 block truncate">
-                                📞 {c.phone}
+                          <td className="hidden 2xl:table-cell py-1.5 px-3">
+                            <div className="max-w-[200px]">
+                              <span className="font-mono text-small text-fg block truncate">
+                                {c.phone}
                               </span>
-                              <span className="text-zinc-500 block truncate">
-                                ✉️ {c.email}
+                              <span className="font-mono text-small text-fg-tertiary block truncate">
+                                {c.email}
                               </span>
                             </div>
                           </td>
 
                           {/* 4. Editable Deal Value ($) */}
                           <td
-                            className="py-3.5 px-4 font-mono text-xs"
+                            className="py-1.5 px-3 text-right tabular-nums"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {editingRowDealId === c.id ? (
-                              <div className="flex items-center gap-1">
-                                <span className="text-zinc-400 font-bold">$</span>
+                              <div className="flex items-center justify-end gap-1">
+                                <span className="text-fg-tertiary">$</span>
                                 <input
                                   type="number"
                                   min={0}
@@ -879,16 +855,18 @@ export default function GlobalContactsManager() {
                                       setEditingRowDealId(null);
                                     }
                                   }}
-                                  className="w-20 px-1.5 py-0.5 rounded border border-zinc-900 text-xs font-mono font-bold text-zinc-950 focus:outline-none"
+                                  aria-label="Deal value"
+                                  className="focus-ring h-8 w-24 rounded-sm border border-line-strong bg-surface px-2 text-right text-body tabular-nums text-fg"
                                 />
                                 <button
                                   type="button"
                                   onClick={() =>
                                     handleSaveDealValue(c.id, editingRowDealVal)
                                   }
-                                  className="p-1 rounded bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
+                                  aria-label="Save deal value"
+                                  className="focus-ring inline-flex size-8 items-center justify-center rounded-md bg-action text-action-fg hover:bg-action-hover cursor-pointer"
                                 >
-                                  <Check className="w-3 h-3" />
+                                  <Check className="size-4" />
                                 </button>
                               </div>
                             ) : (
@@ -901,102 +879,115 @@ export default function GlobalContactsManager() {
                                   );
                                 }}
                                 title="Click to manually edit Deal Value ($)"
-                                className="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] cursor-pointer transition"
+                                className="focus-ring group/val inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-body-strong tabular-nums text-fg hover:bg-surface hover:ring-1 hover:ring-line-strong cursor-pointer transition"
                               >
-                                ${getContactDealValue(c).toLocaleString()} ✎
+                                <Pencil className="size-3.5 text-fg-tertiary opacity-0 group-hover/val:opacity-100 transition-opacity" aria-hidden />
+                                ${getContactDealValue(c).toLocaleString()}
                               </button>
                             )}
                           </td>
 
-                          {/* 5. Interactive Status Selector Badge */}
+                          {/* 5. Interactive Status Selector (dot + label look) */}
                           <td
-                            className="py-3.5 px-4"
+                            className="py-1.5 px-3"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <select
-                              value={c.status || 'New Lead'}
-                              onChange={(e) =>
-                                handleStatusChange(c.id, e.target.value)
-                              }
-                              className={`px-2.5 py-1 rounded-full font-bold text-[10px] border cursor-pointer focus:outline-none ${getStatusBadge(
-                                c.status
-                              )}`}
-                            >
-                              {availableStatusesWithCounts.map((item) => (
-                                <option
-                                  key={item.status}
-                                  value={item.status}
-                                  className="bg-white text-zinc-900 font-semibold"
-                                >
-                                  {item.status}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="relative inline-flex items-center">
+                              <span
+                                aria-hidden
+                                className={`pointer-events-none absolute left-2 size-2 rounded-full ${getStatusBadge(c.status)}`}
+                              />
+                              <select
+                                value={c.status || 'New Lead'}
+                                onChange={(e) =>
+                                  handleStatusChange(c.id, e.target.value)
+                                }
+                                aria-label={`Status for ${c.name}`}
+                                className="focus-ring h-8 appearance-none rounded-sm border border-transparent bg-transparent pl-6 pr-7 text-body text-fg cursor-pointer hover:border-line-strong hover:bg-surface transition-colors"
+                              >
+                                {availableStatusesWithCounts.map((item) => (
+                                  <option
+                                    key={item.status}
+                                    value={item.status}
+                                    className="bg-surface text-fg"
+                                  >
+                                    {item.status}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown aria-hidden className="pointer-events-none absolute right-2 size-3.5 text-fg-tertiary opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
                           </td>
 
                           {/* 6. Assigned Rep (Inline Reassignment Dropdown for Supervisor, Manager, Admin, Super Admin) */}
                           <td
-                            className="py-3.5 px-4 font-mono text-[11px] text-zinc-600"
+                            className="py-1.5 px-3 text-body text-fg-secondary"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {canReassign ? (
-                              <select
-                                value={c.assignedRep || 'Emil Halili'}
-                                onChange={(e) =>
-                                  handleSingleReassign(c.id, e.target.value)
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 font-semibold text-[11px] cursor-pointer focus:outline-none focus:border-zinc-900"
-                              >
-                                {uniqueReps.map((r) => (
-                                  <option key={r} value={r}>
-                                    👤 {r}
-                                  </option>
-                                ))}
-                              </select>
+                              <div className="relative inline-flex items-center">
+                                <select
+                                  value={c.assignedRep || 'Emil Halili'}
+                                  onChange={(e) =>
+                                    handleSingleReassign(c.id, e.target.value)
+                                  }
+                                  aria-label={`Owner for ${c.name}`}
+                                  className="focus-ring h-8 appearance-none rounded-sm border border-transparent bg-transparent pl-2 pr-7 text-body text-fg-secondary cursor-pointer hover:border-line-strong hover:bg-surface hover:text-fg transition-colors"
+                                >
+                                  {uniqueReps.map((r) => (
+                                    <option key={r} value={r}>
+                                      {r}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown aria-hidden className="pointer-events-none absolute right-2 size-3.5 text-fg-tertiary opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
                             ) : (
                               <span>{c.assignedRep || 'Emil Halili'}</span>
                             )}
                           </td>
 
                           {/* 6. Communication Footprint */}
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 rounded bg-zinc-100 font-mono text-[10px] font-bold text-zinc-700">
+                          <td className="py-1.5 px-3">
+                            <div className="min-w-0">
+                              <span className="block whitespace-nowrap text-small text-fg-secondary tabular-nums">
                                 {touchCount} {touchCount === 1 ? 'touch' : 'touches'}
                               </span>
                               {latestTouch && (
-                                <span className="text-[10px] text-zinc-400 font-mono truncate max-w-[130px]" title={latestTouch.title}>
-                                  &bull; {latestTouch.title}
+                                <span className="block text-small text-fg-tertiary truncate max-w-[140px]" title={latestTouch.title}>
+                                  {latestTouch.title}
                                 </span>
                               )}
                             </div>
                           </td>
 
                           {/* 7. Actions */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <td className="py-1.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
                               <Link
                                 href={`/dialer`}
-                                className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700 transition-colors cursor-pointer"
+                                className={rowIconLinkClass}
                                 title="Open in Calling Floor"
+                                aria-label={`Call ${c.name}`}
                               >
-                                <PhoneCall className="w-3.5 h-3.5" />
+                                <PhoneCall className="size-4" />
                               </Link>
                               <Link
                                 href={`/outreach/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&company=${encodeURIComponent(c.company)}`}
-                                className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-900 hover:text-white text-zinc-700 transition-colors cursor-pointer"
+                                className={rowIconLinkClass}
                                 title="Draft Cold Email"
+                                aria-label={`Email ${c.name}`}
                               >
-                                <Mail className="w-3.5 h-3.5" />
+                                <Mail className="size-4" />
                               </Link>
-                              <button
-                                type="button"
+                              <IconButton
+                                size="sm"
                                 onClick={() => setSelectedContact(c)}
-                                className="p-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors cursor-pointer"
-                                title="View Complete History & Notes"
+                                label="View history and notes"
+                                className="cursor-pointer"
                               >
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
+                                <ChevronRight className="size-4" />
+                              </IconButton>
                             </div>
                           </td>
                         </tr>
@@ -1009,34 +1000,36 @@ export default function GlobalContactsManager() {
 
             {/* 25 Results Per Page Footer Bar */}
             {filteredContacts.length > 0 && (
-              <div className="bg-zinc-50 px-5 py-3 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <span className="font-mono text-zinc-500">
+              <div className="px-4 py-3 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-small">
+                <span className="text-fg-tertiary tabular-nums">
                   Showing {(safeCurrentPage - 1) * PAGE_SIZE + 1}–
                   {(safeCurrentPage - 1) * PAGE_SIZE + paginatedContacts.length} of{' '}
-                  {filteredContacts.length.toLocaleString()} contacts (25 per page)
+                  {filteredContacts.length.toLocaleString()} contacts
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={safeCurrentPage <= 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
+                    icon={<ChevronLeft />}
                   >
-                    &larr; Prev 25
-                  </button>
-                  <span className="font-mono text-zinc-600">
+                    Previous
+                  </Button>
+                  <span className="text-fg-secondary tabular-nums">
                     Page {safeCurrentPage} of {totalPages}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={safeCurrentPage >= totalPages}
                     onClick={() =>
                       setCurrentPage((p) => Math.min(totalPages, p + 1))
                     }
-                    className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
                   >
-                    Next 25 &rarr;
-                  </button>
+                    Next
+                    <ChevronRight />
+                  </Button>
                 </div>
               </div>
             )}
@@ -1048,79 +1041,80 @@ export default function GlobalContactsManager() {
       {/* ========================================================================= */}
       {/* 3. CONTACT DETAIL & HISTORICAL FOOTPRINT DRAWER                           */}
       {/* ========================================================================= */}
-      {selectedContact && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-2xs animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-xl h-full shadow-2xl border-l border-zinc-200 flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
-            
+      <Drawer
+        open={!!selectedContact}
+        onClose={() => setSelectedContact(null)}
+        label={selectedContact ? selectedContact.name : 'Contact details'}
+        bare
+      >
+        {selectedContact && (
+          <div className="flex h-full flex-col overflow-hidden">
+
             {/* Drawer Header */}
-            <div className="p-5 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-zinc-950 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
-                  {selectedContact.name.charAt(0)}
-                </div>
+            <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar name={selectedContact.name} size="lg" />
                 <div className="min-w-0">
-                  <h2 className="text-base font-bold text-zinc-950 tracking-tight truncate">
+                  <h2 className="text-h2 text-fg truncate">
                     {selectedContact.name}
                   </h2>
-                  <p className="text-xs text-zinc-500 truncate">
-                    {selectedContact.title} &bull; <strong className="text-zinc-900 font-bold">{selectedContact.company}</strong>
+                  <p className="text-small text-fg-secondary truncate">
+                    {selectedContact.title} at <span className="text-fg">{selectedContact.company}</span>
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
+              <IconButton
                 onClick={() => setSelectedContact(null)}
-                className="h-8 w-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex items-center justify-center transition-colors cursor-pointer"
+                label="Close"
+                className="cursor-pointer"
               >
-                <X className="w-4 h-4" />
-              </button>
+                <X className="size-4" />
+              </IconButton>
             </div>
 
             {/* Drawer Scrollable Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs">
-              
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 text-body">
+
               {/* Quick Actions Strip */}
               <div className="flex items-center gap-2">
                 <Link
                   href="/dialer"
-                  className="flex-1 py-2 px-3 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                  className={buttonClasses('primary', 'md', 'flex-1')}
                 >
-                  <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Dial in Cockpit</span>
+                  <PhoneCall className="size-4" aria-hidden />
+                  <span>Call</span>
                 </Link>
 
                 <Link
                   href={`/outreach/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&company=${encodeURIComponent(selectedContact.company)}`}
-                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-100 text-zinc-800 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                  className={buttonClasses('secondary', 'md', 'flex-1')}
                 >
-                  <Mail className="w-3.5 h-3.5 text-zinc-600" />
-                  <span>Draft Email</span>
+                  <Mail className="size-4 text-fg-secondary" aria-hidden />
+                  <span>Draft email</span>
                 </Link>
               </div>
 
               {/* Prospect Dossier Grid */}
-              <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2.5">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 block">
-                  CONTACT SPECIFICATIONS
-                </span>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+              <section className="rounded-lg border border-line p-4 space-y-3">
+                <h3 className="text-h3 text-fg">Details</h3>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-[10px] text-zinc-400 block">Direct Phone:</span>
-                    <span className="font-mono font-bold text-zinc-900">{selectedContact.phone}</span>
+                    <span className="text-caption text-fg-tertiary block">Phone</span>
+                    <span className="font-mono text-small text-fg">{selectedContact.phone}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-caption text-fg-tertiary block">Email</span>
+                    <span className="font-mono text-small text-fg truncate block">{selectedContact.email}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 block">Verified Email:</span>
-                    <span className="font-mono font-bold text-zinc-900 truncate block">{selectedContact.email}</span>
+                    <span className="text-caption text-fg-tertiary block">Seats</span>
+                    <span className="text-body text-fg">{selectedContact.headcount || '65 seats'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-zinc-400 block">Floor Scale:</span>
-                    <span className="text-zinc-800 font-semibold">{selectedContact.headcount || '65 seats'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block">Deal Value (USD):</span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <span className="font-mono font-bold text-zinc-500">$</span>
+                    <span className="text-caption text-fg-tertiary block">Deal value (USD)</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-fg-tertiary">$</span>
                       <input
                         type="number"
                         min={0}
@@ -1132,42 +1126,43 @@ export default function GlobalContactsManager() {
                             handleSaveDealValue(selectedContact.id, drawerDealVal);
                           }
                         }}
-                        className="w-24 px-2 py-0.5 rounded border border-zinc-300 bg-white font-mono font-bold text-zinc-950 text-xs focus:outline-none focus:border-zinc-950"
+                        aria-label="Deal value"
+                        className="focus-ring h-8 w-24 rounded-sm border border-line-strong bg-surface px-2 text-body tabular-nums text-fg"
                       />
-                      <button
-                        type="button"
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() =>
                           handleSaveDealValue(selectedContact.id, drawerDealVal)
                         }
-                        className="px-2 py-0.5 rounded bg-zinc-950 text-white text-[10px] font-bold cursor-pointer"
                       >
                         Save
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                  <div className="col-span-2 pt-1.5 border-t border-zinc-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <span className="text-[10px] text-zinc-400 block mb-1">
-                        Contact Pipeline Status:
+                  <div className="col-span-2 pt-3 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-caption text-fg-tertiary block mb-1">
+                        Status
                       </span>
                       <select
                         value={selectedContact.status || 'New Lead'}
                         onChange={(e) =>
                           handleStatusChange(selectedContact.id, e.target.value)
                         }
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-900 cursor-pointer focus:outline-none focus:border-zinc-950"
+                        className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-body text-fg cursor-pointer"
                       >
                         {availableStatusesWithCounts.map((item) => (
                           <option key={item.status} value={item.status}>
-                            🎯 {item.status}
+                            {item.status}
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </label>
 
                     <div>
-                      <span className="text-[10px] text-zinc-400 block mb-1">
-                        Assigned SDR / Agent ({canReassign ? `${role} Reassign` : 'Read-Only'}):
+                      <span className="text-caption text-fg-tertiary block mb-1">
+                        Owner{canReassign ? '' : ' (read only)'}
                       </span>
                       {canReassign ? (
                         <select
@@ -1175,33 +1170,36 @@ export default function GlobalContactsManager() {
                           onChange={(e) =>
                             handleSingleReassign(selectedContact.id, e.target.value)
                           }
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white font-mono text-xs font-bold text-zinc-900 cursor-pointer focus:outline-none focus:border-zinc-950"
+                          aria-label="Owner"
+                          className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-body text-fg cursor-pointer"
                         >
                           {uniqueReps.map((r) => (
                             <option key={r} value={r}>
-                              👤 {r}
+                              {r}
                             </option>
                           ))}
                         </select>
                       ) : (
-                        <span className="font-mono text-zinc-800 font-semibold block py-1">
-                          👤 {selectedContact.assignedRep || 'Emil Halili'}
+                        <span className="text-body text-fg block py-1.5">
+                          {selectedContact.assignedRep || 'Emil Halili'}
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1 border-t border-zinc-200">
+                {(selectedContact.website || selectedContact.linkedinUrl) && (
+                <div className="flex items-center gap-3 pt-3 border-t border-line">
                   {selectedContact.website && (
                     <a
                       href={selectedContact.website.startsWith('http') ? selectedContact.website : `https://${selectedContact.website}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"
+                      className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg hover:underline flex items-center gap-1.5"
                     >
-                      <Globe className="w-3 h-3" />
-                      <span>{selectedContact.website.replace(/^https?:\/\//, '')} ↗</span>
+                      <Globe className="size-3.5" aria-hidden />
+                      <span>{selectedContact.website.replace(/^https?:\/\//, '')}</span>
+                      <ExternalLink className="size-3" aria-hidden />
                     </a>
                   )}
                   {selectedContact.linkedinUrl && (
@@ -1209,26 +1207,28 @@ export default function GlobalContactsManager() {
                       href={selectedContact.linkedinUrl.startsWith('http') ? selectedContact.linkedinUrl : `https://${selectedContact.linkedinUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[11px] text-[#0077b5] hover:underline flex items-center gap-1 ml-auto"
+                      className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg hover:underline flex items-center gap-1.5 ml-auto"
                     >
-                      <LinkedinIcon className="w-3 h-3" />
-                      <span>LinkedIn Profile ↗</span>
+                      <LinkedinIcon className="size-3.5" />
+                      <span>LinkedIn profile</span>
+                      <ExternalLink className="size-3" aria-hidden />
                     </a>
                   )}
                 </div>
-              </div>
+                )}
+              </section>
 
               {/* DIRECT LEAD NOTES SECTION (FOR CLIENTS WITHOUT CRM) */}
-              <div className="space-y-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-zinc-900" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                      Direct Notes on Lead
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="size-4 text-fg-secondary" aria-hidden />
+                    <h3 className="text-h3 text-fg">
+                      Notes
                     </h3>
                   </div>
-                  <span className="text-[10px] text-zinc-400 font-mono">
-                    Essential for non-CRM workflows
+                  <span className="text-small text-fg-tertiary">
+                    Saved on the lead, no CRM needed
                   </span>
                 </div>
 
@@ -1239,100 +1239,98 @@ export default function GlobalContactsManager() {
                     value={newNoteInput}
                     onChange={(e) => setNewNoteInput(e.target.value)}
                     placeholder="Type an operational note on this lead (e.g. 'Confirmed budget discussion with Julian for Q4')..."
-                    className="w-full bg-zinc-50 border border-zinc-300 rounded-xl p-2.5 text-xs text-zinc-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-zinc-900 font-medium"
+                    aria-label="New note"
+                    className="focus-ring w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-body text-fg placeholder:text-fg-disabled"
                   />
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     {noteSavedToast ? (
-                      <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" /> Note saved & added to footprint!
+                      <span className="text-small text-success-fg flex items-center gap-1" role="status">
+                        <Check className="size-4" /> Note saved and added to activity
                       </span>
                     ) : (
-                      <span className="text-[10px] text-zinc-400">
-                        Notes permanently attach to lead profile & CSV exports.
+                      <span className="text-small text-fg-tertiary">
+                        Notes stay on the lead and in CSV exports.
                       </span>
                     )}
 
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="sm"
                       onClick={handleSaveNote}
                       disabled={!newNoteInput.trim()}
-                      className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      icon={<PlusCircle />}
                     >
-                      <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Save Note</span>
-                    </button>
+                      Save note
+                    </Button>
                   </div>
                 </div>
 
                 {/* Existing Persistent Notes */}
                 {selectedContact.leadNotes && (
-                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-zinc-900 text-xs leading-relaxed whitespace-pre-wrap select-text">
-                    <span className="text-[10px] font-mono font-bold text-amber-900 block mb-1">
-                      CURRENT LEAD NOTES SUMMARY:
+                  <div className="p-3 bg-subtle border border-line rounded-lg text-fg text-body whitespace-pre-wrap select-text">
+                    <span className="text-caption text-fg-tertiary block mb-1">
+                      Current notes
                     </span>
                     {selectedContact.leadNotes}
                   </div>
                 )}
-              </div>
+              </section>
 
               {/* HISTORICAL COMMUNICATION FOOTPRINT TIMELINE */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between pb-1 border-b border-zinc-200">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-emerald-600" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono">
-                      Communication Footprint History
+              <section className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-line">
+                  <div className="flex items-center gap-2">
+                    <Clock className="size-4 text-fg-secondary" aria-hidden />
+                    <h3 className="text-h3 text-fg">
+                      Activity
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                    {selectedContact.footprint ? selectedContact.footprint.length : 0} Events
-                  </span>
+                  <Badge>
+                    {selectedContact.footprint ? selectedContact.footprint.length : 0} events
+                  </Badge>
                 </div>
 
                 {/* Footprint Timeline Items */}
-                <div className="space-y-3 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-zinc-200">
+                <div className="space-y-3 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-px before:bg-line">
                   {!selectedContact.footprint || selectedContact.footprint.length === 0 ? (
-                    <p className="text-zinc-400 text-xs italic pl-7">No communication footprint recorded yet.</p>
+                    <p className="text-fg-tertiary text-small pl-8">No activity recorded yet.</p>
                   ) : (
                     selectedContact.footprint.map((fp, i) => (
-                      <div key={fp.id || i} className="relative pl-7 space-y-1">
+                      <div key={fp.id || i} className="relative pl-8 space-y-1">
                         {/* Timeline Node Icon */}
-                        <div className={`absolute left-1 top-0.5 h-4 w-4 rounded-full border-2 border-white flex items-center justify-center text-[9px] shadow-2xs ${
-                          fp.type === 'call' ? 'bg-purple-600 text-white' :
-                          fp.type === 'email' ? 'bg-blue-600 text-white' :
-                          fp.type === 'linkedin' ? 'bg-sky-600 text-white' :
-                          fp.type === 'status' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-white'
+                        <div className={`absolute left-0.5 top-2 size-5 rounded-full border border-line bg-surface flex items-center justify-center ${
+                          fp.type === 'status' ? 'text-success-fg' : 'text-fg-secondary'
                         }`}>
-                          {fp.type === 'call' ? '📞' : fp.type === 'email' ? '✉️' : fp.type === 'linkedin' ? 'in' : '📝'}
+                          {fp.type === 'call' ? <PhoneCall className="size-3" /> : fp.type === 'email' ? <Mail className="size-3" /> : fp.type === 'linkedin' ? <LinkedinIcon className="size-3" /> : <FileText className="size-3" />}
                         </div>
 
-                        <div className="p-3 bg-zinc-50 border border-zinc-200/90 rounded-xl space-y-1.5">
+                        <div className="p-3 border border-line rounded-lg space-y-1.5">
                           <div className="flex items-center justify-between flex-wrap gap-1">
-                            <span className="font-bold text-zinc-950 text-xs flex items-center gap-1.5">
+                            <span className="text-body-strong text-fg flex items-center gap-1.5">
                               <span>{fp.title}</span>
                               {fp.disposition && (
-                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+                                <Badge tone="success">
                                   {fp.disposition}
-                                </span>
+                                </Badge>
                               )}
                             </span>
-                            <span className="text-[10px] font-mono text-zinc-400">
+                            <span className="text-caption text-fg-tertiary tabular-nums">
                               {fp.timestamp}
                             </span>
                           </div>
 
-                          <p className="text-zinc-700 text-xs leading-relaxed whitespace-pre-wrap select-text">
+                          <p className="text-fg-secondary text-body whitespace-pre-wrap select-text">
                             {fp.summary}
                           </p>
 
-                          <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono pt-1 border-t border-zinc-200/60">
-                            <span>Logged by: <strong>{fp.repName}</strong></span>
+                          <div className="flex items-center justify-between text-caption text-fg-tertiary pt-1.5 border-t border-line">
+                            <span>Logged by <span className="text-fg-secondary">{fp.repName}</span></span>
                             <button
                               type="button"
                               onClick={() => copyText(fp.summary, fp.id)}
-                              className="text-zinc-500 hover:text-zinc-900 flex items-center gap-1 cursor-pointer"
+                              className="focus-ring rounded-sm text-fg-tertiary hover:text-fg flex items-center gap-1 cursor-pointer"
                             >
-                              {copiedKey === fp.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                              {copiedKey === fp.id ? <Check className="size-3 text-success-fg" /> : <Copy className="size-3" />}
                               <span>{copiedKey === fp.id ? 'Copied' : 'Copy'}</span>
                             </button>
                           </div>
@@ -1341,12 +1339,12 @@ export default function GlobalContactsManager() {
                     ))
                   )}
                 </div>
-              </div>
+              </section>
 
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Drawer>
 
       {/* CSV Import Modal (Restricted to Admins) */}
       {isCsvModalOpen && (

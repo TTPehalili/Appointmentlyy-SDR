@@ -1,47 +1,36 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Sparkles, 
-  Copy, 
-  Check, 
-  Share2, 
-  FileSpreadsheet, 
-  TrendingUp, 
-  MessageSquare, 
-  MessageSquareQuote, 
-  Zap, 
-  RotateCw, 
-  CheckCircle2, 
-  Clock, 
-  Sliders, 
-  AlertCircle, 
+import {
+  Sparkles,
+  Copy,
+  Check,
+  MessageSquare,
+  RotateCw,
   Upload,
-  ArrowRight, 
-  ChevronRight, 
-  Flame, 
-  CheckCircle, 
-  Pencil, 
-  Lightbulb, 
-  FileText,
+  ArrowRight,
+  CheckCircle,
+  Pencil,
+  Lightbulb,
   Calendar,
   Layers,
-  Eye,
-  Globe,
-  Tag,
   ShieldCheck,
-  Search,
-  ExternalLink,
   ChevronDown,
   ChevronUp,
   ThumbsUp,
   Repeat2,
-  Send,
-  MoreHorizontal,
-  Bookmark,
-  Heart
+  MoreHorizontal
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import {
+  Button,
+  IconButton,
+  PageHeader,
+  SearchInput,
+  Select,
+  Tabs,
+  Textarea
+} from '@/components/ui';
 import LinkedInVisualCard from './LinkedInVisualCard';
 import { 
   LINKEDIN_FRAMEWORKS, 
@@ -350,430 +339,203 @@ export default function LinkedInCreatorStudio() {
   });
 
   return (
-    <div className="min-h-full bg-[#f4f2ee] p-3 sm:p-5 lg:p-6 space-y-4 font-sans text-[#191919]">
-      
-      {/* ========================================================================= */}
-      {/* 1. LINKEDIN-STYLE TOP NAVIGATION BAR                                      */}
-      {/* ========================================================================= */}
-      <header className="bg-white border border-[#e0dfdc] rounded-xl p-3 px-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        
-        {/* Brand & Search/Mode */}
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-[#0a66c2] text-white flex items-center justify-center shrink-0">
-            <LinkedinIcon className="h-5 w-5 fill-current text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-[#191919] leading-tight">
-                LinkedIn Thought Leadership Studio
-              </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#ebf4fd] text-[#0a66c2] font-bold border border-[#cbe1f9]">
-                0 Em Dashes • 0 Emojis
-              </span>
-            </div>
-            <p className="text-xs text-[#666666]">
-              Synthesize high-conversion episodic posts grounded in target prospect data.
-            </p>
-          </div>
-        </div>
+    <div className="min-h-full bg-app px-4 py-6 font-sans text-fg md:px-8">
 
-        {/* LinkedIn Navigation Tabs */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 p-1 bg-[#f4f2ee] rounded-xl border border-[#e0dfdc]">
-            <button
-              onClick={() => setActiveTab('series')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'series'
-                  ? 'bg-white text-[#0a66c2] shadow-2xs'
-                  : 'text-[#666666] hover:text-[#191919]'
-              }`}
-            >
-              <TrendingUp className="h-3.5 w-3.5" />
-              <span>Episodic Series (3-Part)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('viral')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'viral'
-                  ? 'bg-white text-[#0a66c2] shadow-2xs'
-                  : 'text-[#666666] hover:text-[#191919]'
-              }`}
-            >
-              <MessageSquareQuote className="h-3.5 w-3.5" />
-              <span>Viral Comment Copilot</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('dossier')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'dossier'
-                  ? 'bg-white text-[#0a66c2] shadow-2xs'
-                  : 'text-[#666666] hover:text-[#191919]'
-              }`}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              <span>CSV Intel ({leads.length})</span>
-            </button>
-          </div>
-
-          <button
+      {/* 1. Page header + sub-view tabs */}
+      <PageHeader
+        title="LinkedIn studio"
+        description="Plan a weekly post series from your prospect data, then copy each post to LinkedIn."
+        secondaryActions={
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setIsCsvModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#e0dfdc] text-[#666666] hover:bg-[#f4f2ee] hover:text-[#191919] transition-colors text-xs font-semibold shadow-2xs"
             title="Upload CSV leads"
           >
-            <Upload className="h-3.5 w-3.5 text-[#0a66c2]" />
-            <span className="hidden sm:inline">CSV:</span>
-            <span className="font-mono text-[#0a66c2] font-bold">{csvSummary.dominantHeadcount}</span>
-          </button>
-        </div>
-      </header>
+            <Upload />
+            <span className="hidden sm:inline">Upload CSV</span>
+            <span className="text-fg-secondary">{csvSummary.dominantHeadcount}</span>
+          </Button>
+        }
+        tabs={
+          <Tabs
+            label="LinkedIn studio views"
+            value={activeTab}
+            onChange={(v) => setActiveTab(v as 'series' | 'viral' | 'dossier')}
+            items={[
+              { value: 'series', label: 'Post series' },
+              { value: 'viral', label: 'Comment copilot' },
+              { value: 'dossier', label: 'CSV intel', count: leads.length },
+            ]}
+          />
+        }
+      />
 
       {/* ========================================================================= */}
-      {/* TAB 1: AUTHENTIC LINKEDIN POST WORKBENCH (SERIES ARC)                     */}
+      {/* TAB 1: POST SERIES (editor left, series and episode planner right)       */}
       {/* ========================================================================= */}
       {activeTab === 'series' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          
-          {/* ======================================================================= */}
-          {/* LEFT RAIL: LINKEDIN PROFILE & STRATEGY CONTROLS (4 COLS)                */}
-          {/* ======================================================================= */}
-          <div className="lg:col-span-4 space-y-4">
-            
-            {/* LinkedIn Mini Profile Card */}
-            <div className="bg-white rounded-xl border border-[#e0dfdc] overflow-hidden shadow-2xs text-left">
-              <div className="h-16 bg-gradient-to-r from-[#0a66c2] via-[#004182] to-zinc-900 relative">
-                <span className="absolute top-2 right-2 text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-black/40 text-white backdrop-blur-xs">
-                  Week {currentPreset.weekNumber} of 4 Active
-                </span>
-              </div>
-              <div className="px-4 pb-4 relative pt-0">
-                <div className="h-14 w-14 rounded-full border-2 border-white bg-zinc-900 text-white -mt-7 shadow-xs overflow-hidden relative">
-                  <img
-                    src="/images/emil-halili.gif"
-                    alt="Emil Halili"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="mt-2">
-                  <h3 className="text-sm font-bold text-[#191919] flex items-center gap-1">
-                    <span>Emil Halili</span>
-                    <span className="text-[10px] text-[#666666] font-normal">• 1st</span>
-                  </h3>
-                  <p className="text-[11px] text-[#666666] leading-tight mt-0.5">
-                    CEO &amp; Founder at Appointmentlyy | AI Outbound &amp; BPO Systems
-                  </p>
-                </div>
-                <div className="mt-3 pt-3 border-t border-[#e8e8e8] text-[11px] text-[#666666] space-y-1">
-                  <div className="flex justify-between">
-                    <span>Target Audience:</span>
-                    <strong className="text-[#191919]">BPO Founders &amp; CROs</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Cadence:</span>
-                    <strong className="text-[#0a66c2]">Tue • Thu • Fri</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
 
-            {/* 4-Week Series Continuity Calendar */}
-            <div className="bg-white rounded-xl border border-[#e0dfdc] p-4 shadow-2xs space-y-2.5 text-left">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#191919] uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 text-[#0a66c2]" />
-                  <span>Series Continuity (4 Weeks)</span>
-                </span>
-                <span className="text-[10px] font-mono font-bold text-[#0a66c2] bg-[#ebf4fd] px-1.5 py-0.2 rounded">
-                  {currentPreset.episodesRange}
-                </span>
-              </div>
+          {/* Post editor and preview (8 cols) */}
+          <div className="space-y-4 lg:col-span-8">
 
-              <div className="space-y-1.5">
-                {CONTINUITY_SERIES_PRESETS.map((p) => {
-                  const isSelected = selectedPresetId === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => handleSelectWeekPreset(p.id)}
-                      className={`w-full p-2 rounded-lg border text-left transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#ebf4fd] border-[#0a66c2] text-[#0a66c2] shadow-2xs'
-                          : 'bg-white hover:bg-[#f4f2ee] border-[#e0dfdc] text-[#191919]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px] font-bold">
-                        <span className="uppercase">Week {p.weekNumber}</span>
-                        <span className="font-mono">{p.episodesRange}</span>
-                      </div>
-                      <div className="text-xs font-semibold leading-tight line-clamp-1 mt-0.5">
-                        {p.title.replace(/^Week \d+:\s*/, '')}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {currentPreset.nextPresetId && (
-                <button
-                  type="button"
-                  onClick={() => handleSelectWeekPreset(currentPreset.nextPresetId!)}
-                  className="w-full py-1.5 px-3 rounded-lg text-xs font-bold bg-[#0a66c2] hover:bg-[#004182] text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <Zap className="h-3.5 w-3.5 text-amber-300" />
-                  <span>Advance to Week {((currentPreset.weekNumber) % 4) + 1} ➔</span>
-                </button>
-              )}
-            </div>
-
-            {/* Framework & Idea Box Card */}
-            <div className="bg-white rounded-xl border border-[#e0dfdc] p-4 shadow-2xs space-y-3 text-left">
-              <div>
-                <label className="text-xs font-bold text-[#191919] uppercase tracking-wider block mb-1">
-                  1. Writing Framework
-                </label>
-                <select
-                  value={selectedFrameworkId}
-                  onChange={(e) => setSelectedFrameworkId(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] px-2.5 py-2 text-[#191919] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#0a66c2]"
-                >
-                  {LINKEDIN_FRAMEWORKS.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} [{f.tag}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-[#191919] uppercase tracking-wider block mb-1">
-                  2. Idea Box (Your Strategic Angle)
-                </label>
-                <textarea
-                  rows={3}
-                  value={customTopic}
-                  onChange={(e) => setCustomTopic(e.target.value)}
-                  placeholder="Type your raw thought, experience, or observation here..."
-                  className="w-full text-xs rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] p-2.5 text-[#191919] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#0a66c2] leading-relaxed resize-none"
-                />
-
-                <div className="flex flex-wrap gap-1 pt-1.5">
-                  {LINKEDIN_IDEA_PRESETS.slice(0, 3).map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => {
-                        setCustomTopic(preset.idea);
-                        if (preset.frameworkId) setSelectedFrameworkId(preset.frameworkId);
-                      }}
-                      className="text-[10px] px-2 py-0.5 rounded bg-[#f4f2ee] hover:bg-[#e0dfdc] text-[#666666] hover:text-[#191919] transition-colors"
-                    >
-                      💡 {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleGenerateSeries()}
-                disabled={isGeneratingSeries}
-                className="w-full py-2.5 px-4 rounded-lg bg-[#0a66c2] hover:bg-[#004182] text-white font-bold text-xs disabled:opacity-50 transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isGeneratingSeries ? (
-                  <>
-                    <RotateCw className="h-3.5 w-3.5 animate-spin text-white" />
-                    <span>Synthesizing Series...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                    <span>Synthesize 3-Post Series</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-          </div>
-
-          {/* ======================================================================= */}
-          {/* CENTER/MAIN FEED: AUTHENTIC LINKEDIN POST WORKSTATION (8 COLS)          */}
-          {/* ======================================================================= */}
-          <div className="lg:col-span-8 space-y-4">
-            
-            {/* Episode Switcher / Post Tabs (LinkedIn Feed Style) */}
-            <div className="bg-white rounded-xl border border-[#e0dfdc] p-3 shadow-2xs flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-[#666666] uppercase tracking-wider mr-1">
-                  Episode:
-                </span>
-                {seriesData.posts.map((p, idx) => {
-                  const isSelected = activeEpisodeIdx === idx;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => setActiveEpisodeIdx(idx)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-[#0a66c2] text-white shadow-2xs'
-                          : 'bg-[#f4f2ee] hover:bg-[#e0dfdc] text-[#666666]'
-                      }`}
-                    >
-                      <span>{p.dayLabel.split('•')[0].trim()}</span>
-                      <span className={`text-[10px] font-mono px-1 rounded-full ${isSelected ? 'bg-[#004182] text-white' : 'bg-[#e0dfdc] text-zinc-700'}`}>
-                        Ep {p.episodeNumber}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Master Actions */}
+            {/* Episode switcher and post actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <button
+                <span className="text-small text-fg-secondary">Episode</span>
+                <div className="inline-flex rounded-md border border-line bg-subtle p-0.5">
+                  {seriesData.posts.map((p, idx) => {
+                    const isSelected = activeEpisodeIdx === idx;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setActiveEpisodeIdx(idx)}
+                        aria-pressed={isSelected}
+                        className={`focus-ring flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-3 text-small transition-colors ${
+                          isSelected
+                            ? 'bg-surface font-medium text-fg shadow-xs'
+                            : 'text-fg-secondary hover:text-fg'
+                        }`}
+                      >
+                        <span>{p.dayLabel.split('•')[0].trim()}</span>
+                        <span className="tabular-nums text-fg-tertiary">{p.episodeNumber}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleCleanPost(activePost.id)}
-                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-[#666666] hover:text-[#191919] bg-[#f4f2ee] hover:bg-[#e0dfdc] transition-colors flex items-center gap-1"
                   title="Verify 0 em-dashes and 0 emojis"
                 >
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>{copiedKey === `cleaned-${activePost.id}` ? 'Cleaned!' : 'Audit Rules'}</span>
-                </button>
+                  {copiedKey === `cleaned-${activePost.id}` ? <Check /> : <ShieldCheck />}
+                  <span>{copiedKey === `cleaned-${activePost.id}` ? 'Cleaned' : 'Audit rules'}</span>
+                </Button>
 
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => toggleEditMode(activePost.id)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                    editingPostIds[activePost.id]
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                      : 'bg-[#f4f2ee] hover:bg-[#e0dfdc] text-[#191919]'
-                  }`}
+                  aria-pressed={!!editingPostIds[activePost.id]}
+                  className={editingPostIds[activePost.id] ? 'bg-selected' : ''}
                 >
-                  <Pencil className="h-3 w-3" />
-                  <span>{editingPostIds[activePost.id] ? 'Done' : 'Edit Post'}</span>
-                </button>
+                  <Pencil />
+                  <span>{editingPostIds[activePost.id] ? 'Done' : 'Edit post'}</span>
+                </Button>
 
-                <button
+                <Button
+                  variant="brand"
+                  size="sm"
                   onClick={() => copyToClipboard(fullPostText, `copy-main-${activePost.id}`)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#0a66c2] hover:bg-[#004182] text-white transition-colors shadow-2xs cursor-pointer"
                 >
                   {copiedKey === `copy-main-${activePost.id}` ? (
                     <>
-                      <Check className="h-3.5 w-3.5 text-emerald-300" />
-                      <span>Copied!</span>
+                      <Check />
+                      <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy />
                       <span>Copy for LinkedIn</span>
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
 
-            {/* =================================================================== */}
-            {/* THE AUTHENTIC LINKEDIN POST CARD                                   */}
-            {/* =================================================================== */}
-            <div className="bg-white rounded-xl border border-[#e0dfdc] shadow-2xs overflow-hidden text-left">
-              
-              {/* Post Header: Profile & Timestamp */}
-              <div className="p-4 pb-2 flex items-start justify-between">
+            {/* Post preview card */}
+            <div className="overflow-hidden rounded-lg border border-line bg-surface text-left shadow-xs">
+
+              {/* Author */}
+              <div className="flex items-start justify-between px-5 pb-2 pt-4">
                 <div className="flex items-start gap-3">
-                  <div className="h-12 w-12 rounded-full overflow-hidden border border-zinc-200/80 shadow-xs shrink-0 bg-zinc-100">
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-line bg-subtle">
                     <img
                       src="/images/emil-halili.gif"
                       alt="Emil Halili"
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1 leading-tight">
-                      <span className="font-bold text-sm text-[#191919] hover:text-[#0a66c2] hover:underline cursor-pointer">
-                        Emil Halili
-                      </span>
-                      <span className="text-xs text-[#666666] font-normal">• 1st</span>
-                    </div>
-                    <p className="text-xs text-[#666666] leading-snug line-clamp-1">
+                  <div className="min-w-0">
+                    <div className="text-body-strong text-fg">Emil Halili</div>
+                    <p className="line-clamp-1 text-small text-fg-secondary">
                       CEO &amp; Founder at Appointmentlyy | AI Outbound &amp; BPO Systems
                     </p>
-                    <div className="flex items-center gap-1 text-[11px] text-[#666666] mt-0.5">
-                      <span>1d • Edited</span>
-                      <span>•</span>
-                      <Globe className="h-3 w-3 text-[#666666]" />
+                    <div className="mt-0.5 flex items-center gap-1.5 text-caption text-fg-tertiary">
+                      <LinkedinIcon className="h-3 w-3 fill-current text-fg-tertiary" />
+                      <span>Post preview, episode {activePost.episodeNumber}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-[#666666]">
-                  <button className="p-1.5 rounded-full hover:bg-[#f4f2ee] transition-colors">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                </div>
+                <IconButton label="More options" size="sm">
+                  <MoreHorizontal />
+                </IconButton>
               </div>
 
-              {/* Post Content Area */}
-              <div className="px-4 py-2 text-[14px] leading-[1.45] text-[#191919]">
+              {/* Post content */}
+              <div className="px-5 py-3 text-body text-fg">
                 {editingPostIds[activePost.id] ? (
-                  /* INLINE EDIT MODE */
-                  <div className="space-y-3 p-3 bg-amber-50/50 rounded-lg border border-amber-300">
-                    <div>
-                      <label className="text-[10px] font-bold text-amber-950 uppercase block mb-1">
-                        Hook (First 2 Lines)
-                      </label>
-                      <textarea
+                  /* Inline edit mode */
+                  <div className="space-y-3 rounded-md border border-line bg-subtle p-4">
+                    <label className="block space-y-1.5">
+                      <span className="block text-small font-medium text-fg">Hook (first 2 lines)</span>
+                      <Textarea
                         rows={2}
                         value={activePost.hook}
                         onChange={(e) => handleUpdatePostField(activePost.id, 'hook', e.target.value)}
-                        className="w-full text-xs font-bold rounded border border-amber-300 p-2 bg-white text-[#191919]"
+                        className="min-h-0 font-medium"
                       />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-amber-950 uppercase block mb-1">
-                        Body Text (&lt;90 words)
-                      </label>
-                      <textarea
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="block text-small font-medium text-fg">Body (under 90 words)</span>
+                      <Textarea
                         rows={5}
                         value={activePost.body}
                         onChange={(e) => handleUpdatePostField(activePost.id, 'body', e.target.value)}
-                        className="w-full text-xs rounded border border-amber-300 p-2 bg-white text-[#191919] leading-relaxed"
+                        className="min-h-0 leading-relaxed"
                       />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-amber-950 uppercase block mb-1">
-                        CTA (Open Discussion Question)
-                      </label>
-                      <textarea
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="block text-small font-medium text-fg">Closing question</span>
+                      <Textarea
                         rows={2}
                         value={activePost.cta}
                         onChange={(e) => handleUpdatePostField(activePost.id, 'cta', e.target.value)}
-                        className="w-full text-xs font-semibold rounded border border-amber-300 p-2 bg-white text-[#0a66c2]"
+                        className="min-h-0"
                       />
-                    </div>
+                    </label>
                     <div className="flex justify-end">
-                      <button
-                        onClick={() => toggleEditMode(activePost.id)}
-                        className="px-3 py-1 rounded bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
-                      >
-                        ✓ Done Editing
-                      </button>
+                      <Button variant="primary" size="sm" onClick={() => toggleEditMode(activePost.id)}>
+                        <Check />
+                        <span>Done editing</span>
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  /* AUTHENTIC LINKEDIN FEED VIEW */
+                  /* Post preview */
                   <div className="space-y-3 whitespace-pre-line font-sans">
-                    <div className="font-bold text-[#191919] text-[15px] leading-snug">
+                    <div className="text-h3 text-fg">
                       {activePost.hook}
                     </div>
 
-                    <div className="text-[#191919] text-[14px] leading-relaxed">
+                    <div className="text-body leading-relaxed text-fg">
                       {activePost.body}
                     </div>
 
-                    <div className="text-[#191919] font-medium text-[14px]">
+                    <div className="text-body font-medium text-fg">
                       {activePost.cta}
                     </div>
 
-                    <div className="text-[#0a66c2] font-semibold text-[13px] space-x-1.5 pt-1">
+                    <div className="space-x-1.5 pt-1 text-small text-fg-secondary">
                       {activePost.hashtags.map((tag, tIdx) => (
-                        <span key={tIdx} className="hover:underline cursor-pointer">
+                        <span key={tIdx}>
                           {tag}
                         </span>
                       ))}
@@ -782,23 +544,25 @@ export default function LinkedInCreatorStudio() {
                 )}
               </div>
 
-              {/* Media Attachment / Photo or Graphic */}
-              <div className="mt-3 border-t border-[#e8e8e8] bg-[#f9fafb]">
-                <div className="p-2 px-4 flex items-center justify-between text-xs text-[#666666] bg-[#f4f2ee] border-b border-[#e8e8e8]">
-                  <span className="font-semibold flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5 text-[#0a66c2]" />
-                    <span>Media Attachment: {showVisualStudio ? 'Visual Studio Open' : 'Graphic Card Preview'}</span>
+              {/* Media attachment */}
+              <div className="mt-2 border-t border-line">
+                <div className="flex items-center justify-between gap-3 px-5 py-2">
+                  <span className="flex items-center gap-1.5 text-small text-fg-secondary">
+                    <Layers className="h-4 w-4 text-fg-secondary" />
+                    <span>Image: {showVisualStudio ? 'photo and prompt studio' : 'graphic card preview'}</span>
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowVisualStudio(!showVisualStudio)}
-                    className="text-xs font-bold text-[#0a66c2] hover:underline cursor-pointer"
                   >
-                    {showVisualStudio ? 'Hide Visual Studio ▲' : 'Open Photo & Prompt Studio ▼'}
-                  </button>
+                    <span>{showVisualStudio ? 'Hide photo and prompt studio' : 'Open photo and prompt studio'}</span>
+                    {showVisualStudio ? <ChevronUp /> : <ChevronDown />}
+                  </Button>
                 </div>
 
                 {showVisualStudio ? (
-                  <div className="p-3">
+                  <div className="border-t border-line p-4">
                     <LinkedInVisualCard
                       visualConfig={activePost.visualCard}
                       imagePrompt={activePost.imagePrompt}
@@ -814,20 +578,20 @@ export default function LinkedInCreatorStudio() {
                     />
                   </div>
                 ) : (
-                  /* Compact Clean LinkedIn Image Preview */
-                  <div className="p-4 flex items-center justify-center bg-zinc-950 text-white rounded-b-none min-h-[160px] relative overflow-hidden">
-                    <div className="max-w-md text-center space-y-1.5 p-3">
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold block">
+                  /* Compact graphic card preview (the image itself is dark) */
+                  <div className="relative flex min-h-[160px] items-center justify-center overflow-hidden bg-inverse p-4 text-ink-50">
+                    <div className="max-w-md space-y-1.5 p-3 text-center">
+                      <span className="block text-caption text-ink-400">
                         {activePost.visualCard?.tag || `EPISODE ${activePost.episodeNumber}`}
                       </span>
-                      <h4 className="text-base font-extrabold tracking-tight text-white leading-tight">
+                      <h4 className="text-h3 text-ink-50">
                         {activePost.visualCard?.headline || activePost.title}
                       </h4>
-                      <p className="text-xs text-zinc-300 line-clamp-2">
+                      <p className="line-clamp-2 text-small text-ink-400">
                         {activePost.visualCard?.subheadline || activePost.hook}
                       </p>
                       {activePost.visualCard?.metric && (
-                        <div className="text-xl font-black font-mono text-emerald-400 pt-1">
+                        <div className="pt-1 text-h2 tabular-nums text-ink-50">
                           {activePost.visualCard.metric}
                         </div>
                       )}
@@ -836,101 +600,83 @@ export default function LinkedInCreatorStudio() {
                 )}
               </div>
 
-              {/* Social Reaction Counts Bar */}
-              <div className="px-4 py-2 border-b border-[#e8e8e8] flex items-center justify-between text-xs text-[#666666]">
-                <div className="flex items-center gap-1.5">
-                  <div className="flex items-center -space-x-1">
-                    <span className="h-4 w-4 rounded-full bg-[#0a66c2] text-white flex items-center justify-center text-[9px]">👍</span>
-                    <span className="h-4 w-4 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px]">👏</span>
-                    <span className="h-4 w-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[9px]">❤️</span>
-                  </div>
-                  <span className="hover:text-[#0a66c2] hover:underline cursor-pointer">1,842</span>
-                </div>
-                <div className="flex items-center gap-3 text-[11px]">
-                  <span className="hover:text-[#0a66c2] hover:underline cursor-pointer">89 comments</span>
-                  <span>•</span>
-                  <span className="hover:text-[#0a66c2] hover:underline cursor-pointer">42 reposts</span>
-                </div>
-              </div>
-
-              {/* Authentic Action Buttons Bar */}
-              <div className="px-2 py-1 border-b border-[#e8e8e8] grid grid-cols-4 gap-1 text-[#666666]">
-                <button className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg hover:bg-[#f4f2ee] transition-colors text-xs font-semibold">
-                  <ThumbsUp className="h-4 w-4" />
+              {/* Post action row */}
+              <div className="grid grid-cols-4 gap-1 border-t border-line px-2 py-1">
+                <Button variant="ghost" size="sm">
+                  <ThumbsUp />
                   <span>Like</span>
-                </button>
-                <button 
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setShowInjectedComments(!showInjectedComments)}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg hover:bg-[#f4f2ee] transition-colors text-xs font-semibold text-[#0a66c2]"
+                  aria-expanded={showInjectedComments}
+                  className="text-fg"
                 >
-                  <MessageSquare className="h-4 w-4" />
+                  <MessageSquare />
                   <span>Comment (3)</span>
-                </button>
-                <button className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg hover:bg-[#f4f2ee] transition-colors text-xs font-semibold">
-                  <Repeat2 className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm">
+                  <Repeat2 />
                   <span>Repost</span>
-                </button>
-                <button 
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => copyToClipboard(fullPostText, `copy-btn-${activePost.id}`)}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg hover:bg-[#f4f2ee] transition-colors text-xs font-semibold text-[#191919]"
+                  className="text-fg"
                 >
-                  <Send className="h-4 w-4" />
-                  <span>{copiedKey === `copy-btn-${activePost.id}` ? 'Copied!' : 'Copy'}</span>
-                </button>
+                  {copiedKey === `copy-btn-${activePost.id}` ? <Check /> : <Copy />}
+                  <span>{copiedKey === `copy-btn-${activePost.id}` ? 'Copied' : 'Copy'}</span>
+                </Button>
               </div>
 
-              {/* =================================================================== */}
-              {/* AUTHENTIC LINKEDIN COMMENTS THREAD (THE 3 INJECTED COMMENTS)        */}
-              {/* =================================================================== */}
+              {/* Author comments to post right after publishing */}
               {showInjectedComments && (
-                <div className="p-4 bg-[#f9fafb] space-y-3 border-t border-[#e8e8e8]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#191919] uppercase tracking-wider flex items-center gap-1.5">
-                      <Flame className="h-3.5 w-3.5 text-rose-500" />
-                      <span>Injected Comments Thread (Post Immediately After Dropping)</span>
+                <div className="space-y-3 border-t border-line px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-body-strong text-fg">
+                      <MessageSquare className="h-4 w-4 text-fg-secondary" />
+                      <span>Your first comments: post right after publishing</span>
                     </span>
-                    <span className="text-[10px] font-mono text-[#666666] bg-white px-2 py-0.5 rounded border border-[#e0dfdc]">
-                      0 Emojis • 0 Em Dashes
+                    <span className="text-small text-fg-tertiary">
+                      No emojis or em dashes
                     </span>
                   </div>
 
                   <div className="space-y-2.5 pt-1">
                     {activePost.injectedComments.map((comment, cIdx) => (
                       <div key={cIdx} className="flex items-start gap-2.5">
-                        <div className="h-8 w-8 rounded-full overflow-hidden border border-zinc-200/80 shadow-2xs shrink-0 mt-0.5 bg-zinc-100">
+                        <div className="mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded-full border border-line bg-subtle">
                           <img
                             src="/images/emil-halili.gif"
                             alt="Emil Halili"
-                            className="w-full h-full object-cover"
+                            className="h-full w-full object-cover"
                           />
                         </div>
-                        <div className="flex-1 bg-[#f2f2f2] hover:bg-[#e8e8e8]/70 transition-colors p-3 rounded-2xl rounded-tl-xs space-y-1">
-                          <div className="flex items-center justify-between">
+                        <div className="flex-1 space-y-1 rounded-lg border border-line bg-subtle p-3">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-[#191919]">Emil Halili</span>
-                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#ebf4fd] text-[#0a66c2] font-bold">
-                                Author
-                              </span>
+                              <span className="text-small font-medium text-fg">Emil Halili</span>
+                              <span className="text-caption text-fg-tertiary">Author</span>
                             </div>
-                            <span className="text-[10px] text-[#666666]">
+                            <span className="text-caption text-fg-tertiary">
                               {cIdx === 0 ? 'Comment 1 (Sacred Cow)' : cIdx === 1 ? 'Comment 2 (Debate Flame)' : 'Comment 3 (Excuse Shredder)'}
                             </span>
                           </div>
-                          <p className="text-xs text-[#191919] leading-snug">
+                          <p className="text-small leading-snug text-fg">
                             {comment}
                           </p>
-                          <div className="flex items-center justify-between pt-1 text-[11px] text-[#666666]">
-                            <div className="flex items-center gap-2">
-                              <span className="hover:text-[#0a66c2] cursor-pointer">Like</span>
-                              <span>•</span>
-                              <span className="hover:text-[#0a66c2] cursor-pointer">Reply</span>
-                            </div>
-                            <button
+                          <div className="flex justify-end pt-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => copyToClipboard(comment, `feed-cmt-${cIdx}`)}
-                              className="text-[10px] font-bold text-[#0a66c2] hover:underline flex items-center gap-1 cursor-pointer"
+                              className="h-7 px-2"
                             >
-                              {copiedKey === `feed-cmt-${cIdx}` ? '✓ Copied' : 'Copy Comment'}
-                            </button>
+                              {copiedKey === `feed-cmt-${cIdx}` ? <Check /> : <Copy />}
+                              <span>{copiedKey === `feed-cmt-${cIdx}` ? 'Copied' : 'Copy comment'}</span>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -940,54 +686,195 @@ export default function LinkedInCreatorStudio() {
               )}
 
             </div>
-
           </div>
+
+          {/* Series and episode planner (4 cols) */}
+          <aside className="space-y-4 lg:col-span-4">
+
+            {/* Series summary */}
+            <div className="rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-h3 text-fg">Series plan</h2>
+                <span className="text-small tabular-nums text-fg-secondary">
+                  Week {currentPreset.weekNumber} of 4
+                </span>
+              </div>
+              <dl className="mt-3 space-y-1.5 text-small">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-fg-secondary">Audience</dt>
+                  <dd className="text-right text-fg">BPO Founders &amp; CROs</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-fg-secondary">Cadence</dt>
+                  <dd className="text-right text-fg">Tue, Thu, Fri</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-fg-secondary">This week</dt>
+                  <dd className="text-right tabular-nums text-fg">{currentPreset.episodesRange}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* 4-week series */}
+            <div className="space-y-3 rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-fg-secondary" />
+                <h2 className="text-h3 text-fg">4-week series</h2>
+              </div>
+
+              <div className="space-y-1.5">
+                {CONTINUITY_SERIES_PRESETS.map((p) => {
+                  const isSelected = selectedPresetId === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectWeekPreset(p.id)}
+                      aria-pressed={isSelected}
+                      className={`focus-ring w-full cursor-pointer rounded-md border px-3 py-2 text-left transition-colors ${
+                        isSelected
+                          ? 'border-line-strong bg-selected text-fg'
+                          : 'border-line bg-surface text-fg hover:bg-subtle'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-caption text-fg-tertiary">
+                        <span>Week {p.weekNumber}</span>
+                        <span className="tabular-nums">{p.episodesRange}</span>
+                      </div>
+                      <div className="mt-0.5 line-clamp-1 text-small font-medium">
+                        {p.title.replace(/^Week \d+:\s*/, '')}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {currentPreset.nextPresetId && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleSelectWeekPreset(currentPreset.nextPresetId!)}
+                  className="w-full"
+                >
+                  <span>Advance to week {((currentPreset.weekNumber) % 4) + 1}</span>
+                  <ArrowRight />
+                </Button>
+              )}
+            </div>
+
+            {/* Framework & idea box */}
+            <div className="space-y-4 rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
+              <label className="block space-y-1.5">
+                <span className="block text-small font-medium text-fg">Writing framework</span>
+                <Select
+                  value={selectedFrameworkId}
+                  onChange={(e) => setSelectedFrameworkId(e.target.value)}
+                >
+                  {LINKEDIN_FRAMEWORKS.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} [{f.tag}]
+                    </option>
+                  ))}
+                </Select>
+              </label>
+
+              <div className="space-y-1.5">
+                <label htmlFor="linkedin-idea-box" className="block text-small font-medium text-fg">
+                  Your angle
+                </label>
+                <Textarea
+                  id="linkedin-idea-box"
+                  rows={3}
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  placeholder="Type your raw thought, experience, or observation here..."
+                  className="resize-none text-small leading-relaxed"
+                />
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {LINKEDIN_IDEA_PRESETS.slice(0, 3).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setCustomTopic(preset.idea);
+                        if (preset.frameworkId) setSelectedFrameworkId(preset.frameworkId);
+                      }}
+                      className="focus-ring inline-flex cursor-pointer items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-caption text-fg-secondary transition-colors hover:bg-subtle hover:text-fg"
+                    >
+                      <Lightbulb className="h-3 w-3" />
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                variant="primary"
+                onClick={() => handleGenerateSeries()}
+                disabled={isGeneratingSeries}
+                className="w-full"
+              >
+                {isGeneratingSeries ? (
+                  <>
+                    <RotateCw className="animate-spin" />
+                    <span>Writing series...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles />
+                    <span>Write 3-post series</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
+          </aside>
 
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: VIRAL COMMENT COPILOT (LINKEDIN NOTIFICATION/ENGAGEMENT STYLE)     */}
+      {/* TAB 2: VIRAL COMMENT COPILOT                                              */}
       {/* ========================================================================= */}
       {activeTab === 'viral' && (
-        <div className="space-y-4 max-w-5xl mx-auto">
-          
-          {/* Post Input Box */}
-          <div className="bg-white rounded-xl border border-[#e0dfdc] p-5 shadow-2xs space-y-3 text-left">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-[#191919] flex items-center gap-1.5">
-                  <MessageSquareQuote className="h-4 w-4 text-[#0a66c2]" />
-                  <span>Viral Post Comment Copilot</span>
-                </h2>
-                <p className="text-xs text-[#666666]">
-                  Paste any viral post from an influencer, buyer, or competitor. Gemini drafts short, thoughtful comments you can post manually on LinkedIn. Strictly zero em dashes and zero emojis.
+        <div className="mx-auto max-w-5xl space-y-4">
+
+          {/* Post input */}
+          <div className="space-y-3 rounded-lg border border-line bg-surface p-5 text-left shadow-xs">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-h3 text-fg">Comment copilot</h2>
+                <p className="mt-0.5 max-w-[80ch] text-small text-fg-secondary">
+                  Paste a popular post from an influencer, buyer or competitor. AI drafts short, thoughtful comments you can post on LinkedIn yourself.
                 </p>
               </div>
-              <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
-                &lt;42 Words • 0 Em Dashes • 0 Emojis
+              <span className="text-small text-fg-tertiary">
+                Under 42 words, no emojis or em dashes
               </span>
             </div>
 
-            <textarea
+            <Textarea
               rows={4}
               value={viralPostInput}
               onChange={(e) => setViralPostInput(e.target.value)}
               placeholder="Paste viral LinkedIn post text here..."
-              className="w-full text-xs rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] p-3 text-[#191919] focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#0a66c2] leading-relaxed resize-none"
+              className="resize-none leading-relaxed"
             />
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <div className="flex flex-col justify-between gap-3 pt-1 sm:flex-row sm:items-center">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-semibold text-[#666666]">Angle:</span>
+                <span className="mr-1 text-small text-fg-secondary">Angle</span>
                 {['All', 'Counter-Perspective', 'Consultative Question', 'Frontline Operator', 'Punchy 20-Word'].map((angle) => (
                   <button
                     key={angle}
+                    type="button"
                     onClick={() => setSelectedAngle(angle)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    aria-pressed={selectedAngle === angle}
+                    className={`focus-ring cursor-pointer rounded-full border px-2.5 py-1 text-small transition-colors ${
                       selectedAngle === angle
-                        ? 'bg-[#0a66c2] text-white'
-                        : 'bg-[#f4f2ee] text-[#666666] hover:bg-[#e0dfdc]'
+                        ? 'border-action bg-action text-action-fg'
+                        : 'border-line bg-surface text-fg-secondary hover:bg-subtle hover:text-fg'
                     }`}
                   >
                     {angle}
@@ -995,159 +882,158 @@ export default function LinkedInCreatorStudio() {
                 ))}
               </div>
 
-              <button
+              <Button
+                variant="brand"
                 onClick={handleGenerateViralComments}
                 disabled={isGeneratingComments || !viralPostInput.trim()}
-                className="px-4 py-2 rounded-lg bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-bold disabled:opacity-50 transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 {isGeneratingComments ? (
                   <>
-                    <RotateCw className="h-3.5 w-3.5 animate-spin" />
+                    <RotateCw className="animate-spin" />
                     <span>Analyzing...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                    <span>Draft Engagement Comments</span>
+                    <Sparkles />
+                    <span>Draft comments</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           </div>
 
-          {/* Drafted Comments Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
+          {/* Drafted comments */}
+          <div className="grid grid-cols-1 gap-3 text-left md:grid-cols-2">
             {viralComments.map((draft) => (
               <div
                 key={draft.id}
-                className="bg-white rounded-xl border border-[#e0dfdc] p-4 shadow-2xs flex flex-col justify-between space-y-2.5 hover:border-[#0a66c2]/50 transition-colors"
+                className="flex flex-col justify-between space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs"
               >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#ebf4fd] text-[#0a66c2]">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">
                       {draft.angle}
                     </span>
-                    <span className="text-[10px] font-mono text-[#666666]">
+                    <span className="text-small tabular-nums text-fg-tertiary">
                       {draft.wordCount} words
                     </span>
                   </div>
 
-                  <p className="text-xs text-[#191919] leading-relaxed bg-[#f4f2ee] p-3 rounded-xl border border-[#e0dfdc]">
-                    "{draft.comment}"
+                  <p className="rounded-md border border-line bg-subtle p-3 text-small leading-relaxed text-fg">
+                    &ldquo;{draft.comment}&rdquo;
                   </p>
 
-                  <p className="text-[10px] text-[#666666] font-mono">
-                    Strategic Intent: {draft.intent}
+                  <p className="text-small text-fg-secondary">
+                    Intent: {draft.intent}
                   </p>
                 </div>
 
-                <div className="pt-2 border-t border-[#e8e8e8] flex items-center justify-between">
-                  <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                    <CheckCircle className="h-3 w-3" />
-                    Clean: 0 emojis, 0 em dashes
+                <div className="flex items-center justify-between border-t border-line pt-3">
+                  <span className="flex items-center gap-1 text-small text-fg-tertiary">
+                    <CheckCircle className="h-3.5 w-3.5 text-success-fg" />
+                    No emojis or em dashes
                   </span>
 
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => copyToClipboard(draft.comment, draft.id)}
-                    className="px-3 py-1.5 rounded-lg bg-[#0a66c2] text-white text-xs font-bold hover:bg-[#004182] transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
                   >
                     {copiedKey === draft.id ? (
                       <>
-                        <Check className="h-3 w-3 text-emerald-300" />
-                        <span>Copied!</span>
+                        <Check />
+                        <span>Copied</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="h-3 w-3" />
-                        <span>Copy Comment</span>
+                        <Copy />
+                        <span>Copy comment</span>
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Stage 3: Thread Conversation Accelerator */}
-          <div className="bg-white rounded-xl border border-[#e0dfdc] p-5 shadow-2xs space-y-3 text-left">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-[#191919]">
-                  Thread Conversation &amp; Relationship Accelerator
+          {/* Thread follow-ups */}
+          <div className="space-y-3 rounded-lg border border-line bg-surface p-5 text-left shadow-xs">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-h3 text-fg">
+                  Thread follow-ups
                 </h3>
-                <p className="text-xs text-[#666666]">
-                  When the author or prospect replies, generate 3 sequential follow-up stages to build rapport.
+                <p className="mt-0.5 text-small text-fg-secondary">
+                  When the author or prospect replies, draft 3 follow-up replies to build rapport.
                 </p>
               </div>
-              <span className="text-[10px] font-mono bg-[#f4f2ee] text-[#666666] px-2 py-0.5 rounded">
-                &lt;35 Words • 0 Emojis
+              <span className="text-small text-fg-tertiary">
+                Under 35 words, no emojis
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[11px] font-semibold text-[#666666] block mb-1">
-                  1. Your Initial Comment:
-                </label>
-                <textarea
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="block space-y-1.5">
+                <span className="block text-small font-medium text-fg">Your first comment</span>
+                <Textarea
                   rows={2}
                   value={previousCommentInput}
                   onChange={(e) => setPreviousCommentInput(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] p-2 text-[#191919] resize-none"
+                  className="min-h-0 resize-none text-small"
                 />
-              </div>
+              </label>
 
-              <div>
-                <label className="text-[11px] font-semibold text-[#666666] block mb-1">
-                  2. Author's Response:
-                </label>
-                <textarea
+              <label className="block space-y-1.5">
+                <span className="block text-small font-medium text-fg">Author&apos;s reply</span>
+                <Textarea
                   rows={2}
                   value={authorReplyInput}
                   onChange={(e) => setAuthorReplyInput(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] p-2 text-[#191919] resize-none"
+                  className="min-h-0 resize-none text-small"
                 />
-              </div>
+              </label>
             </div>
 
             <div className="flex justify-end pt-1">
-              <button
+              <Button
+                variant="secondary"
                 onClick={handleGenerateThreadReplies}
                 disabled={isGeneratingThreadReplies || !authorReplyInput.trim()}
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 {isGeneratingThreadReplies ? (
                   <>
-                    <RotateCw className="h-3 w-3 animate-spin" />
-                    <span>Generating Follow-ups...</span>
+                    <RotateCw className="animate-spin" />
+                    <span>Drafting follow-ups...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-3 w-3 text-emerald-200" />
-                    <span>Generate Thread Follow-ups</span>
+                    <Sparkles />
+                    <span>Draft follow-ups</span>
                   </>
                 )}
-              </button>
+              </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+            <div className="grid grid-cols-1 gap-3 pt-2 md:grid-cols-3">
               {threadReplies.map((r) => (
-                <div key={r.id} className="p-3 bg-[#f4f2ee] rounded-xl border border-[#e0dfdc] space-y-1.5 flex flex-col justify-between">
+                <div key={r.id} className="flex flex-col justify-between space-y-2 rounded-md border border-line bg-subtle p-3">
                   <div>
-                    <div className="flex justify-between text-[10px] font-mono">
-                      <strong className="text-[#0a66c2] uppercase">{r.stage}</strong>
-                      <span className="text-[#666666]">{r.wordCount}w</span>
+                    <div className="flex justify-between gap-2 text-small">
+                      <span className="font-medium text-fg">{r.stage}</span>
+                      <span className="tabular-nums text-fg-tertiary">{r.wordCount} words</span>
                     </div>
-                    <p className="text-xs text-[#191919] leading-snug mt-1">"{r.reply}"</p>
+                    <p className="mt-1 text-small leading-snug text-fg">&ldquo;{r.reply}&rdquo;</p>
                   </div>
-                  <div className="pt-2 border-t border-[#e0dfdc] flex justify-between items-center text-[10px]">
-                    <span className="text-[#666666]">{r.strategicGoal}</span>
-                    <button
+                  <div className="flex items-center justify-between gap-2 border-t border-line pt-2 text-small">
+                    <span className="text-fg-secondary">{r.strategicGoal}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => copyToClipboard(r.reply, r.id)}
-                      className="text-[#0a66c2] font-bold hover:underline"
+                      className="h-7 px-2"
                     >
                       {copiedKey === r.id ? 'Copied' : 'Copy'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -1158,68 +1044,66 @@ export default function LinkedInCreatorStudio() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: CSV PROSPECT INTELLIGENCE DOSSIER                                   */}
+      {/* TAB 3: CSV PROSPECT INTELLIGENCE                                           */}
       {/* ========================================================================= */}
       {activeTab === 'dossier' && (
-        <div className="space-y-4 max-w-5xl mx-auto text-left">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-white border border-[#e0dfdc] shadow-2xs">
-              <span className="text-[10px] font-mono uppercase text-[#666666]">Accounts Analyzed</span>
-              <div className="text-xl font-bold text-[#191919] mt-0.5">{csvSummary.totalLeads}</div>
+        <div className="mx-auto max-w-5xl space-y-4 text-left">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
+              <span className="text-caption text-fg-tertiary">Accounts analyzed</span>
+              <div className="mt-1 text-kpi tabular-nums text-fg">{csvSummary.totalLeads}</div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#e0dfdc] shadow-2xs">
-              <span className="text-[10px] font-mono uppercase text-[#666666]">Dominant Segment</span>
-              <div className="text-base font-bold text-[#191919] mt-0.5">{csvSummary.dominantHeadcount}</div>
+            <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
+              <span className="text-caption text-fg-tertiary">Main segment</span>
+              <div className="mt-1 text-body-strong text-fg">{csvSummary.dominantHeadcount}</div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#e0dfdc] shadow-2xs">
-              <span className="text-[10px] font-mono uppercase text-[#666666]">Primary Bottleneck</span>
-              <div className="text-xs font-bold text-rose-600 mt-0.5 line-clamp-1">{csvSummary.topPainPoints[0]}</div>
+            <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
+              <span className="text-caption text-fg-tertiary">Top pain point</span>
+              <div className="mt-1 line-clamp-1 text-body-strong text-fg">{csvSummary.topPainPoints[0]}</div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#e0dfdc] shadow-2xs">
-              <span className="text-[10px] font-mono uppercase text-[#666666]">Incumbent Competitor</span>
-              <div className="text-xs font-bold text-[#191919] mt-0.5">{csvSummary.topCompetitors[0]}</div>
+            <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
+              <span className="text-caption text-fg-tertiary">Main competitor</span>
+              <div className="mt-1 text-body-strong text-fg">{csvSummary.topCompetitors[0]}</div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-[#e0dfdc] p-4 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-[#191919] uppercase tracking-wider">
-                Target Accounts Grounding ({leads.length} accounts)
+          <div className="space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-h3 text-fg">
+                Target accounts <span className="text-small font-normal tabular-nums text-fg-tertiary">{leads.length}</span>
               </h3>
-              <div className="relative">
-                <Search className="h-3 w-3 text-[#666666] absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
+              <div className="w-64">
+                <SearchInput
                   value={csvSearchTerm}
                   onChange={(e) => setCsvSearchTerm(e.target.value)}
                   placeholder="Search leads..."
-                  className="text-xs py-1 pl-7 pr-2.5 rounded-lg border border-[#e0dfdc] bg-[#f4f2ee] text-[#191919]"
+                  className="h-8"
                 />
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-[#e0dfdc] rounded-lg">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#f4f2ee] border-b border-[#e0dfdc] text-[#666666] font-semibold text-[10px] uppercase">
+            <div className="overflow-x-auto rounded-md border border-line">
+              <table className="w-full text-left text-small">
+                <thead className="bg-subtle text-caption text-fg-tertiary">
                   <tr>
-                    <th className="p-2.5">Contact</th>
-                    <th className="p-2.5">Company</th>
-                    <th className="p-2.5">Seats</th>
-                    <th className="p-2.5">Identified Friction</th>
-                    <th className="p-2.5">Tech</th>
+                    <th className="px-3 py-2 font-medium">Contact</th>
+                    <th className="px-3 py-2 font-medium">Company</th>
+                    <th className="px-3 py-2 font-medium">Seats</th>
+                    <th className="px-3 py-2 font-medium">Pain point</th>
+                    <th className="px-3 py-2 font-medium">Tech</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#e0dfdc]">
+                <tbody>
                   {filteredLeads.slice(0, 10).map((l, idx) => (
-                    <tr key={idx} className="hover:bg-[#f4f2ee]/50">
-                      <td className="p-2.5 font-medium text-[#191919]">
+                    <tr key={idx} className="border-t border-line hover:bg-subtle">
+                      <td className="px-3 py-2.5 font-medium text-fg">
                         {l.name}
-                        <div className="text-[10px] text-[#666666] font-normal">{l.title}</div>
+                        <div className="text-caption font-normal text-fg-tertiary">{l.title}</div>
                       </td>
-                      <td className="p-2.5 font-medium">{l.company}</td>
-                      <td className="p-2.5 font-mono text-[11px]">{l.headcount}</td>
-                      <td className="p-2.5 text-rose-700 font-medium">{l.painPoint}</td>
-                      <td className="p-2.5 text-[#666666] font-mono text-[11px]">{l.techStack}</td>
+                      <td className="px-3 py-2.5 text-fg">{l.company}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-fg-secondary">{l.headcount}</td>
+                      <td className="px-3 py-2.5 text-fg-secondary">{l.painPoint}</td>
+                      <td className="px-3 py-2.5 text-fg-secondary">{l.techStack}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Radio
 } from 'lucide-react';
+import { buttonClasses, Kbd } from '@/components/ui';
 
 interface TopUtilityBarProps {
   campaign: string;
@@ -29,130 +30,127 @@ export default function TopUtilityBar({
   onOpenShortcuts
 }: TopUtilityBarProps) {
   return (
-    <header className="h-12 border-b border-slate-200 bg-white px-4 flex items-center justify-between shrink-0 z-30 select-none shadow-2xs">
-      
+    <header className="z-30 flex h-12 shrink-0 select-none items-center justify-between border-b border-line bg-surface px-4">
+
       {/* =======================================================================
-          LEFT: TOOL BRANDING (BORIS // BPO OUTBOUND ENGINE) + MVP v1.0 BADGE
+          LEFT: TOOL BRANDING + VERSION
           ======================================================================= */}
       <div className="flex items-center gap-3">
-        <div className="h-7 w-7 rounded-lg bg-[#ED1C24] flex items-center justify-center text-white font-black text-xs shadow-xs">
-          B
-        </div>
         <div className="flex items-center gap-2">
-          <span className="font-extrabold text-[13px] tracking-tight text-slate-900">
-            BORIS // BPO OUTBOUND ENGINE
+          <span className="text-body-strong text-fg">
+            Boris outbound engine
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono font-semibold">
+          <span className="text-caption text-fg-tertiary">
             MVP v1.0
           </span>
         </div>
 
-        <div className="h-4 w-[1px] bg-slate-200 mx-1" />
+        <div className="mx-1 h-4 w-px bg-line" />
 
         {/* Clean Rep Navigation Switchers */}
-        <nav className="flex items-center gap-1 text-xs font-semibold">
-          <span className="px-2.5 py-1 rounded-md bg-[#ED1C24]/10 text-[#ED1C24] font-bold border border-[#ED1C24]/20/80 shadow-2xs flex items-center gap-1.5">
-            <Radio className="h-3 w-3 text-[#ED1C24]" />
+        <nav className="flex items-center gap-1 text-small font-medium">
+          <span className="flex h-7 items-center gap-1.5 rounded-sm bg-subtle px-2.5 text-fg">
+            <Radio className="size-3.5 text-brand-text" />
             <span>Cockpit</span>
           </span>
           <Link
             href="/practice"
-            className="px-2.5 py-1 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1.5"
+            className="focus-ring flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-fg-secondary transition-colors duration-150 hover:bg-subtle hover:text-fg"
           >
-            <Swords className="h-3 w-3 text-slate-400" />
-            <span>Sparring Arena</span>
+            <Swords className="size-3.5 text-fg-secondary" />
+            <span>Practice</span>
           </Link>
           <Link
             href="/certification"
-            className="px-2.5 py-1 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1.5"
+            className="focus-ring flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-fg-secondary transition-colors duration-150 hover:bg-subtle hover:text-fg"
           >
-            <Award className="h-3 w-3 text-slate-400" />
+            <Award className="size-3.5 text-fg-secondary" />
             <span>Certification</span>
           </Link>
         </nav>
       </div>
 
       {/* =======================================================================
-          CENTER: ACTIVE CAMPAIGN SELECTOR + TARGET ICP INDICATOR PILL
+          CENTER: ACTIVE CAMPAIGN SELECTOR + TARGET ICP INDICATOR
           ======================================================================= */}
-      <div className="hidden lg:flex items-center gap-2">
-        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px]">
-          <span className="text-slate-400 font-semibold uppercase text-[10px]">Campaign:</span>
+      <div className="hidden items-center gap-3 lg:flex">
+        <label className="flex h-8 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-small focus-within:border-brand-600">
+          <span className="text-fg-tertiary">Campaign</span>
           <select
             value={campaign}
             onChange={(e) => onCampaignChange(e.target.value)}
-            className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer"
+            className="cursor-pointer bg-transparent font-medium text-fg focus:outline-none"
           >
             <option value="Enterprise Outbound Q4">Enterprise Outbound Q4</option>
             <option value="Fintech Scaleups">Fintech Scaleups ($50M+ ARR)</option>
             <option value="Healthcare Systems">Enterprise Healthcare Systems</option>
           </select>
-        </div>
-        
-        <span className="text-[11px] font-mono font-medium px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200">
-          ICP: B2B Mid-Market (50-250 HC)
+        </label>
+
+        <span className="text-small text-fg-secondary">
+          ICP: B2B mid-market (50 to 250 staff)
         </span>
       </div>
 
       {/* =======================================================================
-          RIGHT: AUDIO STATUS BADGE + REP STATE + SHORTCUT TRIGGER + ADMIN LINK
+          RIGHT: AUDIO STATUS + REP STATE + SHORTCUT TRIGGER + ADMIN LINK
           ======================================================================= */}
       <div className="flex items-center gap-3">
-        {/* Real-Time Audio Status Badge */}
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
-          <span className={`h-2 w-2 rounded-full ${isListening ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-          <span className="font-semibold text-slate-700">
-            {isListening ? 'LIVE MIC: Scribe v2 • 140ms' : 'MIC STANDBY'}
-          </span>
-        </div>
+        {/* Real-Time Audio Status */}
+        <span className="inline-flex items-center gap-2 text-small text-fg" aria-live="polite">
+          <span className={`size-2 shrink-0 rounded-full ${isListening ? 'bg-success-500 animate-pulse-soft' : 'bg-fg-disabled'}`} aria-hidden />
+          <span>{isListening ? 'Mic live' : 'Mic on standby'}</span>
+        </span>
 
         {/* Rep State Toggle (On Dial / Break) */}
-        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-semibold">
+        <div className="inline-flex rounded-md border border-line bg-subtle p-0.5 text-small font-medium">
           <button
             onClick={() => onRepStatusChange('on_dial')}
-            className={`px-2 py-0.5 rounded-md transition-all ${
+            aria-pressed={repStatus === 'on_dial'}
+            className={`focus-ring h-7 rounded-[6px] px-2.5 transition-colors duration-150 ${
               repStatus === 'on_dial'
-                ? 'bg-white text-emerald-700 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-surface text-success-fg shadow-xs'
+                : 'text-fg-secondary hover:text-fg'
             }`}
           >
-            On Dial
+            On dial
           </button>
           <button
             onClick={() => onRepStatusChange('break')}
-            className={`px-2 py-0.5 rounded-md transition-all ${
+            aria-pressed={repStatus === 'break'}
+            className={`focus-ring h-7 rounded-[6px] px-2.5 transition-colors duration-150 ${
               repStatus === 'break'
-                ? 'bg-white text-amber-700 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-surface text-warning-fg shadow-xs'
+                : 'text-fg-secondary hover:text-fg'
             }`}
           >
             Break
           </button>
         </div>
 
-        {/* Keyboard Shortcut Modal Trigger (⌘K) */}
+        {/* Keyboard Shortcut Modal Trigger */}
         <button
           onClick={onOpenShortcuts}
           title="Keyboard Shortcuts (⌘K)"
-          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 text-xs font-mono"
+          className={buttonClasses('ghost', 'sm', 'px-2')}
         >
-          <Keyboard className="h-3.5 w-3.5" />
-          <span className="text-[10px]">⌘K</span>
+          <Keyboard />
+          <Kbd>⌘K</Kbd>
         </button>
 
         {/* Rep Profile & Discreet Admin Portal Switcher */}
-        <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
-          <div className="h-6 w-6 rounded-full bg-[#ED1C24]/15 text-[#ED1C24] font-bold text-[10px] flex items-center justify-center border border-[#ED1C24]/20">
+        <div className="hidden items-center gap-2 border-l border-line pl-3 sm:flex">
+          <div className="flex size-6 items-center justify-center rounded-full bg-subtle text-caption text-ink-700">
             AM
           </div>
           <Link
             href="/admin"
             title="Switch to Supervisor / Enablement Console"
-            className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[11px] font-semibold transition-colors flex items-center gap-1"
+            className={buttonClasses('ghost', 'sm', 'px-2')}
           >
-            <ShieldCheck className="h-3 w-3 text-[#ED1C24]" />
+            <ShieldCheck />
             <span className="hidden xl:inline">Admin</span>
-            <ExternalLink className="h-2.5 w-2.5 text-slate-400" />
+            <ExternalLink className="text-fg-tertiary" />
           </Link>
         </div>
       </div>

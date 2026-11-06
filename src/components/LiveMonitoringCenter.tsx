@@ -5,27 +5,21 @@ import Link from 'next/link';
 import { 
   Radio, 
   Headphones, 
-  Users, 
   Volume2, 
   VolumeX, 
-  Sparkles, 
-  Clock, 
   Send, 
   Search, 
   CheckCircle2, 
   ShieldCheck, 
   X, 
-  PhoneCall,
-  Activity,
-  MessageSquare,
-  Flame,
-  Globe,
   Play,
   Pause,
   RotateCcw,
   SkipForward,
-  Loader2
+  Loader2,
+  MessageSquareText
 } from 'lucide-react';
+import { Button, Input, PageHeader, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
 import { PERSONA_VOICE_MAP, SparringCountry } from '@/lib/personas';
 import {
   REP_VOICE_REGISTRY,
@@ -99,6 +93,9 @@ export default function LiveMonitoringCenter() {
   // Whisper coach state
   const [whisperMessage, setWhisperMessage] = useState('');
   const [whisperFeedbackSent, setWhisperFeedbackSent] = useState(false);
+  const whisperInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingWhisperFocusRef = useRef(false);
+  const [whisperFocusRequest, setWhisperFocusRequest] = useState(0);
 
   // Audio elements & memory cache
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -675,6 +672,23 @@ export default function LiveMonitoringCenter() {
     playTurn(session, 0);
   };
 
+  // Open a session in the docked panel (same as Listen) and focus the whisper input
+  const handleOpenWhisper = (session: ActiveSparringSession) => {
+    if (activeListeningSession?.id !== session.id) {
+      handleToggleListen(session);
+    }
+    pendingWhisperFocusRef.current = true;
+    setWhisperFocusRequest((n) => n + 1);
+  };
+
+  useEffect(() => {
+    const el = whisperInputRef.current;
+    if (!pendingWhisperFocusRef.current || !el) return;
+    pendingWhisperFocusRef.current = false;
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [whisperFocusRequest, activeListeningSession]);
+
   // Disconnect audio monitor
   const handleDisconnect = () => {
     if (audioElementRef.current) {
@@ -796,221 +810,149 @@ export default function LiveMonitoringCenter() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto w-full pb-16">
-      
-      {/* Header Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#222021]/10 pb-5">
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>DIALER AUDIO MONITORING BUS • 4 LIVE ELEVENLABS CHANNELS</span>
-            </div>
 
-            {/* Rep Voice Identity Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-mono font-bold">
-              <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
-              <span>
-                REP VOICE: {selectedRepAccent === 'arabic' ? 'ARABIC ACCENT (NOOR & TARIQ • V4 TURBO)' : 'FILIPINO BPO ACCENT (LOVELY & PAOLO • V4 TURBO)'}
-              </span>
-            </div>
-          </div>
+      {/* Header */}
+      <PageHeader
+        className="pb-0"
+        title="Live floor"
+        count={sessions.length}
+        description={`Listen in on live practice calls and whisper coaching to ${selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino'} reps.`}
+        secondaryActions={
+          <>
+            <Link href="/practice" className={buttonClasses('secondary', 'md')}>
+              <Headphones aria-hidden />
+              <span>Sparring Arena</span>
+            </Link>
+            <Link href="/admin" className={buttonClasses('ghost', 'md')}>
+              <ShieldCheck aria-hidden />
+              <span>Admin</span>
+            </Link>
+          </>
+        }
+      />
 
-          <h1 className="text-3xl font-black text-[#222021] tracking-tight">
-            Live Sparring Floor Monitor
-          </h1>
-          <p className="text-xs text-[#6b6968] mt-1 max-w-2xl leading-relaxed">
-            Real-time supervisor console. Demonstrate how our <strong>{selectedRepAccent === 'arabic' ? 'Arabic Accent SDR reps' : 'Filipino BPO SDR reps'}</strong> sound over the phone handling live objections against <strong>global customer accents</strong> (US, Australian, and British buyers).
-          </p>
-        </div>
-
-        {/* Rep Accent & Customer Accent Switchers */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          {/* Rep Voice Switcher Pill Bar (Arabic vs Filipino) */}
-          <div className="flex items-center gap-1 p-1 bg-white border border-[#222021]/15 rounded-xl shadow-2xs">
-            <div className="flex items-center gap-1 pl-2.5 pr-1.5 text-[11px] font-mono font-bold text-[#6b6968]">
-              <Users className="h-3.5 w-3.5 text-[#ED1C24]" />
-              <span className="hidden sm:inline">REP ACCENT:</span>
-            </div>
-
-            <button
-              onClick={() => handleRepAccentChange('arabic')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedRepAccent === 'arabic'
-                  ? 'bg-[#ED1C24] text-white shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
-              }`}
-              title="Switch Rep Voice to Arabic Accent (Dubai / Middle East Hub)"
-            >
-              <span>🇦🇪</span>
-              <span>Arabic</span>
-            </button>
-
-            <button
-              onClick={() => handleRepAccentChange('filipino')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedRepAccent === 'filipino'
-                  ? 'bg-[#ED1C24] text-white shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
-              }`}
-              title="Switch Rep Voice to Filipino Accent (Manila / Ortigas Hub)"
-            >
-              <span>🇵🇭</span>
-              <span>Filipino</span>
-            </button>
-          </div>
-          {/* Customer Accent Selector Pill Bar */}
-          <div className="flex items-center gap-1 p-1 bg-white border border-[#222021]/15 rounded-xl shadow-2xs">
-            <div className="flex items-center gap-1 pl-2.5 pr-1.5 text-[11px] font-mono font-bold text-[#6b6968]">
-              <Globe className="h-3.5 w-3.5 text-[#ED1C24]" />
-              <span className="hidden sm:inline">CUSTOMER ACCENT:</span>
-            </div>
-            
-            <button
-              onClick={() => handleCustomerAccentChange('USA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedCustomerAccent === 'USA'
-                  ? 'bg-[#222021] text-white shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
-              }`}
-              title="Switch Customer Voice to American Accent"
-            >
-              <span>🇺🇸</span>
-              <span>USA</span>
-            </button>
-
-            <button
-              onClick={() => handleCustomerAccentChange('Australia')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedCustomerAccent === 'Australia'
-                  ? 'bg-[#222021] text-white shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
-              }`}
-              title="Switch Customer Voice to Australian Accent"
-            >
-              <span>🇦🇺</span>
-              <span>Australia</span>
-            </button>
-
-            <button
-              onClick={() => handleCustomerAccentChange('UK')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                selectedCustomerAccent === 'UK'
-                  ? 'bg-[#222021] text-white shadow-2xs'
-                  : 'text-[#6b6968] hover:text-[#222021] hover:bg-[#F2F0EF]'
-              }`}
-              title="Switch Customer Voice to British Accent"
-            >
-              <span>🇬🇧</span>
-              <span>UK</span>
-            </button>
-          </div>
-
-          <Link
-            href="/practice"
-            className="px-4 py-2 rounded-xl bg-white border border-[#222021]/15 text-[#222021] hover:bg-[#F2F0EF] font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Headphones className="h-4 w-4 text-[#ED1C24]" />
-            <span>Sparring Arena</span>
-          </Link>
-          <Link
-            href="/admin"
-            className="px-4 py-2 rounded-xl bg-[#222021] hover:bg-stone-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-          >
-            <ShieldCheck className="h-4 w-4" />
-            <span>Admin Control</span>
-          </Link>
-        </div>
+      {/* Floor summary: one quiet stat line */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-small text-fg-secondary">
+        <StatusDot tone="success" live label={<span className="text-body-strong tabular-nums text-fg">{sessions.length} live</span>} />
+        <span aria-hidden className="text-fg-disabled">&middot;</span>
+        <StatusDot tone="danger" label={<span className="text-small text-fg-secondary tabular-nums">1 hostile</span>} />
+        <StatusDot tone="warning" label={<span className="text-small text-fg-secondary tabular-nums">2 skeptical</span>} />
+        <StatusDot tone="success" label={<span className="text-small text-fg-secondary tabular-nums">1 engaged</span>} />
+        <span aria-hidden className="text-fg-disabled">&middot;</span>
+        <span>
+          {selectedRepAccent === 'arabic' ? 'Arabic accent reps (Noor and Tariq)' : 'Filipino reps (Lovely and Paolo)'}
+        </span>
+        <span aria-hidden className="text-fg-disabled">&middot;</span>
+        <span>
+          Buyer accent: <span className="text-fg">{selectedCustomerAccent === 'USA' ? 'USA' : selectedCustomerAccent === 'Australia' ? 'Australia' : 'UK'}</span>
+        </span>
+        <span aria-hidden className="text-fg-disabled">&middot;</span>
+        <Tooltip content="ElevenLabs V4 Turbo voice engine, under 100 ms latency">
+          <span className="cursor-default">Voice: ElevenLabs V4</span>
+        </Tooltip>
       </div>
 
-      {/* Dialer Floor Telemetry Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase text-[#6b6968]">Active Floor Lines</span>
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-          <span className="text-2xl font-black text-emerald-600 font-mono">
-            {sessions.length} Live Calls
-          </span>
-          <p className="text-[11px] text-[#6b6968]">
-            {selectedRepAccent === 'arabic' ? '🇦🇪 Arabic Accent SDR Pod' : '🇵🇭 Filipino SDRs Sparring'}
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-          <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Customer Accent Target</span>
-          <span className="text-2xl font-black text-[#ED1C24] font-mono flex items-center gap-2">
-            <span>{selectedCustomerAccent === 'USA' ? '🇺🇸 USA' : selectedCustomerAccent === 'Australia' ? '🇦🇺 Australia' : '🇬🇧 UK'}</span>
-          </span>
-          <p className="text-[11px] text-[#6b6968]">Dynamic Persona Voice Bus</p>
-        </div>
-
-        <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-          <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Audio Stream Engine</span>
-          <span className="text-2xl font-black text-blue-600 font-mono">ElevenLabs V4</span>
-          <p className="text-[11px] text-[#6b6968]">V4 Turbo Sub-100ms Latency</p>
-        </div>
-
-        <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-          <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Floor Sentiment</span>
-          <div className="flex items-center gap-1.5 text-xs font-mono font-bold mt-1">
-            <span className="text-red-700">1 Hostile</span>
-            <span className="text-[#6b6968]">&bull;</span>
-            <span className="text-amber-700">2 Skeptical</span>
-            <span className="text-[#6b6968]">&bull;</span>
-            <span className="text-emerald-700">1 Engaged</span>
-          </div>
-          <p className="text-[11px] text-[#6b6968]">Live AI Sentiment Engine</p>
-        </div>
-      </div>
-
-      {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative flex-1 w-full sm:max-w-xl">
-          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6b6968]" />
-          <input
+      {/* Search, filters and voice settings */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-line pb-4">
+        <div className="flex-1 min-w-60 sm:max-w-sm">
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search active rep, buyer persona, or tenant BPO..."
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-white border border-[#222021]/15 text-xs font-medium placeholder-[#6b6968] text-[#222021] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#ED1C24] transition-all"
+            placeholder="Search rep, buyer or client..."
+            leadingIcon={<Search />}
+            aria-label="Search live calls"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select
+        <div className="w-48">
+          <Select
             value={sentimentFilter}
             onChange={(e) => setSentimentFilter(e.target.value as any)}
-            className="h-11 px-3.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-semibold text-[#222021] focus:outline-none shadow-2xs cursor-pointer"
+            aria-label="Buyer sentiment"
           >
-            <option value="all">All Buyer Sentiments</option>
-            <option value="Hostile">Hostile Friction</option>
-            <option value="Skeptical">Skeptical Pushback</option>
-            <option value="Engaged">Engaged / Warming Up</option>
-          </select>
+            <option value="all">All sentiments</option>
+            <option value="Hostile">Hostile</option>
+            <option value="Skeptical">Skeptical</option>
+            <option value="Engaged">Engaged</option>
+          </Select>
+        </div>
 
-          <select
+        <div className="w-52">
+          <Select
             value={tenantFilter}
             onChange={(e) => setTenantFilter(e.target.value)}
-            className="h-11 px-3.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-semibold text-[#222021] focus:outline-none shadow-2xs cursor-pointer"
+            aria-label="Client"
           >
-            <option value="all">All Client BPOs</option>
+            <option value="all">All clients</option>
             <option value="Apex Global BPO (Manila)">Apex Global (Manila)</option>
             <option value="Fintech Scaleups (Cebu)">Fintech Scaleups (Cebu)</option>
             <option value="Horizon Solar Outbound Floor">Horizon Solar</option>
             <option value="Outsource Accelerator Partner Hub">OA Partner Hub</option>
-          </select>
+          </Select>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
+          {/* Rep voice switcher (Arabic vs Filipino) */}
+          <div role="group" aria-label="Rep accent" className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5">
+            <span className="px-2 text-small text-fg-secondary">Rep</span>
+            <button
+              onClick={() => handleRepAccentChange('arabic')}
+              aria-pressed={selectedRepAccent === 'arabic'}
+              className={segmentClass(selectedRepAccent === 'arabic')}
+              title="Switch Rep Voice to Arabic Accent (Dubai / Middle East Hub)"
+            >
+              Arabic
+            </button>
+            <button
+              onClick={() => handleRepAccentChange('filipino')}
+              aria-pressed={selectedRepAccent === 'filipino'}
+              className={segmentClass(selectedRepAccent === 'filipino')}
+              title="Switch Rep Voice to Filipino Accent (Manila / Ortigas Hub)"
+            >
+              Filipino
+            </button>
+          </div>
+
+          {/* Customer accent switcher */}
+          <div role="group" aria-label="Buyer accent" className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5">
+            <span className="px-2 text-small text-fg-secondary">Buyer</span>
+            <button
+              onClick={() => handleCustomerAccentChange('USA')}
+              aria-pressed={selectedCustomerAccent === 'USA'}
+              className={segmentClass(selectedCustomerAccent === 'USA')}
+              title="Switch Customer Voice to American Accent"
+            >
+              USA
+            </button>
+            <button
+              onClick={() => handleCustomerAccentChange('Australia')}
+              aria-pressed={selectedCustomerAccent === 'Australia'}
+              className={segmentClass(selectedCustomerAccent === 'Australia')}
+              title="Switch Customer Voice to Australian Accent"
+            >
+              Australia
+            </button>
+            <button
+              onClick={() => handleCustomerAccentChange('UK')}
+              aria-pressed={selectedCustomerAccent === 'UK'}
+              className={segmentClass(selectedCustomerAccent === 'UK')}
+              title="Switch Customer Voice to British Accent"
+            >
+              UK
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ACTIVE SPARRING REPS DIALER GRID */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between text-xs font-mono text-[#6b6968]">
-          <span className="font-bold text-[#222021]">
-            SHOWING {filteredSessions.length} {selectedRepAccent === 'arabic' ? 'ARABIC ACCENT' : 'FILIPINO'} REPS IN ACTIVE SPARRING CALLS
+      {/* Live call grid */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 text-small text-fg-secondary">
+          <span>
+            Showing <span className="tabular-nums text-fg">{filteredSessions.length}</span> {selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino'} reps on live practice calls
           </span>
-          <span className="hidden sm:inline">
-            CLICK "🎧 LISTEN LIVE" TO HEAR {selectedRepAccent === 'arabic' ? 'ARABIC' : 'FILIPINO'} SDR VS {selectedCustomerAccent.toUpperCase()} BUYER
+          <span className="hidden sm:inline text-fg-tertiary">
+            Listen to hear {selectedRepAccent === 'arabic' ? 'an Arabic' : 'a Filipino'} rep with a {selectedCustomerAccent} buyer
           </span>
         </div>
 
@@ -1022,126 +964,125 @@ export default function LiveMonitoringCenter() {
             return (
               <div
                 key={session.id}
-                className={`bg-white border rounded-2xl p-5 shadow-2xs space-y-4 transition-all ${
+                className={`bg-surface border rounded-lg p-5 shadow-xs space-y-4 transition-colors duration-150 ${
                   isListening
-                    ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                    : 'border-[#222021]/10 hover:border-[#222021]/30'
+                    ? 'border-action ring-1 ring-action'
+                    : 'border-line hover:border-line-strong'
                 }`}
               >
-                {/* Rep & AI Persona Header with Channel Badge */}
+                {/* Rep and buyer header */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="h-11 w-11 rounded-xl bg-[#222021] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                        {session.avatar}
-                      </div>
-                      <span className="absolute -top-1 -left-1 px-1 py-0.2 rounded bg-stone-900 text-white font-mono text-[9px] font-bold border border-white/20">
-                        {session.line}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-subtle text-body-strong text-fg-secondary">
+                      {session.avatar}
+                    </span>
 
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-extrabold text-[#222021]">{session.repName}</h3>
-                        <span className="text-[10px] font-mono text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-bold flex items-center gap-1">
-                          <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
-                          <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'}</span>
-                        </span>
+                        <h2 className="text-h3 text-fg truncate">{session.repName}</h2>
+                        <span className="font-mono text-caption text-fg-tertiary">{session.line}</span>
                       </div>
-                      <p className="text-[11px] text-[#6b6968] mt-0.5 flex flex-wrap items-center gap-1.5">
-                        <span className="text-stone-500">{session.tenant}</span>
-                        <span>&bull;</span>
-                        <span>Facing:</span>
-                        <strong className="text-[#222021]">{session.personaName}</strong>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-700 border border-stone-200">
-                          {session.countryAccent === 'USA' ? '🇺🇸 USA' : session.countryAccent === 'Australia' ? '🇦🇺 Australia' : '🇬🇧 UK'} Accent
-                        </span>
+                      <p className="text-small text-fg-secondary mt-0.5">
+                        with <span className="text-fg">{session.personaName}</span>, {session.countryAccent === 'USA' ? 'USA' : session.countryAccent === 'Australia' ? 'Australia' : 'UK'} accent
+                      </p>
+                      <p className="text-small text-fg-tertiary truncate">
+                        {session.tenant} &middot; {selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Status & Live Audio Indicator */}
+                  {/* Status and timer */}
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 shadow-2xs ${
-                      isCurrentlyPlaying 
-                        ? 'bg-red-50 text-red-700 border-red-300' 
-                        : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    }`}>
-                      <span className={`h-1.5 w-1.5 rounded-full inline-block ${
-                        isCurrentlyPlaying ? 'bg-red-500 animate-ping' : 'bg-emerald-500 animate-pulse'
-                      }`} />
-                      <span>{isCurrentlyPlaying ? 'ON AIR • STREAMING' : `LIVE • ${formatDuration(session.initialSeconds)}`}</span>
-                    </span>
-
-                    <span className="text-[10px] font-mono text-[#6b6968]">
-                      Difficulty: <strong className="text-[#ED1C24]">{session.personaDifficulty}</strong>
+                    <StatusDot
+                      tone={isCurrentlyPlaying ? 'brand' : 'success'}
+                      live
+                      label={
+                        <span className="text-small tabular-nums text-fg">
+                          {isCurrentlyPlaying ? 'You are listening' : `Live ${formatDuration(session.initialSeconds)}`}
+                        </span>
+                      }
+                    />
+                    <span className="text-small text-fg-tertiary">
+                      Difficulty: <span className="text-fg-secondary">{session.personaDifficulty}</span>
                     </span>
                   </div>
                 </div>
 
-                {/* Current Pushback / Telemetry Box */}
-                <div className="p-3 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] font-mono">
-                    <span className="text-[#6b6968] uppercase font-bold flex items-center gap-1">
-                      <Flame className="h-3 w-3 text-[#ED1C24]" />
-                      <span>Live Buyer Objection:</span>
-                    </span>
-                    <span className={`font-bold ${
-                      session.sentiment === 'Hostile' ? 'text-red-700' :
-                      session.sentiment === 'Skeptical' ? 'text-amber-700' :
-                      'text-emerald-700'
-                    }`}>
-                      {session.sentiment.toUpperCase()} &bull; {session.wpm} WPM
+                {/* Current objection */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 text-small">
+                    <span className="text-fg-tertiary">Buyer objection</span>
+                    <span className="flex items-center gap-2">
+                      <StatusDot
+                        tone={session.sentiment === 'Hostile' ? 'danger' : session.sentiment === 'Skeptical' ? 'warning' : 'success'}
+                        label={<span className="text-small text-fg">{session.sentiment}</span>}
+                      />
+                      <span className="tabular-nums text-fg-tertiary">{session.wpm} wpm</span>
                     </span>
                   </div>
-                  <p className="text-xs italic font-medium text-[#222021] leading-relaxed">
+                  <p className="border-l-2 border-line-strong pl-3 text-body text-fg-secondary">
                     {session.currentObjection}
                   </p>
                 </div>
 
-                {/* ARM Framework Live Progress Indicators */}
-                <div className="flex items-center justify-between text-[10px] font-mono pt-1">
-                  <span className="text-[#6b6968] font-bold">ARM STATUS:</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`px-2 py-0.5 rounded ${session.armStatus.acknowledge ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-stone-200 text-stone-500'}`}>
-                      {session.armStatus.acknowledge ? '✓ Acknowledge' : 'Acknowledge'}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded ${session.armStatus.respond ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-stone-200 text-stone-500'}`}>
-                      {session.armStatus.respond ? '✓ Respond' : 'Respond'}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded ${session.armStatus.move ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-stone-200 text-stone-500'}`}>
-                      {session.armStatus.move ? '✓ Move' : 'Move'}
-                    </span>
-                  </div>
+                {/* Objection handling steps (A.R.M.) */}
+                <div className="flex items-center gap-3 text-small">
+                  <Tooltip content="A.R.M.: Acknowledge the objection, Respond to it, then Move to a next step.">
+                    <span className="text-fg-tertiary cursor-default">Steps</span>
+                  </Tooltip>
+                  <ol className="flex items-center gap-3">
+                    {([
+                      ['Acknowledge', session.armStatus.acknowledge],
+                      ['Respond', session.armStatus.respond],
+                      ['Move', session.armStatus.move],
+                    ] as const).map(([stepLabel, done]) => (
+                      <li key={stepLabel} className={`inline-flex items-center gap-1.5 ${done ? 'text-fg' : 'text-fg-tertiary'}`}>
+                        {done ? (
+                          <CheckCircle2 className="size-4 text-success-fg" aria-hidden />
+                        ) : (
+                          <span className="size-4 rounded-full border border-line-strong" aria-hidden />
+                        )}
+                        <span>{stepLabel}</span>
+                        <span className="sr-only">{done ? '(done)' : '(not yet)'}</span>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
 
-                {/* Live Audio Equalizer Waveform & Listen Button */}
-                <div className="pt-2 border-t border-[#222021]/10 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 h-7 px-2.5 py-1 rounded-lg bg-[#0F1412] border border-stone-800">
-                    <span className="text-[9px] font-mono text-emerald-400 font-bold mr-1">VU METER</span>
-                    <span className={`w-1 bg-emerald-400 rounded-full transition-all duration-75 ${isCurrentlyPlaying ? 'h-5 animate-pulse' : 'h-2'}`} />
-                    <span className={`w-1 bg-emerald-400 rounded-full transition-all duration-75 ${isCurrentlyPlaying ? 'h-6 animate-pulse' : 'h-3'}`} />
-                    <span className={`w-1 bg-emerald-400 rounded-full transition-all duration-75 ${isCurrentlyPlaying ? 'h-4 animate-pulse' : 'h-2'}`} />
-                    <span className={`w-1 bg-emerald-400 rounded-full transition-all duration-75 ${isCurrentlyPlaying ? 'h-6 animate-pulse' : 'h-3'}`} />
-                    <span className={`w-1 bg-emerald-400 rounded-full transition-all duration-75 ${isCurrentlyPlaying ? 'h-3 animate-pulse' : 'h-1.5'}`} />
+                {/* Audio level and listen button */}
+                <div className="pt-4 border-t border-line flex items-center justify-between gap-3">
+                  <div className="flex items-end gap-1 h-6" aria-hidden>
+                    <span className={`w-1 rounded-full transition-all duration-150 ${isCurrentlyPlaying ? 'h-5 bg-success-500 animate-pulse-soft' : 'h-2 bg-ink-300'}`} />
+                    <span className={`w-1 rounded-full transition-all duration-150 ${isCurrentlyPlaying ? 'h-6 bg-success-500 animate-pulse-soft' : 'h-3 bg-ink-300'}`} />
+                    <span className={`w-1 rounded-full transition-all duration-150 ${isCurrentlyPlaying ? 'h-4 bg-success-500 animate-pulse-soft' : 'h-2 bg-ink-300'}`} />
+                    <span className={`w-1 rounded-full transition-all duration-150 ${isCurrentlyPlaying ? 'h-6 bg-success-500 animate-pulse-soft' : 'h-3 bg-ink-300'}`} />
+                    <span className={`w-1 rounded-full transition-all duration-150 ${isCurrentlyPlaying ? 'h-3 bg-success-500 animate-pulse-soft' : 'h-1.5 bg-ink-300'}`} />
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleListen(session)}
-                      className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer ${
-                        isListening
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
-                    >
-                      {isLoadingAudio && isListening ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleOpenWhisper(session)}
+                    icon={<MessageSquareText aria-hidden />}
+                    aria-label={`Whisper to ${session.repName}`}
+                  >
+                    Whisper
+                  </Button>
+                  <Button
+                    variant={isListening ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => handleToggleListen(session)}
+                    icon={
+                      isLoadingAudio && isListening ? (
+                        <Loader2 className="animate-spin" aria-hidden />
                       ) : (
-                        <Headphones className="h-3.5 w-3.5" />
-                      )}
-                      <span>{isListening ? 'Disconnect Audio' : '🎧 Listen Live'}</span>
-                    </button>
+                        <Headphones aria-hidden />
+                      )
+                    }
+                  >
+                    {isListening ? 'Stop listening' : 'Listen'}
+                  </Button>
                   </div>
                 </div>
               </div>
@@ -1150,132 +1091,114 @@ export default function LiveMonitoringCenter() {
         </div>
       </div>
 
-      {/* DOCKED SUPERVISOR AUDIO STREAM & TWO-WAY DIALOGUE PLAYER */}
+      {/* Docked supervisor audio player and whisper console (dark focus surface) */}
       {activeListeningSession && (
-        <div className="rounded-3xl bg-[#0C1017] border border-stone-800 p-6 text-white shadow-2xl space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-200">
-          {/* Active Player Header */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-800 pb-4">
-            <div className="flex items-center gap-3">
-              <div className={`h-11 w-11 rounded-xl flex items-center justify-center font-bold transition-colors ${
-                isAudioPlaying ? 'bg-red-600 text-white' : 'bg-emerald-500 text-stone-950'
-              }`}>
-                <Radio className={`h-5 w-5 ${isAudioPlaying ? 'animate-pulse' : ''}`} />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                    SUPERVISOR BUS &bull; {activeListeningSession.line}
+        <div className="rounded-xl bg-ink-950 p-6 text-ink-50 shadow-lg space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          {/* Player header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-ink-800 pb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-ink-800 text-ink-50">
+                <Radio className={`size-5 ${isAudioPlaying ? 'text-brand-500 animate-pulse-soft' : ''}`} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-ink-400">
+                  <span className="inline-flex items-center gap-2">
+                    <span className={`size-2 rounded-full ${isAudioPlaying ? 'bg-brand-500 animate-pulse-soft' : 'bg-success-500'}`} aria-hidden />
+                    <span>Listening on <span className="font-mono text-ink-50">{activeListeningSession.line}</span></span>
                   </span>
-                  
-                  {/* Real-time accent badges */}
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800 flex items-center gap-1">
-                    <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
-                    <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR Voice' : 'Filipino SDR Voice'}</span>
-                  </span>
-
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-stone-800 text-stone-300 border border-stone-700 flex items-center gap-1">
-                    <span>{activeListeningSession.countryAccent === 'USA' ? '🇺🇸' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺' : '🇬🇧'}</span>
-                    <span>Customer Accent: {activeListeningSession.countryAccent}</span>
-                  </span>
+                  <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR voice' : 'Filipino SDR voice'}</span>
+                  <span>Buyer accent: {activeListeningSession.countryAccent}</span>
 
                   {isLoadingAudio && (
-                    <span className="text-xs font-mono text-amber-400 flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span>Synthesizing...</span>
+                    <span className="inline-flex items-center gap-1.5 text-ink-50">
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                      <span>Loading voice...</span>
                     </span>
                   )}
                 </div>
-                <h3 className="text-base font-extrabold text-white mt-1">
-                  {activeListeningSession.repName} ({selectedRepAccent === 'arabic' ? '🇦🇪 Arabic SDR' : '🇵🇭 Filipino SDR'}) &harr; {activeListeningSession.personaName} ({activeListeningSession.personaRole})
-                </h3>
+                <h2 className="text-h3 text-ink-50 mt-1">
+                  {activeListeningSession.repName} ({selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'}) with {activeListeningSession.personaName} ({activeListeningSession.personaRole})
+                </h2>
               </div>
             </div>
 
-            {/* Audio Playback Controls, Accent Quick-Toggle & Volume */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              
-              {/* Quick Switch Rep Voice inside Docked Bus */}
-              <div className="flex items-center bg-stone-900 border border-stone-800 rounded-xl p-1">
-                <span className="text-[10px] font-mono text-stone-400 px-2 font-bold hidden sm:inline">REP VOICE:</span>
+            {/* Playback controls, accent quick toggles and volume */}
+            <div className="flex flex-wrap items-center gap-2">
+
+              {/* Rep voice quick switch */}
+              <div role="group" aria-label="Rep accent" className="inline-flex items-center rounded-md border border-ink-800 bg-ink-900 p-0.5">
+                <span className="text-small text-ink-400 px-2 hidden sm:inline">Rep</span>
                 <button
                   onClick={() => handleRepAccentChange('arabic')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    selectedRepAccent === 'arabic'
-                      ? 'bg-[#ED1C24] text-white shadow-xs'
-                      : 'text-stone-400 hover:text-white hover:bg-stone-800'
-                  }`}
+                  aria-pressed={selectedRepAccent === 'arabic'}
+                  className={darkSegmentClass(selectedRepAccent === 'arabic')}
                   title="Arabic Accent SDR Rep (Dubai / Riyadh Hub)"
                 >
-                  <span>🇦🇪</span>
-                  <span>Arabic</span>
+                  Arabic
                 </button>
                 <button
                   onClick={() => handleRepAccentChange('filipino')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    selectedRepAccent === 'filipino'
-                      ? 'bg-[#ED1C24] text-white shadow-xs'
-                      : 'text-stone-400 hover:text-white hover:bg-stone-800'
-                  }`}
+                  aria-pressed={selectedRepAccent === 'filipino'}
+                  className={darkSegmentClass(selectedRepAccent === 'filipino')}
                   title="Filipino Accent SDR Rep (Manila / Ortigas Hub)"
                 >
-                  <span>🇵🇭</span>
-                  <span>Filipino</span>
+                  Filipino
                 </button>
               </div>
 
-              {/* Quick Switch Customer Accent inside Docked Bus */}
-              <div className="flex items-center bg-stone-900 border border-stone-800 rounded-xl p-1">
-                <span className="text-[10px] font-mono text-stone-400 px-2 font-bold hidden sm:inline">BUYER:</span>
+              {/* Buyer accent quick switch */}
+              <div role="group" aria-label="Buyer accent" className="inline-flex items-center rounded-md border border-ink-800 bg-ink-900 p-0.5">
+                <span className="text-small text-ink-400 px-2 hidden sm:inline">Buyer</span>
                 {(['USA', 'Australia', 'UK'] as SparringCountry[]).map((c) => (
                   <button
                     key={c}
                     onClick={() => handleCustomerAccentChange(c)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                      activeListeningSession.countryAccent === c
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-stone-400 hover:text-white hover:bg-stone-800'
-                    }`}
+                    aria-pressed={activeListeningSession.countryAccent === c}
+                    className={darkSegmentClass(activeListeningSession.countryAccent === c)}
                   >
-                    {c === 'USA' ? '🇺🇸 US' : c === 'Australia' ? '🇦🇺 AU' : '🇬🇧 UK'}
+                    {c === 'USA' ? 'US' : c === 'Australia' ? 'AU' : 'UK'}
                   </button>
                 ))}
               </div>
 
-              {/* Play / Pause Toggle */}
+              {/* Play / pause */}
               <button
                 onClick={handleTogglePlayPause}
-                className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className={`${darkButtonClass} px-3 gap-1.5 text-small font-medium`}
                 title={isAudioPlaying ? 'Pause Stream' : 'Play Stream'}
               >
-                {isAudioPlaying ? <Pause className="h-3.5 w-3.5 text-amber-400" /> : <Play className="h-3.5 w-3.5 text-emerald-400" />}
+                {isAudioPlaying ? <Pause className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
                 <span>{isAudioPlaying ? 'Pause' : 'Play'}</span>
               </button>
 
-              {/* Replay Dialogue */}
+              {/* Replay dialogue */}
               <button
                 onClick={handleReplay}
-                className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition-colors cursor-pointer"
+                className={`${darkButtonClass} w-8`}
                 title="Replay from Beginning"
+                aria-label="Replay from beginning"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="size-4" aria-hidden />
               </button>
 
-              {/* Next Turn */}
+              {/* Next turn */}
               <button
                 onClick={handleNextTurn}
-                className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition-colors cursor-pointer"
+                className={`${darkButtonClass} w-8`}
                 title="Skip to Next Speaker"
+                aria-label="Skip to next speaker"
               >
-                <SkipForward className="h-3.5 w-3.5" />
+                <SkipForward className="size-4" aria-hidden />
               </button>
 
-              {/* Volume Slider */}
-              <div className="flex items-center gap-2 text-xs font-mono text-stone-400 pl-2 border-l border-stone-800">
+              {/* Volume */}
+              <div className="flex items-center gap-2 text-small text-ink-400 pl-2 border-l border-ink-800">
                 <button
                   onClick={() => setIsAudioMuted(!isAudioMuted)}
-                  className="p-1.5 rounded-lg hover:bg-stone-800 text-stone-300 cursor-pointer"
+                  className={`${darkButtonClass} w-8 border-transparent`}
+                  aria-label={isAudioMuted ? 'Unmute' : 'Mute'}
                 >
-                  {isAudioMuted ? <VolumeX className="h-4 w-4 text-red-400" /> : <Volume2 className="h-4 w-4" />}
+                  {isAudioMuted ? <VolumeX className="size-4" aria-hidden /> : <Volume2 className="size-4" aria-hidden />}
                 </button>
                 <input
                   type="range"
@@ -1286,39 +1209,37 @@ export default function LiveMonitoringCenter() {
                     setVolume(Number(e.target.value));
                     setIsAudioMuted(false);
                   }}
-                  className="w-16 sm:w-20 accent-emerald-500 cursor-pointer"
+                  aria-label="Volume"
+                  className="w-16 sm:w-20 accent-ink-50 cursor-pointer"
                 />
-                <span className="w-8 text-right font-mono">{isAudioMuted ? '0%' : `${volume}%`}</span>
+                <span className="w-9 text-right tabular-nums">{isAudioMuted ? '0%' : `${volume}%`}</span>
               </div>
 
-              {/* Close Button */}
+              {/* Close */}
               <button
                 onClick={handleDisconnect}
-                className="p-2 rounded-xl bg-stone-800 hover:bg-red-950 hover:text-red-400 text-stone-300 transition-colors cursor-pointer ml-1"
+                className={`${darkButtonClass} w-8 ml-1`}
                 title="Disconnect Audio Bus"
+                aria-label="Stop listening"
               >
-                <X className="h-4 w-4" />
+                <X className="size-4" aria-hidden />
               </button>
             </div>
           </div>
 
-          {/* Real-Time Transcript & Waveform Feed */}
+          {/* Transcript and whisper console */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            
-            {/* Transcript Dialogues (8 cols) */}
-            <div className="lg:col-span-8 bg-stone-900/90 rounded-2xl p-4 border border-stone-800 space-y-3 max-h-84 overflow-y-auto">
-              <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase text-stone-400 tracking-wider">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-blue-400">{selectedRepAccent === 'arabic' ? '🇦🇪 ARABIC SDR' : '🇵🇭 FILIPINO SDR'}</span>
-                  <span>&harr;</span>
-                  <span className="text-red-400">
-                    {activeListeningSession.countryAccent === 'USA' ? '🇺🇸 US BUYER' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺 AUSTRALIAN BUYER' : '🇬🇧 UK BUYER'}
-                  </span>
+
+            {/* Transcript (8 cols) */}
+            <div className="lg:col-span-8 rounded-lg bg-ink-900 p-4 space-y-3 max-h-84 overflow-y-auto">
+              <div className="flex items-center justify-between gap-2 text-small text-ink-400">
+                <span>
+                  {selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'} with {activeListeningSession.countryAccent === 'USA' ? 'US buyer' : activeListeningSession.countryAccent === 'Australia' ? 'Australian buyer' : 'UK buyer'}
                 </span>
-                <span className="text-emerald-400">Click dialogue to jump & listen</span>
+                <span>Click a line to jump to it</span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {activeListeningSession.recentTranscript.map((turn, idx) => {
                   const isRep = turn.role === 'rep';
                   const isCurrentTurn = currentTurnIndex === idx;
@@ -1327,50 +1248,38 @@ export default function LiveMonitoringCenter() {
                     <div
                       key={turn.id || idx}
                       onClick={() => handleSelectTurn(idx)}
-                      className={`p-3.5 rounded-xl border text-xs leading-relaxed transition-all cursor-pointer ${
+                      className={`p-3 rounded-md border transition-colors duration-150 cursor-pointer ${
                         isCurrentTurn
-                          ? isRep
-                            ? 'bg-blue-900/60 border-blue-400 ring-2 ring-blue-500/30 text-white shadow-lg'
-                            : 'bg-red-950/60 border-red-500 ring-2 ring-red-500/30 text-white shadow-lg'
+                          ? 'border-ink-50/40 bg-ink-800 text-ink-50'
                           : isRep
-                            ? 'bg-blue-950/30 border-blue-900/40 text-blue-100 hover:bg-blue-950/60'
-                            : 'bg-stone-950/80 border-stone-800 text-stone-200 hover:bg-stone-900'
+                            ? 'border-transparent text-ink-400 hover:bg-ink-800'
+                            : 'border-transparent text-ink-50 hover:bg-ink-800'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-[10px] font-mono mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold px-1.5 py-0.2 rounded text-[9px] uppercase flex items-center gap-1 ${
-                            isRep ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          }`}>
-                            {isRep ? (
-                              <>
-                                <span>{selectedRepAccent === 'arabic' ? '🇦🇪' : '🇵🇭'}</span>
-                                <span>{selectedRepAccent === 'arabic' ? 'ARABIC SDR' : 'FILIPINO SDR'}</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>{activeListeningSession.countryAccent === 'USA' ? '🇺🇸' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺' : '🇬🇧'}</span>
-                                <span>{activeListeningSession.countryAccent} BUYER</span>
-                              </>
-                            )}
+                      <div className="flex items-center justify-between gap-2 text-caption mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-ink-400">
+                            {isRep
+                              ? (selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR')
+                              : `${activeListeningSession.countryAccent} buyer`}
                           </span>
-                          <span className={isRep ? 'text-blue-300 font-bold' : 'text-[#ED1C24] font-bold'}>
+                          <span className="text-ink-50 truncate">
                             {turn.speaker}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                           {isCurrentTurn && isAudioPlaying && (
-                            <span className="flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-stone-950 animate-pulse">
-                              <span className="h-1.5 w-1.5 rounded-full bg-stone-950 inline-block" />
-                              <span>SPEAKING NOW</span>
+                            <span className="inline-flex items-center gap-1.5 text-ink-50">
+                              <span className="size-1.5 rounded-full bg-success-500 animate-pulse-soft" aria-hidden />
+                              <span>Speaking now</span>
                             </span>
                           )}
-                          <span className="text-stone-500">{turn.time}</span>
+                          <span className="text-ink-400 tabular-nums">{turn.time}</span>
                         </div>
                       </div>
 
-                      <p className="font-sans text-[13px] leading-relaxed">
+                      <p className="text-body">
                         {turn.text}
                       </p>
                     </div>
@@ -1379,66 +1288,71 @@ export default function LiveMonitoringCenter() {
               </div>
             </div>
 
-            {/* Supervisor Whisper & Coach Console (4 cols) */}
-            <div className="lg:col-span-4 bg-stone-900/90 rounded-2xl p-4 border border-stone-800 space-y-3">
+            {/* Whisper console (4 cols) */}
+            <div className="lg:col-span-4 rounded-lg bg-ink-900 p-4 space-y-3">
               <div>
-                <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 tracking-wider block">
-                  Supervisor Whisper (Live HUD Injection):
-                </span>
-                <p className="text-[11px] text-stone-400 mt-0.5">
-                  Inject coaching cues into {activeListeningSession.repName}’s cockpit. The {selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'} will immediately voice the coached rebuttal!
+                <h3 className="text-h3 text-ink-50">
+                  Whisper to {activeListeningSession.repName}
+                </h3>
+                <p className="text-small text-ink-400 mt-1">
+                  Send a coaching cue to the rep&rsquo;s screen. The {selectedRepAccent === 'arabic' ? 'Arabic SDR' : 'Filipino SDR'} voices the coached line straight away.
                 </p>
               </div>
 
-              <form onSubmit={handleSendWhisper} className="space-y-2">
+              <form onSubmit={handleSendWhisper} className="space-y-3">
                 <textarea
+                  ref={whisperInputRef}
                   rows={3}
                   value={whisperMessage}
                   onChange={(e) => setWhisperMessage(e.target.value)}
                   placeholder="e.g. Pivot to zero-prep guarantee! Remind them we pull tech-stack profiles beforehand."
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl p-2.5 text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-emerald-500 font-sans resize-none"
+                  aria-label="Whisper message"
+                  className="focus-ring w-full rounded-sm border border-ink-700 bg-ink-950 px-3 py-2 text-body text-ink-50 placeholder:text-ink-400 focus:border-brand-500 resize-none"
                 />
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   {whisperFeedbackSent ? (
-                    <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 font-bold">
-                      <CheckCircle2 className="h-3 w-3" />
-                      <span>Voiced in {selectedRepAccent === 'arabic' ? 'Arabic' : 'Filipino'} Accent!</span>
+                    <span className="text-small text-ink-50 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-4 text-success-500" aria-hidden />
+                      <span>Voiced in {selectedRepAccent === 'arabic' ? 'Arabic' : 'Filipino'} accent</span>
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-stone-500">Live Teleprompter Bus</span>
+                    <span className="text-small text-ink-400">Shows on the rep&rsquo;s teleprompter</span>
                   )}
 
-                  <button
+                  <Button
                     type="submit"
-                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    variant="brand"
+                    size="sm"
+                    icon={<Send aria-hidden />}
                   >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>Send Whisper</span>
-                  </button>
+                    Whisper
+                  </Button>
                 </div>
               </form>
 
-              {/* ElevenLabs Channel Indicator */}
-              <div className="p-3 rounded-xl bg-stone-950 border border-stone-800/80 space-y-1.5 text-[11px]">
-                <div className="flex items-center justify-between text-[10px] font-mono text-stone-400">
-                  <span>VOICE CHANNELS:</span>
-                  <span className="text-emerald-400 font-bold">ACTIVE</span>
+              {/* Voice channels */}
+              <div className="rounded-md border border-ink-800 p-3 space-y-1.5 text-small">
+                <div className="flex items-center justify-between text-ink-400">
+                  <span>Voices</span>
+                  <span className="inline-flex items-center gap-1.5 text-ink-50">
+                    <span className="size-1.5 rounded-full bg-success-500" aria-hidden />
+                    <span>Active</span>
+                  </span>
                 </div>
                 {(() => {
                   const repVoice = getRepVoice(selectedRepAccent, activeListeningSession.repGender);
                   return (
-                    <div className="text-stone-300 flex items-center gap-1.5">
+                    <div className="text-ink-400 flex items-center gap-1.5">
                       <span>{repVoice.flag}</span>
                       <span>
-                        Rep: <strong className="text-white">{activeListeningSession.repName} ({repVoice.accentLabel})</strong>
+                        Rep: <span className="text-ink-50">{activeListeningSession.repName} ({repVoice.accentLabel})</span>
                       </span>
                     </div>
                   );
                 })()}
-                <div className="text-stone-300 flex items-center gap-1.5">
-                  <span>{activeListeningSession.countryAccent === 'USA' ? '🇺🇸' : activeListeningSession.countryAccent === 'Australia' ? '🇦🇺' : '🇬🇧'}</span>
-                  <span>Customer: <strong className="text-white">{activeListeningSession.personaName} ({activeListeningSession.countryAccent} Accent)</strong></span>
+                <div className="text-ink-400 flex items-center gap-1.5">
+                  <span>Buyer: <span className="text-ink-50">{activeListeningSession.personaName} ({activeListeningSession.countryAccent} accent)</span></span>
                 </div>
               </div>
             </div>
@@ -1450,3 +1364,19 @@ export default function LiveMonitoringCenter() {
     </div>
   );
 }
+
+/* Styling helpers (visual only) */
+function segmentClass(active: boolean) {
+  return `focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 cursor-pointer ${
+    active ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+  }`;
+}
+
+function darkSegmentClass(active: boolean) {
+  return `focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 cursor-pointer ${
+    active ? 'bg-ink-50 text-ink-900' : 'text-ink-400 hover:text-ink-50'
+  }`;
+}
+
+const darkButtonClass =
+  'focus-ring inline-flex h-8 items-center justify-center rounded-md border border-ink-700 text-ink-50 hover:bg-ink-800 transition-colors duration-150 cursor-pointer';

@@ -1,27 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  KeyRound, 
-  Lock, 
-  Unlock, 
-  CheckCircle2, 
-  AlertCircle, 
-  Sparkles, 
-  ShieldCheck, 
-  RefreshCw, 
-  Eye, 
-  EyeOff, 
-  Copy, 
-  Check, 
-  ExternalLink,
-  Cpu,
-  Layers,
-  ArrowRight,
-  Mail,
-  Globe,
-  Calendar
-} from 'lucide-react';
+import { Lock, Unlock, CheckCircle2, ShieldCheck, Eye, EyeOff, Check, Cpu, ArrowRight, Mail, Calendar, Mic, Info, X } from 'lucide-react';
+import { Badge, Button, Card, ConfirmDialog, Dialog, Field, IconButton, Input, PageHeader, Select, Tooltip } from '@/components/ui';
 
 interface TenantBYOKState {
   tenantId: string;
@@ -49,6 +30,7 @@ export default function ByokVaultManager() {
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [requestUpgradeModal, setRequestUpgradeModal] = useState(false);
+  const [confirmLockVault, setConfirmLockVault] = useState(false);
 
   useEffect(() => {
     try {
@@ -221,472 +203,352 @@ export default function ByokVaultManager() {
     setTimeout(() => setSaveSuccess(false), 2500);
   };
 
+  const settingsRow = 'grid grid-cols-1 gap-4 py-6 first:pt-0 md:grid-cols-[240px_minmax(0,1fr)] md:gap-8';
+
+  const renderKeyInput = (
+    provider: string,
+    field: 'resendKey' | 'openaiKey' | 'claudeKey' | 'geminiKey' | 'elevenlabsKey',
+    placeholder: string,
+    testingLabel: string,
+  ) => (
+    <div className="flex items-center gap-2">
+      <div className="relative flex-1">
+        <Input
+          mono
+          type={showKeys[provider] ? 'text' : 'password'}
+          value={activeTenant[field]}
+          onChange={(e) => handleUpdateKey(field, e.target.value)}
+          placeholder={placeholder}
+          className="pr-10"
+        />
+        <button
+          type="button"
+          onClick={() => toggleShowKey(provider)}
+          aria-label={showKeys[provider] ? 'Hide key' : 'Show key'}
+          className="focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-fg-tertiary hover:text-fg"
+        >
+          {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+
+      <Button
+        variant="secondary"
+        onClick={() => testConnection(provider)}
+        disabled={!activeTenant[field] || testingKey === provider}
+      >
+        {testingKey === provider ? testingLabel : 'Test connection'}
+      </Button>
+    </div>
+  );
+
+  const connectedBadge = (provider: string) =>
+    testResults[provider] && (
+      <Badge tone="success">
+        <Check className="h-3 w-3" />
+        Connected ({testResults[provider].latency})
+      </Badge>
+    );
+
   return (
     <div className="space-y-6">
-      
-      {/* Top Controls Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ED1C24]/10 border border-[#ED1C24]/20 text-[#ED1C24] text-[10px] font-bold tracking-wide uppercase mb-1.5">
-            <Sparkles className="h-3 w-3" />
-            <span>Monetized Bring-Your-Own-Key Subsystem</span>
+      <PageHeader
+        title="AI providers"
+        description="Bring your own keys for email, AI models and voice, isolated per workspace."
+        meta={
+          <div className="w-72">
+            <Select
+              aria-label="Workspace"
+              value={selectedTenantId}
+              onChange={(e) => setSelectedTenantId(e.target.value)}
+            >
+              {Object.values(tenantsBYOK).map(t => (
+                <option key={t.tenantId} value={t.tenantId}>
+                  {t.tenantName} {t.isUnlocked ? '(Unlocked)' : '(Locked)'}
+                </option>
+              ))}
+            </Select>
           </div>
-          <h2 className="text-xl font-black text-[#222021] tracking-tight">
-            Tenant BYOK Key Vault & Encryption
-          </h2>
-          <p className="text-xs text-[#6b6968]">
-            Configure custom enterprise model endpoints, dedicated voice actors, and tenant-level key isolation.
-          </p>
-        </div>
-
-        {/* Tenant Switcher */}
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden md:block">
-            <span className="text-[10px] font-mono text-[#6b6968] block">Managing Tenant Scope:</span>
-            <span className="text-xs font-bold text-[#222021]">{activeTenant.tenantName}</span>
-          </div>
-          <select
-            value={selectedTenantId}
-            onChange={(e) => setSelectedTenantId(e.target.value)}
-            className="h-10 px-3.5 rounded-xl bg-[#F2F0EF] hover:bg-[#e7e4e2] border border-[#222021]/15 text-xs font-bold text-[#222021] focus:outline-none cursor-pointer"
-          >
-            {Object.values(tenantsBYOK).map(t => (
-              <option key={t.tenantId} value={t.tenantId}>
-                {t.tenantName} {t.isUnlocked ? '(Unlocked)' : '(Locked)'}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+        }
+      />
 
       {/* Main Vault Workspace */}
       {!activeTenant.isUnlocked ? (
         /* LOCKED STATE (Upsell & Guardrail Mode) */
-        <div className="bg-white border-2 border-dashed border-[#222021]/20 rounded-3xl p-10 text-center shadow-2xs space-y-6 relative overflow-hidden">
-          <div className="h-16 w-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
-            <Lock className="h-8 w-8" />
+        <Card className="space-y-6 p-10 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-warning-bg text-warning-fg">
+            <Lock className="h-6 w-6" />
           </div>
 
-          <div className="max-w-xl mx-auto space-y-2">
-            <span className="inline-block px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-mono font-bold">
-              🔒 FEATURE LOCKED • $49/MO OR $490/YR ADD-ON
-            </span>
-            <h3 className="text-xl font-black text-[#222021]">
-              Custom BYOK Subsystem Not Activated for {activeTenant.tenantName}
+          <div className="mx-auto max-w-xl space-y-2">
+            <Badge tone="warning">Locked · $49/mo or $490/yr add-on</Badge>
+            <h3 className="text-h2 text-fg">
+              <Tooltip content="Bring your own key: use the workspace's own provider API keys.">
+                <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">BYOK</span>
+              </Tooltip>{' '}
+              is not active for {activeTenant.tenantName}
             </h3>
-            <p className="text-xs text-[#6b6968] leading-relaxed">
-              Bring your own API keys to utilize custom ElevenLabs voice clones, specialized Claude 3.5 Sonnet & GPT-4o checkpoints, and bypass platform token ceilings. Add this module to your manual invoice or contact your platform administrator.
+            <p className="text-body text-fg-secondary">
+              Bring your own API keys to use custom ElevenLabs voice clones, Claude 3.5 Sonnet and GPT-4o, and bypass platform token limits. Add this module to the next invoice or contact your platform administrator.
             </p>
           </div>
 
           {/* Action CTAs */}
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => setRequestUpgradeModal(true)}
-              className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <span>Request BYOK Activation / Add to Invoice</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Button variant="brand" onClick={() => setRequestUpgradeModal(true)}>
+              Request activation
+              <ArrowRight />
+            </Button>
 
             {/* Super Admin Override Switch */}
-            <button
+            <Button
+              variant="secondary"
               onClick={toggleUnlockTenant}
-              className="px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-mono text-xs font-bold transition-colors flex items-center gap-2 cursor-pointer"
               title="Super Admin Override: Enable BYOK feature flag immediately"
+              icon={<Unlock />}
             >
-              <Unlock className="h-3.5 w-3.5 text-amber-400" />
-              <span>Super Admin: Force Unlock</span>
-            </button>
+              Force unlock (Super Admin)
+            </Button>
           </div>
 
           {/* Feature Comparison Box */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto pt-6 text-left border-t border-[#222021]/10 text-xs">
-            <div className="p-3.5 rounded-xl bg-[#F2F0EF] space-y-1">
-              <span className="font-bold text-[#222021] block">🎙️ Dedicated Voice Clones</span>
-              <p className="text-[#6b6968] text-[11px]">Deploy custom ElevenLabs voice IDs for proprietary BPO campaign accents.</p>
+          <div className="mx-auto grid max-w-3xl grid-cols-1 gap-4 border-t border-line pt-6 text-left md:grid-cols-3">
+            <div className="space-y-1 rounded-md bg-subtle p-3.5">
+              <span className="flex items-center gap-2 text-body-strong text-fg">
+                <Mic className="h-4 w-4 text-fg-secondary" />
+                Dedicated voice clones
+              </span>
+              <p className="text-small text-fg-secondary">Deploy custom ElevenLabs voice IDs for proprietary BPO campaign accents.</p>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#F2F0EF] space-y-1">
-              <span className="font-bold text-[#222021] block">🧠 Socratic AI LLMs</span>
-              <p className="text-[#6b6968] text-[11px]">Direct Anthropic Claude 3.5 Sonnet & OpenAI GPT-4o routing with zero token markups.</p>
+            <div className="space-y-1 rounded-md bg-subtle p-3.5">
+              <span className="flex items-center gap-2 text-body-strong text-fg">
+                <Cpu className="h-4 w-4 text-fg-secondary" />
+                Direct model access
+              </span>
+              <p className="text-small text-fg-secondary">Direct Anthropic Claude 3.5 Sonnet and OpenAI GPT-4o routing with zero token markups.</p>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#F2F0EF] space-y-1">
-              <span className="font-bold text-[#222021] block">🛡️ AES-256 Vault Isolation</span>
-              <p className="text-[#6b6968] text-[11px]">Tenant salt encryption ensures keys are never accessible by other organizations.</p>
+            <div className="space-y-1 rounded-md bg-subtle p-3.5">
+              <span className="flex items-center gap-2 text-body-strong text-fg">
+                <ShieldCheck className="h-4 w-4 text-fg-secondary" />
+                AES-256 key isolation
+              </span>
+              <p className="text-small text-fg-secondary">Per-workspace encryption means keys are never accessible by other organizations.</p>
             </div>
           </div>
-        </div>
+        </Card>
       ) : (
         /* UNLOCKED STATE (Interactive Key Manager) */
         <div className="space-y-6">
-          
+
           {/* Security & Vault Banner */}
-          <div className="rounded-2xl p-4 bg-emerald-50 border border-emerald-200 text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex flex-col justify-between gap-3 rounded-lg border border-line bg-surface p-4 shadow-xs sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
+              <ShieldCheck className="h-5 w-5 shrink-0 text-success-fg" />
               <div>
-                <span className="font-mono font-bold text-[11px] uppercase tracking-wider text-emerald-800 block">
-                  BYOK SUBSYSTEM ACTIVE • HARDWARE ENCRYPTION VAULT
+                <span className="flex items-center gap-2 text-body-strong text-fg">
+                  Key vault <Badge tone="success">Active</Badge>
                 </span>
-                <span className="font-medium text-emerald-900">
-                  Keys are encrypted at rest with <strong>AES-256-GCM</strong> using an isolated tenant initialization vector.
+                <span className="text-small text-fg-secondary">
+                  Keys are encrypted at rest with AES-256-GCM using an isolated workspace initialization vector.
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={toggleUnlockTenant}
-                className="px-3 py-1.5 rounded-lg bg-white border border-emerald-300 text-stone-700 hover:text-red-700 font-mono text-[11px] transition-colors cursor-pointer"
-              >
-                Lock Vault (Revoke)
-              </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button size="sm" variant="danger" onClick={() => setConfirmLockVault(true)} icon={<Lock />}>
+                Lock vault (revoke)
+              </Button>
             </div>
           </div>
 
           {/* Key Management Form */}
-          <form onSubmit={handleSaveVault} className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-6">
-            
-            <div className="space-y-5">
-              
+          <form onSubmit={handleSaveVault} className="rounded-lg border border-line bg-surface p-6 shadow-xs">
+
+            <div className="divide-y divide-line">
+
               {/* 1. Resend Cold Email Delivery & Custom Domain (BYOK) */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-[#ED1C24]" />
-                    <Mail className="h-4 w-4 text-[#ED1C24]" />
-                    <span className="font-bold text-xs text-[#222021]">Resend Email Delivery API Key</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(Cold Email Studio & Dedicated Outbound)</span>
-                  </div>
-                  {testResults['resend'] && (
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                      testResults['resend'].success ? 'text-emerald-700 bg-emerald-100' : 'text-red-700 bg-red-100'
-                    }`}>
-                      {testResults['resend'].success ? '✓' : '✕'} {testResults['resend'].model} ({testResults['resend'].latency})
-                    </span>
-                  )}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="flex items-center gap-2 text-h3 text-fg">
+                    <Mail className="h-4 w-4 text-fg-secondary" />
+                    Resend
+                  </h3>
+                  <p className="mt-1 text-small text-fg-secondary">Email delivery for the cold email studio and dedicated outbound.</p>
                 </div>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {testResults['resend'] && (
+                      <Badge tone={testResults['resend'].success ? 'success' : 'danger'}>
+                        {testResults['resend'].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        {testResults['resend'].model} ({testResults['resend'].latency})
+                      </Badge>
+                    )}
+                  </div>
+                  {renderKeyInput('resend', 'resendKey', 're_...', 'Validating...')}
 
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showKeys['resend'] ? 'text' : 'password'}
-                      value={activeTenant.resendKey}
-                      onChange={(e) => handleUpdateKey('resendKey', e.target.value)}
-                      placeholder="re_..."
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('resend')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6968] hover:text-[#222021]"
-                    >
-                      {showKeys['resend'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                  {/* Resend Custom Domain & Sender Configuration */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Verified domain" hint="Must match a verified domain in your Resend dashboard.">
+                      <Input
+                        mono
+                        type="text"
+                        value={activeTenant.resendDomain}
+                        onChange={(e) => handleUpdateKey('resendDomain', e.target.value)}
+                        placeholder="outbound.yourdomain.com"
+                      />
+                    </Field>
+
+                    <Field label="From address" hint="Leave empty to use the rep's profile name and the platform pool.">
+                      <Input
+                        mono
+                        type="email"
+                        value={activeTenant.resendFromEmail}
+                        onChange={(e) => handleUpdateKey('resendFromEmail', e.target.value)}
+                        placeholder="rep@outbound.yourdomain.com"
+                      />
+                    </Field>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => testConnection('resend')}
-                    disabled={!activeTenant.resendKey || testingKey === 'resend'}
-                    className="px-3.5 py-2.5 rounded-xl bg-white border border-[#222021]/20 hover:bg-stone-50 text-xs font-bold text-[#222021] transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {testingKey === 'resend' ? 'Validating...' : 'Validate Connection'}
-                  </button>
-                </div>
-
-                {/* Resend Custom Domain & Sender Configuration */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#222021]/10 text-xs">
-                  <div>
-                    <label className="text-[11px] font-bold text-[#222021] block mb-1">
-                      Custom Verified Domain
-                    </label>
-                    <input
-                      type="text"
-                      value={activeTenant.resendDomain}
-                      onChange={(e) => handleUpdateKey('resendDomain', e.target.value)}
-                      placeholder="outbound.yourdomain.com"
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <span className="text-[10px] text-[#6b6968] block mt-1">
-                      Must match a verified domain in your Resend dashboard.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-[#222021] block mb-1">
-                      Custom 'From' Address
-                    </label>
-                    <input
-                      type="email"
-                      value={activeTenant.resendFromEmail}
-                      onChange={(e) => handleUpdateKey('resendFromEmail', e.target.value)}
-                      placeholder="rep@outbound.yourdomain.com"
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <span className="text-[10px] text-[#6b6968] block mt-1">
-                      Leave empty to use rep's profile name and fallback platform pool.
+                  <div className="flex items-start gap-2 rounded-md bg-subtle p-3 text-small text-fg-secondary">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg-secondary" />
+                    <span>
+                      <span className="text-body-strong text-fg">Sends never fail.</span> If this key is empty, invalid or over quota, cold emails route through the Appointmentlyy platform pool with the user&apos;s email as Reply-To.
                     </span>
                   </div>
                 </div>
-
-                <div className="bg-amber-50/80 border border-amber-200/60 rounded-lg p-2.5 text-[11px] text-amber-900 flex items-start gap-2">
-                  <span className="font-bold shrink-0">Zero-Breakage Guarantee:</span>
-                  <span>
-                    If this key is empty, invalid, or hits quota limits, outbound cold emails automatically route through Appointmentlyy's platform pool with the user's email set as Reply-To. Reps will never experience failed sends.
-                  </span>
-                </div>
-              </div>
+              </section>
 
               {/* 2. Customer Production Calendar Booking Link (Calendly / Cal.com / HubSpot) */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-blue-600" />
-                    <Calendar className="h-4 w-4 text-blue-600" />
-                    <span className="font-bold text-xs text-[#222021]">Customer Production Calendar Booking Link</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(Calendly / Cal.com / HubSpot)</span>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded">
-                    Active Booking Endpoint
-                  </span>
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="flex items-center gap-2 text-h3 text-fg">
+                    <Calendar className="h-4 w-4 text-fg-secondary" />
+                    Booking link
+                  </h3>
+                  <p className="mt-1 text-small text-fg-secondary">Calendly, Cal.com or HubSpot meeting link.</p>
                 </div>
-
                 <div className="space-y-1.5">
-                  <input
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">Calendar URL</span>
+                    <Badge tone="success">Active</Badge>
+                  </div>
+                  <Input
+                    mono
                     type="url"
                     value={activeTenant.calendarBookingLink}
                     onChange={(e) => handleUpdateKey('calendarBookingLink', e.target.value)}
                     placeholder="https://calendly.com/your-team/30min"
-                    className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
                   />
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-[#6b6968]">
-                    <span>
-                      Injected into Calling Floor teleprompter, quick follow-up email composer, and in-app booking modal.
-                    </span>
-                    <span className="text-[10px] text-zinc-500 font-mono shrink-0">
-                      Fallback: https://calendly.com/bpogtm/30min
+                  <div className="flex flex-col justify-between gap-1 text-small text-fg-secondary sm:flex-row sm:items-center">
+                    <span>Used in the dialer script, follow-up email composer and booking dialog.</span>
+                    <span className="shrink-0 text-fg-tertiary">
+                      Fallback: <span className="font-mono">https://calendly.com/bpogtm/30min</span>
                     </span>
                   </div>
                 </div>
-              </div>
+              </section>
 
               {/* 3. OpenAI Key */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <span className="font-bold text-xs text-[#222021]">OpenAI Platform API Key</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(GPT-4o, Auto-Grading & Embeddings)</span>
-                  </div>
-                  {testResults['openai'] && (
-                    <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      ✓ Connected ({testResults['openai'].latency})
-                    </span>
-                  )}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="text-h3 text-fg">OpenAI</h3>
+                  <p className="mt-1 text-small text-fg-secondary">GPT-4o, auto-grading and embeddings.</p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showKeys['openai'] ? 'text' : 'password'}
-                      value={activeTenant.openaiKey}
-                      onChange={(e) => handleUpdateKey('openaiKey', e.target.value)}
-                      placeholder="sk-proj-..."
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('openai')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6968] hover:text-[#222021]"
-                    >
-                      {showKeys['openai'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {connectedBadge('openai')}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => testConnection('openai')}
-                    disabled={!activeTenant.openaiKey || testingKey === 'openai'}
-                    className="px-3.5 py-2.5 rounded-xl bg-white border border-[#222021]/20 hover:bg-stone-50 text-xs font-bold text-[#222021] transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {testingKey === 'openai' ? 'Testing...' : 'Validate Connection'}
-                  </button>
+                  {renderKeyInput('openai', 'openaiKey', 'sk-proj-...', 'Testing...')}
                 </div>
-              </div>
+              </section>
 
               {/* 2. Anthropic Claude Key */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-blue-500" />
-                    <span className="font-bold text-xs text-[#222021]">Anthropic Claude API Key</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(Claude 3.5 Sonnet Socratic Coaching)</span>
-                  </div>
-                  {testResults['claude'] && (
-                    <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      ✓ Connected ({testResults['claude'].latency})
-                    </span>
-                  )}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="text-h3 text-fg">Anthropic Claude</h3>
+                  <p className="mt-1 text-small text-fg-secondary">Claude 3.5 Sonnet coaching.</p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showKeys['claude'] ? 'text' : 'password'}
-                      value={activeTenant.claudeKey}
-                      onChange={(e) => handleUpdateKey('claudeKey', e.target.value)}
-                      placeholder="sk-ant-api03-..."
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('claude')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6968] hover:text-[#222021]"
-                    >
-                      {showKeys['claude'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {connectedBadge('claude')}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => testConnection('claude')}
-                    disabled={!activeTenant.claudeKey || testingKey === 'claude'}
-                    className="px-3.5 py-2.5 rounded-xl bg-white border border-[#222021]/20 hover:bg-stone-50 text-xs font-bold text-[#222021] transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {testingKey === 'claude' ? 'Testing...' : 'Validate Connection'}
-                  </button>
+                  {renderKeyInput('claude', 'claudeKey', 'sk-ant-api03-...', 'Testing...')}
                 </div>
-              </div>
+              </section>
 
               {/* 3. Google Gemini Key */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-purple-500" />
-                    <span className="font-bold text-xs text-[#222021]">Google Gemini API Key</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(Gemini 1.5 Pro Multimodal Diagnostics)</span>
-                  </div>
-                  {testResults['gemini'] && (
-                    <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      ✓ Connected ({testResults['gemini'].latency})
-                    </span>
-                  )}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="text-h3 text-fg">Google Gemini</h3>
+                  <p className="mt-1 text-small text-fg-secondary">Gemini 1.5 Pro multimodal diagnostics.</p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showKeys['gemini'] ? 'text' : 'password'}
-                      value={activeTenant.geminiKey}
-                      onChange={(e) => handleUpdateKey('geminiKey', e.target.value)}
-                      placeholder="AIzaSy..."
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('gemini')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6968] hover:text-[#222021]"
-                    >
-                      {showKeys['gemini'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {connectedBadge('gemini')}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => testConnection('gemini')}
-                    disabled={!activeTenant.geminiKey || testingKey === 'gemini'}
-                    className="px-3.5 py-2.5 rounded-xl bg-white border border-[#222021]/20 hover:bg-stone-50 text-xs font-bold text-[#222021] transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {testingKey === 'gemini' ? 'Testing...' : 'Validate Connection'}
-                  </button>
+                  {renderKeyInput('gemini', 'geminiKey', 'AIzaSy...', 'Testing...')}
                 </div>
-              </div>
+              </section>
 
               {/* 4. ElevenLabs Key */}
-              <div className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-rose-500" />
-                    <span className="font-bold text-xs text-[#222021]">ElevenLabs Voice AI Key</span>
-                    <span className="text-[10px] font-mono text-[#6b6968]">(Custom Voice Clones & Turbo v2.5 TTS)</span>
-                  </div>
-                  {testResults['elevenlabs'] && (
-                    <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      ✓ Connected ({testResults['elevenlabs'].latency})
-                    </span>
-                  )}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="text-h3 text-fg">ElevenLabs</h3>
+                  <p className="mt-1 text-small text-fg-secondary">
+                    Custom voice clones and Turbo v2.5{' '}
+                    <Tooltip content="Text to speech">
+                      <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">TTS</span>
+                    </Tooltip>
+                    .
+                  </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showKeys['elevenlabs'] ? 'text' : 'password'}
-                      value={activeTenant.elevenlabsKey}
-                      onChange={(e) => handleUpdateKey('elevenlabsKey', e.target.value)}
-                      placeholder="xi-..."
-                      className="w-full bg-white border border-[#222021]/15 rounded-xl px-3.5 py-2.5 text-xs font-mono text-[#222021] focus:outline-none focus:ring-2 focus:ring-[#ED1C24]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShowKey('elevenlabs')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6968] hover:text-[#222021]"
-                    >
-                      {showKeys['elevenlabs'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {connectedBadge('elevenlabs')}
                   </div>
+                  {renderKeyInput('elevenlabs', 'elevenlabsKey', 'xi-...', 'Testing...')}
+                </div>
+              </section>
 
-                  <button
-                    type="button"
-                    onClick={() => testConnection('elevenlabs')}
-                    disabled={!activeTenant.elevenlabsKey || testingKey === 'elevenlabs'}
-                    className="px-3.5 py-2.5 rounded-xl bg-white border border-[#222021]/20 hover:bg-stone-50 text-xs font-bold text-[#222021] transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
+              {/* Fallback Strategy Setting */}
+              <section className={settingsRow}>
+                <div>
+                  <h3 className="text-h3 text-fg">Fallback</h3>
+                  <p className="mt-1 text-small text-fg-secondary">What happens when a workspace key runs out of quota or is rate limited (429).</p>
+                </div>
+                <div>
+                  <Select
+                    aria-label="Fallback strategy"
+                    value={activeTenant.fallbackStrategy}
+                    onChange={(e) => handleUpdateKey('fallbackStrategy', e.target.value as any)}
                   >
-                    {testingKey === 'elevenlabs' ? 'Testing...' : 'Validate Connection'}
-                  </button>
+                    <option value="system_pool">Fallback to Platform Pooled AI (Zero Rep Disruption)</option>
+                    <option value="pause_alert">Pause Execution & Notify Tenant Admin (No Overage)</option>
+                  </Select>
                 </div>
-              </div>
-
-            </div>
-
-            {/* Fallback Strategy Setting */}
-            <div className="pt-4 border-t border-[#222021]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-xs font-bold text-[#222021] block">Tenant Key Failure & Rate-Limit Fallback</span>
-                <span className="text-[11px] text-[#6b6968]">Define what occurs if a custom tenant key runs out of quota or throws a 429 error.</span>
-              </div>
-
-              <select
-                value={activeTenant.fallbackStrategy}
-                onChange={(e) => handleUpdateKey('fallbackStrategy', e.target.value as any)}
-                className="bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-semibold text-[#222021] focus:outline-none cursor-pointer"
-              >
-                <option value="system_pool">Fallback to Platform Pooled AI (Zero Rep Disruption)</option>
-                <option value="pause_alert">Pause Execution & Notify Tenant Admin (No Overage)</option>
-              </select>
+              </section>
             </div>
 
             {/* Save Buttons & Feedback */}
-            <div className="pt-4 border-t border-[#222021]/10 flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4 border-t border-line pt-4">
               {saveSuccess ? (
-                <span className="text-xs font-mono font-bold text-emerald-700 flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 text-small text-success-fg">
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>Vault successfully re-encrypted and persisted to database!</span>
+                  <span>Keys encrypted and saved.</span>
                 </span>
               ) : (
-                <span className="text-[11px] font-mono text-[#6b6968]">
-                  Keys are never returned in plaintext in API responses.
+                <span className="text-small text-fg-tertiary">
+                  Keys are never returned in plain text in API responses.
                 </span>
               )}
 
-              <button
-                type="submit"
-                className="px-6 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
-              >
-                Save & Encrypt Keys
-              </button>
+              <Button type="submit" variant="brand">
+                Save keys
+              </Button>
             </div>
 
           </form>
@@ -694,58 +556,57 @@ export default function ByokVaultManager() {
       )}
 
       {/* Upgrade Request Modal */}
-      {requestUpgradeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-[#222021]/20 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#222021]/10 pb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[#ED1C24]" />
-                <h3 className="text-base font-black text-[#222021]">Request BYOK Module Unlock</h3>
-              </div>
-              <button 
-                onClick={() => setRequestUpgradeModal(false)}
-                className="text-[#6b6968] hover:text-[#222021]"
-              >
-                ✕
-              </button>
+      <Dialog open={requestUpgradeModal} onClose={() => setRequestUpgradeModal(false)} title="Request BYOK activation" bare className="max-w-md">
+          <div className="space-y-4 p-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-h2 text-fg">Request BYOK activation</h3>
+              <IconButton label="Close" variant="ghost" size="sm" onClick={() => setRequestUpgradeModal(false)}>
+                <X />
+              </IconButton>
             </div>
 
-            <div className="space-y-3 text-xs text-[#6b6968]">
+            <div className="space-y-3 text-body text-fg-secondary">
               <p>
-                An itemized invoice line for <strong>$49.00 / month</strong> will be generated for <strong>{activeTenant.tenantName}</strong>.
+                An invoice line for <span className="text-body-strong text-fg">$49.00 / month</span> will be added for <span className="text-body-strong text-fg">{activeTenant.tenantName}</span>.
               </p>
-              <div className="p-3 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-1 font-mono text-[11px] text-[#222021]">
+              <div className="space-y-1 rounded-md border border-line bg-subtle p-3 text-small text-fg">
                 <div className="flex justify-between">
-                  <span>BYOK AI Subsystem Add-On:</span>
-                  <span className="font-bold">$49.00 / mo</span>
+                  <span>BYOK add-on</span>
+                  <span className="tabular-nums">$49.00 / mo</span>
                 </div>
-                <div className="flex justify-between text-stone-500">
-                  <span>Billing Cycle:</span>
-                  <span>Monthly (Manual Invoice)</span>
+                <div className="flex justify-between text-fg-tertiary">
+                  <span>Billing cycle</span>
+                  <span>Monthly (manual invoice)</span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[#222021]/10 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setRequestUpgradeModal(false)}
-                className="px-4 py-2 rounded-xl bg-[#F2F0EF] text-[#222021] font-semibold text-xs"
-              >
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setRequestUpgradeModal(false)}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="brand"
                 onClick={() => {
                   toggleUnlockTenant();
                   setRequestUpgradeModal(false);
                 }}
-                className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs"
               >
-                Confirm & Add to Invoice
-              </button>
+                Confirm and add to invoice
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmLockVault}
+        onClose={() => setConfirmLockVault(false)}
+        onConfirm={toggleUnlockTenant}
+        title="Lock the vault?"
+        description={`BYOK is turned off for ${activeTenant.tenantName}, so its own provider keys stop being used. Saved keys are kept and you can unlock it again later.`}
+        confirmLabel="Lock vault"
+        icon={<Lock />}
+      />
 
     </div>
   );

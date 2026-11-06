@@ -39,7 +39,8 @@ import {
   KeyRound,
   UserCheck,
   ShieldAlert,
-  Radio
+  Radio,
+  Ban
 } from 'lucide-react';
 import {
   useSession,
@@ -54,6 +55,30 @@ import BillingInvoiceManager from './admin/BillingInvoiceManager';
 import McpDeveloperGateway from './admin/McpDeveloperGateway';
 import CallDispositionManager from './admin/CallDispositionManager';
 import JobRadarManager from './admin/JobRadarManager';
+import {
+  Badge,
+  Button,
+  buttonClasses,
+  Card,
+  Checkbox,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Meter,
+  PageHeader,
+  SearchInput,
+  Select,
+  StatTile,
+  StatusDot,
+} from '@/components/ui';
+
+/* Brand table styling (matches DataTable). */
+const TH_ROW = 'h-9 bg-subtle';
+const TH = 'px-4 text-caption font-medium text-fg-tertiary';
+const TR = 'border-t border-line transition-colors duration-150 hover:bg-subtle';
 
 interface UserRecord {
   id: string;
@@ -152,6 +177,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
   };
 
   const [showAddTenantModal, setShowAddTenantModal] = useState(false);
+  const [pendingSuspendTenant, setPendingSuspendTenant] = useState<TenantRecord | null>(null);
   const [tenantSearchQuery, setTenantSearchQuery] = useState('');
   const [tenantStatusFilter, setTenantStatusFilter] = useState<'all' | 'Active' | 'Trial' | 'Suspended'>('all');
 
@@ -253,6 +279,11 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
   const [newPersonEmail, setNewPersonEmail] = useState('');
   const [newPersonRole, setNewPersonRole] = useState('Sales Rep');
   const [newPersonTenant, setNewPersonTenant] = useState('Enterprise Outbound Q4');
+
+  const toggleTenantStatus = (tenant: TenantRecord) => {
+    const nextStatus = tenant.status === 'Active' ? 'Suspended' : 'Active';
+    setTenants(tenants.map(t => t.id === tenant.id ? { ...t, status: nextStatus } : t));
+  };
 
   const handleAddTenant = (e: React.FormEvent) => {
     e.preventDefault();
@@ -435,32 +466,28 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
   if (!isAdmin) {
     return (
-      <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50 font-sans antialiased text-zinc-900">
+      <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app text-fg">
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <main className="flex-1 flex items-center justify-center p-6">
-            <div className="max-w-md w-full bg-white border border-zinc-200 rounded-2xl p-7 shadow-sm text-center space-y-4">
-              <div className="h-12 w-12 rounded-xl bg-zinc-100 text-zinc-700 flex items-center justify-center mx-auto">
-                <Lock className="h-6 w-6" />
-              </div>
+            <div className="max-w-md w-full bg-surface border border-line rounded-lg p-6 shadow-xs text-center space-y-4">
+              <Lock className="h-8 w-8 mx-auto text-line-strong" aria-hidden />
               <div>
-                <h2 className="text-lg font-bold text-zinc-950">Admin Clearance Required</h2>
-                <p className="text-xs text-zinc-500 mt-1">
-                  You are signed in as <strong>{role}</strong>. This console is restricted to BPO Floor Administrators and Sales Managers.
+                <h2 className="text-h2 text-fg">Admin access required</h2>
+                <p className="text-body text-fg-secondary mt-1">
+                  You are signed in as <strong className="text-body-strong text-fg">{role}</strong>. This area is for floor admins and sales managers.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
-                <Link
-                  href="/dialer"
-                  className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs transition-colors"
-                >
-                  Return to Calling Floor
+                <Link href="/dialer" className={buttonClasses('primary', 'md', 'w-full')}>
+                  Return to calling floor
                 </Link>
-                <button
+                <Button
+                  variant="secondary"
                   onClick={() => updateSession({ role: 'Super Admin' })}
-                  className="w-full py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 text-zinc-800 font-medium text-xs transition-colors"
+                  className="w-full"
                 >
-                  Elevate to Admin (Testing)
-                </button>
+                  Elevate to admin (testing)
+                </Button>
               </div>
             </div>
           </main>
@@ -479,359 +506,356 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 0: TENANTS & CLIENT ACCESS */}
           {activeTab === 'tenants' && (
-            <div className="space-y-6">
-              {/* Filter & Actions Bar */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative flex-1 w-full sm:max-w-xl">
-                  <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6b6968]" />
-                  <input
-                    type="text"
-                    value={tenantSearchQuery}
-                    onChange={(e) => setTenantSearchQuery(e.target.value)}
-                    placeholder="Search client tenant by company name, slug, or admin email..."
-                    className="w-full h-11 pl-10 pr-4 rounded-xl bg-white border border-[#222021]/15 text-xs font-medium placeholder-[#6b6968] text-[#222021] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#ED1C24] transition-all"
+            <div>
+              <PageHeader
+                title="Tenants"
+                count={tenants.length}
+                description="Client workspaces, seat limits, telephony and module entitlements."
+                primaryAction={
+                  <Button
+                    variant="brand"
+                    icon={<Plus className="h-4 w-4" />}
+                    onClick={() => setShowAddTenantModal(true)}
+                  >
+                    Provision tenant
+                  </Button>
+                }
+              />
+
+              <div className="space-y-6">
+                {/* Filter bar */}
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="w-full sm:max-w-md">
+                    <SearchInput
+                      type="text"
+                      value={tenantSearchQuery}
+                      onChange={(e) => setTenantSearchQuery(e.target.value)}
+                      placeholder="Search by company, slug or admin email"
+                      aria-label="Search tenants"
+                    />
+                  </div>
+                  <div className="w-full sm:w-48">
+                    <Select
+                      value={tenantStatusFilter}
+                      onChange={(e) => setTenantStatusFilter(e.target.value as any)}
+                      aria-label="Filter by status"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Trial">Trial</option>
+                      <option value="Suspended">Suspended</option>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Tenant KPIs */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatTile
+                    label="Active tenants"
+                    value={tenants.filter(t => t.status === 'Active').length}
+                    target={`${tenants.length} total`}
+                    hint="100% SLA uptime"
+                  />
+                  <StatTile
+                    label="Seats allocated"
+                    value={tenants.reduce((acc, t) => acc + t.seatsUsed, 0)}
+                    target={`${tenants.reduce((acc, t) => acc + t.seats, 0)} cap`}
+                    hint="73% floor utilization"
+                  />
+                  <StatTile
+                    label="Telephony trunks"
+                    value="4"
+                    hint="Twilio, SIP, VICIdial, WebRTC"
+                  />
+                  <StatTile
+                    label="Monthly run rate"
+                    value="$13,250"
+                    delta={20}
+                    hint="vs last month"
                   />
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <select
-                    value={tenantStatusFilter}
-                    onChange={(e) => setTenantStatusFilter(e.target.value as any)}
-                    className="h-11 px-3.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-semibold text-[#222021] focus:outline-none shadow-2xs cursor-pointer"
-                  >
-                    <option value="all">All Client Statuses</option>
-                    <option value="Active">Active</option>
-                    <option value="Trial">Trial</option>
-                    <option value="Suspended">Suspended</option>
-                  </select>
-
-                  <button 
-                    onClick={() => setShowAddTenantModal(true)}
-                    className="h-11 px-4 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Provision Tenant</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* High-Level Tenant Telemetry (4 Cards) */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Active BPO Tenants</span>
-                  <span className="text-2xl font-black text-[#222021] font-mono">
-                    {tenants.filter(t => t.status === 'Active').length} <span className="text-xs font-normal text-[#6b6968]">/ {tenants.length} Total</span>
-                  </span>
-                  <p className="text-[11px] text-emerald-700 font-medium">100% SLA uptime</p>
-                </div>
-
-                <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Allocated SDR Seats</span>
-                  <span className="text-2xl font-black text-[#222021] font-mono">
-                    {tenants.reduce((acc, t) => acc + t.seatsUsed, 0)} <span className="text-xs font-normal text-[#6b6968]">/ {tenants.reduce((acc, t) => acc + t.seats, 0)} Cap</span>
-                  </span>
-                  <p className="text-[11px] text-[#6b6968]">73% Floor Utilization</p>
-                </div>
-
-                <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Telephony Trunks</span>
-                  <span className="text-2xl font-black text-blue-600 font-mono">4 Gateways</span>
-                  <p className="text-[11px] text-[#6b6968]">Twilio, SIP, VICIdial, WebRTC</p>
-                </div>
-
-                <div className="bg-white border border-[#222021]/10 rounded-2xl p-4 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-[#6b6968] block">Monthly Run Rate</span>
-                  <span className="text-2xl font-black text-[#ED1C24] font-mono">$13,250</span>
-                  <p className="text-[11px] text-emerald-700 font-medium">+20% vs last month</p>
-                </div>
-              </div>
-
-              {/* Tenants Directory Cards */}
-              <div className="space-y-4">
-                {tenants
-                  .filter(t => {
-                    const matchQuery = t.name.toLowerCase().includes(tenantSearchQuery.toLowerCase()) || 
-                                       t.slug.toLowerCase().includes(tenantSearchQuery.toLowerCase()) ||
-                                       t.adminEmail.toLowerCase().includes(tenantSearchQuery.toLowerCase());
-                    const matchStatus = tenantStatusFilter === 'all' || t.status === tenantStatusFilter;
-                    return matchQuery && matchStatus;
-                  })
-                  .map((tenant) => (
-                    <div 
-                      key={tenant.id} 
-                      className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-4 hover:border-[#222021]/25 transition-all"
-                    >
-                      {/* Tenant Header Row */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-xl bg-[#222021] text-white flex items-center justify-center font-bold text-sm shrink-0">
-                            <Building2 className="h-5 w-5 text-stone-200" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-base font-extrabold text-[#222021]">{tenant.name}</h3>
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F2F0EF] text-[#6b6968] border border-[#222021]/10">
-                                {tenant.slug}
-                              </span>
+                {/* Tenants directory */}
+                <div className="space-y-4">
+                  {tenants
+                    .filter(t => {
+                      const matchQuery = t.name.toLowerCase().includes(tenantSearchQuery.toLowerCase()) ||
+                                         t.slug.toLowerCase().includes(tenantSearchQuery.toLowerCase()) ||
+                                         t.adminEmail.toLowerCase().includes(tenantSearchQuery.toLowerCase());
+                      const matchStatus = tenantStatusFilter === 'all' || t.status === tenantStatusFilter;
+                      return matchQuery && matchStatus;
+                    })
+                    .map((tenant) => (
+                      <Card key={tenant.id} className="p-5 space-y-4">
+                        {/* Tenant header row */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-h3 text-fg">{tenant.name}</h3>
+                              <span className="font-mono text-caption text-fg-tertiary">{tenant.slug}</span>
                             </div>
-                            <p className="text-xs text-[#6b6968]">
-                              Admin: <strong className="text-[#222021]">{tenant.adminEmail}</strong> &bull; Telephony: <strong className="text-[#222021]">{tenant.telephony}</strong>
+                            <p className="text-small text-fg-secondary mt-0.5">
+                              Admin {tenant.adminEmail} &middot; {tenant.telephony} &middot; {tenant.plan}
                             </p>
                           </div>
+                          <Badge
+                            tone={tenant.status === 'Active' ? 'success' : tenant.status === 'Trial' ? 'warning' : 'danger'}
+                          >
+                            {tenant.status}
+                          </Badge>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
-                            tenant.status === 'Active' 
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                              : tenant.status === 'Trial' 
-                                ? 'bg-amber-50 text-amber-800 border-amber-200' 
-                                : 'bg-red-50 text-red-800 border-red-200'
-                          }`}>
-                            {tenant.status.toUpperCase()}
-                          </span>
-                          <span className="text-xs font-mono font-bold text-[#222021] bg-[#F2F0EF] px-2.5 py-1 rounded-lg border border-[#222021]/10">
-                            {tenant.plan}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Seat Allocation Bar & Telemetry */}
-                      <div className="bg-[#FAF9F5] p-3.5 rounded-xl border border-[#222021]/10 space-y-2">
-                        <div className="flex items-center justify-between text-xs font-mono">
-                          <span className="text-[#6b6968]">Seat Capacity & Floor Allocation:</span>
-                          <span className="font-bold text-[#222021]">
-                            {tenant.seatsUsed} / {tenant.seats} Seats Occupied ({Math.round((tenant.seatsUsed / tenant.seats) * 100)}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-[#222021]/10 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all ${
-                              tenant.status === 'Suspended' ? 'bg-stone-400' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${Math.min(100, Math.round((tenant.seatsUsed / tenant.seats) * 100))}%` }}
+                        {/* Seat meter */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-small">
+                            <span className="text-fg-secondary">Seats</span>
+                            <span className="tabular-nums text-fg">
+                              {tenant.seatsUsed} / {tenant.seats} used ({Math.round((tenant.seatsUsed / tenant.seats) * 100)}%)
+                            </span>
+                          </div>
+                          <Meter
+                            value={Math.min(100, Math.round((tenant.seatsUsed / tenant.seats) * 100)) / 100}
+                            label={`${tenant.name} seats used`}
+                            className={tenant.status === 'Suspended' ? 'opacity-40' : undefined}
                           />
                         </div>
-                      </div>
 
-                      {/* Modular Entitlements / Feature Flags (Interactive) */}
-                      <div className="pt-1 border-t border-[#222021]/10 flex flex-wrap items-center justify-between gap-3 text-xs">
-                        <div>
-                          <span className="text-[10px] font-mono uppercase text-[#6b6968] block mb-1">
-                            Tenant Module Entitlements:
-                          </span>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, borisCockpit: !t.modules.borisCockpit } } : t));
-                              }}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                                tenant.modules.borisCockpit 
-                                  ? 'bg-red-50 text-[#ED1C24] border-[#ED1C24]/30' 
-                                  : 'bg-[#F2F0EF] text-[#6b6968] border-[#222021]/10 line-through'
-                              }`}
-                              title="Toggle AI Boris Cockpit access"
-                            >
-                              AI Boris Cockpit
-                            </button>
+                        {/* Module entitlements (toggle) */}
+                        <div className="pt-4 border-t border-line flex flex-wrap items-end justify-between gap-3">
+                          <div>
+                            <span className="text-caption text-fg-tertiary block mb-1.5">
+                              Module entitlements
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, borisCockpit: !t.modules.borisCockpit } } : t));
+                                }}
+                                className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
+                                  tenant.modules.borisCockpit
+                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
+                                }`}
+                                title="Toggle AI Boris Cockpit access"
+                                aria-pressed={tenant.modules.borisCockpit}
+                              >
+                                {tenant.modules.borisCockpit && <Check className="h-3 w-3" aria-hidden />}
+                                AI Boris cockpit
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, sparringArena: !t.modules.sparringArena } } : t));
-                              }}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                                tenant.modules.sparringArena 
-                                  ? 'bg-blue-50 text-blue-800 border-blue-200' 
-                                  : 'bg-[#F2F0EF] text-[#6b6968] border-[#222021]/10 line-through'
-                              }`}
-                              title="Toggle AI Sparring Arena access"
-                            >
-                              AI Sparring Arena
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, sparringArena: !t.modules.sparringArena } } : t));
+                                }}
+                                className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
+                                  tenant.modules.sparringArena
+                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
+                                }`}
+                                title="Toggle AI Sparring Arena access"
+                                aria-pressed={tenant.modules.sparringArena}
+                              >
+                                {tenant.modules.sparringArena && <Check className="h-3 w-3" aria-hidden />}
+                                Practice arena
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, certificationGate: !t.modules.certificationGate } } : t));
-                              }}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                                tenant.modules.certificationGate 
-                                  ? 'bg-purple-50 text-purple-800 border-purple-200' 
-                                  : 'bg-[#F2F0EF] text-[#6b6968] border-[#222021]/10'
-                              }`}
-                              title="Enforce 80% passing certification gate"
-                            >
-                              {tenant.modules.certificationGate ? '✓ Cert Gate Enforced' : '○ Cert Gate Optional'}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, certificationGate: !t.modules.certificationGate } } : t));
+                                }}
+                                className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
+                                  tenant.modules.certificationGate
+                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    : 'bg-surface text-fg-tertiary border-line hover:border-line-strong'
+                                }`}
+                                title="Enforce 80% passing certification gate"
+                                aria-pressed={tenant.modules.certificationGate}
+                              >
+                                {tenant.modules.certificationGate && <Check className="h-3 w-3" aria-hidden />}
+                                {tenant.modules.certificationGate ? 'Cert gate enforced' : 'Cert gate optional'}
+                              </button>
 
-                            <button
-                              type="button"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, crmCadence: !t.modules.crmCadence } } : t));
+                                }}
+                                className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
+                                  tenant.modules.crmCadence
+                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
+                                }`}
+                                title="Toggle Leads & Cadence CRM"
+                                aria-pressed={tenant.modules.crmCadence}
+                              >
+                                {tenant.modules.crmCadence && <Check className="h-3 w-3" aria-hidden />}
+                                Leads CRM
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={<Plus className="h-3.5 w-3.5" />}
                               onClick={() => {
-                                setTenants(tenants.map(t => t.id === tenant.id ? { ...t, modules: { ...t.modules, crmCadence: !t.modules.crmCadence } } : t));
+                                const extra = prompt(`Add seats for ${tenant.name} (Current: ${tenant.seats}):`, '10');
+                                if (extra && !isNaN(Number(extra))) {
+                                  setTenants(tenants.map(t => t.id === tenant.id ? { ...t, seats: t.seats + Number(extra) } : t));
+                                }
                               }}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                                tenant.modules.crmCadence 
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                                  : 'bg-[#F2F0EF] text-[#6b6968] border-[#222021]/10 line-through'
-                              }`}
-                              title="Toggle Leads & Cadence CRM"
+                              title="Adjust seat limit"
                             >
-                              Leads CRM
-                            </button>
+                              Add seats
+                            </Button>
+
+                            <Button
+                              variant={tenant.status === 'Active' ? 'danger' : 'secondary'}
+                              size="sm"
+                              onClick={() => {
+                                if (tenant.status === 'Active') {
+                                  setPendingSuspendTenant(tenant);
+                                } else {
+                                  toggleTenantStatus(tenant);
+                                }
+                              }}
+                            >
+                              {tenant.status === 'Active' ? 'Suspend' : 'Activate'}
+                            </Button>
+
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={<Eye className="h-3.5 w-3.5" />}
+                              onClick={() => handleSelectShadowTenant(tenant)}
+                              title="Shadow this tenant's workspace"
+                            >
+                              Shadow workspace
+                            </Button>
                           </div>
                         </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 pt-1 sm:pt-0">
-                          <button
-                            onClick={() => handleSelectShadowTenant(tenant)}
-                            className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Shadow this tenant's workspace"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span>Shadow Workspace</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              const nextStatus = tenant.status === 'Active' ? 'Suspended' : 'Active';
-                              setTenants(tenants.map(t => t.id === tenant.id ? { ...t, status: nextStatus } : t));
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
-                              tenant.status === 'Active'
-                                ? 'bg-[#F2F0EF] hover:bg-red-50 text-[#6b6968] hover:text-[#ED1C24] border-[#222021]/10 hover:border-red-200'
-                                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                            }`}
-                          >
-                            {tenant.status === 'Active' ? 'Suspend' : 'Activate'}
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              const extra = prompt(`Add seats for ${tenant.name} (Current: ${tenant.seats}):`, '10');
-                              if (extra && !isNaN(Number(extra))) {
-                                setTenants(tenants.map(t => t.id === tenant.id ? { ...t, seats: t.seats + Number(extra) } : t));
-                              }
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-[#F2F0EF] hover:bg-[#e7e4e2] text-[#222021] font-semibold text-xs border border-[#222021]/10 transition-colors cursor-pointer"
-                            title="Adjust seat limit"
-                          >
-                            + Seats
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      </Card>
+                    ))}
+                </div>
               </div>
             </div>
           )}
 
           {/* TAB 1: PEOPLE (User Management) */}
           {activeTab === 'people' && (
-            <div className="space-y-4">
-              {/* Filter Bar: [Search] [Roles] [+ Add person] */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative flex-1 w-full sm:max-w-xl">
-                  <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6b6968]" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search team member by name or email"
-                    className="w-full h-11 pl-10 pr-4 rounded-xl bg-white border border-[#222021]/15 text-xs font-medium placeholder-[#6b6968] text-[#222021] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#ED1C24] transition-all"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <select
-                    value={roleFilter}
-                    onChange={(e) => setRoleFilter(e.target.value)}
-                    className="h-11 px-3.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-semibold text-[#222021] focus:outline-none shadow-2xs cursor-pointer"
-                  >
-                    <option value="all">All roles</option>
-                    <option value="director">Director</option>
-                    <option value="manager">Manager</option>
-                    <option value="sales rep">Sales Rep</option>
-                  </select>
-
-                  <button 
+            <div>
+              <PageHeader
+                title="Members & seats"
+                count={users.length}
+                description="Invite people, set their role and choose which workspaces they can use."
+                primaryAction={
+                  <Button
+                    variant="brand"
+                    icon={<Plus className="h-4 w-4" />}
                     onClick={() => setShowAddPersonModal(true)}
-                    className="h-11 px-4 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors shrink-0"
                   >
-                    <Plus className="h-4 w-4" />
-                    <span>Add person</span>
-                  </button>
-                </div>
-              </div>
+                    Add person
+                  </Button>
+                }
+              />
 
-              {/* People Table */}
-              <div className="bg-white border border-[#222021]/10 rounded-2xl shadow-2xs overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-[#222021]/10 bg-[#F2F0EF]/50 text-[#6b6968] font-bold">
-                        <th className="py-3 px-4">Name</th>
-                        <th className="py-3 px-4">Role</th>
-                        <th className="py-3 px-4">Tenants</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4">Last login</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#222021]/10 font-medium">
-                      {filteredUsers.map((user) => (
-                        <tr key={user.id} className="hover:bg-[#F2F0EF]/40 transition-colors">
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-[#222021]">{user.name}</div>
-                            <div className="text-[11px] text-[#6b6968]">{user.email}</div>
-                          </td>
-                          <td className="py-3.5 px-4 font-semibold text-[#222021]">
-                            {user.role}
-                          </td>
-                          <td className="py-3.5 px-4 text-[#6b6968]">
-                            {user.tenants}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {user.status}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-[#6b6968] font-mono text-[11px]">
-                            {user.lastLogin}
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="inline-flex items-center gap-1">
-                              <button title="Edit User" className="p-1.5 rounded-lg hover:bg-[#F2F0EF] text-[#6b6968] hover:text-[#222021] transition-colors">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button title="Send Reset Email" className="p-1.5 rounded-lg hover:bg-[#F2F0EF] text-[#6b6968] hover:text-[#222021] transition-colors">
-                                <Mail className="h-3.5 w-3.5" />
-                              </button>
-                              <button title="Archive User" className="p-1.5 rounded-lg hover:bg-[#F2F0EF] text-[#6b6968] hover:text-[#222021] transition-colors">
-                                <Archive className="h-3.5 w-3.5" />
-                              </button>
-                              <button 
-                                title="Delete User" 
-                                onClick={() => setUsers(users.filter(u => u.id !== user.id))}
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-[#6b6968] hover:text-[#ED1C24] transition-colors"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
+              <div className="space-y-4">
+                {/* Filter bar */}
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="w-full sm:max-w-md">
+                    <SearchInput
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search by name or email"
+                      aria-label="Search members"
+                    />
+                  </div>
+                  <div className="w-full sm:w-44">
+                    <Select
+                      value={roleFilter}
+                      onChange={(e) => setRoleFilter(e.target.value)}
+                      aria-label="Filter by role"
+                    >
+                      <option value="all">All roles</option>
+                      <option value="director">Director</option>
+                      <option value="manager">Manager</option>
+                      <option value="sales rep">Sales rep</option>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* People table */}
+                <div className="rounded-lg border border-line bg-surface shadow-xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-body tabular-nums">
+                      <thead>
+                        <tr className={TH_ROW}>
+                          <th scope="col" className={TH}>Name</th>
+                          <th scope="col" className={TH}>Role</th>
+                          <th scope="col" className={TH}>Workspaces</th>
+                          <th scope="col" className={TH}>Status</th>
+                          <th scope="col" className={TH}>Last login</th>
+                          <th scope="col" className={`${TH} text-right`}><span className="sr-only">Actions</span></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {filteredUsers.map((user) => (
+                          <tr key={user.id} className={TR}>
+                            <td className="px-4 py-2.5">
+                              <div className="text-body-strong text-fg">{user.name}</div>
+                              <div className="text-small text-fg-secondary">{user.email}</div>
+                            </td>
+                            <td className="px-4 py-2.5 text-fg">
+                              {user.role}
+                            </td>
+                            <td className="px-4 py-2.5 text-fg-secondary">
+                              {user.tenants}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <StatusDot tone="success" label={user.status} />
+                            </td>
+                            <td className="px-4 py-2.5 text-small text-fg-secondary">
+                              {user.lastLogin}
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="inline-flex items-center gap-0.5">
+                                <IconButton label="Edit User" size="sm">
+                                  <Pencil className="h-4 w-4" />
+                                </IconButton>
+                                <IconButton label="Send Reset Email" size="sm">
+                                  <Mail className="h-4 w-4" />
+                                </IconButton>
+                                <IconButton label="Archive User" size="sm">
+                                  <Archive className="h-4 w-4" />
+                                </IconButton>
+                                <IconButton
+                                  label="Delete User"
+                                  size="sm"
+                                  onClick={() => setUsers(users.filter(u => u.id !== user.id))}
+                                  className="hover:bg-danger-bg hover:text-danger-fg"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </IconButton>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                <div className="py-3 px-4 border-t border-[#222021]/10 bg-[#F2F0EF]/30 text-xs text-[#6b6968] flex items-center justify-between">
-                  <span>Showing {filteredUsers.length} of {users.length} team members</span>
-                  <div className="flex items-center gap-2">
-                    <button className="px-2 py-1 rounded border border-[#222021]/15 bg-white text-[#6b6968] hover:text-[#222021] text-xs">Previous</button>
-                    <button className="px-2 py-1 rounded border border-[#222021]/15 bg-white text-[#6b6968] hover:text-[#222021] text-xs">Next</button>
+                  <div className="px-4 py-3 border-t border-line text-small text-fg-secondary flex items-center justify-between">
+                    <span className="tabular-nums">Showing {filteredUsers.length} of {users.length} members</span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" size="sm">Previous</Button>
+                      <Button variant="secondary" size="sm">Next</Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -840,17 +864,16 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 2: TRAINING MODULES */}
           {activeTab === 'modules' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-extrabold text-[#222021]">Training Curriculum Catalog</h3>
-                  <p className="text-xs text-[#6b6968]">Configure competency thresholds, passing grades, and audio synthesis playbooks.</p>
-                </div>
-                <button className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors">
-                  <Plus className="h-4 w-4" />
-                  <span>New Module</span>
-                </button>
-              </div>
+            <div>
+              <PageHeader
+                title="Training modules"
+                description="Set passing grades and competency thresholds for each training module."
+                primaryAction={
+                  <Button variant="brand" icon={<Plus className="h-4 w-4" />}>
+                    New module
+                  </Button>
+                }
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
@@ -859,22 +882,22 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                   { num: '03', title: 'AI Sparring Arena (10 Buyer Personas)', desc: 'Acoustic practice against skeptical VPs, burned directors, and gatekeepers.', reps: '15 reps certified', pass: '80%', status: 'Published' },
                   { num: '04', title: 'Enterprise Certification Gate', desc: 'Standardized 80% passing evaluation with tamper-evident digital certificates.', reps: '12 certificates issued', pass: '80%', status: 'Active Gate' },
                 ].map(mod => (
-                  <div key={mod.num} className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-3">
+                  <Card key={mod.num} className="p-5 flex flex-col gap-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#ED1C24]/10 text-[#ED1C24] border border-[#ED1C24]/20">
-                        MODULE {mod.num}
+                      <span className="text-caption text-fg-tertiary tabular-nums">
+                        Module {mod.num}
                       </span>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        {mod.status}
-                      </span>
+                      <Badge tone="success">{mod.status}</Badge>
                     </div>
-                    <h3 className="text-base font-extrabold text-[#222021]">{mod.title}</h3>
-                    <p className="text-xs text-[#6b6968] leading-relaxed">{mod.desc}</p>
-                    <div className="pt-2 border-t border-[#222021]/10 flex items-center justify-between text-xs">
-                      <span className="text-[#6b6968]">Min Pass: <strong className="text-[#222021]">{mod.pass}</strong></span>
-                      <button className="text-xs font-bold text-[#ED1C24] hover:underline">Configure</button>
+                    <div>
+                      <h3 className="text-h3 text-fg">{mod.title}</h3>
+                      <p className="text-small text-fg-secondary mt-1">{mod.desc}</p>
                     </div>
-                  </div>
+                    <div className="mt-auto pt-3 border-t border-line flex items-center justify-between text-small">
+                      <span className="text-fg-secondary">Pass mark <span className="text-body-strong text-fg tabular-nums">{mod.pass}</span></span>
+                      <Button variant="ghost" size="sm">Configure</Button>
+                    </div>
+                  </Card>
                 ))}
               </div>
             </div>
@@ -882,336 +905,309 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 3: MODULE ACCESS */}
           {activeTab === 'access' && (
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-extrabold text-[#222021]">Role Permission Matrix</h3>
-                  <p className="text-xs text-[#6b6968] mt-0.5">Control feature visibility and administrative authority across SDRs, Closers, Managers, and Directors/Admins.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {permissionSavedToast && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Permissions Saved &amp; Enforced Live</span>
-                    </span>
-                  )}
-                  <button 
-                    onClick={handleSavePermissionMatrix}
-                    className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
-                  >
-                    Save Access Matrix
-                  </button>
-                </div>
-              </div>
+            <div>
+              <PageHeader
+                title="Roles & permissions"
+                description="Choose which tools each role can see and use. Changes apply after you save."
+                meta={
+                  permissionSavedToast ? (
+                    <Badge tone="success">
+                      <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
+                      Permissions saved
+                    </Badge>
+                  ) : undefined
+                }
+                primaryAction={
+                  <Button variant="brand" onClick={handleSavePermissionMatrix}>
+                    Save permissions
+                  </Button>
+                }
+              />
 
-              <div className="divide-y divide-[#222021]/10 text-xs">
-                {rolePermissions.map((tool) => (
-                  <div key={tool.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="max-w-md">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#222021] text-xs block">{tool.name}</span>
-                        {tool.id === 'icp_builder' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 text-white font-bold">
-                            NEW ACCESS GATE
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-[#6b6968]">{tool.desc}</span>
-                    </div>
-                    <div className="flex items-center gap-5 shrink-0 pt-1 sm:pt-0">
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={tool.sdr}
-                          onChange={() => handleTogglePermission(tool.id, 'sdr')}
-                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
-                        />
-                        <span className={tool.sdr ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
-                          SDR
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={tool.closer}
-                          onChange={() => handleTogglePermission(tool.id, 'closer')}
-                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
-                        />
-                        <span className={tool.closer ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
-                          Closer
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={tool.manager}
-                          onChange={() => handleTogglePermission(tool.id, 'manager')}
-                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
-                        />
-                        <span className={tool.manager ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
-                          Manager
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[#222021] font-semibold text-xs cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={tool.director}
-                          onChange={() => handleTogglePermission(tool.id, 'director')}
-                          className="accent-[#ED1C24] h-4 w-4 rounded cursor-pointer"
-                        />
-                        <span className={tool.director ? 'text-zinc-900 font-bold' : 'text-zinc-400 line-through'}>
-                          Director / Admin
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <div className="rounded-lg border border-line bg-surface shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-body">
+                    <thead>
+                      <tr className={TH_ROW}>
+                        <th scope="col" className={TH}>Tool</th>
+                        <th scope="col" className={`${TH} w-24 text-center`}>SDR</th>
+                        <th scope="col" className={`${TH} w-24 text-center`}>Closer</th>
+                        <th scope="col" className={`${TH} w-24 text-center`}>Manager</th>
+                        <th scope="col" className={`${TH} w-32 text-center`}>Director / admin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rolePermissions.map((tool) => (
+                        <tr key={tool.id} className={TR}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-body-strong text-fg">{tool.name}</span>
+                              {tool.id === 'icp_builder' && (
+                                <Badge tone="brand">New access gate</Badge>
+                              )}
+                            </div>
+                            <p className="text-small text-fg-secondary max-w-md">{tool.desc}</p>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Checkbox
+                              checked={tool.sdr}
+                              onChange={() => handleTogglePermission(tool.id, 'sdr')}
+                              aria-label={`${tool.name}: SDR`}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Checkbox
+                              checked={tool.closer}
+                              onChange={() => handleTogglePermission(tool.id, 'closer')}
+                              aria-label={`${tool.name}: Closer`}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Checkbox
+                              checked={tool.manager}
+                              onChange={() => handleTogglePermission(tool.id, 'manager')}
+                              aria-label={`${tool.name}: Manager`}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Checkbox
+                              checked={tool.director}
+                              onChange={() => handleTogglePermission(tool.id, 'director')}
+                              aria-label={`${tool.name}: Director / admin`}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-              <div className="pt-3 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
-                <span className="text-[11px] font-mono">
-                  Admins &amp; workspace customers can untick the SDR box above to immediately restrict rep-level access.
-                </span>
-                <button 
-                  onClick={handleSavePermissionMatrix}
-                  className="px-5 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
-                >
-                  Save Access Matrix
-                </button>
+                <div className="px-4 py-3 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span className="text-small text-fg-tertiary">
+                    Untick SDR on a tool to remove it from reps straight away.
+                  </span>
+                  <Button variant="secondary" onClick={handleSavePermissionMatrix}>
+                    Save permissions
+                  </Button>
+                </div>
               </div>
             </div>
           )}
 
           {/* TAB 4: LEADS & CADENCE CRM (Integrated Directly Inside Super Admin) */}
           {activeTab === 'leads' && (
-            <div className="space-y-6">
-              
-              {/* Top Banner: CSV Lead Ingestion Bench */}
-              <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ED1C24]/10 text-[#ED1C24] font-bold text-[10px] uppercase font-mono mb-1.5">
-                      <Sparkles className="h-3 w-3" />
-                      <span>Enterprise Ingestion Engine</span>
-                    </div>
-                    <h3 className="text-xl font-black text-[#222021]">B2B Leads & Cadence CRM Engine</h3>
-                    <p className="text-xs text-[#6b6968] mt-0.5">
-                      Upload target prospect lists via CSV, automatically enrich tech stacks, and generate 7-touch multichannel cadences.
-                    </p>
-                  </div>
+            <div>
+              <PageHeader
+                title="Leads & cadences"
+                count={leads.length}
+                description="Import prospect lists by CSV and review each lead's multichannel cadence."
+                primaryAction={
+                  <label className={buttonClasses('brand', 'md', 'cursor-pointer focus-within:shadow-[var(--focus-ring)]')}>
+                    <UploadCloud className="h-4 w-4" aria-hidden />
+                    <span>{isUploadingCsv ? 'Importing CSV...' : 'Import lead CSV'}</span>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="sr-only"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setIsUploadingCsv(true);
+                          setTimeout(() => {
+                            setIsUploadingCsv(false);
+                            setCsvUploadSuccess(true);
+                            setTimeout(() => setCsvUploadSuccess(false), 3000);
+                          }, 1200);
+                        }
+                      }}
+                    />
+                  </label>
+                }
+              />
 
-                  {/* CSV Upload Trigger */}
-                  <div className="flex items-center gap-2">
-                    <label className="px-4 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-2 shadow-2xs cursor-pointer transition-colors">
-                      <UploadCloud className="h-4 w-4" />
-                      <span>{isUploadingCsv ? 'Ingesting CSV...' : 'Import Lead CSV'}</span>
-                      <input
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            setIsUploadingCsv(true);
-                            setTimeout(() => {
-                              setIsUploadingCsv(false);
-                              setCsvUploadSuccess(true);
-                              setTimeout(() => setCsvUploadSuccess(false), 3000);
-                            }, 1200);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
+              <div className="space-y-6">
                 {csvUploadSuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <span>Successfully ingested and vectorized 14 new B2B accounts into current campaign!</span>
+                  <div role="status" className="px-4 py-3 rounded-md bg-success-bg border border-success-500/40 text-success-fg text-body flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" aria-hidden />
+                    <span>Imported 14 new accounts into the current campaign.</span>
                   </div>
                 )}
-              </div>
 
-              {/* Grid: Leads Roster (7 cols) + AI Cadence Viewer (5 cols) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                
-                {/* Left: Accounts List (7 cols) */}
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="bg-white border border-[#222021]/10 rounded-2xl shadow-2xs overflow-hidden">
-                    
-                    {/* Search & Filter Bar */}
-                    <div className="p-4 border-b border-[#222021]/10 flex items-center justify-between gap-3 bg-[#F2F0EF]/40">
-                      <div className="relative flex-1">
-                        <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b6968]" />
-                        <input
-                          type="text"
-                          value={leadSearchTerm}
-                          onChange={(e) => setLeadSearchTerm(e.target.value)}
-                          placeholder="Search lead, company, or tech stack..."
-                          className="w-full bg-white border border-[#222021]/15 rounded-xl pl-9 pr-3 py-1.5 text-xs text-[#222021] placeholder-[#6b6968] focus:outline-none focus:ring-1 focus:ring-[#ED1C24]"
-                        />
+                {/* Grid: Leads roster (7 cols) + cadence viewer (5 cols) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left: accounts list */}
+                  <div className="lg:col-span-7">
+                    <div className="rounded-lg border border-line bg-surface shadow-xs overflow-hidden">
+                      {/* Search bar */}
+                      <div className="p-3 border-b border-line flex items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <SearchInput
+                            type="text"
+                            value={leadSearchTerm}
+                            onChange={(e) => setLeadSearchTerm(e.target.value)}
+                            placeholder="Search lead, company or tech stack"
+                            aria-label="Search leads"
+                          />
+                        </div>
+                        <span className="text-small text-fg-secondary shrink-0 tabular-nums">
+                          {filteredLeads.length} accounts
+                        </span>
                       </div>
-                      <span className="text-[11px] font-mono text-[#6b6968] shrink-0 font-bold">
-                        {filteredLeads.length} Accounts Loaded
-                      </span>
-                    </div>
 
-                    {/* Leads Table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="border-b border-[#222021]/10 text-[#6b6968] font-bold bg-[#F2F0EF]/20">
-                            <th className="py-2.5 px-3">Prospect</th>
-                            <th className="py-2.5 px-3">Tech Stack</th>
-                            <th className="py-2.5 px-3">Status</th>
-                            <th className="py-2.5 px-3 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#222021]/10">
-                          {filteredLeads.map((lead) => {
-                            const isSelected = selectedLeadForCadence?.id === lead.id;
-                            return (
-                              <tr 
-                                key={lead.id}
-                                onClick={() => setSelectedLeadForCadence(lead)}
-                                className={`cursor-pointer transition-colors ${
-                                  isSelected ? 'bg-[#ED1C24]/10' : 'hover:bg-[#F2F0EF]/50'
-                                }`}
-                              >
-                                <td className="py-3 px-3">
-                                  <div className="font-bold text-[#222021]">{lead.name}</div>
-                                  <div className="text-[11px] text-[#6b6968]">{lead.company} • {lead.title}</div>
-                                </td>
-                                <td className="py-3 px-3">
-                                  <span className="inline-block px-2 py-0.5 rounded bg-white border border-[#222021]/10 text-[10px] font-mono font-bold text-[#222021]">
+                      {/* Leads table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-left text-body">
+                          <thead>
+                            <tr className={TH_ROW}>
+                              <th scope="col" className={TH}>Prospect</th>
+                              <th scope="col" className={TH}>Tech stack</th>
+                              <th scope="col" className={TH}>Status</th>
+                              <th scope="col" className={`${TH} text-right`}><span className="sr-only">Action</span></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredLeads.map((lead) => {
+                              const isSelected = selectedLeadForCadence?.id === lead.id;
+                              return (
+                                <tr
+                                  key={lead.id}
+                                  onClick={() => setSelectedLeadForCadence(lead)}
+                                  className={`border-t border-line cursor-pointer transition-colors duration-150 ${
+                                    isSelected ? 'bg-selected' : 'hover:bg-subtle'
+                                  }`}
+                                >
+                                  <td className="px-4 py-2.5">
+                                    <div className="text-body-strong text-fg">{lead.name}</div>
+                                    <div className="text-small text-fg-secondary">{lead.company} &middot; {lead.title}</div>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-small text-fg-secondary">
                                     {lead.techStack}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                    lead.status === 'booked' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                                    lead.status === 'contacted' ? 'bg-blue-50 text-blue-800 border border-blue-200' :
-                                    'bg-amber-50 text-amber-800 border border-amber-200'
-                                  }`}>
-                                    {lead.status}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3 text-right">
-                                  <button 
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                                      isSelected ? 'bg-[#ED1C24] text-white' : 'bg-[#F2F0EF] text-[#222021] hover:bg-[#e7e4e2]'
-                                    }`}
-                                  >
-                                    View Cadence
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <Badge
+                                      tone={lead.status === 'booked' ? 'success' : lead.status === 'contacted' ? 'neutral' : 'warning'}
+                                      className="capitalize"
+                                    >
+                                      {lead.status}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right">
+                                    <Button variant={isSelected ? 'primary' : 'secondary'} size="sm">
+                                      View cadence
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Right: AI 7-Touch Cadence Package Viewer (5 cols) */}
-                <div className="lg:col-span-5 space-y-4">
-                  {selectedLeadForCadence ? (
-                    <div className="bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs space-y-4">
-                      
-                      {/* Cadence Header */}
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[10px] font-mono font-bold uppercase text-[#ED1C24] block">
-                            MULTICHANNEL CADENCE
-                          </span>
-                          <h4 className="text-base font-black text-[#222021] mt-0.5">
-                            {selectedLeadForCadence.name} ({selectedLeadForCadence.company})
-                          </h4>
-                          <p className="text-[11px] text-[#6b6968]">
-                            Assigned SDR: <strong className="text-[#222021]">{selectedLeadForCadence.assignedRep}</strong>
-                          </p>
-                        </div>
-
-                        <Link
-                          href="/dialer"
-                          className="px-3 py-1.5 rounded-lg bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-colors shrink-0"
-                        >
-                          <Phone className="h-3 w-3" />
-                          <span>Push to Cockpit</span>
-                        </Link>
-                      </div>
-
-                      {/* Cadence Steps Accordion */}
-                      <div className="space-y-3 text-xs">
-                        
-                        {/* Step 1: Cold Call Opener */}
-                        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-[#222021] text-xs flex items-center gap-1.5">
-                              <Phone className="h-3.5 w-3.5 text-[#ED1C24]" />
-                              <span>Day 1 — Cold Call & Pattern Interrupt</span>
+                  {/* Right: cadence package viewer */}
+                  <div className="lg:col-span-5">
+                    {selectedLeadForCadence ? (
+                      <Card className="p-5 space-y-4">
+                        {/* Cadence header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <span className="text-caption text-fg-tertiary block">
+                              Multichannel cadence
                             </span>
-                            <button
-                              onClick={() => copyToClipboard(`Hi ${selectedLeadForCadence.name.split(' ')[0]} ... Alex from Appointmentlyy regarding outbound sales intelligence for ${selectedLeadForCadence.company}. I noticed you are running ${selectedLeadForCadence.techStack}. Do you have 20 seconds?`, 'c1')}
-                              className="text-[10px] font-bold text-[#ED1C24] hover:underline flex items-center gap-1"
-                            >
-                              {copiedKey === 'c1' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                              <span>{copiedKey === 'c1' ? 'Copied' : 'Copy Talk Track'}</span>
-                            </button>
+                            <h4 className="text-h3 text-fg mt-0.5">
+                              {selectedLeadForCadence.name} ({selectedLeadForCadence.company})
+                            </h4>
+                            <p className="text-small text-fg-secondary">
+                              Assigned rep: <span className="text-fg">{selectedLeadForCadence.assignedRep}</span>
+                            </p>
                           </div>
-                          <p className="text-[#222021] text-[11px] leading-relaxed italic bg-white p-2.5 rounded-lg border border-[#222021]/10 font-sans">
-                            "Hi {selectedLeadForCadence.name.split(' ')[0]} ... Alex from Appointmentlyy regarding outbound sales intelligence for {selectedLeadForCadence.company}. I noticed your floor is running {selectedLeadForCadence.techStack}."
-                          </p>
+
+                          <Link
+                            href="/dialer"
+                            className={buttonClasses('primary', 'sm', 'shrink-0')}
+                          >
+                            <Phone className="h-3.5 w-3.5" aria-hidden />
+                            <span>Send to dialer</span>
+                          </Link>
                         </div>
 
-                        {/* Step 2: Pain Point Executive Email */}
-                        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-[#222021] text-xs flex items-center gap-1.5">
-                              <Mail className="h-3.5 w-3.5 text-blue-600" />
-                              <span>Day 2 — Executive Pain Point Email</span>
-                            </span>
-                            <button
-                              onClick={() => copyToClipboard(`Subject: ${selectedLeadForCadence.company} outbound objection drop-off\n\nHi ${selectedLeadForCadence.name.split(' ')[0]},\n\nMost Demand Gen leaders running ${selectedLeadForCadence.techStack} notice rep hesitation accounts for 40% of drop-off.\n\nWorth a 5-minute diagnostic next Tuesday?`, 'c2')}
-                              className="text-[10px] font-bold text-[#ED1C24] hover:underline flex items-center gap-1"
-                            >
-                              {copiedKey === 'c2' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                              <span>{copiedKey === 'c2' ? 'Copied' : 'Copy Email'}</span>
-                            </button>
+                        {/* Cadence steps */}
+                        <div className="space-y-3">
+                          {/* Step 1: Cold call opener */}
+                          <div className="p-3.5 rounded-md bg-subtle border border-line space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-body-strong text-fg flex items-center gap-1.5">
+                                <Phone className="h-4 w-4 text-fg-secondary" aria-hidden />
+                                <span>Day 1: Cold call and pattern interrupt</span>
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={copiedKey === 'c1' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                onClick={() => copyToClipboard(`Hi ${selectedLeadForCadence.name.split(' ')[0]} ... Alex from Appointmentlyy regarding outbound sales intelligence for ${selectedLeadForCadence.company}. I noticed you are running ${selectedLeadForCadence.techStack}. Do you have 20 seconds?`, 'c1')}
+                              >
+                                {copiedKey === 'c1' ? 'Copied' : 'Copy talk track'}
+                              </Button>
+                            </div>
+                            <p className="text-small text-fg bg-surface p-2.5 rounded-sm border border-line">
+                              "Hi {selectedLeadForCadence.name.split(' ')[0]} ... Alex from Appointmentlyy regarding outbound sales intelligence for {selectedLeadForCadence.company}. I noticed your floor is running {selectedLeadForCadence.techStack}."
+                            </p>
                           </div>
-                          <div className="text-[11px] text-[#222021] bg-white p-2.5 rounded-lg border border-[#222021]/10 font-mono space-y-1">
-                            <div className="text-[10px] text-[#6b6968]">Subject: {selectedLeadForCadence.company} outbound objection drop-off</div>
-                            <div>Hi {selectedLeadForCadence.name.split(' ')[0]}, most demand gen teams running {selectedLeadForCadence.techStack} lose 40% of pipeline from rep objection freeze...</div>
-                          </div>
-                        </div>
 
-                        {/* Step 3: LinkedIn Voice DM */}
-                        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-[#222021] text-xs flex items-center gap-1.5">
-                              <Share2 className="h-3.5 w-3.5 text-purple-600" />
-                              <span>Day 5 — LinkedIn Voice Note</span>
-                            </span>
-                            <button
-                              onClick={() => copyToClipboard(`Hey ${selectedLeadForCadence.name.split(' ')[0]} - shot you a quick note on Tuesday regarding ${selectedLeadForCadence.company}'s outbound hold rates. Hope the week is wrapping up well!`, 'c3')}
-                              className="text-[10px] font-bold text-[#ED1C24] hover:underline flex items-center gap-1"
-                            >
-                              {copiedKey === 'c3' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                              <span>{copiedKey === 'c3' ? 'Copied' : 'Copy Script'}</span>
-                            </button>
+                          {/* Step 2: Pain point email */}
+                          <div className="p-3.5 rounded-md bg-subtle border border-line space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-body-strong text-fg flex items-center gap-1.5">
+                                <Mail className="h-4 w-4 text-fg-secondary" aria-hidden />
+                                <span>Day 2: Pain point email</span>
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={copiedKey === 'c2' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                onClick={() => copyToClipboard(`Subject: ${selectedLeadForCadence.company} outbound objection drop-off\n\nHi ${selectedLeadForCadence.name.split(' ')[0]},\n\nMost Demand Gen leaders running ${selectedLeadForCadence.techStack} notice rep hesitation accounts for 40% of drop-off.\n\nWorth a 5-minute diagnostic next Tuesday?`, 'c2')}
+                              >
+                                {copiedKey === 'c2' ? 'Copied' : 'Copy email'}
+                              </Button>
+                            </div>
+                            <div className="text-small text-fg bg-surface p-2.5 rounded-sm border border-line space-y-1">
+                              <div className="text-fg-secondary">Subject: {selectedLeadForCadence.company} outbound objection drop-off</div>
+                              <div>Hi {selectedLeadForCadence.name.split(' ')[0]}, most demand gen teams running {selectedLeadForCadence.techStack} lose 40% of pipeline from rep objection freeze...</div>
+                            </div>
                           </div>
-                          <p className="text-[11px] text-[#222021] bg-white p-2.5 rounded-lg border border-[#222021]/10 italic">
-                            "Hey {selectedLeadForCadence.name.split(' ')[0]} - shot you a quick note regarding {selectedLeadForCadence.company}'s SDR hold rates. Hope the week wraps up well!"
-                          </p>
+
+                          {/* Step 3: LinkedIn voice note */}
+                          <div className="p-3.5 rounded-md bg-subtle border border-line space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-body-strong text-fg flex items-center gap-1.5">
+                                <Share2 className="h-4 w-4 text-fg-secondary" aria-hidden />
+                                <span>Day 5: LinkedIn voice note</span>
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon={copiedKey === 'c3' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                onClick={() => copyToClipboard(`Hey ${selectedLeadForCadence.name.split(' ')[0]} - shot you a quick note on Tuesday regarding ${selectedLeadForCadence.company}'s outbound hold rates. Hope the week is wrapping up well!`, 'c3')}
+                              >
+                                {copiedKey === 'c3' ? 'Copied' : 'Copy script'}
+                              </Button>
+                            </div>
+                            <p className="text-small text-fg bg-surface p-2.5 rounded-sm border border-line">
+                              "Hey {selectedLeadForCadence.name.split(' ')[0]} - shot you a quick note regarding {selectedLeadForCadence.company}'s SDR hold rates. Hope the week wraps up well!"
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white border border-[#222021]/10 rounded-2xl p-8 text-center text-xs text-[#6b6968]">
-                      Select an account from the roster to view its multi-touch cadence.
-                    </div>
-                  )}
+                      </Card>
+                    ) : (
+                      <Card>
+                        <EmptyState
+                          icon={<Users />}
+                          title="No lead selected"
+                          description="Select an account from the list to view its cadence."
+                        />
+                      </Card>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1219,53 +1215,49 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 5: SALES REPS (Floor Roster & Performance) */}
           {activeTab === 'reps' && (
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-extrabold text-[#222021]">SDR Floor Performance & Credential Roster</h3>
-                  <p className="text-xs text-[#6b6968] mt-0.5">Live acoustic hold compliance, dials logged, objection win rates, and certified floor status.</p>
-                </div>
-                <button className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors">
-                  <Plus className="h-4 w-4" />
-                  <span>Assign SDR to Campaign</span>
-                </button>
-              </div>
+            <div>
+              <PageHeader
+                title="Rep roster"
+                description="Today's dials, bookings, objection win rate and certification for each rep."
+                primaryAction={
+                  <Button variant="brand" icon={<Plus className="h-4 w-4" />}>
+                    Assign rep to campaign
+                  </Button>
+                }
+              />
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="rounded-lg border border-line bg-surface shadow-xs overflow-x-auto">
+                <table className="w-full border-collapse text-left text-body tabular-nums">
                   <thead>
-                    <tr className="border-b border-[#222021]/10 text-[#6b6968] font-bold bg-[#F2F0EF]/40">
-                      <th className="py-3 px-4">Sales Rep</th>
-                      <th className="py-3 px-4">Campaign</th>
-                      <th className="py-3 px-4">Dials Today</th>
-                      <th className="py-3 px-4">Bookings</th>
-                      <th className="py-3 px-4">Objection Win Rate</th>
-                      <th className="py-3 px-4">Quality GPA</th>
-                      <th className="py-3 px-4">Certification</th>
+                    <tr className={TH_ROW}>
+                      <th scope="col" className={TH}>Rep</th>
+                      <th scope="col" className={TH}>Campaign</th>
+                      <th scope="col" className={`${TH} text-right`}>Dials today</th>
+                      <th scope="col" className={`${TH} text-right`}>Bookings</th>
+                      <th scope="col" className={`${TH} text-right`}>Objection win rate</th>
+                      <th scope="col" className={`${TH} text-right`}>Quality score</th>
+                      <th scope="col" className={TH}>Certification</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#222021]/10 font-medium">
+                  <tbody>
                     {[
                       { name: 'Alex Mercer', camp: 'Enterprise Outbound Q4', dials: 94, booked: 6, win: '68%', gpa: '92.5%', status: 'Certified Floor Ready' },
                       { name: 'Elena Rostova', camp: 'Fintech Scaleups', dials: 82, booked: 5, win: '64%', gpa: '89.0%', status: 'Certified Floor Ready' },
                       { name: 'Marcus Brody', camp: 'Enterprise Outbound Q4', dials: 65, booked: 2, win: '42%', gpa: '78.5%', status: 'In Remediation' },
                       { name: 'Sarah Jenkins', camp: 'SaaS SMB Pipeline', dials: 88, booked: 4, win: '58%', gpa: '84.2%', status: 'Certified Floor Ready' },
                     ].map(rep => (
-                      <tr key={rep.name} className="hover:bg-[#F2F0EF]/50 transition-colors">
-                        <td className="py-3 px-4 font-bold text-[#222021]">{rep.name}</td>
-                        <td className="py-3 px-4 text-[#6b6968]">{rep.camp}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-[#222021]">{rep.dials}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-emerald-600">{rep.booked}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-[#222021]">{rep.win}</td>
-                        <td className="py-3 px-4">
-                          <span className="font-mono font-black text-[#ED1C24]">{rep.gpa}</span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            rep.status === 'Certified Floor Ready' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-[#ED1C24] border border-red-200'
-                          }`}>
-                            {rep.status}
-                          </span>
+                      <tr key={rep.name} className={TR}>
+                        <td className="px-4 py-3 text-body-strong text-fg">{rep.name}</td>
+                        <td className="px-4 py-3 text-fg-secondary">{rep.camp}</td>
+                        <td className="px-4 py-3 text-right text-fg">{rep.dials}</td>
+                        <td className="px-4 py-3 text-right text-success-fg">{rep.booked}</td>
+                        <td className="px-4 py-3 text-right text-fg">{rep.win}</td>
+                        <td className="px-4 py-3 text-right text-fg">{rep.gpa}</td>
+                        <td className="px-4 py-3">
+                          <StatusDot
+                            tone={rep.status === 'Certified Floor Ready' ? 'success' : 'danger'}
+                            label={rep.status}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -1277,26 +1269,28 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 6: REP FEEDBACK & AUDIO QA */}
           {activeTab === 'feedback' && (
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-              <h3 className="text-base font-extrabold text-[#222021]">Audio QA & Conversation Auditing Logs</h3>
-              <p className="text-xs text-[#6b6968]">Evaluated recordings automatically transcribed with ElevenLabs speech-to-text.</p>
+            <div>
+              <PageHeader
+                title="Call QA reviews"
+                description="Scored call recordings, transcribed with ElevenLabs speech-to-text."
+              />
 
-              <div className="space-y-3 pt-2">
+              <div className="space-y-3">
                 {[
                   { rep: 'Alex Mercer', buyer: 'Samantha Cross (Director of Demand Gen)', score: 92, note: 'Superb tactical empathy when buyer cited burned domain history. Reframed acoustic compliance in 140ms.' },
                   { rep: 'Marcus Brody', buyer: 'Vikram Patel (Head of Sales Engineering)', score: 76, note: 'Hesitated on API webhook latency question. Needs remediation on technical infrastructure rubric.' }
                 ].map((fb, idx) => (
-                  <div key={idx} className="p-4 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="font-bold text-[#222021]">{fb.rep} vs {fb.buyer}</div>
-                      <span className={`font-mono font-black text-xs ${fb.score >= 80 ? 'text-emerald-600' : 'text-[#ED1C24]'}`}>
-                        {fb.score}% Composite Score
-                      </span>
+                  <Card key={idx} className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-body-strong text-fg">{fb.rep} vs {fb.buyer}</div>
+                      <Badge tone={fb.score >= 80 ? 'success' : 'danger'}>
+                        {fb.score}% score
+                      </Badge>
                     </div>
-                    <p className="text-[#6b6968] leading-relaxed italic">
+                    <p className="text-body text-fg-secondary">
                       "{fb.note}"
                     </p>
-                  </div>
+                  </Card>
                 ))}
               </div>
             </div>
@@ -1304,25 +1298,38 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
 
           {/* TAB 7: AUDIT LOG */}
           {activeTab === 'audit' && (
-            <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-              <h3 className="text-base font-extrabold text-[#222021]">Enterprise Security & Event Audit Trail</h3>
-              <p className="text-xs text-[#6b6968]">Tamper-evident logs of tenant modifications, CSV ingestion, and credential issuance.</p>
+            <div>
+              <PageHeader
+                title="Audit log"
+                description="A tamper-evident record of tenant changes, CSV imports and certificates issued."
+              />
 
-              <div className="divide-y divide-[#222021]/10 text-xs">
-                {[
-                  { time: '20/10/2026, 3:24 pm', actor: 'Emil Halili', action: 'Ingested 14 B2B leads via CSV into Enterprise Outbound Q4', ip: '192.168.100.10' },
-                  { time: '20/10/2026, 2:15 pm', actor: 'Marcus Vance', action: 'Issued Sales Mastery Certificate #CERT-8849-BPO-Q4 to Alex Mercer', ip: '192.168.100.14' },
-                  { time: '20/10/2026, 11:30 am', actor: 'System AI Boris', action: 'Automated rubric grading evaluated Session #session-179248', ip: 'internal-cluster' },
-                  { time: '19/10/2026, 5:02 pm', actor: 'Emil Halili', action: 'Updated Role Permission Matrix: enabled softphone dialer for SDRs', ip: '192.168.100.10' }
-                ].map((item, idx) => (
-                  <div key={idx} className="py-3 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-[#222021] block">{item.action}</span>
-                      <span className="text-[11px] text-[#6b6968]">Actor: {item.actor} • IP: {item.ip}</span>
-                    </div>
-                    <span className="font-mono text-[11px] text-[#6b6968]">{item.time}</span>
-                  </div>
-                ))}
+              <div className="rounded-lg border border-line bg-surface shadow-xs overflow-x-auto">
+                <table className="w-full border-collapse text-left text-body">
+                  <thead>
+                    <tr className={TH_ROW}>
+                      <th scope="col" className={TH}>Event</th>
+                      <th scope="col" className={TH}>Actor</th>
+                      <th scope="col" className={TH}>IP address</th>
+                      <th scope="col" className={`${TH} text-right`}>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { time: '20/10/2026, 3:24 pm', actor: 'Emil Halili', action: 'Ingested 14 B2B leads via CSV into Enterprise Outbound Q4', ip: '192.168.100.10' },
+                      { time: '20/10/2026, 2:15 pm', actor: 'Marcus Vance', action: 'Issued Sales Mastery Certificate #CERT-8849-BPO-Q4 to Alex Mercer', ip: '192.168.100.14' },
+                      { time: '20/10/2026, 11:30 am', actor: 'System AI Boris', action: 'Automated rubric grading evaluated Session #session-179248', ip: 'internal-cluster' },
+                      { time: '19/10/2026, 5:02 pm', actor: 'Emil Halili', action: 'Updated Role Permission Matrix: enabled softphone dialer for SDRs', ip: '192.168.100.10' }
+                    ].map((item, idx) => (
+                      <tr key={idx} className={TR}>
+                        <td className="px-4 py-3 text-fg">{item.action}</td>
+                        <td className="px-4 py-3 text-fg-secondary whitespace-nowrap">{item.actor}</td>
+                        <td className="px-4 py-3 font-mono text-small text-fg-secondary whitespace-nowrap">{item.ip}</td>
+                        <td className="px-4 py-3 text-right text-small tabular-nums text-fg-secondary whitespace-nowrap">{item.time}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -1354,224 +1361,210 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
       </div>
 
       {/* Add Person Modal */}
-      {showAddPersonModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-[#222021]/20 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-[#222021]">Add Team Member</h3>
-              <button 
-                onClick={() => setShowAddPersonModal(false)}
-                className="text-[#6b6968] hover:text-[#222021] p-1"
-              >
+      <Dialog open={showAddPersonModal} onClose={() => setShowAddPersonModal(false)} title="Add person" size="md" bare className="max-w-md">
+          <div>
+            <div className="flex items-start justify-between gap-4 px-6 pt-5">
+              <div>
+                <h2 id="add-person-title" className="text-h2 text-fg">Add person</h2>
+                <p className="text-small text-fg-secondary mt-0.5">They&apos;ll get an invite to the workspace you choose.</p>
+              </div>
+              <IconButton label="Close" size="sm" onClick={() => setShowAddPersonModal(false)}>
                 <X className="h-4 w-4" />
-              </button>
+              </IconButton>
             </div>
 
-            <form onSubmit={handleAddPerson} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[#6b6968] font-bold mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newPersonName}
-                  onChange={(e) => setNewPersonName(e.target.value)}
-                  placeholder="e.g. Jordan Smith"
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:border-[#ED1C24]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[#6b6968] font-bold mb-1">Corporate Email</label>
-                <input
-                  type="email"
-                  required
-                  value={newPersonEmail}
-                  onChange={(e) => setNewPersonEmail(e.target.value)}
-                  placeholder="e.g. jsmith@appointmentlyy.ai"
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:border-[#ED1C24]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[#6b6968] font-bold mb-1">System Role</label>
-                <select
-                  value={newPersonRole}
-                  onChange={(e) => setNewPersonRole(e.target.value)}
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:border-[#ED1C24]"
-                >
-                  <option value="Sales Rep">Sales Rep (Front-Line SDR)</option>
-                  <option value="Closer">Closer (Diagnostic Lead)</option>
-                  <option value="Manager">Manager (Supervisor)</option>
-                  <option value="Director">Director (Super Admin)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[#6b6968] font-bold mb-1">Assigned Tenant / Campaign</label>
-                <select
-                  value={newPersonTenant}
-                  onChange={(e) => setNewPersonTenant(e.target.value)}
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:border-[#ED1C24]"
-                >
-                  <option value="Enterprise Outbound Q4">Enterprise Outbound Q4</option>
-                  <option value="Fintech Scaleups">Fintech Scaleups</option>
-                  <option value="SaaS SMB Pipeline">SaaS SMB Pipeline</option>
-                  <option value="Global (All Tenants)">Global (All Tenants)</option>
-                </select>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddPersonModal(false)}
-                  className="px-4 py-2 rounded-xl bg-[#F2F0EF] text-[#222021] font-semibold text-xs hover:bg-[#e7e4e2] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors"
-                >
-                  Add Person
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Provision Tenant Modal */}
-      {showAddTenantModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-[#222021]/20 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#222021]/10 pb-3">
-              <div>
-                <h3 className="text-base font-black text-[#222021]">Provision Client BPO Tenant</h3>
-                <p className="text-xs text-[#6b6968]">Set up a dedicated workspace, seat limits, and telephony gateway.</p>
-              </div>
-              <button 
-                onClick={() => setShowAddTenantModal(false)}
-                className="text-[#6b6968] hover:text-[#222021] p-1 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddTenant} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Company / BPO Name</label>
-                  <input
+            <form onSubmit={handleAddPerson}>
+              <div className="space-y-4 px-6 py-5">
+                <Field label="Full name" htmlFor="add-person-name">
+                  <Input
+                    id="add-person-name"
                     type="text"
                     required
-                    value={newTenantName}
-                    onChange={(e) => {
-                      setNewTenantName(e.target.value);
-                      if (!newTenantSlug) {
-                        setNewTenantSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '-'));
-                      }
-                    }}
-                    placeholder="e.g. Apex Global BPO"
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                    value={newPersonName}
+                    onChange={(e) => setNewPersonName(e.target.value)}
+                    placeholder="e.g. Jordan Smith"
                   />
-                </div>
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Workspace Slug</label>
-                  <input
-                    type="text"
-                    value={newTenantSlug}
-                    onChange={(e) => setNewTenantSlug(e.target.value)}
-                    placeholder="e.g. apex-global"
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-mono text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                </Field>
+
+                <Field label="Work email" htmlFor="add-person-email">
+                  <Input
+                    id="add-person-email"
+                    type="email"
+                    required
+                    value={newPersonEmail}
+                    onChange={(e) => setNewPersonEmail(e.target.value)}
+                    placeholder="e.g. jsmith@appointmentlyy.ai"
                   />
-                </div>
-              </div>
+                </Field>
 
-              <div>
-                <label className="block text-[#6b6968] font-bold mb-1">Primary Admin Email</label>
-                <input
-                  type="email"
-                  required
-                  value={newTenantAdminEmail}
-                  onChange={(e) => setNewTenantAdminEmail(e.target.value)}
-                  placeholder="e.g. operations@apexglobal.ph"
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Plan Offering</label>
-                  <select
-                    value={newTenantPlan}
-                    onChange={(e) => setNewTenantPlan(e.target.value as any)}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                <Field label="Role" htmlFor="add-person-role">
+                  <Select
+                    id="add-person-role"
+                    value={newPersonRole}
+                    onChange={(e) => setNewPersonRole(e.target.value)}
                   >
-                    <option value="GTM Turnkey ($4,500/line)">GTM Turnkey ($4,500/line)</option>
-                    <option value="AI LMS Software ($50/rep)">AI LMS Software ($50/rep)</option>
-                    <option value="Qualifier Gate ($50/rep)">Qualifier Gate ($50/rep)</option>
-                    <option value="Sandbox Trial">Sandbox Trial</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Initial Seats Allocation</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="1000"
-                    value={newTenantSeats}
-                    onChange={(e) => setNewTenantSeats(Number(e.target.value))}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-mono text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
-                  />
-                </div>
+                    <option value="Sales Rep">Sales rep (front-line SDR)</option>
+                    <option value="Closer">Closer (diagnostic lead)</option>
+                    <option value="Manager">Manager (supervisor)</option>
+                    <option value="Director">Director (super admin)</option>
+                  </Select>
+                </Field>
+
+                <Field label="Workspace or campaign" htmlFor="add-person-tenant">
+                  <Select
+                    id="add-person-tenant"
+                    value={newPersonTenant}
+                    onChange={(e) => setNewPersonTenant(e.target.value)}
+                  >
+                    <option value="Enterprise Outbound Q4">Enterprise Outbound Q4</option>
+                    <option value="Fintech Scaleups">Fintech Scaleups</option>
+                    <option value="SaaS SMB Pipeline">SaaS SMB Pipeline</option>
+                    <option value="Global (All Tenants)">Global (All Tenants)</option>
+                  </Select>
+                </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Telephony Mode</label>
-                  <select
-                    value={newTenantTelephony}
-                    onChange={(e) => setNewTenantTelephony(e.target.value as any)}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
-                  >
-                    <option value="Twilio BYOT">Twilio BYOT</option>
-                    <option value="Platform Pooled SIP">Platform Pooled SIP</option>
-                    <option value="VICIdial Trunk">VICIdial Trunk</option>
-                    <option value="WebRTC Softphone">WebRTC Softphone</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[#6b6968] font-bold mb-1">Pass Exam Gate</label>
-                  <select
-                    value={newTenantCertGate ? 'yes' : 'no'}
-                    onChange={(e) => setNewTenantCertGate(e.target.value === 'yes')}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
-                  >
-                    <option value="yes">Enforce 80% Cert Gate</option>
-                    <option value="no">Open Floor (No Exam)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-[#222021]/10 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddTenantModal(false)}
-                  className="px-4 py-2 rounded-xl bg-[#F2F0EF] text-[#222021] font-semibold text-xs hover:bg-[#e7e4e2] transition-colors cursor-pointer"
-                >
+              <div className="px-6 py-4 border-t border-line flex items-center justify-end gap-2">
+                <Button variant="secondary" onClick={() => setShowAddPersonModal(false)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
-                >
-                  Provision Client Tenant
-                </button>
+                </Button>
+                <Button type="submit" variant="brand">
+                  Add person
+                </Button>
               </div>
             </form>
           </div>
-        </div>
-      )}
+      </Dialog>
+
+      {/* Provision Tenant Modal */}
+      <Dialog open={showAddTenantModal} onClose={() => setShowAddTenantModal(false)} title="Provision tenant" size="md" bare>
+          <div>
+            <div className="flex items-start justify-between gap-4 px-6 pt-5">
+              <div>
+                <h2 id="provision-tenant-title" className="text-h2 text-fg">Provision tenant</h2>
+                <p className="text-small text-fg-secondary mt-0.5">Set up a dedicated workspace, seat limit and telephony gateway.</p>
+              </div>
+              <IconButton label="Close" size="sm" onClick={() => setShowAddTenantModal(false)}>
+                <X className="h-4 w-4" />
+              </IconButton>
+            </div>
+
+            <form onSubmit={handleAddTenant}>
+              <div className="space-y-4 px-6 py-5">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Company name" htmlFor="tenant-name">
+                    <Input
+                      id="tenant-name"
+                      type="text"
+                      required
+                      value={newTenantName}
+                      onChange={(e) => {
+                        setNewTenantName(e.target.value);
+                        if (!newTenantSlug) {
+                          setNewTenantSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '-'));
+                        }
+                      }}
+                      placeholder="e.g. Apex Global BPO"
+                    />
+                  </Field>
+                  <Field label="Workspace slug" htmlFor="tenant-slug">
+                    <Input
+                      id="tenant-slug"
+                      type="text"
+                      mono
+                      value={newTenantSlug}
+                      onChange={(e) => setNewTenantSlug(e.target.value)}
+                      placeholder="e.g. apex-global"
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Admin email" htmlFor="tenant-admin-email">
+                  <Input
+                    id="tenant-admin-email"
+                    type="email"
+                    required
+                    value={newTenantAdminEmail}
+                    onChange={(e) => setNewTenantAdminEmail(e.target.value)}
+                    placeholder="e.g. operations@apexglobal.ph"
+                  />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Plan" htmlFor="tenant-plan">
+                    <Select
+                      id="tenant-plan"
+                      value={newTenantPlan}
+                      onChange={(e) => setNewTenantPlan(e.target.value as any)}
+                    >
+                      <option value="GTM Turnkey ($4,500/line)">GTM Turnkey ($4,500/line)</option>
+                      <option value="AI LMS Software ($50/rep)">AI LMS Software ($50/rep)</option>
+                      <option value="Qualifier Gate ($50/rep)">Qualifier Gate ($50/rep)</option>
+                      <option value="Sandbox Trial">Sandbox Trial</option>
+                    </Select>
+                  </Field>
+                  <Field label="Seats" htmlFor="tenant-seats">
+                    <Input
+                      id="tenant-seats"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={newTenantSeats}
+                      onChange={(e) => setNewTenantSeats(Number(e.target.value))}
+                      className="tabular-nums"
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Telephony" htmlFor="tenant-telephony">
+                    <Select
+                      id="tenant-telephony"
+                      value={newTenantTelephony}
+                      onChange={(e) => setNewTenantTelephony(e.target.value as any)}
+                    >
+                      <option value="Twilio BYOT">Twilio BYOT</option>
+                      <option value="Platform Pooled SIP">Platform Pooled SIP</option>
+                      <option value="VICIdial Trunk">VICIdial Trunk</option>
+                      <option value="WebRTC Softphone">WebRTC Softphone</option>
+                    </Select>
+                  </Field>
+                  <Field label="Certification gate" htmlFor="tenant-cert-gate">
+                    <Select
+                      id="tenant-cert-gate"
+                      value={newTenantCertGate ? 'yes' : 'no'}
+                      onChange={(e) => setNewTenantCertGate(e.target.value === 'yes')}
+                    >
+                      <option value="yes">Require 80% pass</option>
+                      <option value="no">Open floor (no exam)</option>
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-line flex items-center justify-end gap-2">
+                <Button variant="secondary" onClick={() => setShowAddTenantModal(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="brand">
+                  Provision tenant
+                </Button>
+              </div>
+            </form>
+          </div>
+      </Dialog>
+
+      <ConfirmDialog
+        open={pendingSuspendTenant !== null}
+        onClose={() => setPendingSuspendTenant(null)}
+        onConfirm={() => {
+          if (pendingSuspendTenant) toggleTenantStatus(pendingSuspendTenant);
+        }}
+        title={`Suspend ${pendingSuspendTenant?.name ?? 'tenant'}?`}
+        description="The workspace is marked suspended until you reactivate it."
+        confirmLabel="Suspend"
+        icon={<Ban className="h-4 w-4" />}
+      />
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
-  Mail, 
   Sparkles, 
   Copy, 
   Check, 
@@ -25,8 +24,20 @@ import {
   FileText,
   CheckCircle2,
   Info,
-  HelpCircle
+  HelpCircle,
+  Lock,
+  XCircle
 } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Input,
+  PageHeader,
+  SegmentedControl,
+  Select,
+  Textarea,
+  buttonClasses
+} from '@/components/ui';
 import { saveEmailToStore, getConversationThreadKey } from '@/lib/emailStore';
 import { 
   COLD_EMAIL_FRAMEWORKS, 
@@ -343,680 +354,599 @@ export default function ColdEmailStudio() {
     return COMMON_SPAM_WORDS.filter(w => combined.includes(w));
   }, [subjectText, editableBody]);
 
+  const wordCountInRange = wordCount >= 40 && wordCount <= 75;
+
   return (
-    <div className="min-h-full bg-zinc-50/80 p-4 sm:p-6 lg:p-8 space-y-6 text-zinc-900 font-sans">
-      
-      {/* ========================================================================= */}
-      {/* 1. TOP HEADER & WORKBENCH CONTROLS                                        */}
-      {/* ========================================================================= */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-zinc-950 text-white flex items-center justify-center font-bold shadow-2xs">
-              <Mail className="h-4 w-4" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-zinc-950">
-              Cold Email Studio
-            </h1>
-            <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5" title={`Sender: ${senderFrom}`}>
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{senderDisplayName} &bull; appointmentlyy.com</span>
-            </span>
-          </div>
-          <p className="text-xs text-zinc-500 mt-1">
-            Manual email drafting & workshopping laboratory with live deliverability guardrails.
-          </p>
-        </div>
+    <div className="min-h-full space-y-6 bg-app px-4 py-6 font-sans text-fg md:px-8">
 
-        {/* Standalone Workshop Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={handleStartBlankEmail}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-zinc-300 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 transition-colors shadow-2xs cursor-pointer"
-            title="Start a fresh blank draft"
-          >
-            <PlusCircle className="h-3.5 w-3.5 text-zinc-500" />
-            <span>Blank Draft</span>
-          </button>
+      {/* 1. Page header */}
+      <PageHeader
+        className="pb-0"
+        title="Cold email studio"
+        description="Write, check and send one-to-one cold emails from your verified mailbox."
+        meta={
+          <span className="inline-flex items-center gap-2 text-small text-fg-secondary" title={`Sender: ${senderFrom}`}>
+            <span className="size-2 shrink-0 rounded-full bg-success-500" aria-hidden />
+            <span>Sending as {senderDisplayName}</span>
+          </span>
+        }
+        secondaryActions={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleStartBlankEmail}
+              title="Start a fresh blank draft"
+              icon={<PlusCircle />}
+            >
+              Blank draft
+            </Button>
+            <Link href="/inbox" className={buttonClasses('ghost', 'sm')}>
+              <Inbox />
+              <span>Open inbox</span>
+            </Link>
+          </>
+        }
+      />
 
-          <Link
-            href="/inbox"
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-950 text-white hover:bg-zinc-800 transition-colors shadow-2xs"
-          >
-            <Inbox className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Unified Inbox</span>
-          </Link>
-        </div>
-      </header>
-
-      {/* ========================================================================= */}
-      {/* 2. PROMINENT DELIVERABILITY & SENDING RULES PLAYBOOK (CARD SECTION)      */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-zinc-200/90 p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-900 font-mono flex items-center gap-2">
-                <span>Deliverability Radar & Safe Sending Limits</span>
-                <span className="text-[10px] font-normal px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Strictly Enforced
-                </span>
-              </h2>
-              <p className="text-xs text-zinc-500">
-                Follow these timing rules and daily sending ceilings to guarantee 99%+ inbox placement and avoid domain burn.
-              </p>
-            </div>
+      {/* 2. Send window hint (deliverability rules, collapsible) */}
+      <div className="rounded-lg border border-line bg-surface shadow-xs">
+        <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5 text-small text-fg-secondary">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-fg-secondary" />
+            <p>
+              <span className="font-medium text-fg">Send window: Tue to Thu, 8:15 to 10:00 AM and 1:30 to 2:45 PM</span>
+              <span className="text-fg-tertiary"> (recipient&apos;s local time). Up to 40 to 50 a day, 2 to 4 minutes apart.</span>
+            </p>
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowPlaybookDetails(!showPlaybookDetails)}
-            className="text-xs font-semibold text-zinc-700 hover:text-zinc-950 flex items-center gap-1 underline cursor-pointer"
           >
-            <span>{showPlaybookDetails ? 'Hide Full Breakdown' : 'View Full Schedule'}</span>
-            {showPlaybookDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
+            <span>{showPlaybookDetails ? 'Hide sending rules' : 'View sending rules'}</span>
+            {showPlaybookDetails ? <ChevronUp /> : <ChevronDown />}
+          </Button>
         </div>
 
-        {/* 3 Core Rule Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          
-          {/* Card 1: When to Send */}
-          <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-zinc-900 flex items-center gap-1.5 font-mono text-[11px] uppercase">
-                <Clock className="h-3.5 w-3.5 text-blue-600" />
-                <span>When to Send</span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
-                Tue &bull; Wed &bull; Thu
-              </span>
-            </div>
-            <p className="text-zinc-600 text-[11px] leading-relaxed">
-              <strong>Peak Window:</strong> 8:15 AM – 10:00 AM &amp; 1:30 PM – 2:45 PM (Recipient's local time). Executives check inboxes at desk arrival and post-lunch.
-            </p>
-            <div className="pt-1 text-[10px] text-zinc-400">
-              ❌ <strong>Avoid:</strong> Monday mornings (triage chaos) and Friday afternoons (weekend mental checkout).
-            </div>
-          </div>
-
-          {/* Card 2: Daily Sending Limits */}
-          <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-zinc-900 flex items-center gap-1.5 font-mono text-[11px] uppercase">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Daily Sending Ceilings</span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                Max 40–50 / Day
-              </span>
-            </div>
-            <p className="text-zinc-600 text-[11px] leading-relaxed">
-              <strong>Safe Threshold:</strong> 40 to 50 cold emails per day per Google/Microsoft mailbox. Spammers blast 500; top SDRs send 45 tailored, high-converting notes.
-            </p>
-            <div className="pt-1 text-[10px] text-zinc-400">
-              ⚠️ <strong>Warning:</strong> Blasting &gt;50/day risks automated ML spam flagging and blacklisting your root domain.
-            </div>
-          </div>
-
-          {/* Card 3: Pacing & Anti-Spam Hygiene */}
-          <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-zinc-900 flex items-center gap-1.5 font-mono text-[11px] uppercase">
-                <Zap className="h-3.5 w-3.5 text-amber-500" />
-                <span>Pacing &amp; Anti-Spam</span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                2–4 Min Stagger
-              </span>
-            </div>
-            <p className="text-zinc-600 text-[11px] leading-relaxed">
-              <strong>Stagger Rule:</strong> Space manual sends by 2 to 4 minutes. Never fire 10 emails in 60 seconds.
-            </p>
-            <div className="pt-1 text-[10px] text-zinc-400">
-              🔒 <strong>Format:</strong> Plain text, zero emojis, zero em-dashes, and under 75 words.
-            </div>
-          </div>
-
-        </div>
-
-        {/* Detailed Ramp Schedule & Day Breakdown (Collapsible) */}
         {showPlaybookDetails && (
-          <div className="pt-3 border-t border-zinc-100 space-y-3 animate-in fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              
-              {/* Daily Ramp Schedule */}
+          <div className="space-y-5 border-t border-line px-4 py-4 animate-in fade-in">
+            {/* Core rules */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-1.5">
-                <span className="font-bold text-zinc-700 text-[11px] uppercase font-mono block">
-                  New Mailbox Warming &amp; Ramp Plan
-                </span>
-                <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-body-strong text-fg">
+                    <Clock className="h-4 w-4 text-fg-secondary" />
+                    <span>When to send</span>
+                  </span>
+                  <span className="text-small text-fg-secondary">Tue, Wed, Thu</span>
+                </div>
+                <p className="text-small leading-relaxed text-fg-secondary">
+                  <span className="font-medium text-fg">Peak window:</span> 8:15 AM to 10:00 AM and 1:30 PM to 2:45 PM (recipient&apos;s local time). Executives check inboxes at desk arrival and after lunch.
+                </p>
+                <p className="flex items-start gap-1.5 text-small text-fg-tertiary">
+                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-tertiary" />
+                  <span><span className="font-medium">Avoid:</span> Monday mornings (triage chaos) and Friday afternoons (weekend mental checkout).</span>
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-body-strong text-fg">
+                    <ShieldCheck className="h-4 w-4 text-fg-secondary" />
+                    <span>Daily sending limit</span>
+                  </span>
+                  <span className="text-small tabular-nums text-fg-secondary">40 to 50 a day</span>
+                </div>
+                <p className="text-small leading-relaxed text-fg-secondary">
+                  <span className="font-medium text-fg">Safe threshold:</span> 40 to 50 cold emails per day per Google or Microsoft mailbox. Spammers blast 500; top SDRs send 45 tailored, high-converting notes.
+                </p>
+                <p className="flex items-start gap-1.5 text-small text-fg-tertiary">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-fg" />
+                  <span><span className="font-medium">Warning:</span> sending more than 50 a day risks automated spam flagging and blacklisting your root domain.</span>
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-body-strong text-fg">
+                    <Zap className="h-4 w-4 text-fg-secondary" />
+                    <span>Pacing and spam hygiene</span>
+                  </span>
+                  <span className="text-small tabular-nums text-fg-secondary">2 to 4 min apart</span>
+                </div>
+                <p className="text-small leading-relaxed text-fg-secondary">
+                  <span className="font-medium text-fg">Stagger rule:</span> space manual sends by 2 to 4 minutes. Never fire 10 emails in 60 seconds.
+                </p>
+                <p className="flex items-start gap-1.5 text-small text-fg-tertiary">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-tertiary" />
+                  <span><span className="font-medium">Format:</span> plain text, no emojis, no em dashes, and under 75 words.</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 border-t border-line pt-4 md:grid-cols-2">
+              {/* Daily Ramp Schedule */}
+              <div className="space-y-2">
+                <span className="block text-caption text-fg-tertiary">New mailbox warm-up plan</span>
+                <div className="overflow-hidden rounded-md border border-line">
                   {MANUAL_COLD_EMAIL_GUIDANCE.personalAccountSafety.rampSchedule.map((r, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 border border-zinc-200/70 text-[11px]">
-                      <span className="font-bold text-zinc-800">{r.week}</span>
-                      <span className="font-mono text-zinc-600 font-semibold">{r.dailyLimit} emails/day</span>
-                      <span className="text-zinc-500 text-[10px]">{r.focus}</span>
+                    <div key={i} className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-small first:border-t-0">
+                      <span className="font-medium text-fg">{r.week}</span>
+                      <span className="tabular-nums text-fg-secondary">{r.dailyLimit} emails/day</span>
+                      <span className="text-fg-tertiary">{r.focus}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Day by Day Open Rate Intelligence */}
-              <div className="space-y-1.5">
-                <span className="font-bold text-zinc-700 text-[11px] uppercase font-mono block">
-                  Day-by-Day Effectiveness Index
-                </span>
-                <div className="space-y-1">
+              <div className="space-y-2">
+                <span className="block text-caption text-fg-tertiary">Best days to send</span>
+                <div className="overflow-hidden rounded-md border border-line">
                   {MANUAL_COLD_EMAIL_GUIDANCE.bestDays.slice(0, 4).map((d, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 border border-zinc-200/70 text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-zinc-800">{d.day}:</span>
-                        <span className="text-zinc-600 truncate max-w-[220px]">{d.reason}</span>
+                    <div key={i} className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-small first:border-t-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="font-medium text-fg">{d.day}:</span>
+                        <span className="max-w-[220px] truncate text-fg-secondary">{d.reason}</span>
                       </div>
-                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 ${
-                        d.rating === 'Optimal' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
+                      <Badge tone={d.rating === 'Optimal' ? 'success' : 'neutral'} className="shrink-0">
                         {d.rating}
-                      </span>
+                      </Badge>
                     </div>
                   ))}
                 </div>
               </div>
-
             </div>
           </div>
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 3. THE EMAIL WORKSHOP & COMPOSER WORKSTATION                              */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-xs overflow-hidden flex flex-col">
-        
-        {/* Workshop Navigation Header */}
-        <div className="p-4 px-5 bg-zinc-50/80 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-zinc-700 font-mono">
-              Email Workshop &amp; Polish Bench
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-200/80 text-zinc-700 font-semibold">
-              Live Draft
-            </span>
+      {/* 3. Split editor: composer (left) and checks + AI angles (right rail) */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+
+        {/* Composer */}
+        <div className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-xs">
+
+          {/* Composer toolbar */}
+          <div className="flex flex-col gap-3 border-b border-line px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-h3 text-fg">Draft</h2>
+            <SegmentedControl
+              size="sm"
+              label="Editor or inbox preview"
+              value={viewMode}
+              onChange={(v) => setViewMode(v as 'editor' | 'preview')}
+              items={[
+                {
+                  value: 'editor',
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>Edit</span>
+                    </span>
+                  ),
+                },
+                {
+                  value: 'preview',
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Inbox preview</span>
+                    </span>
+                  ),
+                },
+              ]}
+            />
           </div>
 
-          {/* View Mode Toggle: [Editor] vs [Inbox Preview] */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center p-0.5 bg-zinc-200/70 rounded-lg text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setViewMode('editor')}
-                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'editor'
-                    ? 'bg-white text-zinc-950 shadow-2xs font-bold'
-                    : 'text-zinc-600 hover:text-zinc-950'
-                }`}
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Workshop Editor</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('preview')}
-                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'preview'
-                    ? 'bg-white text-zinc-950 shadow-2xs font-bold'
-                    : 'text-zinc-600 hover:text-zinc-950'
-                }`}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Inbox Preview</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowAiAssistant(!showAiAssistant)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
-                showAiAssistant 
-                  ? 'bg-amber-50 text-amber-900 border-amber-300 font-bold' 
-                  : 'bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-100'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>{showAiAssistant ? 'Close AI Frameworks' : 'AI Angles & Frameworks'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* AI Framework Assistant Drawer (Optional, expands above composer) */}
-        {showAiAssistant && (
-          <div className="p-5 bg-amber-50/40 border-b border-amber-200/80 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-amber-600" />
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-950 font-mono">
-                  B2B Angle &amp; Framework Engine
-                </span>
-              </div>
-              <span className="text-[10px] text-amber-800 font-mono">
-                Josh Braun 4T &bull; Chris Voss &bull; Allred 50-Word
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-4 space-y-1">
-                <label className="text-[11px] font-bold text-zinc-700 block">
-                  Select Sales Framework:
-                </label>
-                <select
-                  value={selectedFrameworkId}
-                  onChange={(e) => setSelectedFrameworkId(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-zinc-900 shadow-2xs"
-                >
-                  {COLD_EMAIL_FRAMEWORKS.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.category})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-6 space-y-1">
-                <label className="text-[11px] font-bold text-zinc-700 block">
-                  Custom Angle or Post-Call Focus:
-                </label>
-                <input
-                  type="text"
-                  value={userIdea}
-                  onChange={(e) => setUserIdea(e.target.value)}
-                  placeholder="e.g. Following up after our call regarding sub-150ms live objection sparring..."
-                  className="w-full text-xs rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-zinc-900 shadow-2xs"
+          {/* Recipient & subject (free-hand editable) */}
+          <div className="space-y-3 border-b border-line px-5 py-4">
+            <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-12">
+              <label className="flex items-center gap-2 md:col-span-6">
+                <span className="w-14 shrink-0 text-small text-fg-secondary">To</span>
+                <Input
+                  type="email"
+                  mono
+                  value={prospectEmail}
+                  onChange={(e) => handleRecipientEmailChange(e.target.value)}
+                  placeholder="prospect@company.com"
                 />
-              </div>
+              </label>
 
-              <div className="md:col-span-2">
-                <button
-                  type="button"
-                  onClick={handleGenerateDraft}
-                  disabled={isGenerating}
-                  className="w-full py-2 px-3 rounded-xl bg-zinc-950 text-white font-bold text-xs hover:bg-zinc-800 transition-colors shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  {isGenerating ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
-                  <span>Generate</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              <label className="flex items-center gap-2 md:col-span-3">
+                <span className="shrink-0 text-small text-fg-secondary">Name</span>
+                <Input
+                  type="text"
+                  value={prospectName}
+                  onChange={(e) => setProspectName(e.target.value)}
+                  placeholder="Contact name"
+                />
+              </label>
 
-        {/* ======================================================================= */}
-        {/* RECIPIENT & SUBJECT WORKBENCH ROW (100% Free-hand editable)              */}
-        {/* ======================================================================= */}
-        <div className="p-4 px-5 bg-white border-b border-zinc-200/80 space-y-3">
-          
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            
-            {/* To: Email Input */}
-            <div className="md:col-span-6 flex items-center gap-2">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider w-8 shrink-0 font-mono">
-                To:
-              </span>
-              <input
-                type="email"
-                value={prospectEmail}
-                onChange={(e) => handleRecipientEmailChange(e.target.value)}
-                placeholder="prospect@company.com"
-                className="w-full text-xs font-mono font-bold rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 focus:ring-1 focus:ring-zinc-900 shadow-2xs"
-              />
+              <label className="flex items-center gap-2 md:col-span-3">
+                <span className="shrink-0 text-small text-fg-secondary">Company</span>
+                <Input
+                  type="text"
+                  value={prospectCompany}
+                  onChange={(e) => setProspectCompany(e.target.value)}
+                  placeholder="Company name"
+                />
+              </label>
             </div>
 
-            {/* Contact Name Input */}
-            <div className="md:col-span-3 flex items-center gap-1.5">
-              <span className="text-xs font-medium text-zinc-400 shrink-0">Name:</span>
-              <input
-                type="text"
-                value={prospectName}
-                onChange={(e) => setProspectName(e.target.value)}
-                placeholder="Contact name"
-                className="w-full text-xs rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-zinc-900 focus:ring-1 focus:ring-zinc-900 shadow-2xs"
-              />
-            </div>
-
-            {/* Company Name Input */}
-            <div className="md:col-span-3 flex items-center gap-1.5">
-              <span className="text-xs font-medium text-zinc-400 shrink-0">Company:</span>
-              <input
-                type="text"
-                value={prospectCompany}
-                onChange={(e) => setProspectCompany(e.target.value)}
-                placeholder="Company name"
-                className="w-full text-xs rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-zinc-900 focus:ring-1 focus:ring-zinc-900 shadow-2xs"
-              />
-            </div>
-
-          </div>
-
-          {/* Subject Line Row */}
-          <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider w-8 shrink-0 font-mono">
-              Subj:
-            </span>
-            <div className="relative flex-1 flex items-center gap-2">
-              <input
-                type="text"
-                value={subjectText}
-                onChange={(e) => {
-                  setSubjectText(e.target.value);
-                  if (sendButtonState === 'sent') setSendButtonState('idle');
-                }}
-                placeholder="Subject line (strictly under 4 words, lowercase)"
-                className="w-full text-xs font-mono font-bold rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 focus:ring-1 focus:ring-zinc-900 shadow-2xs"
-              />
-
-              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border shrink-0 ${
-                subjectWordCount <= 4 
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
-              }`}>
-                {subjectWordCount}/3 words
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setShowSubjectSuggestions(!showSubjectSuggestions)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-50 border border-zinc-300 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 transition-colors shrink-0 shadow-2xs cursor-pointer"
-                title="Toggle subject suggestions"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                <span>Ideas</span>
-                {showSubjectSuggestions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Subject Suggestions Dropdown */}
-          {showSubjectSuggestions && (
-            <div className="p-2.5 rounded-lg bg-amber-50/50 border border-amber-200 shadow-2xs flex flex-wrap items-center gap-2 animate-in fade-in">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase font-mono">Click to insert:</span>
-              {subjectSuggestions.map((s, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setSubjectText(s);
-                    setShowSubjectSuggestions(false);
+            <div className="flex items-center gap-2">
+              <label htmlFor="cold-email-subject" className="w-14 shrink-0 text-small text-fg-secondary">
+                Subject
+              </label>
+              <div className="relative flex flex-1 items-center gap-2">
+                <Input
+                  id="cold-email-subject"
+                  type="text"
+                  value={subjectText}
+                  onChange={(e) => {
+                    setSubjectText(e.target.value);
                     if (sendButtonState === 'sent') setSendButtonState('idle');
                   }}
-                  className="text-xs font-mono font-semibold px-2.5 py-1 rounded-md bg-white hover:bg-zinc-100 text-zinc-800 transition-colors border border-zinc-200 shadow-2xs cursor-pointer"
+                  placeholder="Subject line (under 4 words, lowercase)"
+                />
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSubjectSuggestions(!showSubjectSuggestions)}
+                  title="Toggle subject suggestions"
+                  className="gap-1"
                 >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-        </div>
-
-        {/* ======================================================================= */}
-        {/* WORKSHOP CANVAS: EDITOR MODE VS INBOX PREVIEW MODE                       */}
-        {/* ======================================================================= */}
-        {viewMode === 'editor' ? (
-          <div className="p-5 space-y-4">
-            
-            {/* Workshop Tool Bar (Shorten, Auto-format, Sanitize, Metrics) */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs pb-1">
-              
-              {/* Live Quality Metrics */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-bold border ${
-                  wordCount >= 40 && wordCount <= 75
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : wordCount > 75
-                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                }`}>
-                  {wordCount} words {wordCount >= 40 && wordCount <= 75 ? '✓ (Sweet Spot)' : wordCount > 75 ? '⚠️ (Trim copy)' : ''}
-                </span>
-
-                <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-zinc-100 text-zinc-700 border border-zinc-200">
-                  Grade 5 Conversational
-                </span>
-
-                {detectedSpamTriggers.length === 0 ? (
-                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1 font-semibold">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>0 Spam Triggers</span>
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-rose-50 text-rose-800 border border-rose-200 flex items-center gap-1 font-bold">
-                    <AlertTriangle className="w-3 h-3 text-rose-600" />
-                    <span>Spam Trigger: "{detectedSpamTriggers[0]}"</span>
-                  </span>
-                )}
+                  <Sparkles />
+                  <span>Ideas</span>
+                  {showSubjectSuggestions ? <ChevronUp /> : <ChevronDown />}
+                </Button>
               </div>
-
-              {/* Workshopping Quick Action Buttons */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={handleAutoFormat}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold flex items-center gap-1 border border-zinc-200 transition-colors cursor-pointer"
-                  title="Format into clean spaced paragraphs"
-                >
-                  <AlignLeft className="w-3.5 h-3.5 text-zinc-600" />
-                  <span>{copiedKey === 'formatted' ? '✓ Formatted' : 'Auto-Format'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleShortenCopy}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold flex items-center gap-1 border border-zinc-200 transition-colors cursor-pointer"
-                  title="Trim fluff words to reach under 65 words"
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-600" />
-                  <span>{copiedKey === 'shortened' ? '✓ Shortened' : 'Make Shorter'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSanitizeStrict}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold flex items-center gap-1 border border-zinc-200 transition-colors cursor-pointer"
-                  title="Strip em-dashes and emojis"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{copiedKey === 'sanitized' ? '✓ Sanitized' : 'Sanitize'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopyBody}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold flex items-center gap-1 border border-zinc-200 transition-colors cursor-pointer"
-                >
-                  {copiedKey === 'body' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-zinc-500" />}
-                  <span>Copy</span>
-                </button>
-              </div>
-
             </div>
 
-            {/* Email Body Textarea */}
-            <textarea
-              rows={10}
-              value={editableBody}
-              onChange={(e) => {
-                setEditableBody(e.target.value);
-                if (sendButtonState === 'sent') setSendButtonState('idle');
-              }}
-              className="w-full min-h-[220px] text-sm font-sans rounded-xl border border-zinc-300 p-4 text-zinc-950 bg-white focus:outline-hidden focus:ring-1 focus:ring-zinc-900 leading-relaxed shadow-2xs"
-              placeholder="Write or workshop your cold email here..."
-            />
-
-            {/* 1-Click Closing CTA Swapper */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-wider font-mono">
-                <span>1-Click Closing Lines (Low-Friction Anti-Sales):</span>
-                <span>Give prospect an easy out</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                {[
-                  { label: 'Permission Video', text: 'Open to a 2-minute video showing how we insulate margins, or totally off base?' },
-                  { label: 'Compare Notes', text: 'Would it be a terrible idea to compare notes for 2 minutes Thursday?' },
-                  { label: 'Quick Question', text: 'Worth a quick 10-minute look, or is outbound already humming for you?' },
-                  { label: 'Negative Reverse', text: 'If this is completely off your radar right now, no worries at all.' }
-                ].map((cta, idx) => (
+            {/* Subject Suggestions */}
+            {showSubjectSuggestions && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-subtle p-2.5 animate-in fade-in">
+                <span className="text-caption text-fg-tertiary">Click to use:</span>
+                {subjectSuggestions.map((s, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => {
-                      const sentences = editableBody.trim().split(/(?<=[.?!])\s+/);
-                      if (sentences.length > 1) {
-                        sentences[sentences.length - 1] = cta.text;
-                        setEditableBody(sentences.join('\n\n'));
-                      } else {
-                        setEditableBody(`${editableBody.trim()}\n\n${cta.text}`);
-                      }
+                      setSubjectText(s);
+                      setShowSubjectSuggestions(false);
                       if (sendButtonState === 'sent') setSendButtonState('idle');
                     }}
-                    className="p-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-left transition-colors cursor-pointer"
+                    className="focus-ring cursor-pointer rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
                   >
-                    <div className="text-[10px] font-bold text-zinc-800 uppercase font-mono">{cta.label}</div>
-                    <p className="text-[11px] text-zinc-500 line-clamp-1 mt-0.5">{cta.text}</p>
+                    {s}
                   </button>
                 ))}
               </div>
-            </div>
-
-          </div>
-        ) : (
-          /* INBOX PREVIEW MODE: Mock Real Gmail / Outlook View */
-          <div className="p-6 bg-zinc-100/60 flex justify-center">
-            <div className="max-w-2xl w-full bg-white rounded-2xl border border-zinc-300 shadow-md p-6 space-y-4">
-              
-              {/* Mock Inbox Header */}
-              <div className="border-b border-zinc-200 pb-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-bold text-zinc-900">
-                    {subjectText || '(No subject)'}
-                  </h3>
-                  <span className="text-[11px] font-mono text-zinc-400">
-                    Inbox &bull; Primary
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-zinc-600">
-                  <div>
-                    <strong className="text-zinc-900 font-bold">{senderDisplayName}</strong> &lt;{verifiedSenderEmail}&gt;
-                  </div>
-                  <span className="text-zinc-400">Just now</span>
-                </div>
-                <div className="text-xs text-zinc-500">
-                  to: <span className="font-mono">{prospectEmail}</span>
-                </div>
-              </div>
-
-              {/* Formatted Rendered Email Body */}
-              <div className="py-2 text-sm text-zinc-900 leading-relaxed font-sans space-y-3 whitespace-pre-wrap select-text">
-                {editableBody}
-              </div>
-
-              {/* Mock Signature */}
-              <div className="pt-4 border-t border-zinc-100 text-xs text-zinc-500 space-y-0.5">
-                <div className="font-bold text-zinc-800">{senderDisplayName}</div>
-                <div>Outbound Operations &bull; Appointmentlyy</div>
-                <div className="text-zinc-400 font-mono text-[11px]">appointmentlyy.com</div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-        {/* ======================================================================= */}
-        {/* ACTION DOCK & SEND ENGINE                                               */}
-        {/* ======================================================================= */}
-        <div className="p-4 px-5 bg-zinc-50 border-t border-zinc-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          
-          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-            <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-            <span className="text-[11px]">
-              Sending as: <strong className="text-zinc-900 font-mono">{senderFrom}</strong>
-            </span>
-            {directSendStatus && (
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${
-                directSendStatus.startsWith('Error')
-                  ? 'bg-rose-50 text-rose-800 border-rose-200'
-                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              }`}>
-                {directSendStatus.startsWith('Error') ? (
-                  <AlertTriangle className="h-3 w-3 text-rose-600 shrink-0" />
-                ) : (
-                  <Check className="h-3 w-3 text-emerald-600 shrink-0" />
-                )}
-                <span>{directSendStatus}</span>
-              </span>
             )}
           </div>
 
-          {/* Send Email and Copy Entire Email Buttons */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={handleDirectSendEmail}
-              disabled={isSendingDirectEmail || sendButtonState === 'sent'}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
-                sendButtonState === 'sent'
-                  ? 'bg-emerald-800 text-emerald-100 border border-emerald-700 cursor-not-allowed opacity-90'
-                  : sendButtonState === 'sending'
-                  ? 'bg-emerald-700 text-emerald-100 cursor-wait opacity-80'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer active:scale-98'
-              }`}
-              title={
-                sendButtonState === 'sent'
-                  ? `Already dispatched to ${prospectEmail}. Edit draft or change recipient to send another.`
-                  : `Dispatch live email from ${senderFrom} to ${prospectEmail}`
-              }
-            >
-              {sendButtonState === 'sending' ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Sending...</span>
-                </>
-              ) : sendButtonState === 'sent' ? (
-                <>
-                  <Check className="h-4 w-4 text-emerald-300" />
-                  <span>Sent!</span>
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  <span>Send Email</span>
-                </>
-              )}
-            </button>
+          {/* Editor vs inbox preview */}
+          {viewMode === 'editor' ? (
+            <div className="space-y-4 px-5 py-4">
 
-            <button
-              type="button"
-              onClick={handleCopyEntireEmail}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-950 hover:bg-zinc-800 text-white transition-all shadow-md cursor-pointer"
-            >
-              {copiedKey === 'full' ? (
-                <>
-                  <Check className="h-4 w-4 text-emerald-400" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4 text-zinc-300" />
-                  <span>Copy Entire Email</span>
-                </>
+              {/* Writing tools */}
+              <div className="flex flex-wrap items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={handleAutoFormat} title="Format into clean spaced paragraphs">
+                  {copiedKey === 'formatted' ? <Check /> : <AlignLeft />}
+                  <span>{copiedKey === 'formatted' ? 'Formatted' : 'Auto-format'}</span>
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={handleShortenCopy} title="Trim fluff words to reach under 65 words">
+                  {copiedKey === 'shortened' ? <Check /> : <Zap />}
+                  <span>{copiedKey === 'shortened' ? 'Shortened' : 'Make shorter'}</span>
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={handleSanitizeStrict} title="Strip em-dashes and emojis">
+                  {copiedKey === 'sanitized' ? <Check /> : <ShieldCheck />}
+                  <span>{copiedKey === 'sanitized' ? 'Cleaned' : 'Clean up'}</span>
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={handleCopyBody}>
+                  {copiedKey === 'body' ? <Check /> : <Copy />}
+                  <span>Copy body</span>
+                </Button>
+              </div>
+
+              {/* Email Body */}
+              <Textarea aria-label="Email body"
+                rows={10}
+                value={editableBody}
+                onChange={(e) => {
+                  setEditableBody(e.target.value);
+                  if (sendButtonState === 'sent') setSendButtonState('idle');
+                }}
+                className="min-h-[260px] p-4 font-sans leading-relaxed"
+                placeholder="Write or workshop your cold email here..."
+              />
+
+              {/* 1-Click Closing CTA Swapper */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-caption text-fg-tertiary">
+                  <span>Swap the closing line</span>
+                  <span>Give the prospect an easy out</span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    { label: 'Permission Video', text: 'Open to a 2-minute video showing how we insulate margins, or totally off base?' },
+                    { label: 'Compare Notes', text: 'Would it be a terrible idea to compare notes for 2 minutes Thursday?' },
+                    { label: 'Quick Question', text: 'Worth a quick 10-minute look, or is outbound already humming for you?' },
+                    { label: 'Negative Reverse', text: 'If this is completely off your radar right now, no worries at all.' }
+                  ].map((cta, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        const sentences = editableBody.trim().split(/(?<=[.?!])\s+/);
+                        if (sentences.length > 1) {
+                          sentences[sentences.length - 1] = cta.text;
+                          setEditableBody(sentences.join('\n\n'));
+                        } else {
+                          setEditableBody(`${editableBody.trim()}\n\n${cta.text}`);
+                        }
+                        if (sendButtonState === 'sent') setSendButtonState('idle');
+                      }}
+                      className="focus-ring cursor-pointer rounded-md border border-line bg-surface p-2.5 text-left transition-colors hover:bg-subtle"
+                    >
+                      <div className="text-small font-medium text-fg">{cta.label}</div>
+                      <p className="mt-0.5 line-clamp-1 text-caption font-normal text-fg-tertiary">{cta.text}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            /* Inbox preview */
+            <div className="flex justify-center bg-subtle px-5 py-6">
+              <div className="w-full max-w-2xl space-y-4 rounded-lg border border-line bg-surface p-6 shadow-xs">
+
+                <div className="space-y-2 border-b border-line pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-h3 text-fg">
+                      {subjectText || '(No subject)'}
+                    </h3>
+                    <span className="text-caption text-fg-tertiary">
+                      Inbox, Primary
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-small text-fg-secondary">
+                    <div>
+                      <span className="font-medium text-fg">{senderDisplayName}</span> &lt;{verifiedSenderEmail}&gt;
+                    </div>
+                    <span className="text-fg-tertiary">Just now</span>
+                  </div>
+                  <div className="text-small text-fg-tertiary">
+                    to: <span className="font-mono">{prospectEmail}</span>
+                  </div>
+                </div>
+
+                <div className="select-text space-y-3 whitespace-pre-wrap py-2 font-sans text-body leading-relaxed text-fg">
+                  {editableBody}
+                </div>
+
+                <div className="space-y-0.5 border-t border-line pt-4 text-small text-fg-tertiary">
+                  <div className="font-medium text-fg">{senderDisplayName}</div>
+                  <div>Outbound Operations, Appointmentlyy</div>
+                  <div className="text-fg-tertiary">appointmentlyy.com</div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* Send dock */}
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-line px-5 py-3 sm:flex-row">
+
+            <div className="flex flex-wrap items-center gap-2 text-small text-fg-tertiary">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-fg-secondary" />
+              <span>
+                Sending as <span className="font-mono text-fg-secondary">{senderFrom}</span>
+              </span>
+              {directSendStatus && (
+                <span className={`inline-flex items-center gap-1.5 text-small ${
+                  directSendStatus.startsWith('Error') ? 'text-danger-fg' : 'text-success-fg'
+                }`}>
+                  {directSendStatus.startsWith('Error') ? (
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span>{directSendStatus}</span>
+                </span>
               )}
-            </button>
+            </div>
+
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Button
+                variant="secondary"
+                onClick={handleCopyEntireEmail}
+                className="flex-1 sm:flex-initial"
+              >
+                {copiedKey === 'full' ? (
+                  <>
+                    <Check />
+                    <span>Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy />
+                    <span>Copy email</span>
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="brand"
+                onClick={handleDirectSendEmail}
+                disabled={isSendingDirectEmail || sendButtonState === 'sent'}
+                className={`flex-1 px-5 sm:flex-initial ${sendButtonState === 'sending' ? 'cursor-wait' : ''}`}
+                title={
+                  sendButtonState === 'sent'
+                    ? `Already dispatched to ${prospectEmail}. Edit draft or change recipient to send another.`
+                    : `Dispatch live email from ${senderFrom} to ${prospectEmail}`
+                }
+              >
+                {sendButtonState === 'sending' ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    <span>Sending...</span>
+                  </>
+                ) : sendButtonState === 'sent' ? (
+                  <>
+                    <Check />
+                    <span>Sent</span>
+                  </>
+                ) : (
+                  <>
+                    <Send />
+                    <span>Send email</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
           </div>
-
         </div>
 
+        {/* Right rail */}
+        <aside className="space-y-4">
+
+          {/* Live checks */}
+          <div className="rounded-lg border border-line bg-surface shadow-xs">
+            <div className="border-b border-line px-4 py-3">
+              <h2 className="text-h3 text-fg">Checks</h2>
+              <p className="mt-0.5 text-small text-fg-secondary">Updated as you type.</p>
+            </div>
+            <ul className="divide-y divide-line">
+              <li className="flex items-start gap-2.5 px-4 py-3">
+                {wordCountInRange ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" />
+                ) : wordCount > 75 ? (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg" />
+                ) : (
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg-tertiary" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-body text-fg"><span className="tabular-nums">{wordCount}</span> words</div>
+                  <div className="text-small text-fg-tertiary">
+                    {wordCountInRange ? 'In the 40 to 75 word sweet spot' : wordCount > 75 ? 'Trim the copy to 75 words or fewer' : 'Aim for 40 to 75 words'}
+                  </div>
+                </div>
+              </li>
+
+              <li className="flex items-start gap-2.5 px-4 py-3">
+                {subjectWordCount <= 4 ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-body text-fg">Subject: <span className="tabular-nums">{subjectWordCount}</span>/3 words</div>
+                  <div className="text-small text-fg-tertiary">Short, lowercase subjects get opened</div>
+                </div>
+              </li>
+
+              <li className="flex items-start gap-2.5 px-4 py-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" />
+                <div className="min-w-0">
+                  <div className="text-body text-fg">Reading grade 5</div>
+                  <div className="text-small text-fg-tertiary">Conversational</div>
+                </div>
+              </li>
+
+              <li className="flex items-start gap-2.5 px-4 py-3">
+                {detectedSpamTriggers.length === 0 ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-fg" />
+                )}
+                <div className="min-w-0">
+                  {detectedSpamTriggers.length === 0 ? (
+                    <>
+                      <div className="text-body text-fg">No spam words</div>
+                      <div className="text-small text-fg-tertiary">Subject and body are clean</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-body text-danger-fg">Spam word found</div>
+                      <div className="text-small text-fg-tertiary">&ldquo;{detectedSpamTriggers[0]}&rdquo;</div>
+                    </>
+                  )}
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          {/* AI angles & frameworks (optional assistant) */}
+          <div className="rounded-lg border border-line bg-surface shadow-xs">
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <h2 className="text-h3 text-fg">AI angles</h2>
+                <p className="mt-0.5 text-small text-fg-secondary">Draft from a proven framework.</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowAiAssistant(!showAiAssistant)}
+                aria-expanded={showAiAssistant}
+              >
+                <Sparkles />
+                <span>{showAiAssistant ? 'Close' : 'Open'}</span>
+              </Button>
+            </div>
+
+            {showAiAssistant && (
+              <div className="space-y-3 border-t border-line px-4 py-4 animate-in fade-in">
+                <p className="text-small text-fg-tertiary">
+                  Josh Braun 4T, Chris Voss, Allred 50-word
+                </p>
+
+                <label className="block space-y-1.5">
+                  <span className="block text-small font-medium text-fg">Framework</span>
+                  <Select
+                    value={selectedFrameworkId}
+                    onChange={(e) => setSelectedFrameworkId(e.target.value)}
+                  >
+                    {COLD_EMAIL_FRAMEWORKS.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.category})
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="block space-y-1.5">
+                  <span className="block text-small font-medium text-fg">Angle or post-call focus</span>
+                  <Input
+                    type="text"
+                    value={userIdea}
+                    onChange={(e) => setUserIdea(e.target.value)}
+                    placeholder="e.g. Following up after our call regarding sub-150ms live objection sparring..."
+                  />
+                </label>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleGenerateDraft}
+                  disabled={isGenerating}
+                  className="w-full"
+                >
+                  {isGenerating ? <RotateCw className="animate-spin" /> : <Sparkles />}
+                  <span>Generate draft</span>
+                </Button>
+              </div>
+            )}
+          </div>
+
+        </aside>
       </div>
 
     </div>

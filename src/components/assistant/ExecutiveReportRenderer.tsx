@@ -12,8 +12,12 @@ import {
   ArrowUpRight, 
   ExternalLink,
   Table as TableIcon,
-  CheckCircle2
+  CheckCircle2,
+  BarChart3,
+  Lightbulb,
+  Target
 } from 'lucide-react';
+import { Badge, Button } from '@/components/ui';
 
 interface ExecutiveReportRendererProps {
   content: string;
@@ -201,30 +205,30 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
     const [header, ...rows] = tableBuffer;
     tableBuffer = [];
     return (
-      <div key={key} className="my-4 overflow-x-auto rounded-xl border border-[#222021]/15 bg-white shadow-xs">
-        <table className="w-full text-left text-xs border-collapse">
+      <div key={key} className="my-4 overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-left text-small border-collapse">
           <thead>
-            <tr className="bg-[#222021] text-white">
+            <tr className="bg-subtle">
               {header.map((h, idx) => (
-                <th key={idx} className="py-2.5 px-3.5 font-bold uppercase tracking-wider text-[11px] font-mono border-b border-[#222021]">
+                <th key={idx} className="h-9 px-3.5 text-caption text-fg-tertiary border-b border-line">
                   {cleanFormatting(h)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#222021]/10">
+          <tbody>
             {rows.map((row, rIdx) => (
-              <tr 
-                key={rIdx} 
-                className={`transition-colors hover:bg-stone-50 ${rIdx % 2 === 0 ? 'bg-white' : 'bg-[#F2F0EF]/40'}`}
+              <tr
+                key={rIdx}
+                className="border-t border-line first:border-t-0 transition-colors hover:bg-subtle"
               >
                 {row.map((cell, cIdx) => {
                   const isFirstCol = cIdx === 0;
                   const hasIcon = cell.includes('🎯') || cell.includes('🚫') || cell.includes('🔄');
                   return (
-                    <td key={cIdx} className={`py-2 px-3.5 ${isFirstCol ? 'font-bold text-[#222021]' : 'text-[#333130]'}`}>
+                    <td key={cIdx} className={`py-2 px-3.5 tabular-nums ${isFirstCol ? 'font-medium text-fg' : 'text-fg-secondary'}`}>
                       {hasIcon ? (
-                        <span className="inline-flex items-center gap-1.5 font-semibold">
+                        <span className="inline-flex items-center gap-1.5 font-medium">
                           {cleanFormatting(cell)}
                         </span>
                       ) : (
@@ -265,9 +269,8 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
     if (line.startsWith('### ')) {
       const heading = line.replace('### ', '');
       renderedElements.push(
-        <div key={`h3-${idx}`} className="mt-4 mb-2 flex items-center gap-2 pb-1.5 border-b border-[#222021]/15">
-          <span className="h-2 w-2 rounded-full bg-[#ED1C24]" />
-          <h3 className="text-sm font-black uppercase tracking-tight text-[#222021] font-mono">
+        <div key={`h3-${idx}`} className="mt-5 mb-2 pb-1.5 border-b border-line">
+          <h3 className="text-h3 text-fg">
             {cleanFormatting(heading)}
           </h3>
         </div>
@@ -280,15 +283,13 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
       const heading = line.replace('#### ', '');
       const isPositive = heading.toLowerCase().includes('positive') || heading.toLowerCase().includes('boosting');
       const isNegative = heading.toLowerCase().includes('leak') || heading.toLowerCase().includes('negatively') || heading.toLowerCase().includes('bottleneck');
-      
+
       renderedElements.push(
-        <div key={`h4-${idx}`} className="mt-4 mb-2 flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
-            isPositive ? 'bg-emerald-100 text-emerald-800' : isNegative ? 'bg-rose-100 text-rose-800' : 'bg-stone-200 text-stone-800'
-          }`}>
-            {isPositive ? 'POSITIVE DRIVERS' : isNegative ? 'CONVERSION LEAKS' : 'INSIGHT'}
-          </span>
-          <h4 className="text-xs font-bold text-[#222021]">
+        <div key={`h4-${idx}`} className="mt-4 mb-2 flex flex-wrap items-center gap-2">
+          <Badge tone={isPositive ? 'success' : isNegative ? 'danger' : 'neutral'}>
+            {isPositive ? 'Positive drivers' : isNegative ? 'Conversion leaks' : 'Insight'}
+          </Badge>
+          <h4 className="text-body-strong text-fg">
             {cleanFormatting(heading)}
           </h4>
         </div>
@@ -300,12 +301,12 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
     if (line.startsWith('> ')) {
       const quote = line.replace('> ', '');
       renderedElements.push(
-        <div key={`quote-${idx}`} className="my-3 rounded-xl border-l-4 border-[#ED1C24] bg-[#F2F0EF] p-3 text-xs text-[#222021] font-medium shadow-2xs">
-          <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase text-[#ED1C24] mb-1">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>EXECUTIVE TAKEAWAY</span>
+        <div key={`quote-${idx}`} className="my-3 rounded-lg border border-line bg-subtle p-3 text-body text-fg">
+          <div className="flex items-center gap-1.5 text-caption text-fg-secondary mb-1">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            <span>Executive takeaway</span>
           </div>
-          <p className="leading-relaxed">{cleanFormatting(quote).replace('Executive Takeaway:', '')}</p>
+          <p>{cleanFormatting(quote).replace('Executive Takeaway:', '')}</p>
         </div>
       );
       return;
@@ -321,11 +322,12 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
 
       if (isData) {
         renderedElements.push(
-          <div key={`list-${idx}`} className="my-2 p-3 rounded-xl bg-stone-50 border-l-4 border-[#222021] border border-[#222021]/10 text-xs shadow-2xs">
-            <div className="font-bold text-[#222021] flex items-center gap-1.5 mb-1 text-[11px] font-mono uppercase tracking-wider">
-              <span>📊 VERIFIED TELEMETRY DATA</span>
+          <div key={`list-${idx}`} className="my-2 p-3 rounded-lg bg-surface border border-line text-body">
+            <div className="flex items-center gap-1.5 mb-1 text-caption text-fg-secondary">
+              <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+              <span>Verified call data</span>
             </div>
-            <div className="text-xs text-[#333130] leading-relaxed pl-1">
+            <div className="text-body text-fg">
               {formatInlineText(rawText.replace(/\*\*📊 The Data:\*\*/, '').trim())}
             </div>
           </div>
@@ -335,11 +337,12 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
 
       if (isWhy) {
         renderedElements.push(
-          <div key={`list-${idx}`} className="my-2 p-3 rounded-xl bg-[#F2F0EF]/80 border-l-4 border-[#6b6968] border border-[#222021]/10 text-xs shadow-2xs">
-            <div className="font-bold text-[#6b6968] flex items-center gap-1.5 mb-1 text-[11px] font-mono uppercase tracking-wider">
-              <span>🧠 ROOT-CAUSE & FLOOR PSYCHOLOGY</span>
+          <div key={`list-${idx}`} className="my-2 p-3 rounded-lg bg-subtle border border-line text-body">
+            <div className="flex items-center gap-1.5 mb-1 text-caption text-fg-secondary">
+              <Lightbulb className="h-3.5 w-3.5" aria-hidden />
+              <span>Root cause</span>
             </div>
-            <div className="text-xs text-[#222021] leading-relaxed pl-1">
+            <div className="text-body text-fg">
               {formatInlineText(rawText.replace(/\*\*🧠 Why It's Impacting:\*\*/, '').trim())}
             </div>
           </div>
@@ -349,11 +352,12 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
 
       if (isAction) {
         renderedElements.push(
-          <div key={`list-${idx}`} className="my-2 p-3 rounded-xl bg-red-50/50 border-l-4 border-[#ED1C24] border border-[#ED1C24]/20 text-xs shadow-2xs">
-            <div className="font-bold text-[#ED1C24] flex items-center gap-1.5 mb-1 text-[11px] font-mono uppercase tracking-wider">
-              <span>🎯 RECOMMENDED STEPS TO INCREASE PERFORMANCE</span>
+          <div key={`list-${idx}`} className="my-2 p-3 rounded-lg bg-surface border border-line border-l-2 border-l-brand-600 text-body">
+            <div className="flex items-center gap-1.5 mb-1 text-caption text-brand-text">
+              <Target className="h-3.5 w-3.5" aria-hidden />
+              <span>Recommended next steps</span>
             </div>
-            <div className="text-xs text-[#222021] leading-relaxed pl-1 font-medium">
+            <div className="text-body text-fg">
               {formatInlineText(rawText.replace(/\*\*🎯 Recommended Steps to Increase Performance:\*\*/, '').trim())}
             </div>
           </div>
@@ -362,11 +366,11 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
       }
 
       renderedElements.push(
-        <div key={`list-${idx}`} className={`flex items-start gap-2.5 my-1.5 ${isTopLevel ? 'bg-stone-50/70 p-2.5 rounded-lg border border-[#222021]/10' : 'pl-3'}`}>
-          <span className={`shrink-0 rounded-full ${isTopLevel ? 'w-5 h-5 flex items-center justify-center bg-[#222021] text-white text-[10px] font-bold font-mono' : 'w-1.5 h-1.5 mt-1.5 bg-[#ED1C24]'}`}>
+        <div key={`list-${idx}`} className={`flex items-start gap-2.5 my-1.5 ${isTopLevel ? 'p-2.5 rounded-md border border-line' : 'pl-3'}`}>
+          <span className={`shrink-0 rounded-full ${isTopLevel ? 'size-5 flex items-center justify-center bg-subtle text-fg-secondary text-caption tabular-nums' : 'size-1.5 mt-2 bg-fg-tertiary'}`}>
             {isTopLevel ? line.match(/^\d+/)?.[0] : ''}
           </span>
-          <div className="text-xs text-[#222021] leading-relaxed flex-1">
+          <div className="text-body text-fg flex-1">
             {formatInlineText(rawText)}
           </div>
         </div>
@@ -376,13 +380,13 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
 
     // Divider
     if (line === '---') {
-      renderedElements.push(<hr key={`hr-${idx}`} className="my-3 border-[#222021]/10" />);
+      renderedElements.push(<hr key={`hr-${idx}`} className="my-3 border-line" />);
       return;
     }
 
     // Regular text
     renderedElements.push(
-      <p key={`p-${idx}`} className="my-1 text-xs text-[#333130] leading-relaxed">
+      <p key={`p-${idx}`} className="my-1 text-body text-fg">
         {formatInlineText(line)}
       </p>
     );
@@ -395,61 +399,43 @@ export default function ExecutiveReportRenderer({ content, timestamp, queryTitle
   return (
     <div className="space-y-3">
       {/* EXECUTIVE COPY TOOLBAR FOR MANAGERS */}
-      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#222021]/10">
-        <div className="flex items-center gap-1.5">
-          <span className="px-2 py-0.5 rounded bg-[#222021] text-white text-[10px] font-mono font-bold uppercase">
-            EXECUTIVE EMAIL REPORT
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-line">
+        <div className="flex items-center gap-2">
+          <span className="text-h3 text-fg">
+            Report
           </span>
           {timestamp && (
-            <span className="text-[11px] text-[#6b6968] font-mono">
+            <span className="text-caption text-fg-tertiary tabular-nums">
               {timestamp}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={handleCopyRichEmail}
-            className="px-2.5 py-1 rounded-lg bg-[#ED1C24] hover:bg-[#c9141b] text-white text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             title="Copies formatted table & styled HTML ready to paste directly into Gmail or Outlook"
+            icon={copiedType === 'html' ? <Check className="text-success-fg" /> : <Mail className="text-fg-secondary" />}
           >
-            {copiedType === 'html' ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-white" />
-                <span>Copied for Email!</span>
-              </>
-            ) : (
-              <>
-                <Mail className="h-3.5 w-3.5" />
-                <span>Copy for Email (HTML)</span>
-              </>
-            )}
-          </button>
+            {copiedType === 'html' ? 'Copied for email' : 'Copy for email'}
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="ghost"
             onClick={handleCopyPlainText}
-            className="px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-[#222021] text-[11px] font-semibold flex items-center gap-1 transition-all border border-[#222021]/10 cursor-pointer"
             title="Copy clean plain text without markdown asterisks"
+            icon={copiedType === 'text' ? <Check className="text-success-fg" /> : <FileText />}
           >
-            {copiedType === 'text' ? (
-              <>
-                <Check className="h-3 w-3 text-emerald-600" />
-                <span>Copied</span>
-              </>
-            ) : (
-              <>
-                <FileText className="h-3 w-3 text-stone-600" />
-                <span>Copy Text</span>
-              </>
-            )}
-          </button>
+            {copiedType === 'text' ? 'Copied' : 'Copy text'}
+          </Button>
         </div>
       </div>
 
       {/* RENDERED EXECUTIVE CONTENT */}
-      <div className="text-xs select-text">
+      <div className="text-body select-text">
         {renderedElements}
       </div>
     </div>
@@ -462,21 +448,21 @@ function formatInlineText(text: string): React.ReactNode {
   return parts.map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return (
-        <strong key={idx} className="font-bold text-[#222021]">
+        <strong key={idx} className="font-semibold text-fg">
           {part.slice(2, -2)}
         </strong>
       );
     }
     if (part.startsWith('*') && part.endsWith('*')) {
       return (
-        <em key={idx} className="italic text-[#4a4847]">
+        <em key={idx} className="italic text-fg-secondary">
           {part.slice(1, -1)}
         </em>
       );
     }
     if (part.startsWith('`') && part.endsWith('`')) {
       return (
-        <code key={idx} className="bg-stone-100 border border-stone-200 px-1 py-0.5 rounded text-[11px] font-mono text-[#ED1C24]">
+        <code key={idx} className="bg-subtle border border-line px-1 py-0.5 rounded-sm text-caption font-mono text-fg">
           {part.slice(1, -1)}
         </code>
       );

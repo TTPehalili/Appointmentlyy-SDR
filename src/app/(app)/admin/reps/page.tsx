@@ -15,6 +15,7 @@ import {
   Radio,
   FileCheck
 } from 'lucide-react';
+import { buttonClasses, PageHeader, SearchInput, StatusDot } from '@/components/ui';
 
 interface RepRecord {
   id: string;
@@ -86,98 +87,79 @@ export default function AdminRepsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+    <div className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Certification"
+        count={reps.length}
+        description={`${reps.filter(r => r.certified).length} floor ready, ${reps.filter(r => r.status === 'In Remediation').length} in remediation. Practice trials, audit scores and certificates per rep.`}
+      />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-8 flex flex-col gap-6">
-        
-        {/* Roster Controls */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="h-10 w-10 rounded-xl bg-[#ED1C24]/10 border border-[#ED1C24]/20 flex items-center justify-center text-[#ED1C24]">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                Active BPO Roster ({reps.length} Reps)
-              </h2>
-              <p className="text-xs text-slate-500">
-                Floor Ready: {reps.filter(r => r.certified).length} | In Remediation: {reps.filter(r => r.status === 'In Remediation').length}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative w-full sm:w-72">
-            <Search className="h-4 w-4 absolute left-3.5 top-3 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search reps by name or campaign..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#ED1C24]"
-            />
-          </div>
+      <div className="flex flex-col gap-4">
+        {/* Filter bar */}
+        <div className="w-full sm:max-w-md">
+          <SearchInput
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search reps by name or campaign"
+            aria-label="Search reps"
+          />
         </div>
 
-        {/* Rep Table */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="px-6 py-3.5">Representative</th>
-                <th className="px-6 py-3.5">Assigned Campaign</th>
-                <th className="px-6 py-3.5">Sparring Trials</th>
-                <th className="px-6 py-3.5">Audit Score</th>
-                <th className="px-6 py-3.5">Certification Status</th>
-                <th className="px-6 py-3.5 text-right">Action</th>
+        {/* Rep table */}
+        <div className="rounded-lg border border-line bg-surface shadow-xs overflow-x-auto">
+          <table className="w-full border-collapse text-left text-body tabular-nums">
+            <thead>
+              <tr className="h-9 bg-subtle">
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Rep</th>
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Campaign</th>
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary text-right">Practice trials</th>
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary text-right">Audit score</th>
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary">Certification</th>
+                <th scope="col" className="px-4 text-caption font-medium text-fg-tertiary text-right"><span className="sr-only">Action</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filteredReps.map((rep) => (
-                <tr key={rep.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-900">{rep.name}</div>
-                    <div className="text-[11px] text-slate-500">{rep.email}</div>
+                <tr key={rep.id} className="border-t border-line transition-colors duration-150 hover:bg-subtle">
+                  <td className="px-4 py-2.5">
+                    <div className="text-body-strong text-fg">{rep.name}</div>
+                    <div className="text-small text-fg-secondary">{rep.email}</div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="font-semibold text-slate-800">{rep.campaign}</span>
-                    <div className="text-[10px] text-slate-400">{rep.role}</div>
+                  <td className="px-4 py-2.5">
+                    <div className="text-fg">{rep.campaign}</div>
+                    <div className="text-small text-fg-tertiary">{rep.role}</div>
                   </td>
-                  <td className="px-6 py-4 font-mono font-semibold text-slate-700">
-                    {rep.trialsCompleted} Trials Completed
+                  <td className="px-4 py-2.5 text-right text-fg">
+                    {rep.trialsCompleted}
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`font-mono font-bold text-xs ${
-                      rep.averageScore >= 85 ? 'text-emerald-600' : 'text-amber-600'
-                    }`}>
+                  <td className="px-4 py-2.5 text-right">
+                    <span className={rep.averageScore >= 85 ? 'text-success-fg' : 'text-warning-fg'}>
                       {rep.averageScore}%
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                      rep.certified ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                      rep.status === 'In Remediation' ? 'bg-red-50 text-red-700 border border-red-200' :
-                      'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}>
-                      {rep.status}
-                    </span>
+                  <td className="px-4 py-2.5">
+                    <StatusDot
+                      tone={rep.certified ? 'success' : rep.status === 'In Remediation' ? 'danger' : 'neutral'}
+                      label={rep.status}
+                    />
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-4 py-2.5 text-right">
                     {rep.certificateId ? (
                       <Link
                         href={`/certificate/${rep.certificateId}`}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-colors inline-flex items-center gap-1.5"
+                        className={buttonClasses('secondary', 'sm')}
                       >
-                        <Award className="h-3.5 w-3.5" />
-                        <span>VIEW CERTIFICATE</span>
+                        <Award className="h-3.5 w-3.5" aria-hidden />
+                        <span>View certificate</span>
                       </Link>
                     ) : (
                       <Link
                         href="/certification"
-                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors inline-flex items-center gap-1.5"
+                        className={buttonClasses('ghost', 'sm')}
                       >
-                        <Radio className="h-3.5 w-3.5 text-[#ED1C24]" />
-                        <span>START TRIAL</span>
+                        <Radio className="h-3.5 w-3.5" aria-hidden />
+                        <span>Start trial</span>
                       </Link>
                     )}
                   </td>
@@ -186,7 +168,7 @@ export default function AdminRepsPage() {
             </tbody>
           </table>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

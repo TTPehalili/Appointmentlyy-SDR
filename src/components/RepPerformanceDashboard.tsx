@@ -35,6 +35,7 @@ import {
   List
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
+import { PageHeader, SegmentedControl, Button, StatTile, Badge, Tooltip } from '@/components/ui';
 
 export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
@@ -1402,88 +1403,67 @@ export default function RepPerformanceDashboard() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 bg-app text-fg font-sans antialiased overflow-hidden">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
 
-        <div className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <div className="max-w-7xl w-full mx-auto px-4 py-6 md:px-8 space-y-6">
           
           {/* TOP BANNER & TIMEFRAME SELECTOR */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2 border-b border-[#222021]/10">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-[#ED1C24] text-white">
-                  <BarChart3 className="h-5 w-5" />
-                </span>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#ED1C24]">
-                  {isRepMode ? 'PERSONAL SDR CONVERSION INTELLIGENCE' : 'ORGANIZATION PERFORMANCE INTELLIGENCE'}
-                </span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-[#222021] tracking-tight mt-1">
-                {isRepMode ? `${repName}'s Activity & Conversion Dashboard` : `${tenantName} Activities & Conversion Dashboard`}
-              </h1>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
-                <p className="text-xs text-[#6b6968]">
-                  {isRepMode 
-                    ? `Personal performance metrics, quota attainment, and call telemetry for ${repName}.` 
-                    : `Tracking calls, emails, appointments booked, and DNC compliance across ${tenantName}.`}
-                </p>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                  isRepMode 
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                    : 'bg-zinc-200 text-zinc-800 border border-zinc-300'
-                }`}>
+          <PageHeader
+            className="pb-0"
+            title={isRepMode ? `${repName}'s performance` : `${tenantName} performance`}
+            description={isRepMode 
+              ? `Your calls, bookings and progress to target.` 
+              : `Calls, emails, meetings booked and do-not-call compliance across ${tenantName}.`}
+            meta={
+              <>
+                <span className="inline-flex items-center gap-1.5 text-small text-fg-secondary">
                   {isRepMode ? (
                     <>
-                      <Lock className="h-3 w-3" />
-                      <span>Rep Personal View ({repName})</span>
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Your stats only</span>
                     </>
                   ) : (
                     <>
-                      <Building2 className="h-3 w-3" />
-                      <span>{tenantName} Floor ({role})</span>
+                      <Building2 className="h-3.5 w-3.5" />
+                      <span>{tenantName} floor ({role})</span>
                     </>
                   )}
                 </span>
-              </div>
-            </div>
-
-            {/* Timeframe Selector Pills (Daily, Weekly, Monthly, Quarterly, Yearly) */}
-            <div className="flex items-center gap-1.5 p-1 bg-white border border-[#222021]/15 rounded-xl shadow-2xs self-start lg:self-auto overflow-x-auto scrollbar-none">
-              {(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'] as TimePeriod[]).map((period) => (
-                <button
-                  key={period}
-                  type="button"
-                  onClick={() => setTimePeriod(period)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer whitespace-nowrap ${
-                    timePeriod === period
-                      ? 'bg-[#ED1C24] text-white shadow-xs font-black'
-                      : 'text-[#6b6968] hover:text-[#222021] hover:bg-slate-100'
-                  }`}
-                >
-                  {period === 'daily' ? 'Today' : period === 'weekly' ? 'This Week' : period === 'monthly' ? 'This Month' : period === 'quarterly' ? 'Quarterly' : 'Yearly'}
-                </button>
-              ))}
-
-              <button
-                type="button"
+                {/* Timeframe Selector (Daily, Weekly, Monthly, Quarterly, Yearly) */}
+                <SegmentedControl
+                  label="Date range"
+                  size="sm"
+                  value={timePeriod}
+                  onChange={(period) => setTimePeriod(period as TimePeriod)}
+                  items={(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'] as TimePeriod[]).map((period) => ({
+                    value: period,
+                    label: period === 'daily' ? 'Today' : period === 'weekly' ? 'This week' : period === 'monthly' ? 'This month' : period === 'quarterly' ? 'This quarter' : 'This year',
+                  }))}
+                />
+              </>
+            }
+            secondaryActions={
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleExportCSV}
                 title="Export Data as CSV"
-                className="ml-2 px-2.5 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                icon={<Download />}
               >
-                <Download className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Export CSV</span>
-              </button>
-            </div>
-          </div>
+              </Button>
+            }
+          />
 
           {/* GRANULAR FILTER TOOLBAR */}
-          <div className="bg-white border border-[#222021]/15 rounded-2xl p-4 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between text-xs font-bold text-[#222021]">
+          <div className="bg-surface border border-line rounded-lg p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between text-body-strong text-fg">
               <div className="flex items-center gap-1.5">
-                <Filter className="h-4 w-4 text-[#ED1C24]" />
+                <Filter className="h-4 w-4 text-fg-secondary" />
                 <span>
-                  {isRepMode ? 'Active Personal Scope (Role: Rep)' : `Organization Data Filters (${tenantName})`}
+                  {isRepMode ? 'Showing your stats' : `Filters (${tenantName})`}
                 </span>
               </div>
               {!isRepMode && (
@@ -1495,29 +1475,29 @@ export default function RepPerformanceDashboard() {
                     setSelectedDispositionFilter('all');
                     setSearchRepQuery('');
                   }}
-                  className="text-[11px] font-mono text-slate-500 hover:text-[#ED1C24] underline cursor-pointer"
+                  className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg hover:underline cursor-pointer"
                 >
-                  Reset Filters
+                  Reset filters
                 </button>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-body">
               {/* Filter 1: By Rep */}
               <div>
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide block mb-1">
-                  Filter by SDR Rep:
+                <label className="text-caption text-fg-secondary block mb-1">
+                  Rep
                 </label>
                 {isRepMode ? (
                   // LOCKED VIEW FOR REP: STRICT PERSONAL STATS ONLY
-                  <div className="flex items-center justify-between px-3 py-2 bg-emerald-50 border-2 border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-950">
+                  <div className="flex h-9 items-center justify-between px-3 bg-subtle border border-line rounded-sm text-body text-fg">
                     <div className="flex items-center gap-2 truncate">
-                      <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
-                      <span className="truncate">{repName} (Personal Stats Only)</span>
+                      <span className="w-2 h-2 rounded-full bg-success-500 shrink-0" />
+                      <span className="truncate">{repName} (your stats only)</span>
                     </div>
-                    <span className="text-[9px] font-mono bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.5 rounded shrink-0 flex items-center gap-1">
-                      <Lock className="h-2.5 w-2.5" />
-                      <span>Rep Locked</span>
+                    <span className="text-caption text-fg-tertiary shrink-0 flex items-center gap-1">
+                      <Lock className="h-3 w-3" />
+                      <span>Locked</span>
                     </span>
                   </div>
                 ) : (
@@ -1525,7 +1505,7 @@ export default function RepPerformanceDashboard() {
                   <select
                     value={selectedRepFilter}
                     onChange={(e) => setSelectedRepFilter(e.target.value)}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-bold text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                    className="focus-ring w-full h-9 bg-surface border border-line-strong rounded-sm px-3 text-body text-fg focus:outline-none focus:border-brand-600"
                   >
                     <option value="all">All {tenantName} Reps ({organizationReps.length})</option>
                     {organizationReps.map((r) => (
@@ -1539,21 +1519,21 @@ export default function RepPerformanceDashboard() {
 
               {/* Filter 2: By Campaign */}
               <div>
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide block mb-1">
-                  Filter by Campaign / Tenant:
+                <label className="text-caption text-fg-secondary block mb-1">
+                  Campaign
                 </label>
                 {isRepMode ? (
                   // Rep View: Shows their active campaign
-                  <div className="px-3 py-2 bg-[#F2F0EF] border border-[#222021]/15 rounded-xl text-xs font-bold text-[#222021] truncate flex items-center justify-between">
+                  <div className="h-9 px-3 bg-subtle border border-line rounded-sm text-body text-fg truncate flex items-center justify-between">
                     <span className="truncate">{currentRepRecord?.campaign || tenantName}</span>
-                    <span className="text-[10px] font-mono text-slate-500 shrink-0">Assigned</span>
+                    <span className="text-caption text-fg-tertiary shrink-0">Assigned</span>
                   </div>
                 ) : (
                   // Admin View: Strictly campaigns belonging to this organization
                   <select
                     value={selectedCampaignFilter}
                     onChange={(e) => setSelectedCampaignFilter(e.target.value)}
-                    className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-bold text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                    className="focus-ring w-full h-9 bg-surface border border-line-strong rounded-sm px-3 text-body text-fg focus:outline-none focus:border-brand-600"
                   >
                     <option value="all">All {tenantName} Campaigns ({availableCampaigns.length})</option>
                     {availableCampaigns.map((camp) => (
@@ -1567,15 +1547,15 @@ export default function RepPerformanceDashboard() {
 
               {/* Filter 3: By Disposition */}
               <div>
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide block mb-1">
-                  Filter by Disposition:
+                <label className="text-caption text-fg-secondary block mb-1">
+                  Outcome
                 </label>
                 <select
                   value={selectedDispositionFilter}
                   onChange={(e) => setSelectedDispositionFilter(e.target.value)}
-                  className="w-full bg-[#F2F0EF] border border-[#222021]/15 rounded-xl px-3 py-2 text-xs font-bold text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                  className="focus-ring w-full h-9 bg-surface border border-line-strong rounded-sm px-3 text-body text-fg focus:outline-none focus:border-brand-600"
                 >
-                  <option value="all">All Outcomes</option>
+                  <option value="all">All outcomes</option>
                   <option value="Meeting Booked">Meeting Booked</option>
                   <option value="DNC Quarantined">DNC Quarantined</option>
                   <option value="Not Interested">Not Interested</option>
@@ -1585,17 +1565,17 @@ export default function RepPerformanceDashboard() {
 
               {/* Filter 4: Search Box */}
               <div>
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide block mb-1">
-                  Search Query:
+                <label className="text-caption text-fg-secondary block mb-1">
+                  Search
                 </label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-fg-tertiary" />
                   <input
                     type="text"
                     value={searchRepQuery}
                     onChange={(e) => setSearchRepQuery(e.target.value)}
                     placeholder={isRepMode ? "Filter activities..." : "Search rep or account..."}
-                    className="w-full pl-9 pr-3 py-2 bg-[#F2F0EF] border border-[#222021]/15 rounded-xl text-xs font-bold text-[#222021] focus:outline-none focus:bg-white focus:border-[#ED1C24]"
+                    className="focus-ring w-full h-9 pl-9 pr-3 bg-surface border border-line-strong rounded-sm text-body text-fg placeholder:text-fg-disabled focus:outline-none focus:border-brand-600"
                   />
                 </div>
               </div>
@@ -1603,142 +1583,98 @@ export default function RepPerformanceDashboard() {
           </div>
 
           {/* TOP 5 MASTER METRICS CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Card 1: Appointments Booked */}
-            <div className="bg-white border-2 border-emerald-500/30 rounded-2xl p-4 shadow-xs relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
-                <span>{isRepMode ? 'YOUR BOOKINGS' : 'APPOINTMENTS BOOKED'}</span>
-                <span className="p-1 rounded-lg bg-emerald-100 text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-black text-[#222021] mt-2">
-                {aggregateStats.totalBooked}
-                <span className="text-xs font-bold text-slate-400 ml-1">/ {aggregateStats.totalTarget} target</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 mt-2">
-                <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded">
-                  {aggregateStats.quotaPct}% quota
-                </span>
-                <span>• 88.9% hold rate</span>
-              </div>
-            </div>
+            <StatTile
+              label={isRepMode ? 'Your bookings' : 'Meetings booked'}
+              value={aggregateStats.totalBooked}
+              target={`${aggregateStats.totalTarget} target`}
+              hint={<span className="tabular-nums">{aggregateStats.quotaPct}% of target, 88.9% hold rate</span>}
+            />
 
             {/* Card 2: Total Activities */}
-            <div className="bg-white border border-[#222021]/15 rounded-2xl p-4 shadow-xs">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>{isRepMode ? 'YOUR TOTAL OUTREACH' : 'TOTAL OUTREACH'}</span>
-                <span className="p-1 rounded-lg bg-slate-100 text-slate-700">
-                  <PhoneCall className="h-4 w-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-black text-[#222021] mt-2">
-                {aggregateStats.totalOutreach}
-              </div>
-              <div className="text-[11px] font-mono text-slate-500 mt-2 truncate">
-                {aggregateStats.totalCalls} Dials • {aggregateStats.totalEmails} Emails • {aggregateStats.totalLinkedIn} LI
-              </div>
-            </div>
+            <StatTile
+              label={isRepMode ? 'Your total outreach' : 'Total outreach'}
+              value={aggregateStats.totalOutreach}
+              hint={<span className="tabular-nums">{aggregateStats.totalCalls} calls, {aggregateStats.totalEmails} emails, {aggregateStats.totalLinkedIn} LinkedIn</span>}
+            />
 
             {/* Card 3: DNC Quarantine Compliance */}
-            <div className="bg-white border-2 border-red-500/30 rounded-2xl p-4 shadow-xs">
-              <div className="flex items-center justify-between text-xs font-bold text-red-900">
-                <span>{isRepMode ? 'YOUR DNC LOGS' : 'DNC QUARANTINED'}</span>
-                <span className="p-1 rounded-lg bg-red-100 text-red-700">
-                  <Ban className="h-4 w-4" />
+            <StatTile
+              label={isRepMode ? 'Your do-not-call flags' : 'Do-not-call flagged'}
+              value={aggregateStats.totalDnc}
+              hint={
+                <span className="inline-flex items-center gap-1">
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>Blocked across the organization</span>
                 </span>
-              </div>
-              <div className="text-3xl font-black text-red-600 mt-2">
-                {aggregateStats.totalDnc}
-              </div>
-              <div className="text-[11px] font-mono text-red-700 mt-2 flex items-center gap-1">
-                <ShieldAlert className="h-3 w-3" />
-                <span>100% Org-wide Suppression</span>
-              </div>
-            </div>
+              }
+            />
 
             {/* Card 4: Not Interested / Disqualified */}
-            <div className="bg-white border border-[#222021]/15 rounded-2xl p-4 shadow-xs">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>{isRepMode ? 'YOUR NOT INTERESTED' : 'NOT INTERESTED'}</span>
-                <span className="p-1 rounded-lg bg-slate-100 text-slate-700">
-                  <ThumbsDown className="h-4 w-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-black text-[#222021] mt-2">
-                {aggregateStats.totalNotInterested}
-              </div>
-              <div className="text-[11px] font-mono text-slate-500 mt-2">
-                Root: 48% Broker Locked • 32% Budget
-              </div>
-            </div>
+            <StatTile
+              label={isRepMode ? 'Your not interested' : 'Not interested'}
+              value={aggregateStats.totalNotInterested}
+              hint="Top reasons: 48% broker locked, 32% budget"
+            />
 
             {/* Card 5: Carry-Over / Follow-ups Due */}
-            <div className="bg-white border-2 border-purple-500/30 rounded-2xl p-4 shadow-xs">
-              <div className="flex items-center justify-between text-xs font-bold text-purple-900">
-                <span>{isRepMode ? 'YOUR FOLLOW-UPS' : 'CARRY-OVER / FOLLOW-UPS'}</span>
-                <span className="p-1 rounded-lg bg-purple-100 text-purple-700">
-                  <CalendarClock className="h-4 w-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-black text-purple-900 mt-2">
-                {aggregateStats.totalCallbacks}
-              </div>
-              <div className="text-[11px] font-mono text-purple-700 mt-2">
-                Active in Carry-Over Queue for Next Week
-              </div>
-            </div>
+            <StatTile
+              label={isRepMode ? 'Your follow-ups' : 'Follow-ups carried over'}
+              value={aggregateStats.totalCallbacks}
+              hint="In next week's follow-up queue"
+            />
           </div>
 
           {/* REPS PERFORMANCE & ACTIVITY VISUALIZER (BAR GRAPH + ROSTER) */}
-          <div className="bg-white border border-[#222021]/15 rounded-2xl p-6 shadow-2xs space-y-5">
+          <div className="bg-surface border border-line rounded-lg p-5 shadow-xs space-y-5">
             {/* Header with Title and Mode Controls */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2 border-b border-[#222021]/10">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-black text-[#222021] tracking-tight flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-[#ED1C24]" />
-                  <span>
-                    {isRepMode 
-                      ? 'Your Personal SDR Performance & Quota Attainment' 
-                      : `${tenantName} SDR Reps Performance & Activity Visualizer`}
-                  </span>
-                </h2>
-                <p className="text-xs text-[#6b6968] mt-0.5">
+                <h2 className="text-h2 text-fg">
                   {isRepMode
-                    ? `Personal performance metrics, channel distribution, and quality assurance telemetry for ${repName}.`
-                    : `Comparative bar graph analytics and detailed telemetry breakdown across all reps in ${tenantName}.`}
+                    ? 'Your performance and progress to target'
+                    : `Rep performance at ${tenantName}`}
+                </h2>
+                <p className="text-small text-fg-secondary mt-0.5">
+                  {isRepMode
+                    ? `Bookings, outreach by channel and call quality scores for ${repName}.`
+                    : `Compare reps side by side in ${tenantName}.`}
                 </p>
               </div>
 
               {/* View Mode Controls: Split View / Graph Only / Table Only */}
-              <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-body">
                 {/* View Mode Switcher */}
-                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <div role="group" aria-label="View" className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5">
                   <button
                     type="button"
                     onClick={() => setViewMode('both')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'both' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    aria-pressed={viewMode === 'both'}
+                    className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                      viewMode === 'both' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
                     }`}
                   >
                     <Layers className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Split View</span>
+                    <span className="hidden sm:inline">Split view</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('graph')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'graph' ? 'bg-[#ED1C24] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    aria-pressed={viewMode === 'graph'}
+                    className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                      viewMode === 'graph' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
                     }`}
                   >
                     <BarChart3 className="h-3.5 w-3.5" />
-                    <span>Bar Graph</span>
+                    <span>Chart</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('table')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'table' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    aria-pressed={viewMode === 'table'}
+                    className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                      viewMode === 'table' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
                     }`}
                   >
                     <List className="h-3.5 w-3.5" />
@@ -1748,15 +1684,17 @@ export default function RepPerformanceDashboard() {
 
                 {/* Sort selector (Shown when Table is in view) */}
                 {(viewMode === 'both' || viewMode === 'table') && !isRepMode && (
-                  <div className="flex items-center gap-1 pl-2 border-l border-slate-200">
+                  <div className="flex items-center gap-1 pl-2 border-l border-line">
+                    <span className="text-small text-fg-tertiary mr-1">Sort</span>
                     <button
                       type="button"
                       onClick={() => {
                         if (sortField === 'appointmentsBooked') setSortAsc(!sortAsc);
                         else { setSortField('appointmentsBooked'); setSortAsc(false); }
                       }}
-                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold cursor-pointer ${
-                        sortField === 'appointmentsBooked' ? 'bg-[#ED1C24] text-white border-[#ED1C24]' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      aria-pressed={sortField === 'appointmentsBooked'}
+                      className={`focus-ring h-8 px-3 rounded-md border text-small font-medium cursor-pointer transition-colors ${
+                        sortField === 'appointmentsBooked' ? 'bg-subtle text-fg border-line-strong' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
                       }`}
                     >
                       Bookings {sortField === 'appointmentsBooked' ? (sortAsc ? '↑' : '↓') : ''}
@@ -1767,8 +1705,9 @@ export default function RepPerformanceDashboard() {
                         if (sortField === 'callsMade') setSortAsc(!sortAsc);
                         else { setSortField('callsMade'); setSortAsc(false); }
                       }}
-                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold cursor-pointer ${
-                        sortField === 'callsMade' ? 'bg-[#ED1C24] text-white border-[#ED1C24]' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      aria-pressed={sortField === 'callsMade'}
+                      className={`focus-ring h-8 px-3 rounded-md border text-small font-medium cursor-pointer transition-colors ${
+                        sortField === 'callsMade' ? 'bg-subtle text-fg border-line-strong' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
                       }`}
                     >
                       Calls {sortField === 'callsMade' ? (sortAsc ? '↑' : '↓') : ''}
@@ -1782,71 +1721,76 @@ export default function RepPerformanceDashboard() {
             {/* COMPONENT: INTERACTIVE BAR GRAPH VISUALIZER                                */}
             {/* ========================================================================= */}
             {(viewMode === 'both' || viewMode === 'graph') && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-4">
+              <div className="p-4 sm:p-5 rounded-lg border border-line space-y-4">
                 {/* Metric Switcher Toolbar & Insights Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-line">
                   {/* Metric Switcher Pills */}
-                  <div className="flex flex-wrap items-center gap-1.5">
+                  <div role="group" aria-label="Chart metric" className="inline-flex flex-wrap items-center rounded-md border border-line bg-subtle p-0.5">
                     <button
                       type="button"
                       onClick={() => setChartMetric('appointments')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      aria-pressed={chartMetric === 'appointments'}
+                      className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'appointments'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-surface text-fg shadow-xs'
+                          : 'text-fg-secondary hover:text-fg'
                       }`}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      <span>Appointments vs Quota</span>
+                      <span>Booked vs target</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setChartMetric('outreach')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      aria-pressed={chartMetric === 'outreach'}
+                      className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'outreach'
-                          ? 'bg-slate-900 text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-surface text-fg shadow-xs'
+                          : 'text-fg-secondary hover:text-fg'
                       }`}
                     >
                       <PhoneCall className="h-3.5 w-3.5" />
-                      <span>Outreach Volume (Stacked)</span>
+                      <span>Outreach by channel</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setChartMetric('connectRate')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      aria-pressed={chartMetric === 'connectRate'}
+                      className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'connectRate'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-surface text-fg shadow-xs'
+                          : 'text-fg-secondary hover:text-fg'
                       }`}
                     >
                       <Zap className="h-3.5 w-3.5" />
-                      <span>Connect Rate %</span>
+                      <span>Connect rate</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setChartMetric('qaScore')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      aria-pressed={chartMetric === 'qaScore'}
+                      className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'qaScore'
-                          ? 'bg-purple-700 text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          ? 'bg-surface text-fg shadow-xs'
+                          : 'text-fg-secondary hover:text-fg'
                       }`}
                     >
                       <Award className="h-3.5 w-3.5" />
-                      <span>QA Sparring Score</span>
+                      <span>Call quality score</span>
                     </button>
                   </div>
 
                   {/* Floor Intelligence / Benchmark Legend */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-3 text-small">
                     {chartData.topPerformer && (
-                      <div className="flex items-center gap-1.5 font-bold text-slate-800 bg-white border border-amber-300 px-2.5 py-1 rounded-lg shadow-2xs">
-                        <span className="text-amber-500">👑 Top:</span>
-                        <span>{chartData.topPerformer.name}</span>
-                        <span className="font-mono text-emerald-700">
+                      <div className="flex items-center gap-1.5 text-fg">
+                        <Award className="h-4 w-4 text-fg-secondary" />
+                        <span className="text-fg-secondary">Top:</span>
+                        <span className="text-body-strong">{chartData.topPerformer.name}</span>
+                        <span className="tabular-nums text-fg-secondary">
                           {chartMetric === 'appointments' && `${chartData.topPerformer.appointmentsBooked} Booked (${chartData.topPerformer.quotaAttainment}%)`}
                           {chartMetric === 'outreach' && `${chartData.topPerformer.callsMade + chartData.topPerformer.emailsSent + chartData.topPerformer.linkedInTouches} Outreach`}
                           {chartMetric === 'connectRate' && `${chartData.topPerformer.connectRate}% Connect`}
@@ -1856,15 +1800,15 @@ export default function RepPerformanceDashboard() {
                     )}
 
                     {/* Chart Legend */}
-                    <div className="flex items-center gap-2.5 text-[11px] font-mono font-medium text-slate-500">
+                    <div className="flex items-center gap-3 text-caption text-fg-secondary">
                       {chartMetric === 'appointments' && (
                         <>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
+                            <span className="w-2.5 h-2.5 rounded-sm bg-chart-1" />
                             <span>Booked</span>
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-slate-200 border border-dashed border-slate-400" />
+                            <span className="w-2.5 h-2.5 rounded-sm border border-dashed border-chart-target" />
                             <span>Target</span>
                           </span>
                         </>
@@ -1872,27 +1816,27 @@ export default function RepPerformanceDashboard() {
                       {chartMetric === 'outreach' && (
                         <>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-slate-900" />
-                            <span>Dials</span>
+                            <span className="w-2.5 h-2.5 rounded-sm bg-chart-1" />
+                            <span>Calls</span>
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-emerald-600" />
+                            <span className="w-2.5 h-2.5 rounded-sm bg-chart-2" />
                             <span>Emails</span>
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-indigo-600" />
+                            <span className="w-2.5 h-2.5 rounded-sm bg-chart-3" />
                             <span>LinkedIn</span>
                           </span>
                         </>
                       )}
                       {chartMetric === 'connectRate' && (
-                        <span className="flex items-center gap-1 text-blue-700 font-bold">
-                          <span>Team Avg: {chartData.avgConnectTeam}%</span>
+                        <span className="flex items-center gap-1 text-fg tabular-nums">
+                          <span>Team average: {chartData.avgConnectTeam}%</span>
                         </span>
                       )}
                       {chartMetric === 'qaScore' && (
-                        <span className="flex items-center gap-1 text-purple-700 font-bold">
-                          <span>Standard Gate: 85/100</span>
+                        <span className="flex items-center gap-1 text-fg tabular-nums">
+                          <span>Passing score: 85/100</span>
                         </span>
                       )}
                     </div>
@@ -1904,22 +1848,22 @@ export default function RepPerformanceDashboard() {
                   {/* Benchmark Guideline for Connect Rate or QA Score */}
                   {chartMetric === 'connectRate' && (
                     <div 
-                      className="absolute w-full border-t-2 border-dashed border-blue-400/70 z-10 pointer-events-none flex items-center justify-end pr-2"
+                      className="absolute w-full border-t border-dashed border-chart-target z-10 pointer-events-none flex items-center justify-end pr-2"
                       style={{ bottom: `calc(75px + ${(Number(chartData.avgConnectTeam) / chartData.maxConnect) * 190}px)` }}
                     >
-                      <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-900 px-1.5 py-0.2 rounded -translate-y-1/2">
-                        Avg: {chartData.avgConnectTeam}%
+                      <span className="text-caption tabular-nums bg-surface text-fg-secondary border border-line px-1.5 rounded-sm -translate-y-1/2">
+                        Average: {chartData.avgConnectTeam}%
                       </span>
                     </div>
                   )}
 
                   {chartMetric === 'qaScore' && (
                     <div 
-                      className="absolute w-full border-t-2 border-dashed border-purple-400/70 z-10 pointer-events-none flex items-center justify-end pr-2"
+                      className="absolute w-full border-t border-dashed border-chart-target z-10 pointer-events-none flex items-center justify-end pr-2"
                       style={{ bottom: `calc(75px + ${(85 / 100) * 190}px)` }}
                     >
-                      <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 px-1.5 py-0.2 rounded -translate-y-1/2">
-                        Passing Gate: 85/100
+                      <span className="text-caption tabular-nums bg-surface text-fg-secondary border border-line px-1.5 rounded-sm -translate-y-1/2">
+                        Passing score: 85/100
                       </span>
                     </div>
                   )}
@@ -1935,28 +1879,28 @@ export default function RepPerformanceDashboard() {
                           key={r.id}
                           onMouseEnter={() => setHoveredRepId(r.id)}
                           onMouseLeave={() => setHoveredRepId(null)}
-                          className={`flex-1 max-w-[140px] flex flex-col items-center justify-end h-full transition-all cursor-pointer group ${
-                            isHovered ? 'scale-105' : ''
+                          className={`flex-1 min-w-0 max-w-[140px] flex flex-col items-center justify-end h-full rounded-md transition-colors cursor-pointer group ${
+                            isHovered ? 'bg-subtle' : ''
                           }`}
                         >
                           {/* Top Value Badges */}
                           <div className="mb-2 text-center select-none">
                             {chartMetric === 'appointments' && (
                               <div className="flex flex-col items-center">
-                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shadow-2xs ${
-                                  r.quotaAttainment >= 90 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-700'
+                                <span className={`text-caption tabular-nums ${
+                                  r.quotaAttainment >= 90 ? 'text-success-fg' : 'text-fg-secondary'
                                 }`}>
                                   {r.quotaAttainment}%
                                 </span>
-                                <span className="text-xs font-black text-slate-900 mt-0.5 font-mono">
-                                  {r.appointmentsBooked}<span className="text-[10px] text-slate-400 font-normal">/{r.quotaTarget}</span>
+                                <span className="text-body-strong text-fg mt-0.5 tabular-nums">
+                                  {r.appointmentsBooked}<span className="text-caption text-fg-tertiary font-normal">/{r.quotaTarget}</span>
                                 </span>
                               </div>
                             )}
 
                             {chartMetric === 'outreach' && (
                               <div className="flex flex-col items-center">
-                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 shadow-2xs">
+                                <span className="text-caption tabular-nums text-fg">
                                   {totalOutreach}
                                 </span>
                               </div>
@@ -1964,7 +1908,7 @@ export default function RepPerformanceDashboard() {
 
                             {chartMetric === 'connectRate' && (
                               <div className="flex flex-col items-center">
-                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-900 shadow-2xs">
+                                <span className="text-caption tabular-nums text-fg">
                                   {r.connectRate}%
                                 </span>
                               </div>
@@ -1972,8 +1916,8 @@ export default function RepPerformanceDashboard() {
 
                             {chartMetric === 'qaScore' && (
                               <div className="flex flex-col items-center">
-                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shadow-2xs ${
-                                  r.qaSparringScore >= 90 ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'bg-slate-100 text-slate-800'
+                                <span className={`text-caption tabular-nums ${
+                                  r.qaSparringScore >= 90 ? 'text-fg' : 'text-fg-secondary'
                                 }`}>
                                   {r.qaSparringScore}/100
                                 </span>
@@ -1989,11 +1933,11 @@ export default function RepPerformanceDashboard() {
                                 {/* Booked Appointments Bar */}
                                 <div
                                   style={{ height: `${Math.max((r.appointmentsBooked / chartData.maxBooked) * 100, 8)}%` }}
-                                  className="w-1/2 max-w-[36px] bg-linear-to-t from-emerald-600 to-emerald-400 rounded-t-lg shadow-sm transition-all duration-300 group-hover:brightness-110 relative"
+                                  className="w-1/2 max-w-[36px] bg-chart-1 rounded-t-sm transition-all duration-300 group-hover:opacity-90 relative"
                                 >
                                   {r.appointmentsBooked >= r.quotaTarget && (
-                                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px]">
-                                      ⭐
+                                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-success-fg" aria-label="Target hit">
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
                                     </span>
                                   )}
                                 </div>
@@ -2001,7 +1945,7 @@ export default function RepPerformanceDashboard() {
                                 {/* Target Quota Bar (Ghost Reference) */}
                                 <div
                                   style={{ height: `${Math.max((r.quotaTarget / chartData.maxBooked) * 100, 8)}%` }}
-                                  className="w-1/2 max-w-[36px] bg-slate-200 border-t-2 border-dashed border-slate-400 rounded-t-lg transition-all duration-300"
+                                  className="w-1/2 max-w-[36px] bg-subtle border border-b-0 border-dashed border-chart-target rounded-t-sm transition-all duration-300"
                                   title={`Target: ${r.quotaTarget}`}
                                 />
                               </div>
@@ -2011,24 +1955,24 @@ export default function RepPerformanceDashboard() {
                             {chartMetric === 'outreach' && (
                               <div
                                 style={{ height: `${Math.max((totalOutreach / chartData.maxOutreach) * 100, 8)}%` }}
-                                className="w-full max-w-[50px] rounded-t-lg overflow-hidden flex flex-col justify-end shadow-sm transition-all duration-300 group-hover:brightness-110"
+                                className="w-full max-w-[50px] rounded-t-sm overflow-hidden flex flex-col justify-end transition-all duration-300 group-hover:opacity-90"
                               >
                                 {/* Top: LinkedIn Touches */}
                                 <div
                                   style={{ height: `${totalOutreach > 0 ? (r.linkedInTouches / totalOutreach) * 100 : 0}%` }}
-                                  className="w-full bg-indigo-600 transition-all"
+                                  className="w-full bg-chart-3 transition-all"
                                   title={`LinkedIn: ${r.linkedInTouches}`}
                                 />
                                 {/* Mid: Emails Sent */}
                                 <div
                                   style={{ height: `${totalOutreach > 0 ? (r.emailsSent / totalOutreach) * 100 : 0}%` }}
-                                  className="w-full bg-emerald-600 transition-all"
+                                  className="w-full bg-chart-2 transition-all"
                                   title={`Emails: ${r.emailsSent}`}
                                 />
                                 {/* Base: Phone Dials */}
                                 <div
                                   style={{ height: `${totalOutreach > 0 ? (r.callsMade / totalOutreach) * 100 : 0}%` }}
-                                  className="w-full bg-slate-900 transition-all"
+                                  className="w-full bg-chart-1 transition-all"
                                   title={`Dials: ${r.callsMade}`}
                                 />
                               </div>
@@ -2038,7 +1982,7 @@ export default function RepPerformanceDashboard() {
                             {chartMetric === 'connectRate' && (
                               <div
                                 style={{ height: `${Math.max((r.connectRate / chartData.maxConnect) * 100, 8)}%` }}
-                                className="w-full max-w-[50px] bg-linear-to-t from-blue-600 to-cyan-400 rounded-t-lg shadow-sm transition-all duration-300 group-hover:brightness-110"
+                                className="w-full max-w-[50px] bg-chart-1 rounded-t-sm transition-all duration-300 group-hover:opacity-90"
                               />
                             )}
 
@@ -2046,20 +1990,20 @@ export default function RepPerformanceDashboard() {
                             {chartMetric === 'qaScore' && (
                               <div
                                 style={{ height: `${Math.max((r.qaSparringScore / chartData.maxQa) * 100, 8)}%` }}
-                                className="w-full max-w-[50px] bg-linear-to-t from-purple-700 via-purple-600 to-indigo-500 rounded-t-lg shadow-sm transition-all duration-300 group-hover:brightness-110"
+                                className="w-full max-w-[50px] bg-chart-1 rounded-t-sm transition-all duration-300 group-hover:opacity-90"
                               />
                             )}
                           </div>
 
                           {/* X-Axis: Rep Profile Capsule */}
-                          <div className="mt-3 pt-2 border-t border-slate-200 w-full flex flex-col items-center text-center">
-                            <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-mono font-bold flex items-center justify-center text-[10px] shadow-2xs">
+                          <div className="mt-3 pt-2 border-t border-line w-full flex flex-col items-center text-center">
+                            <div className="w-7 h-7 shrink-0 rounded-full bg-subtle text-ink-700 flex items-center justify-center text-caption">
                               {r.avatar}
                             </div>
-                            <span className="font-bold text-xs text-[#222021] mt-1 truncate max-w-[110px]">
+                            <span className="text-small font-medium text-fg mt-1 truncate max-w-[110px]">
                               {r.name}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono truncate max-w-[110px]">
+                            <span className="text-caption text-fg-tertiary truncate max-w-[110px]">
                               {r.campaign}
                             </span>
                           </div>
@@ -2071,32 +2015,32 @@ export default function RepPerformanceDashboard() {
 
                 {/* Rep Detail Tooltip Bar on Hover */}
                 {hoveredRepId && (
-                  <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-100">
+                  <div className="p-3 bg-subtle rounded-md flex flex-wrap items-center justify-between gap-3 text-small animate-in fade-in duration-100">
                     {(() => {
                       const rep = filteredReps.find(r => r.id === hoveredRepId);
                       if (!rep) return null;
                       return (
                         <>
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-slate-900 text-white font-mono font-bold flex items-center justify-center text-[9px]">
+                            <div className="w-6 h-6 rounded-full bg-surface border border-line text-ink-700 flex items-center justify-center text-caption">
                               {rep.avatar}
                             </div>
                             <div>
-                              <strong className="text-slate-900">{rep.name}</strong>
-                              <span className="text-slate-400 mx-1.5">•</span>
-                              <span className="text-slate-500 font-mono">{rep.campaign} ({rep.role})</span>
+                              <strong className="text-fg">{rep.name}</strong>
+                              <span className="text-fg-tertiary mx-1.5">&middot;</span>
+                              <span className="text-fg-tertiary">{rep.campaign} ({rep.role})</span>
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3 font-mono text-[11px]">
-                            <span className="text-slate-700">Dials: <strong>{rep.callsMade}</strong></span>
-                            <span className="text-blue-700">Connect: <strong>{rep.connectRate}%</strong></span>
-                            <span className="text-emerald-700">Emails: <strong>{rep.emailsSent}</strong></span>
-                            <span className="text-indigo-700">LI: <strong>{rep.linkedInTouches}</strong></span>
-                            <span className="text-emerald-900 font-bold bg-emerald-100 px-2 py-0.5 rounded">
+                          <div className="flex flex-wrap items-center gap-3 tabular-nums text-small text-fg-secondary">
+                            <span>Calls: <strong className="text-fg">{rep.callsMade}</strong></span>
+                            <span>Connect: <strong className="text-fg">{rep.connectRate}%</strong></span>
+                            <span>Emails: <strong className="text-fg">{rep.emailsSent}</strong></span>
+                            <span>LinkedIn: <strong className="text-fg">{rep.linkedInTouches}</strong></span>
+                            <span className="text-fg font-medium">
                               Booked: {rep.appointmentsBooked}/{rep.quotaTarget} ({rep.quotaAttainment}%)
                             </span>
-                            <span className="text-purple-700 font-bold">QA: {rep.qaSparringScore}/100</span>
+                            <span>Quality: <strong className="text-fg">{rep.qaSparringScore}/100</strong></span>
                           </div>
                         </>
                       );
@@ -2110,118 +2054,117 @@ export default function RepPerformanceDashboard() {
             {/* DATA ROSTER TABLE                                                         */}
             {/* ========================================================================= */}
             {(viewMode === 'both' || viewMode === 'table') && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-left text-xs">
-                <thead className="bg-slate-900 text-white font-mono text-[10px] uppercase tracking-wider">
+              <div className="overflow-x-auto rounded-lg border border-line">
+                <table className="w-full text-left text-body">
+                <thead className="bg-subtle text-caption text-fg-tertiary">
                   <tr>
-                    <th className="py-3 px-3.5">Rep Name &amp; Campaign</th>
-                    <th className="py-3 px-3 text-center">Status</th>
-                    <th className="py-3 px-3 text-right">Dials Made</th>
-                    <th className="py-3 px-3 text-right">Connect %</th>
-                    <th className="py-3 px-3 text-right">Emails</th>
-                    <th className="py-3 px-3 text-right">LinkedIn</th>
-                    <th className="py-3 px-3.5 text-right font-black text-emerald-400">Booked</th>
-                    <th className="py-3 px-3 text-right">Quota %</th>
-                    <th className="py-3 px-3 text-right text-red-300">DNC</th>
-                    <th className="py-3 px-3 text-right">Not Int.</th>
-                    <th className="py-3 px-3 text-right text-purple-300">Callbacks</th>
-                    <th className="py-3 px-3 text-center">QA Score</th>
+                    <th className="py-2.5 px-3.5 font-medium">Rep and campaign</th>
+                    <th className="py-2.5 px-3 font-medium">Status</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Calls</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Connect %</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Emails</th>
+                    <th className="py-2.5 px-3 text-right font-medium">LinkedIn</th>
+                    <th className="py-2.5 px-3.5 text-right font-medium">Booked</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Target %</th>
+                    <th className="py-2.5 px-3 text-right font-medium"><Tooltip content="Do not call: numbers flagged and blocked">DNC</Tooltip></th>
+                    <th className="py-2.5 px-3 text-right font-medium">Not interested</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Callbacks</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Quality score</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-sans">
+                <tbody className="divide-y divide-line">
                   {filteredReps.map((r, idx) => (
                     <tr 
                       key={r.id} 
                       className={`transition-colors ${
-                        isRepMode ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'
+                        isRepMode ? 'hover:bg-subtle' : 'hover:bg-subtle'
                       }`}
                     >
-                      <td className="py-3.5 px-3.5">
+                      <td className="py-3 px-3.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-mono font-bold flex items-center justify-center text-[10px] shadow-2xs">
+                          <div className="w-7 h-7 shrink-0 rounded-full bg-subtle text-ink-700 flex items-center justify-center text-caption">
                             {r.avatar}
                           </div>
                           <div>
-                            <div className="font-bold text-[#222021] flex items-center gap-1.5">
+                            <div className="text-body-strong text-fg flex items-center gap-1.5">
                               <span>{r.name}</span>
                               {isRepMode ? (
-                                <span className="text-[9px] bg-emerald-100 text-emerald-900 font-mono font-bold px-1.5 py-0.2 rounded border border-emerald-300">
-                                  YOU (REP)
-                                </span>
+                                <Badge tone="neutral">You</Badge>
                               ) : (
                                 idx === 0 && (
-                                  <span className="text-[9px] bg-amber-100 text-amber-900 font-mono font-bold px-1.5 py-0.2 rounded border border-amber-300">
-                                    👑 TOP
+                                  <span className="inline-flex items-center gap-1 text-caption text-fg-secondary">
+                                    <Award className="h-3.5 w-3.5" />
+                                    Top
                                   </span>
                                 )
                               )}
                             </div>
-                            <div className="text-[10px] text-slate-500 font-mono">
-                              {r.campaign} • {r.role}
+                            <div className="text-small text-fg-tertiary">
+                              {r.campaign} &middot; {r.role}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-3 text-center">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                      <td className="py-3 px-3">
+                        <span className={`inline-flex items-center gap-1.5 text-small whitespace-nowrap ${
                           r.status === 'In Call'
-                            ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                            ? 'text-success-fg'
                             : r.status === 'Online'
-                            ? 'bg-blue-100 text-blue-800'
+                            ? 'text-fg'
                             : r.status === 'Break'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-600'
+                            ? 'text-warning-fg'
+                            : 'text-fg-secondary'
                         }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            r.status === 'In Call' ? 'bg-emerald-600' : r.status === 'Online' ? 'bg-blue-600' : 'bg-slate-400'
+                          <span className={`w-2 h-2 rounded-full ${
+                            r.status === 'In Call' ? 'bg-success-500' : r.status === 'Online' ? 'bg-success-500' : r.status === 'Break' ? 'bg-warning-400' : 'bg-fg-disabled'
                           }`} />
                           {r.status}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-900">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.callsMade}
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono font-semibold text-slate-700">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.connectRate}%
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono text-slate-700">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.emailsSent}
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono text-slate-700">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.linkedInTouches}
                       </td>
 
-                      <td className="py-3.5 px-3.5 text-right font-mono font-black text-base text-emerald-700">
+                      <td className="py-3 px-3.5 text-right tabular-nums text-body-strong text-fg">
                         {r.appointmentsBooked}
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono">
-                        <span className={`px-1.5 py-0.5 rounded font-bold ${
-                          r.quotaAttainment >= 90 ? 'bg-emerald-100 text-emerald-800' : r.quotaAttainment >= 70 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                      <td className="py-3 px-3 text-right tabular-nums">
+                        <span className={`${
+                          r.quotaAttainment >= 90 ? 'text-success-fg' : r.quotaAttainment >= 70 ? 'text-fg' : 'text-warning-fg'
                         }`}>
                           {r.quotaAttainment}%
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono font-bold text-red-600">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.dncFlagged}
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono text-slate-600">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg-secondary">
                         {r.notInterested}
                       </td>
 
-                      <td className="py-3.5 px-3 text-right font-mono font-bold text-purple-700">
+                      <td className="py-3 px-3 text-right tabular-nums text-fg">
                         {r.callbacksScheduled}
                       </td>
 
-                      <td className="py-3.5 px-3 text-center">
-                        <span className="font-mono text-xs font-black bg-slate-100 text-slate-900 px-2 py-0.5 rounded border border-slate-300">
+                      <td className="py-3 px-3 text-right">
+                        <span className="tabular-nums text-fg">
                           {r.qaSparringScore}/100
                         </span>
                       </td>
@@ -2237,18 +2180,18 @@ export default function RepPerformanceDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* Left: 27-Day Cadence Funnel Analysis (6 cols) */}
-            <div className="lg:col-span-6 bg-white border border-[#222021]/15 rounded-2xl p-6 shadow-2xs space-y-4">
+            <div className="lg:col-span-6 bg-surface border border-line rounded-lg p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-black text-[#222021] tracking-tight">
-                    {isRepMode ? 'Your Cadence Conversion Funnel' : `${tenantName} Cadence Funnel`}
+                  <h3 className="text-h3 text-fg">
+                    {isRepMode ? 'Your follow-up sequence funnel' : `${tenantName} follow-up sequence funnel`}
                   </h3>
-                  <p className="text-xs text-[#6b6968]">
-                    Progression and conversion drop-off across the 21-day blueprint.
+                  <p className="text-small text-fg-secondary">
+                    How many prospects stay in at each step of the 21-day sequence.
                   </p>
                 </div>
-                <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 font-bold">
-                  {aggregateStats.totalBooked} Total Bookings
+                <span className="text-small tabular-nums text-fg-secondary shrink-0">
+                  {aggregateStats.totalBooked} total bookings
                 </span>
               </div>
 
@@ -2263,14 +2206,14 @@ export default function RepPerformanceDashboard() {
                   { stage: 'Executive Meeting Locked & Verified', count: aggregateStats.totalBooked, pct: `${aggregateStats.quotaPct}%`, drop: 'Target Hit' },
                 ].map((st, i) => (
                   <div key={i} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-[#222021]">{st.stage}</span>
-                      <span className="font-mono text-slate-500 font-semibold">{st.count} prospects ({st.pct})</span>
+                    <div className="flex items-center justify-between gap-3 text-small">
+                      <span className="text-fg">{st.stage}</span>
+                      <span className="tabular-nums text-fg-tertiary shrink-0">{st.count} prospects ({st.pct})</span>
                     </div>
-                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-subtle h-1.5 rounded-full overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all ${
-                          i === 6 ? 'bg-emerald-500' : 'bg-[#ED1C24]'
+                          i === 6 ? 'bg-chart-3' : 'bg-chart-1'
                         }`}
                         style={{ width: st.pct.includes('%') ? st.pct : '20%' }}
                       />
@@ -2281,59 +2224,59 @@ export default function RepPerformanceDashboard() {
             </div>
 
             {/* Right: Live Activity & Telemetry Feed (6 cols) */}
-            <div className="lg:col-span-6 bg-white border border-[#222021]/15 rounded-2xl p-6 shadow-2xs space-y-4">
+            <div className="lg:col-span-6 bg-surface border border-line rounded-lg p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-black text-[#222021] tracking-tight">
-                    {isRepMode ? 'Your Live Activity Feed' : `${tenantName} Live Activity Stream`}
+                  <h3 className="text-h3 text-fg">
+                    {isRepMode ? 'Your recent activity' : `Recent activity at ${tenantName}`}
                   </h3>
-                  <p className="text-xs text-[#6b6968]">
-                    Real-time audit log of dials, emails, and dispositions.
+                  <p className="text-small text-fg-secondary">
+                    Calls, emails and call outcomes as they happen.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-slate-500">
+                  <span className="text-small tabular-nums text-fg-tertiary">
                     {filteredActivities.length} events
                   </span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="w-2 h-2 rounded-full bg-success-500 animate-pulse" />
                 </div>
               </div>
 
               <div className="space-y-3 pt-1">
                 {filteredActivities.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                    No matching activity events recorded for this selection.
+                  <div className="p-6 text-center text-small text-fg-secondary rounded-lg border border-dashed border-line">
+                    No activity matches these filters.
                   </div>
                 ) : (
                   filteredActivities.map((act) => (
-                    <div key={act.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+                    <div key={act.id} className="p-3 border border-line rounded-md space-y-1 text-small">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          <strong className="text-slate-900">{act.repName}</strong>
-                          <span className="text-slate-400">→</span>
-                          <span className="font-semibold text-slate-800">{act.prospectName} ({act.companyName})</span>
+                          <strong className="text-fg">{act.repName}</strong>
+                          <span className="text-fg-tertiary">&rarr;</span>
+                          <span className="text-fg">{act.prospectName} ({act.companyName})</span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400">{act.timestamp}</span>
+                        <span className="text-caption tabular-nums text-fg-tertiary shrink-0">{act.timestamp}</span>
                       </div>
 
                       <div className="flex items-center gap-2 pt-0.5">
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                        <span className={`inline-flex h-5 items-center rounded-sm px-1.5 text-caption whitespace-nowrap ${
                           act.disposition === 'Meeting Booked'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            ? 'bg-success-bg text-success-fg'
                             : act.disposition === 'DNC Quarantined'
-                            ? 'bg-red-100 text-red-800 border border-red-300'
+                            ? 'bg-danger-bg text-danger-fg'
                             : act.disposition === 'Callback Scheduled'
-                            ? 'bg-purple-100 text-purple-800 border border-purple-300'
-                            : 'bg-slate-200 text-slate-700'
+                            ? 'bg-subtle text-fg'
+                            : 'bg-subtle text-fg-secondary'
                         }`}>
                           {act.disposition}
                         </span>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-caption text-fg-tertiary">
                           Channel: {act.channel}
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-600 leading-snug pt-1">
+                      <p className="text-small text-fg-secondary pt-1">
                         {act.notesSnippet}
                       </p>
                     </div>

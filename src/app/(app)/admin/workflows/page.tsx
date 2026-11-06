@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import WorkflowAutomationStudio from '@/components/admin/WorkflowAutomationStudio';
 import WorkflowListHub from '@/components/admin/WorkflowListHub';
-import { ShieldAlert, Lock, ArrowLeft, KeyRound, Layers, Sliders, Zap } from 'lucide-react';
+import { Lock, ArrowLeft, KeyRound, Layers, ChevronRight, Workflow } from 'lucide-react';
+import { Badge, Button, buttonClasses } from '@/components/ui';
 
 export default function WorkflowsStandalonePage() {
   const [userRole, setUserRole] = useState<string>('Super Admin');
@@ -33,104 +34,109 @@ export default function WorkflowsStandalonePage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#F2F0EF] font-sans antialiased text-[#222021]">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <main className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8">
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
           {isLoading ? (
             <div className="h-full flex items-center justify-center">
-              <span className="h-6 w-6 rounded-full border-2 border-[#ED1C24] border-t-transparent animate-spin" />
+              <span className="h-6 w-6 rounded-full border-2 border-ink-300 border-t-transparent animate-spin" />
             </div>
           ) : !isAdmin ? (
             /* ACCESS RESTRICTED GATE FOR NON-ADMIN USERS */
-            <div className="max-w-md mx-auto my-auto py-16 text-center space-y-5 bg-white border border-[#222021]/15 rounded-3xl p-8 shadow-sm">
-              <div className="h-14 w-14 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
-                <Lock className="h-7 w-7" />
+            <div className="max-w-md mx-auto my-16 text-center space-y-5 bg-surface border border-line rounded-lg p-8 shadow-xs">
+              <div className="h-10 w-10 rounded-full bg-subtle text-fg-secondary flex items-center justify-center mx-auto">
+                <Lock className="h-5 w-5" />
               </div>
 
               <div>
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                  Role Restricted: {userRole}
-                </span>
-                <h2 className="text-xl font-black text-[#222021] mt-2">Admin Clearance Required</h2>
-                <p className="text-xs text-[#6b6968] mt-1.5 leading-relaxed">
-                  The Workflow Automation Studio executes live webhook triggers, CRM synchronization, and LLM evaluations. Only tenant Administrators and Managers can access this pipeline builder.
+                <Badge tone="danger">Role restricted: {userRole}</Badge>
+                <h2 className="text-h2 text-fg mt-3">Admin access required</h2>
+                <p className="text-body text-fg-secondary mt-1.5">
+                  Workflows run live webhook triggers, CRM sync and AI evaluations. Only workspace admins and managers can open the workflow builder.
                 </p>
               </div>
 
-              <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-2">
-                <Link
-                  href="/"
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs font-bold text-[#222021] flex items-center justify-center gap-1.5 transition-colors"
-                >
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                <Link href="/" className={buttonClasses('secondary', 'md', 'w-full sm:w-auto')}>
                   <ArrowLeft className="h-4 w-4" />
-                  <span>Return to Mission</span>
+                  <span>Back to home</span>
                 </Link>
 
-                <button
+                <Button
+                  variant="primary"
                   onClick={handleElevateToAdmin}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  icon={<KeyRound className="h-4 w-4" />}
+                  className="w-full sm:w-auto"
                 >
-                  <KeyRound className="h-4 w-4" />
-                  <span>Elevate to Super Admin</span>
-                </button>
+                  Switch to Super Admin
+                </Button>
               </div>
             </div>
           ) : (
             /* WORKFLOW LIST OR CANVAS STUDIO VIEW */
             <div className="space-y-6">
-              {/* Top View Selector Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-[#6b6968]">
-                  <Link href="/admin" className="hover:text-[#222021] font-semibold transition-colors">
+              {/* Header: breadcrumb, title and view switch */}
+              <div className="space-y-2">
+                <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-small text-fg-secondary">
+                  <Link href="/admin" className="focus-ring rounded-sm hover:text-fg transition-colors">
                     Admin
                   </Link>
-                  <span>/</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-fg-tertiary" />
                   <button
                     onClick={() => setView('list')}
-                    className={`font-semibold transition-colors ${view === 'list' ? 'text-[#222021] font-bold' : 'hover:text-[#222021]'}`}
+                    className={`focus-ring rounded-sm transition-colors ${view === 'list' ? 'text-fg' : 'hover:text-fg'}`}
                   >
-                    Workflow Directory
+                    Workflows
                   </button>
                   {view === 'canvas' && (
                     <>
-                      <span>/</span>
-                      <span className="font-bold text-[#ED1C24]">Canvas Studio</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-fg-tertiary" />
+                      <span className="text-fg">Canvas</span>
                     </>
                   )}
-                </div>
+                </nav>
 
-                <div className="flex items-center gap-2">
-                  {/* View Mode Toggle Pill */}
-                  <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl text-xs font-bold">
-                    <button
-                      onClick={() => setView('list')}
-                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                        view === 'list'
-                          ? 'bg-white text-stone-900 shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-900'
-                      }`}
-                    >
-                      <Layers className="h-3.5 w-3.5" />
-                      <span>List & Folders</span>
-                    </button>
-                    <button
-                      onClick={() => setView('canvas')}
-                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                        view === 'canvas'
-                          ? 'bg-white text-stone-900 shadow-2xs'
-                          : 'text-stone-600 hover:text-stone-900'
-                      }`}
-                    >
-                      <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                      <span>Studio Canvas</span>
-                    </button>
+                <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                  <div className="min-w-0">
+                    <h1 className="text-h1 text-fg">Workflows</h1>
+                    <p className="mt-1 text-body text-fg-secondary">
+                      Automate follow-ups, CRM updates and alerts with triggers and actions.
+                    </p>
                   </div>
 
-                  <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Clearance: {userRole}</span>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-small text-fg-secondary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
+                      <span>{userRole}</span>
+                    </span>
+
+                    {/* View mode toggle */}
+                    <div className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5 text-small">
+                      <button
+                        onClick={() => setView('list')}
+                        className={`focus-ring h-7 px-2.5 rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+                          view === 'list'
+                            ? 'bg-surface text-fg shadow-xs'
+                            : 'text-fg-secondary hover:text-fg'
+                        }`}
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                        <span>List</span>
+                      </button>
+                      <button
+                        onClick={() => setView('canvas')}
+                        className={`focus-ring h-7 px-2.5 rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+                          view === 'canvas'
+                            ? 'bg-surface text-fg shadow-xs'
+                            : 'text-fg-secondary hover:text-fg'
+                        }`}
+                      >
+                        <Workflow className="h-3.5 w-3.5" />
+                        <span>Canvas</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

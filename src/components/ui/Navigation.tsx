@@ -140,17 +140,48 @@ export function Menu({
   label?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState<React.CSSProperties>({ visibility: 'hidden' });
   const ref = React.useRef<HTMLDivElement>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  // Fixed positioning so the menu is never clipped by scrolling columns/tables; flips up
+  // when there's no room below and caps its height to the viewport.
+  React.useLayoutEffect(() => {
+    if (!open || !ref.current || !menuRef.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const h = menuRef.current.offsetHeight;
+    const gap = 4;
+    const below = window.innerHeight - r.bottom - gap - 8;
+    const above = r.top - gap - 8;
+    const flip = h > below && above > below;
+    const room = flip ? above : below;
+    setPos({
+      position: 'fixed',
+      maxHeight: Math.max(160, room),
+      ...(flip ? { bottom: window.innerHeight - r.top + gap } : { top: r.bottom + gap }),
+      ...(align === 'end' ? { right: Math.max(8, window.innerWidth - r.right) } : { left: Math.max(8, r.left) }),
+    });
+  }, [open, align]);
 
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
+    // A fixed menu would drift from its trigger on scroll/resize: close instead.
+    const onScroll = (e: Event) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onResize = () => setOpen(false);
     document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
     requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
-    return () => document.removeEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
   }, [open]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -167,7 +198,14 @@ export function Menu({
     }
   };
 
-  const triggerProps = { onClick: () => setOpen((o) => !o), 'aria-expanded': open, 'aria-haspopup': 'menu' as const };
+  const triggerProps = {
+    onClick: () => {
+      setPos({ visibility: 'hidden' });
+      setOpen((o) => !o);
+    },
+    'aria-expanded': open,
+    'aria-haspopup': 'menu' as const,
+  };
 
   return (
     <div ref={ref} className="relative inline-flex">
@@ -184,17 +222,15 @@ export function Menu({
           role="menu"
           aria-label={label}
           onKeyDown={onKeyDown}
-          className={cn(
-            'absolute top-full z-40 mt-1 min-w-48 animate-fade-in rounded-md border border-line bg-surface p-1 shadow-md',
-            align === 'end' ? 'right-0' : 'left-0',
-          )}
+          style={pos}
+          className="fixed z-50 w-max min-w-48 max-w-80 animate-fade-in overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-md"
         >
           {items.map((it, i) =>
             it === 'divider' ? (
               <div key={`d${i}`} role="separator" className="my-1 h-px bg-line" />
             ) : (
               <button
-                key={it.label}
+                key={`${i}-${it.label}`}
                 type="button"
                 role="menuitem"
                 tabIndex={-1}

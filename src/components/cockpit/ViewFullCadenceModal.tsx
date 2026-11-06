@@ -10,11 +10,11 @@ import {
   Clock, 
   ShieldCheck, 
   Zap, 
-  Calendar, 
   ArrowRight,
   Filter
 } from 'lucide-react';
 import { CADENCE_TOUCHES, CadenceTouch } from '@/lib/cadenceMaster';
+import { Button, IconButton, Badge, Dialog } from '@/components/ui';
 
 function LinkedInIcon({ className }: { className?: string }) {
   return (
@@ -43,8 +43,6 @@ export default function ViewFullCadenceModal({
 }: ViewFullCadenceModalProps) {
   const [filterChannel, setFilterChannel] = useState<'All' | 'Email' | 'Phone' | 'LinkedIn'>('All');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-
-  if (!isOpen) return null;
 
   const replacePlaceholders = (text: string) => {
     return text
@@ -85,52 +83,51 @@ export default function ViewFullCadenceModal({
     return CADENCE_TOUCHES;
   });
 
+  // Open/closed is handled by <Dialog open={isOpen}>. If an early return is ever added
+  // back, it must come after every hook (rules of hooks).
   const filteredTouches = activeTouches.filter(t => {
     if (filterChannel === 'All') return true;
     return t.channel === filterChannel;
   });
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose}
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title="Outbound cadence: 27 days, 13 touches"
+      size="2xl"
+      className="overflow-hidden"
+      bare
     >
-      <div 
-        className="w-full max-w-5xl h-[85vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex h-[min(85vh,calc(100dvh-2rem))] w-full flex-col overflow-hidden">
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-[#ED1C24] flex items-center justify-center text-white shadow-xs">
-              <Calendar className="h-5 w-5" />
+        <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-line px-6 py-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-h2 text-fg">
+                Outbound cadence: 27 days, 13 touches
+              </h2>
+              <span className="text-caption tabular-nums text-fg-tertiary">
+                Spec v3.1
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                  The Blueprint: 27-Day, 13-Touch Outbound Cadence
-                </h2>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold uppercase">
-                  MASTER SPEC v3.1
-                </span>
-              </div>
-              <p className="text-xs text-slate-600">
-                Multi-channel synchronization: Resend drip automation + Boris priority phone dialers + Manual LinkedIn touches.
-              </p>
-            </div>
+            <p className="mt-0.5 text-body text-fg-secondary">
+              Email automation, priority calls and manual LinkedIn touches, in one sequence.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Channel Filters */}
-            <div className="hidden sm:flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 text-xs font-semibold">
+            <div className="hidden items-center rounded-md border border-line bg-subtle p-0.5 sm:inline-flex">
               {(['All', 'Phone', 'Email', 'LinkedIn'] as const).map(ch => (
                 <button
                   key={ch}
                   onClick={() => setFilterChannel(ch)}
-                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    filterChannel === ch 
-                      ? 'bg-slate-900 text-white shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  aria-pressed={filterChannel === ch}
+                  className={`focus-ring inline-flex h-7 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${
+                    filterChannel === ch
+                      ? 'bg-surface text-fg shadow-xs'
+                      : 'text-fg-secondary hover:text-fg'
                   }`}
                 >
                   {ch}
@@ -139,125 +136,109 @@ export default function ViewFullCadenceModal({
             </div>
 
             {/* Clean Close Button */}
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
-              aria-label="Close Cadence View"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <IconButton label="Close cadence view" size="sm" onClick={onClose}>
+              <X />
+            </IconButton>
           </div>
         </div>
 
         {/* Prospect Dynamic Context Strip */}
-        <div className="px-6 py-2 bg-amber-50/70 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 font-medium shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-app px-6 py-2 text-small text-fg-secondary">
           <div className="flex items-center gap-3">
-            <span>Target: <strong>{contactName}</strong> at <strong>{companyName}</strong></span>
-            <span>•</span>
-            <span>Sender SDR: <strong>{repName}</strong></span>
+            <span>Prospect: <span className="text-body-strong text-fg">{contactName}</span> at <span className="text-body-strong text-fg">{companyName}</span></span>
+            <span aria-hidden className="text-fg-disabled">·</span>
+            <span>Rep: <span className="text-body-strong text-fg">{repName}</span></span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-200/70 text-amber-900 font-bold">
-              ACTIVE CADENCE DAY: Day {currentDay}
+            <span className="text-small tabular-nums text-fg-secondary">
+              Current cadence day: <span className="text-body-strong text-fg">Day {currentDay}</span>
             </span>
           </div>
         </div>
 
         {/* Scrollable Timeline Work Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
+        <div className="flex-1 space-y-4 overflow-y-auto bg-app p-6">
           <div className="space-y-4">
             {filteredTouches.map((touch, idx) => {
               const isCurrent = touch.day === currentDay;
               const isPassed = touch.day < currentDay;
 
               return (
-                <div 
+                <div
                   key={touch.touchNumber}
-                  className={`rounded-xl border p-4.5 bg-white transition-all shadow-xs relative ${
-                    isCurrent 
-                      ? 'border-[#ED1C24] ring-2 ring-[#ED1C24]/20 shadow-md' 
-                      : 'border-slate-200 hover:border-slate-300'
+                  className={`relative rounded-lg border bg-surface p-4 shadow-xs transition-colors duration-150 ${
+                    isCurrent
+                      ? 'border-fg'
+                      : 'border-line hover:border-line-strong'
                   }`}
                 >
                   {/* Top Touchpoint Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[11px] font-mono font-black px-2.5 py-0.5 rounded-full ${
-                        isCurrent 
-                          ? 'bg-[#ED1C24] text-white' 
-                          : isPassed 
-                          ? 'bg-slate-200 text-slate-700' 
-                          : 'bg-slate-100 text-slate-600'
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex h-5 items-center rounded-sm px-1.5 text-caption tabular-nums ${
+                        isCurrent
+                          ? 'bg-action text-action-fg'
+                          : isPassed
+                          ? 'bg-subtle text-fg-tertiary'
+                          : 'bg-subtle text-fg-secondary'
                       }`}>
-                        DAY {touch.day}
+                        Day {touch.day}
                       </span>
 
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1.5 ${
-                        touch.channel === 'Email' 
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                          : touch.channel === 'Phone' 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                          : 'bg-purple-50 text-purple-700 border border-purple-200'
-                      }`}>
-                        {touch.channel === 'Email' && <Mail className="h-3.5 w-3.5" />}
-                        {touch.channel === 'Phone' && <Phone className="h-3.5 w-3.5" />}
-                        {touch.channel === 'LinkedIn' && <LinkedInIcon className="h-3.5 w-3.5" />}
+                      <span className="flex items-center gap-1.5 text-small text-fg-secondary">
+                        {touch.channel === 'Email' && <Mail className="size-3.5" />}
+                        {touch.channel === 'Phone' && <Phone className="size-3.5" />}
+                        {touch.channel === 'LinkedIn' && <LinkedInIcon className="size-3.5" />}
                         <span>{touch.channel}</span>
                       </span>
 
-                      <h3 className="text-sm font-black text-slate-900 tracking-tight">
-                        Touch #{touch.touchNumber}: {touch.stepName}
+                      <h3 className="text-h3 text-fg">
+                        Touch {touch.touchNumber}: {touch.stepName}
                       </h3>
                     </div>
 
                     <div className="flex items-center gap-2">
                       {isCurrent && (
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">
-                          CURRENT TOUCHPOINT
-                        </span>
+                        <Badge tone="success">Current touchpoint</Badge>
                       )}
 
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => handleCopy(touch.body, idx)}
-                        className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
                         title="Copy Script / Copy"
+                        icon={copiedIndex === idx ? <Check className="text-success-fg" /> : <Copy />}
                       >
                         {copiedIndex === idx ? (
-                          <>
-                            <Check className="h-3.5 w-3.5 text-emerald-600" />
-                            <span className="text-emerald-700 font-bold">Copied!</span>
-                          </>
+                          <span>Copied</span>
                         ) : (
-                          <>
-                            <Copy className="h-3.5 w-3.5 text-slate-500" />
-                            <span>Copy Template</span>
-                          </>
+                          <span>Copy template</span>
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
                   {/* Metadata Row: Mechanism & Timing */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs mb-3 text-slate-600">
+                  <div className="mb-3 grid grid-cols-1 gap-2 text-small text-fg-secondary md:grid-cols-2">
                     <div className="flex items-start gap-1.5">
-                      <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                      <Zap className="mt-0.5 size-3.5 shrink-0 text-fg-tertiary" />
                       <div>
-                        <strong className="text-slate-800">Execution:</strong> {touch.mechanism}
+                        <span className="text-body-strong text-fg">Execution:</span> {touch.mechanism}
                       </div>
                     </div>
                     <div className="flex items-start gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                      <Clock className="mt-0.5 size-3.5 shrink-0 text-fg-tertiary" />
                       <div>
-                        <strong className="text-slate-800">Timing & Rule:</strong> {touch.timingRule}
+                        <span className="text-body-strong text-fg">Timing and rule:</span> {touch.timingRule}
                       </div>
                     </div>
                   </div>
 
                   {/* Email Subject Line (if applicable) */}
                   {touch.subject && (
-                    <div className="mb-2.5 p-2 rounded-lg bg-slate-100/70 border border-slate-200/80 text-xs">
-                      <span className="text-slate-500 font-mono font-bold uppercase text-[10px] mr-2">Subject:</span>
-                      <span className="font-bold text-slate-900 font-mono">
+                    <div className="mb-2.5 rounded-md border border-line bg-subtle p-2 text-small">
+                      <span className="mr-2 text-caption text-fg-tertiary">Subject</span>
+                      <span className="text-body-strong text-fg">
                         {replacePlaceholders(touch.subject)}
                       </span>
                     </div>
@@ -265,9 +246,9 @@ export default function ViewFullCadenceModal({
 
                   {/* Spoken Opener (if Phone) */}
                   {touch.spokenOpener && (
-                    <div className="mb-2.5 p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/70 text-xs">
-                      <span className="text-emerald-800 font-bold uppercase text-[10px] block mb-0.5">Spoken Opener (Screen 1):</span>
-                      <p className="font-semibold text-slate-900 italic">
+                    <div className="mb-2.5 rounded-md border border-line bg-subtle p-2.5 text-small">
+                      <span className="mb-0.5 block text-caption text-fg-tertiary">Spoken opener (screen 1)</span>
+                      <p className="text-fg">
                         {replacePlaceholders(touch.spokenOpener)}
                       </p>
                     </div>
@@ -275,16 +256,16 @@ export default function ViewFullCadenceModal({
 
                   {/* Voicemail Audio (if Phone #2) */}
                   {touch.voicemailAudio && (
-                    <div className="mb-2.5 p-2.5 rounded-lg bg-purple-50/60 border border-purple-200/70 text-xs">
-                      <span className="text-purple-800 font-bold uppercase text-[10px] block mb-0.5">15s Voicemail Drop Audio Script:</span>
-                      <p className="font-semibold text-slate-900 italic">
+                    <div className="mb-2.5 rounded-md border border-line bg-subtle p-2.5 text-small">
+                      <span className="mb-0.5 block text-caption text-fg-tertiary">15-second voicemail script</span>
+                      <p className="text-fg">
                         {replacePlaceholders(touch.voicemailAudio)}
                       </p>
                     </div>
                   )}
 
                   {/* Body Copy Block */}
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs leading-relaxed text-slate-800 whitespace-pre-wrap font-sans">
+                  <div className="whitespace-pre-wrap rounded-md border border-line bg-app p-3 font-sans text-small text-fg">
                     {replacePlaceholders(touch.body)}
                   </div>
                 </div>
@@ -294,22 +275,19 @@ export default function ViewFullCadenceModal({
         </div>
 
         {/* Bottom Footer Actions */}
-        <div className="px-6 py-3.5 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span>Cadence Gating Active: Advancing requires verified disposition or task completion</span>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line bg-surface px-6 py-3">
+          <div className="flex items-center gap-2 text-small text-fg-tertiary">
+            <ShieldCheck className="size-4 text-fg-secondary" />
+            <span>Cadence gating is on: a step advances only after an outcome is logged or the task is done.</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors shadow-xs cursor-pointer"
-            >
-              Close Cadence View
-            </button>
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

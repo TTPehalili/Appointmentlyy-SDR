@@ -22,6 +22,7 @@ import {
 import BorisOperationsIcon from '@/components/icons/BorisOperationsIcon';
 import ExecutiveReportRenderer from '@/components/assistant/ExecutiveReportRenderer';
 import { buildOpsSnapshot } from '@/lib/opsSnapshot';
+import { Button, PageHeader, buttonClasses } from '@/components/ui';
 
 interface ChatMessage {
   id: string;
@@ -32,27 +33,27 @@ interface ChatMessage {
 
 const DEFAULT_PROMPTS = [
   {
-    label: '📊 Overall Team Stats (Today vs Last Week)',
+    label: 'Team stats, today vs last week',
     query: 'Tell me the overall stats of my team today, yesterday, last week, next week, last month.'
   },
   {
-    label: '🔍 Call Drivers Impacting Booking Rate',
+    label: 'Call drivers affecting booking rate',
     query: 'Tell what our call drivers are that are impacting our booking rate performance based on all call notes and dispositions.'
   },
   {
-    label: '🎯 Julian Vance Call Deep-Dive (Apex Global)',
+    label: 'Julian Vance call deep dive (Apex Global)',
     query: 'What were the exact objections and conversation details on Julian Vance call?'
   },
   {
-    label: '🛡️ ARM Objection Battlecards & Rebuttals',
+    label: 'ARM objection battlecards and rebuttals',
     query: 'Show me the ARM battlecards and rebuttal scripts for price and competitor objections.'
   },
   {
-    label: '🏆 Floor Rep Leaderboard & Quotas',
+    label: 'Rep leaderboard and quotas',
     query: 'Who are our top performing reps today and what is their script adherence?'
   },
   {
-    label: '🔮 Next Week Follow-Up Forecast',
+    label: 'Next week follow-up forecast',
     query: 'What is our scheduled follow-up and carry-over backlog forecast for next week?'
   }
 ];
@@ -146,118 +147,98 @@ Select a prompt below or type your question:`,
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-1 bg-[#F2F0EF] text-[#222021] font-sans antialiased overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 bg-app text-fg font-sans antialiased overflow-hidden">
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
-        <div className="max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col h-[calc(100vh-5rem)]">
-          
+        <div className="max-w-5xl w-full mx-auto px-4 py-6 md:px-8 flex flex-col flex-1 min-h-0">
+
           {/* HEADER */}
-          <div className="flex items-center justify-between pb-3 border-b border-[#222021]/10 shrink-0">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-[#222021] text-white">
-                  <BorisOperationsIcon className="h-5 w-5 text-[#ED1C24]" />
-                </span>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#ED1C24]">
-                  AI BORIS OPERATIONS INTELLIGENCE
-                </span>
-              </div>
-              <h1 className="text-2xl font-black text-[#222021] tracking-tight mt-1">
-                Executive Operations Copilot
-              </h1>
-              <p className="text-xs text-[#6b6968]">
-                Ask any question about team stats, call notes, conversion drivers, and appointment booking trends.
-              </p>
-            </div>
-
-            <Link
-              href="/reports"
-              className="px-3 py-1.5 rounded-xl bg-white border border-[#222021]/15 text-xs font-bold text-[#222021] hover:border-[#ED1C24] flex items-center gap-1.5 shadow-2xs transition-colors"
-            >
-              <BarChart3 className="h-4 w-4 text-[#ED1C24]" />
-              <span className="hidden sm:inline">View Performance Dashboard</span>
-              <ExternalLink className="h-3 w-3 text-slate-400" />
-            </Link>
-          </div>
+          <PageHeader
+            className="shrink-0 border-b border-line pb-4"
+            title="Operations intel"
+            description="Ask about team stats, call notes, conversion drivers and booking trends."
+            secondaryActions={
+              <Link href="/reports" className={buttonClasses('secondary', 'md')}>
+                <BarChart3 aria-hidden className="text-fg-secondary" />
+                <span className="hidden sm:inline">Performance dashboard</span>
+                <ExternalLink aria-hidden className="text-fg-tertiary" />
+              </Link>
+            }
+          />
 
           {/* CHAT MESSAGES DISPLAY */}
-          <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+          <div className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4 pr-1">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-3 text-xs ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex gap-3 text-body ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.sender === 'assistant' && (
-                  <div className="w-8 h-8 rounded-xl bg-[#222021] text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5 border border-[#222021]/10">
-                    <BorisOperationsIcon className="h-4 w-4 text-[#ED1C24]" />
+                  <div className="size-8 rounded-full bg-ink-950 text-ink-50 flex items-center justify-center shrink-0 mt-0.5">
+                    <BorisOperationsIcon className="h-4 w-4" />
                   </div>
                 )}
 
                 <div
-                  className={`max-w-[92%] rounded-2xl p-5 shadow-xs relative group ${
+                  className={`max-w-[92%] rounded-lg relative group ${
                     msg.sender === 'user'
-                      ? 'bg-[#ED1C24] text-white font-medium self-end ml-auto'
-                      : 'bg-white border border-[#222021]/15 text-[#222021] shadow-sm'
+                      ? 'bg-subtle border border-line text-fg px-4 py-3 self-end ml-auto'
+                      : 'bg-surface border border-line text-fg p-5 shadow-xs'
                   }`}
                 >
                   {msg.sender === 'user' ? (
                     <div>
-                      <div className="flex items-center justify-between gap-2 pb-1 text-[10px] font-mono opacity-80 border-b border-white/20 mb-2">
-                        <span>Supervisor Inquiry</span>
-                        <span>{msg.timestamp}</span>
+                      <div className="flex items-center justify-between gap-4 pb-1 text-caption text-fg-tertiary">
+                        <span>You</span>
+                        <span className="tabular-nums">{msg.timestamp}</span>
                       </div>
-                      <div className="text-xs font-semibold leading-relaxed">
+                      <div className="text-body text-fg">
                         {msg.content}
                       </div>
                     </div>
                   ) : msg.id === 'welcome' ? (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between pb-2 border-b border-[#222021]/10">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded bg-[#ED1C24] text-white text-[10px] font-mono font-bold uppercase">
-                            ACTIVE COPILOT
-                          </span>
-                          <span className="text-xs font-bold text-[#222021]">
-                            AI Boris Executive Operations Intelligence
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-mono text-[#6b6968]">{msg.timestamp}</span>
+                      <div className="flex items-center justify-between gap-3 pb-2 border-b border-line">
+                        <span className="text-h3 text-fg">
+                          Operations copilot
+                        </span>
+                        <span className="text-caption text-fg-tertiary">{msg.timestamp}</span>
                       </div>
 
-                      <p className="text-xs text-[#333130] leading-relaxed">
-                        I am your <strong>AI Operations & Floor Intelligence Copilot</strong>. I synthesize call telemetry, auto-notetaker summaries, rep cadence activities, and CRM dispositions across all your campaigns into executive-ready email reports.
+                      <p className="text-body text-fg-secondary">
+                        I am your <strong className="font-medium text-fg">AI Operations & Floor Intelligence Copilot</strong>. I synthesize call telemetry, auto-notetaker summaries, rep cadence activities, and CRM dispositions across all your campaigns into executive-ready email reports.
                       </p>
 
-                      <div className="pt-2 border-t border-[#222021]/10">
-                        <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block mb-2">
-                          Click any question below to generate an instant email report:
-                        </span>
+                      <div className="pt-3 border-t border-line">
+                        <p className="text-small text-fg-secondary mb-2">
+                          Pick a question to generate an instant report:
+                        </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {DEFAULT_PROMPTS.map((p, idx) => (
                             <button
                               key={idx}
                               type="button"
                               onClick={() => handleSendMessage(p.query)}
-                              className="text-left p-2.5 rounded-xl bg-stone-50 hover:bg-stone-100 border border-[#222021]/10 text-xs font-medium text-[#222021] transition-all hover:border-[#ED1C24] flex items-center justify-between group/btn cursor-pointer"
+                              className="focus-ring text-left px-3 py-2.5 rounded-md bg-surface hover:bg-subtle border border-line text-body text-fg transition-colors duration-150 flex items-center justify-between group/btn cursor-pointer"
                             >
                               <span>{p.label}</span>
-                              <Sparkles className="h-3 w-3 text-[#ED1C24] opacity-0 group-hover/btn:opacity-100 transition-opacity shrink-0 ml-1" />
+                              <Sparkles className="h-4 w-4 text-fg-tertiary opacity-0 group-hover/btn:opacity-100 transition-opacity shrink-0 ml-2" aria-hidden />
                             </button>
                           ))}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <ExecutiveReportRenderer 
-                      content={msg.content} 
-                      timestamp={msg.timestamp} 
+                    <ExecutiveReportRenderer
+                      content={msg.content}
+                      timestamp={msg.timestamp}
                     />
                   )}
                 </div>
 
                 {msg.sender === 'user' && (
-                  <div className="w-8 h-8 rounded-xl bg-[#222021] text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5 font-mono font-bold text-xs">
+                  <div className="size-8 rounded-full bg-subtle border border-line text-fg-secondary flex items-center justify-center shrink-0 mt-0.5">
                     <User className="h-4 w-4" />
                   </div>
                 )}
@@ -265,13 +246,13 @@ Select a prompt below or type your question:`,
             ))}
 
             {isLoading && (
-              <div className="flex items-center gap-3 text-xs text-slate-500">
-                <div className="w-8 h-8 rounded-xl bg-slate-900 text-[#ED1C24] flex items-center justify-center shrink-0 shadow-xs border border-slate-800">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#ED1C24]" />
+              <div className="flex items-center gap-3 text-body text-fg-tertiary" aria-live="polite">
+                <div className="size-8 rounded-full bg-ink-950 text-ink-50 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
-                <div className="bg-white border border-[#222021]/15 rounded-2xl px-4 py-3 shadow-2xs flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-slate-700">
-                    Boris AI is analyzing call notes, telemetry, and CRM dispositions...
+                <div className="bg-surface border border-line rounded-lg px-4 py-3 shadow-xs flex items-center gap-2">
+                  <span className="text-body text-fg-secondary">
+                    Analyzing call notes, telemetry and CRM dispositions...
                   </span>
                 </div>
               </div>
@@ -280,16 +261,16 @@ Select a prompt below or type your question:`,
 
           {/* QUICK PROMPTS CHIPS */}
           <div className="pt-2 pb-2 shrink-0">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
-              Suggested Operations Inquiries:
-            </span>
+            <p className="text-caption text-fg-tertiary mb-1.5">
+              Suggested questions
+            </p>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {DEFAULT_PROMPTS.map((p, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => handleSendMessage(p.query)}
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-[#222021]/15 text-[11px] font-semibold text-slate-800 whitespace-nowrap transition-colors shadow-2xs cursor-pointer hover:border-[#ED1C24]"
+                  className="focus-ring h-8 px-3 rounded-full bg-surface hover:bg-subtle border border-line text-small text-fg-secondary hover:text-fg whitespace-nowrap transition-colors duration-150 cursor-pointer"
                 >
                   {p.label}
                 </button>
@@ -297,29 +278,31 @@ Select a prompt below or type your question:`,
             </div>
           </div>
 
-          {/* INPUT FORM */}
+          {/* INPUT FORM (dark AI composer focus surface) */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-center gap-2 pt-1 shrink-0"
+            className="flex items-center gap-2 mt-1 p-2 rounded-lg bg-ink-950 shrink-0 focus-within:ring-2 focus-within:ring-brand-500/40"
           >
+            <Sparkles className="ml-2 h-4 w-4 shrink-0 text-ink-400" aria-hidden />
             <input
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
               placeholder="Ask anything... (e.g. 'What are our call drivers impacting bookings?' or 'Team stats yesterday')"
-              className="flex-1 bg-white border border-[#222021]/15 rounded-xl px-4 py-3 text-xs text-[#222021] placeholder-[#6b6968] focus:outline-none focus:ring-2 focus:ring-[#ED1C24] shadow-xs"
+              aria-label="Ask the operations copilot"
+              className="flex-1 min-w-0 bg-transparent px-2 py-2 text-body text-ink-50 placeholder:text-ink-400 focus:outline-none"
             />
-            <button
+            <Button
               type="submit"
+              variant="brand"
               disabled={!inputQuery.trim() || isLoading}
-              className="px-5 py-3 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] disabled:bg-slate-300 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
+              icon={isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              <span className="hidden sm:inline">Ask Boris</span>
-            </button>
+              <span className="hidden sm:inline">Ask</span>
+            </Button>
           </form>
 
         </div>

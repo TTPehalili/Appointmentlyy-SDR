@@ -35,37 +35,35 @@ export default function BorisHUD({
   };
 
   return (
-    <div className="w-96 flex-shrink-0 flex flex-col border-l border-slate-200 bg-slate-50/80 p-3 space-y-3 overflow-hidden select-none">
-      
+    <div className="flex w-96 flex-shrink-0 select-none flex-col space-y-3 overflow-hidden border-l border-line bg-app p-3">
+
       {/* =======================================================================
-          1. HUD HEADER (Height 40px with decibel audio meter + status pill)
+          1. HUD HEADER (Height 40px with audio meter + status)
           ======================================================================= */}
-      <div className="h-10 px-1 flex items-center justify-between shrink-0">
+      <div className="flex h-10 shrink-0 items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded-md bg-[#ED1C24] flex items-center justify-center text-white">
-            <Sparkles className="h-3.5 w-3.5" />
-          </div>
+          <Sparkles className="size-4 text-fg-secondary" />
           <div>
-            <span className="text-xs font-bold text-slate-800 tracking-wider uppercase block leading-none">
-              AI BORIS COPILOT
+            <span className="block text-h3 leading-none text-fg">
+              AI copilot
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">
-              Live Interception HUD
+            <span className="text-caption text-fg-tertiary">
+              Live objection help
             </span>
           </div>
         </div>
 
-        {/* Live Audio Decibel Wave + Status Pill */}
+        {/* Live Audio Level + Status */}
         <div className="flex items-center gap-2">
-          {/* Dynamic 5-bar decibel meter */}
-          <div className="flex items-end gap-0.5 h-4">
+          {/* Dynamic 5-bar level meter */}
+          <div className="flex h-4 items-end gap-0.5" aria-hidden>
             {[1, 2, 3, 4, 5].map((bar) => {
               const active = isListening && volume > bar * 16;
               return (
                 <div
                   key={bar}
                   className={`w-1 rounded-full transition-all duration-75 ${
-                    active ? 'bg-[#ED1C24]' : 'bg-slate-300'
+                    active ? 'bg-fg' : 'bg-line-strong'
                   }`}
                   style={{ height: `${active ? Math.max(4, (volume / 100) * 16) : 4}px` }}
                 />
@@ -73,106 +71,103 @@ export default function BorisHUD({
             })}
           </div>
 
-          <div className="text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1.5 shadow-2xs">
-            <span className={`h-1.5 w-1.5 rounded-full ${isListening ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-            <span>{isListening ? '140ms' : 'STANDBY'}</span>
-          </div>
+          <span className="inline-flex items-center gap-1.5 text-caption text-fg-secondary" aria-live="polite">
+            <span className={`size-2 rounded-full ${isListening ? 'bg-success-500 animate-pulse-soft' : 'bg-fg-disabled'}`} aria-hidden />
+            <span>{isListening ? 'Listening' : 'Standby'}</span>
+          </span>
         </div>
       </div>
 
       {/* =======================================================================
           2. ACTIVE OBJECTION CARD (The Hero Component)
           ======================================================================= */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-2.5 shrink-0">
-        
+      <div className="shrink-0 space-y-2.5 rounded-lg border border-line bg-surface p-3 shadow-xs">
+
         {/* Card Header: Objection Label + Latency indicator */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+        <div className="flex items-center justify-between border-b border-line pb-2">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+            <span className="text-h3 text-fg">
               {rebuttal.objection_type || 'Active Competitor Lock-in'}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-mono text-slate-400">
+            <span className="text-caption tabular-nums text-fg-tertiary" title="Response time">
               {rebuttal.latency_ms ? `${rebuttal.latency_ms}ms` : '138ms'}
             </span>
-            <span className="text-[9px] font-mono font-semibold px-1 py-0.2 rounded bg-[#ED1C24]/10 text-[#ED1C24] border border-[#ED1C24]/20">
-              VECTOR MATCH
-            </span>
           </div>
         </div>
 
-        {/* [A] Acknowledge Badge & Line */}
-        <div 
+        {/* [A] Acknowledge Line */}
+        <div
           onClick={() => copyText(rebuttal.acknowledge || '', 'a')}
-          className="p-2.5 rounded-md bg-amber-50 border border-amber-200/80 text-[12px] text-amber-950 leading-relaxed cursor-pointer hover:bg-amber-100/60 transition-colors group relative"
+          className="group relative cursor-pointer rounded-md border border-line bg-app p-2.5 text-small text-fg transition-colors duration-150 hover:bg-subtle"
         >
-          <span className="inline-block mr-1.5 px-1 py-0.2 bg-amber-200 text-amber-900 font-bold rounded text-[10px]">
-            [A]
+          <span className="mb-0.5 block text-caption text-fg-tertiary">
+            Acknowledge
           </span>
-          <span className="font-medium italic">
+          <span>
             &quot;{rebuttal.acknowledge || 'I completely understand—you have an established rhythm with them and they know your brand.'}&quot;
           </span>
-          <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {copiedSection === 'a' ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3 text-amber-700" />}
+          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+            {copiedSection === 'a' ? <Check className="size-3.5 text-success-fg" /> : <Copy className="size-3.5 text-fg-tertiary" />}
           </div>
         </div>
 
-        {/* [R] Respond Badge & Line */}
-        <div 
+        {/* [R] Respond Line */}
+        <div
           onClick={() => copyText(rebuttal.respond || '', 'r')}
-          className="p-2.5 rounded-md bg-[#ED1C24]/10 border border-[#ED1C24]/20/80 text-[12px] text-[#222021] leading-relaxed cursor-pointer hover:bg-[#ED1C24]/15/60 transition-colors group relative"
+          className="group relative cursor-pointer rounded-md border border-line bg-app p-2.5 text-small text-fg transition-colors duration-150 hover:bg-subtle"
         >
-          <span className="inline-block mr-1.5 px-1 py-0.2 bg-[#ED1C24]/20 text-[#222021] font-bold rounded text-[10px]">
-            [R]
+          <span className="mb-0.5 block text-caption text-fg-tertiary">
+            Respond
           </span>
-          <span className="font-medium">
+          <span>
             &quot;{rebuttal.respond || 'We don’t ask you to fire them. We act as an overflow layer that handles objection friction before it burns qualified pipeline.'}&quot;
           </span>
-          <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {copiedSection === 'r' ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3 text-[#ED1C24]" />}
+          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+            {copiedSection === 'r' ? <Check className="size-3.5 text-success-fg" /> : <Copy className="size-3.5 text-fg-tertiary" />}
           </div>
         </div>
 
-        {/* [M] Move Badge & Line */}
-        <div 
+        {/* [M] Move Line */}
+        <div
           onClick={() => copyText(rebuttal.move || '', 'm')}
-          className="p-2.5 rounded-md bg-emerald-50 border border-emerald-200/80 text-[12px] text-emerald-950 leading-relaxed cursor-pointer hover:bg-emerald-100/60 transition-colors group relative"
+          className="group relative cursor-pointer rounded-md border border-line bg-app p-2.5 text-small text-fg transition-colors duration-150 hover:bg-subtle"
         >
-          <span className="inline-block mr-1.5 px-1 py-0.2 bg-emerald-200 text-emerald-900 font-bold rounded text-[10px]">
-            [M]
+          <span className="mb-0.5 block text-caption text-fg-tertiary">
+            Move
           </span>
-          <span className="font-medium">
+          <span className="underline decoration-ai decoration-2 underline-offset-4">
             &quot;{rebuttal.move || 'Are you opposed to a 10-minute side-by-side run next Tuesday to benchmark your hold rate?'}&quot;
           </span>
-          <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {copiedSection === 'm' ? <Check className="h-3 w-3 text-emerald-700" /> : <Copy className="h-3 w-3 text-emerald-700" />}
+          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+            {copiedSection === 'm' ? <Check className="size-3.5 text-success-fg" /> : <Copy className="size-3.5 text-fg-tertiary" />}
           </div>
         </div>
 
         {/* Fast Rebuttal Quick-Swap Pills */}
         {onSimulateObjection && (
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-            <span className="text-slate-400 font-mono">Test Objection:</span>
+          <div className="flex items-center justify-between gap-2 border-t border-line pt-2">
+            <span className="text-caption text-fg-tertiary">Test an objection</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onSimulateObjection('Incumbent BPO Agency')}
-                className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                className="focus-ring inline-flex h-7 items-center rounded-full border border-line-strong bg-surface px-2.5 text-caption text-fg transition-colors duration-150 hover:bg-subtle"
               >
                 Incumbent
               </button>
               <button
                 onClick={() => onSimulateObjection('No Budget / Freeze')}
-                className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                className="focus-ring inline-flex h-7 items-center rounded-full border border-line-strong bg-surface px-2.5 text-caption text-fg transition-colors duration-150 hover:bg-subtle"
               >
-                No Budget
+                No budget
               </button>
               <button
                 onClick={() => onSimulateObjection('Send Me An Email')}
-                className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                className="focus-ring inline-flex h-7 items-center rounded-full border border-line-strong bg-surface px-2.5 text-caption text-fg transition-colors duration-150 hover:bg-subtle"
               >
-                Send Email
+                Send email
               </button>
             </div>
           </div>

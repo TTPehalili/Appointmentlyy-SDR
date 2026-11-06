@@ -11,13 +11,13 @@ import {
   Calendar, 
   CheckCircle2, 
   Clock, 
-  BarChart3, 
   FileText,
   User,
   Building2,
   Sparkles
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import { Button, IconButton, EmptyState, Dialog } from '@/components/ui';
 import { 
   getStoredActivities, 
   getDailyActivitySummary, 
@@ -46,8 +46,6 @@ export default function DailyActivityReportModal({
       setSummary(getDailyActivitySummary(repName));
     }
   }, [isOpen, repName]);
-
-  if (!isOpen) return null;
 
   const filteredActivities = summary.activities.filter(a => {
     if (selectedChannelFilter === 'All') return true;
@@ -111,181 +109,173 @@ _Generated via Appointmentlyy AI Boris Calling Cockpit_`;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#222021]/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div 
-        className="w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-[#222021]/15 flex flex-col overflow-hidden text-[#222021]"
-        onClick={e => e.stopPropagation()}
-      >
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      title="Daily activity report"
+      size="xl"
+      className="max-w-4xl overflow-hidden"
+      bare
+    >
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden text-fg">
         {/* HEADER */}
-        <div className="px-6 py-4 bg-[#222021] text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-[#ED1C24] text-white">
-              <BarChart3 className="h-5 w-5" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#ED1C24] bg-white/10 px-2 py-0.5 rounded">
-                  OFFICIAL DAILY ACTIVITY REPORT
-                </span>
-                <span className="text-xs text-white/60 font-mono">{summary.date}</span>
-              </div>
-              <h2 className="text-lg font-black tracking-tight text-white mt-0.5">
-                {repName} — Completed Cadence Activities
-              </h2>
-            </div>
+        <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-line px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="text-h2 text-fg">
+              Daily activity report
+            </h2>
+            <p className="mt-0.5 text-body text-fg-secondary">
+              {repName}: completed cadence activities, <span className="tabular-nums">{summary.date}</span>
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleCopySlackReport}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-white/20"
               title="Copy formatted summary to paste into Slack, Discord, or Email to manager"
+              icon={copiedSlack ? <Check className="text-success-fg" /> : <Copy />}
             >
-              {copiedSlack ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-              <span>{copiedSlack ? 'Copied Report!' : 'Copy for Slack / Email'}</span>
-            </button>
+              <span>{copiedSlack ? 'Copied report' : 'Copy for Slack or email'}</span>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleExportCsv}
-              className="px-3 py-1.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              icon={<Download />}
             >
-              <Download className="h-4 w-4" />
-              <span>Export CSV</span>
-            </button>
+              Export CSV
+            </Button>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors ml-1 cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <IconButton label="Close" size="sm" onClick={onClose}>
+              <X />
+            </IconButton>
           </div>
         </div>
 
         {/* METRICS STRIP */}
-        <div className="p-6 bg-[#F2F0EF] border-b border-[#222021]/10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 shrink-0">
-          <div className="bg-white p-3 rounded-xl border border-[#222021]/10 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">TOTAL OUTREACH</span>
-            <span className="text-2xl font-black text-[#222021]">{summary.totalActivities}</span>
-            <span className="text-[10px] text-[#6b6968] block mt-0.5">Touches completed</span>
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-b border-line bg-app p-6 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">Total outreach</span>
+            <span className="block text-kpi tabular-nums text-fg">{summary.totalActivities}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Touches completed</span>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border border-[#222021]/10 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">PHONE DIALS</span>
-            <span className="text-2xl font-black text-[#222021]">{summary.callsMade}</span>
-            <span className="text-[10px] text-[#6b6968] block mt-0.5">Calls logged</span>
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">Phone dials</span>
+            <span className="block text-kpi tabular-nums text-fg">{summary.callsMade}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Calls logged</span>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border border-[#222021]/10 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">EMAILS SENT</span>
-            <span className="text-2xl font-black text-[#222021]">{summary.emailsSent}</span>
-            <span className="text-[10px] text-[#6b6968] block mt-0.5">Dispatches sent</span>
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">Emails sent</span>
+            <span className="block text-kpi tabular-nums text-fg">{summary.emailsSent}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Dispatches sent</span>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border border-[#222021]/10 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">LINKEDIN TOUCHES</span>
-            <span className="text-2xl font-black text-[#222021]">{summary.linkedInTouches}</span>
-            <span className="text-[10px] text-[#6b6968] block mt-0.5">Profiles engaged</span>
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">LinkedIn touches</span>
+            <span className="block text-kpi tabular-nums text-fg">{summary.linkedInTouches}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Profiles engaged</span>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border border-emerald-500/30 bg-emerald-50/20 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-emerald-800 block">MEETINGS BOOKED</span>
-            <span className="text-2xl font-black text-emerald-700">{summary.appointmentsBooked} 🎯</span>
-            <span className="text-[10px] text-emerald-800 block mt-0.5">Appointments set</span>
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">Meetings booked</span>
+            <span className="block text-kpi tabular-nums text-success-fg">{summary.appointmentsBooked}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Appointments set</span>
           </div>
 
-          <div className="bg-white p-3 rounded-xl border border-[#222021]/10 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">CALLBACKS</span>
-            <span className="text-2xl font-black text-[#222021]">{summary.callbacksScheduled} 🔄</span>
-            <span className="text-[10px] text-[#6b6968] block mt-0.5">Carry-overs queued</span>
+          <div className="rounded-lg border border-line bg-surface p-3 shadow-xs">
+            <span className="block text-caption text-fg-tertiary">Callbacks</span>
+            <span className="block text-kpi tabular-nums text-fg">{summary.callbacksScheduled}</span>
+            <span className="mt-0.5 block text-caption text-fg-secondary">Carry-overs queued</span>
           </div>
         </div>
 
         {/* CHANNEL FILTER TABS */}
-        <div className="px-6 py-3 border-b border-[#222021]/10 flex items-center justify-between shrink-0 bg-white">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-[#6b6968] mr-2">Filter Channel:</span>
-            {(['All', 'Phone', 'Email', 'LinkedIn'] as const).map(ch => (
-              <button
-                key={ch}
-                type="button"
-                onClick={() => setSelectedChannelFilter(ch)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  selectedChannelFilter === ch
-                    ? 'bg-[#222021] text-white shadow-xs'
-                    : 'bg-stone-100 text-[#6b6968] hover:bg-stone-200'
-                }`}
-              >
-                {ch}
-              </button>
-            ))}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-6 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-caption text-fg-tertiary">Channel</span>
+            <div className="inline-flex rounded-md border border-line bg-subtle p-0.5">
+              {(['All', 'Phone', 'Email', 'LinkedIn'] as const).map(ch => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => setSelectedChannelFilter(ch)}
+                  aria-pressed={selectedChannelFilter === ch}
+                  className={`focus-ring inline-flex h-7 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${
+                    selectedChannelFilter === ch
+                      ? 'bg-surface text-fg shadow-xs'
+                      : 'text-fg-secondary hover:text-fg'
+                  }`}
+                >
+                  {ch}
+                </button>
+              ))}
+            </div>
           </div>
-          <span className="text-xs font-mono text-[#6b6968]">
+          <span className="text-small tabular-nums text-fg-secondary">
             Showing {filteredActivities.length} of {summary.activities.length} activities
           </span>
         </div>
 
         {/* ACTIVITY TABLE */}
-        <div className="flex-1 overflow-y-auto p-6 bg-white">
+        <div className="flex-1 overflow-y-auto bg-surface p-6">
           {filteredActivities.length === 0 ? (
-            <div className="text-center py-12 text-[#6b6968]">
-              <Clock className="h-8 w-8 mx-auto text-stone-400 mb-2" />
-              <p className="text-sm font-semibold">No activities logged for {selectedChannelFilter} today yet.</p>
-              <p className="text-xs text-stone-500 mt-1">Mark cadence steps as completed or dispose calls in Boris Cockpit to build your report.</p>
-            </div>
+            <EmptyState
+              icon={<Clock />}
+              title={`No activities logged for ${selectedChannelFilter} today yet`}
+              description="Mark cadence steps as completed or log call outcomes on the calling floor to build your report."
+              className="py-12"
+            />
           ) : (
-            <div className="border border-[#222021]/15 rounded-xl overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-hidden rounded-lg border border-line">
+              <table className="w-full border-collapse text-left text-small">
                 <thead>
-                  <tr className="bg-[#222021] text-white font-mono uppercase text-[10px]">
-                    <th className="py-2.5 px-3 font-bold">Time</th>
-                    <th className="py-2.5 px-3 font-bold">Prospect & Account</th>
-                    <th className="py-2.5 px-3 font-bold">Channel</th>
-                    <th className="py-2.5 px-3 font-bold">Cadence Touchpoint</th>
-                    <th className="py-2.5 px-3 font-bold">Call Disposition</th>
-                    <th className="py-2.5 px-3 font-bold">Notes / CRM Summary</th>
+                  <tr className="bg-subtle text-caption text-fg-tertiary">
+                    <th className="px-3 py-2.5 font-medium">Time</th>
+                    <th className="px-3 py-2.5 font-medium">Prospect and account</th>
+                    <th className="px-3 py-2.5 font-medium">Channel</th>
+                    <th className="px-3 py-2.5 font-medium">Cadence touchpoint</th>
+                    <th className="px-3 py-2.5 font-medium">Outcome</th>
+                    <th className="px-3 py-2.5 font-medium">Notes</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#222021]/10">
+                <tbody>
                   {filteredActivities.map((act) => (
-                    <tr key={act.id} className="hover:bg-stone-50 transition-colors">
-                      <td className="py-2.5 px-3 font-mono text-[11px] font-bold text-[#6b6968] whitespace-nowrap">
+                    <tr key={act.id} className="border-t border-line transition-colors hover:bg-subtle">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-caption tabular-nums text-fg-secondary">
                         {act.timestamp}
                       </td>
-                      <td className="py-2.5 px-3 font-medium text-[#222021]">
-                        <div className="font-bold">{act.prospectName}</div>
-                        <div className="text-[11px] text-[#6b6968]">{act.companyName}</div>
+                      <td className="px-3 py-2.5 text-fg">
+                        <div className="text-body-strong">{act.prospectName}</div>
+                        <div className="text-caption text-fg-secondary">{act.companyName}</div>
                       </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase ${
-                          act.channel === 'Phone' ? 'bg-amber-100 text-amber-900' :
-                          act.channel === 'Email' ? 'bg-blue-100 text-blue-900' :
-                          'bg-indigo-100 text-indigo-900'
-                        }`}>
-                          {act.channel === 'Phone' && <PhoneCall className="h-3 w-3" />}
-                          {act.channel === 'Email' && <Mail className="h-3 w-3" />}
-                          {act.channel === 'LinkedIn' && <LinkedinIcon className="h-3 w-3" />}
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center gap-1.5 text-small text-fg-secondary">
+                          {act.channel === 'Phone' && <PhoneCall className="size-3.5" />}
+                          {act.channel === 'Email' && <Mail className="size-3.5" />}
+                          {act.channel === 'LinkedIn' && <LinkedinIcon className="size-3.5" />}
                           <span>{act.channel}</span>
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-[#222021]">
-                        <div className="font-semibold">{act.stepName}</div>
-                        <div className="text-[10px] font-mono text-[#6b6968]">Day {act.cadenceDay} • Touch #{act.touchNumber}</div>
+                      <td className="px-3 py-2.5 text-fg">
+                        <div className="text-body-strong">{act.stepName}</div>
+                        <div className="text-caption tabular-nums text-fg-secondary">Day {act.cadenceDay} · Touch {act.touchNumber}</div>
                       </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                          act.disposition.toLowerCase().includes('meeting') || act.disposition.toLowerCase().includes('booked') ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
-                          act.disposition.toLowerCase().includes('dnc') ? 'bg-rose-100 text-rose-800' :
-                          act.disposition.toLowerCase().includes('callback') ? 'bg-blue-100 text-blue-800' :
-                          'bg-stone-100 text-[#222021]'
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-flex h-5 items-center rounded-sm px-1.5 text-caption ${
+                          act.disposition.toLowerCase().includes('meeting') || act.disposition.toLowerCase().includes('booked') ? 'bg-success-bg text-success-fg' :
+                          act.disposition.toLowerCase().includes('dnc') ? 'bg-danger-bg text-danger-fg' :
+                          act.disposition.toLowerCase().includes('callback') ? 'bg-warning-bg text-warning-fg' :
+                          'bg-subtle text-fg-secondary'
                         }`}>
                           {act.disposition}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-[#333130] max-w-xs truncate" title={act.notesSnippet}>
+                      <td className="max-w-xs truncate px-3 py-2.5 text-fg" title={act.notesSnippet}>
                         {act.notesSnippet}
                       </td>
                     </tr>
@@ -297,17 +287,13 @@ _Generated via Appointmentlyy AI Boris Calling Cockpit_`;
         </div>
 
         {/* FOOTER */}
-        <div className="px-6 py-3 bg-[#F2F0EF] border-t border-[#222021]/10 flex items-center justify-between text-xs text-[#6b6968]">
-          <span>Activities persist locally and sync across open tabs automatically.</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-[#222021] text-white font-bold hover:bg-black transition-colors cursor-pointer"
-          >
-            Close Report
-          </button>
+        <div className="flex items-center justify-between gap-3 border-t border-line px-6 py-3 text-small text-fg-secondary">
+          <span>Activities are saved on this device and sync across open tabs.</span>
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

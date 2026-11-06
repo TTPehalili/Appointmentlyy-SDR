@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { CornerDownLeft, Search, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { IconButton } from './Button';
+import { Button, IconButton } from './Button';
 import { Kbd } from './Display';
 
 /**
@@ -15,7 +15,13 @@ function useModal(open: boolean, onClose: () => void) {
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
+    if (open && !el.open) {
+      // React applies `autoFocus` while committing, before this effect; showModal() then moves
+      // focus to the first focusable element (often the Close button). Restore React's choice.
+      const prev = document.activeElement as HTMLElement | null;
+      el.showModal();
+      if (prev && prev !== el && el.contains(prev)) prev.focus();
+    }
     if (!open && el.open) el.close();
   }, [open]);
   React.useEffect(() => {
@@ -36,6 +42,25 @@ function useModal(open: boolean, onClose: () => void) {
 
 const backdrop = 'backdrop:bg-ink-950/40 backdrop:backdrop-blur-[1px]';
 
+const DIALOG_SIZES = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-5xl',
+  full: 'max-w-[min(1200px,calc(100%-2rem))]',
+} as const;
+
+export type DialogSize = keyof typeof DIALOG_SIZES;
+
+/**
+ * Modal dialog. Esc, backdrop click and the close button all call onClose; focus is
+ * trapped inside while open and returns to the trigger on close.
+ *
+ * `bare`: render children as-is (no built-in header/padding/footer) for modals that keep
+ * their own header layout. `title` is still required: it becomes the accessible name.
+ * `dismissible={false}` ignores Esc/backdrop (use while a request is in flight).
+ */
 export function Dialog({
   open,
   onClose,
@@ -44,50 +69,121 @@ export function Dialog({
   footer,
   children,
   className,
+  size = 'md',
+  bare = false,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   footer?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  size?: DialogSize;
+  bare?: boolean;
+  dismissible?: boolean;
 }) {
-  const { ref, onBackdrop } = useModal(open, onClose);
+  const guardedClose = React.useCallback(() => {
+    if (dismissible) onClose();
+  }, [dismissible, onClose]);
+  const { ref, onBackdrop } = useModal(open, guardedClose);
   const titleId = React.useId();
   return (
     <dialog
       ref={ref}
-      aria-labelledby={titleId}
+      aria-labelledby={bare ? undefined : titleId}
+      aria-label={bare ? title : undefined}
       onClick={onBackdrop}
       className={cn(
-        'm-auto w-[calc(100%-2rem)] max-w-lg rounded-xl border border-line bg-surface p-0 text-fg shadow-lg open:animate-slide-up',
+        'm-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-surface p-0 text-fg shadow-lg open:animate-slide-up',
+        DIALOG_SIZES[size],
         backdrop,
         className,
       )}
     >
-      {open && (
-        <div className="flex flex-col">
-          <div className="flex items-start justify-between gap-4 px-6 pt-5">
-            <div>
-              <h2 id={titleId} className="text-h2 text-fg">
-                {title}
-              </h2>
-              {description && <p className="mt-1 text-body text-fg-secondary">{description}</p>}
+      {open &&
+        (bare ? (
+          children
+        ) : (
+          <div className="flex flex-col">
+            <div className={cn('flex items-start justify-between gap-4 px-6 pt-5', !children && 'pb-5')}>
+              <div>
+                <h2 id={titleId} className="text-h2 text-fg">
+                  {title}
+                </h2>
+                {description && <div className="mt-1 text-body text-fg-secondary">{description}</div>}
+              </div>
+              <IconButton label="Close" size="sm" onClick={onClose} className="-mr-2 -mt-1">
+                <X className="size-4" />
+              </IconButton>
             </div>
-            <IconButton label="Close" size="sm" onClick={onClose} className="-mr-2 -mt-1">
-              <X className="size-4" />
-            </IconButton>
+            {children && <div className="px-6 py-4">{children}</div>}
+            {footer && <div className="flex justify-end gap-2 border-t border-line px-6 py-4">{footer}</div>}
           </div>
-          {children && <div className="px-6 py-4">{children}</div>}
-          {footer && <div className="flex justify-end gap-2 border-t border-line px-6 py-4">{footer}</div>}
-        </div>
-      )}
+        ))}
     </dialog>
   );
 }
 
-/** 480px right drawer, used for row details (Contact, Ticket, Member ...). */
+/**
+ * Confirmation step for destructive or irreversible actions (brand guide: danger is
+ * always an outline button with an icon, behind a confirmation).
+ */
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel = 'Cancel',
+  tone = 'danger',
+  icon,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description?: React.ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  icon?: React.ReactNode;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            icon={icon}
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * Right drawer, used for row details (Contact, Ticket, Member ...). Default 480px.
+ * `bare` renders children as-is for drawers that keep their own header layout;
+ * `label` is then the accessible name.
+ */
 export function Drawer({
   open,
   onClose,
@@ -96,29 +192,38 @@ export function Drawer({
   actions,
   footer,
   children,
+  width = 480,
+  bare = false,
+  label,
 }: {
   open: boolean;
   onClose: () => void;
-  title: React.ReactNode;
+  title?: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
   footer?: React.ReactNode;
   children?: React.ReactNode;
+  width?: 480 | 560 | 640 | 720;
+  bare?: boolean;
+  label?: string;
 }) {
   const { ref, onBackdrop } = useModal(open, onClose);
   const titleId = React.useId();
   return (
     <dialog
       ref={ref}
-      aria-labelledby={titleId}
+      aria-labelledby={bare ? undefined : titleId}
+      aria-label={bare ? label : undefined}
       onClick={onBackdrop}
+      style={{ maxWidth: width }}
       className={cn(
-        'fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full max-w-[480px] border-l border-line bg-surface p-0 text-fg shadow-lg',
+        'fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full border-l border-line bg-surface p-0 text-fg shadow-lg',
         'open:animate-drawer-in',
         backdrop,
       )}
     >
-      {open && (
+      {open && bare && <div className="flex h-full flex-col">{children}</div>}
+      {open && !bare && (
         <div className="flex h-full flex-col">
           <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
             <div className="min-w-0">

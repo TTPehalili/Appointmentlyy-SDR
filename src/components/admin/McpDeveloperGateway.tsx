@@ -1,21 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  KeyRound, 
-  Terminal, 
-  Copy, 
-  Check, 
-  ShieldCheck, 
-  Plus, 
-  Trash2, 
-  Radio, 
-  ExternalLink,
-  Sparkles,
-  Cpu,
-  Layers,
-  ArrowRight
-} from 'lucide-react';
+import { Copy, Check, Lock } from 'lucide-react';
+import { Badge, Button, Card, CardBody, CardHeader, PageHeader, Select, Tooltip } from '@/components/ui';
 
 export default function McpDeveloperGateway() {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -33,145 +20,126 @@ export default function McpDeveloperGateway() {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
+  const copyButton = (text: string, id: string, label: string) => (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => copyText(text, id)}
+      icon={copiedToken === id ? <Check className="text-success-fg" /> : <Copy />}
+    >
+      {copiedToken === id ? 'Copied' : label}
+    </Button>
+  );
+
   return (
     <div className="space-y-6">
-      
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-[#222021]/10 rounded-2xl p-5 shadow-2xs">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ED1C24]/10 border border-[#ED1C24]/20 text-[#ED1C24] text-[10px] font-bold tracking-wide uppercase mb-1.5">
-            <Cpu className="h-3 w-3" />
-            <span>Developer Ingress & Autonomous Agent Bridge</span>
+      <PageHeader
+        title="MCP server & webhooks"
+        description="Give Cursor, Claude Desktop and AI agents scoped access to leads, practice scores and battlecards."
+        meta={
+          <div className="w-60">
+          <Select
+            aria-label="Workspace"
+            value={selectedTenant}
+            onChange={(e) => setSelectedTenant(e.target.value)}
+          >
+            <option value="Apex Global BPO">Apex Global BPO</option>
+            <option value="Outsource Accelerator Partner A">Outsource Accelerator Partner A</option>
+            <option value="Horizon Solar Sales Floor">Horizon Solar</option>
+          </Select>
           </div>
-          <h2 className="text-xl font-black text-[#222021] tracking-tight">
-            Multi-Tenant Model Context Protocol (MCP) & API Gateway
-          </h2>
-          <p className="text-xs text-[#6b6968]">
-            Grant Cursor, Claude Desktop, and autonomous SDR AI agents isolated access to query sparring scores, assigned leads, and curriculum battlecards.
-          </p>
-        </div>
-
-        <select
-          value={selectedTenant}
-          onChange={(e) => setSelectedTenant(e.target.value)}
-          className="h-10 px-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/15 text-xs font-bold text-[#222021] cursor-pointer"
-        >
-          <option value="Apex Global BPO">Apex Global BPO</option>
-          <option value="Outsource Accelerator Partner A">Outsource Accelerator Partner A</option>
-          <option value="Horizon Solar Sales Floor">Horizon Solar</option>
-        </select>
-      </div>
+        }
+      />
 
       {/* 1. MODEL CONTEXT PROTOCOL (MCP) CARD */}
-      <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center font-bold text-lg shrink-0">
-              ⚡
+      <Card>
+        <CardHeader
+          title={
+            <span className="inline-flex items-center gap-2">
+              <Tooltip content="Model Context Protocol: lets AI tools read workspace data through a standard interface.">
+                <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">MCP server</span>
+              </Tooltip>
+              <Badge tone="success">Active</Badge>
+            </span>
+          }
+          description={
+            <>
+              Bearer token scoped to <span className="text-body-strong text-fg">{selectedTenant}</span>.
+            </>
+          }
+        />
+        <CardBody className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
+            <div className="truncate font-mono text-small text-fg">
+              <span className="mr-2 text-fg-secondary">Authorization: Bearer</span>
+              <span>{mcpToken}</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-[#222021]">Model Context Protocol (MCP) Server Handshake</h3>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 font-mono text-[10px] font-bold">
-                  ACTIVE
-                </span>
+            {copyButton(mcpToken, 'mcp', 'Copy token')}
+          </div>
+
+          <div className="space-y-2">
+            <span className="block text-caption text-fg-tertiary">Exposed resources</span>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="space-y-1 rounded-md border border-line p-3">
+                <span className="block font-mono text-small text-fg">lms://{selectedTenant.toLowerCase().replace(/[^a-z0-9]/g, '-')}/leads</span>
+                <p className="text-small text-fg-secondary">Fetch assigned B2B leads, company tech stacks and current cadence stages.</p>
               </div>
-              <p className="text-xs text-[#6b6968] mt-0.5">
-                Bearer handshake token bound strictly to <strong>{selectedTenant}</strong>.
-              </p>
+              <div className="space-y-1 rounded-md border border-line p-3">
+                <span className="block font-mono text-small text-fg">lms://{selectedTenant.toLowerCase().replace(/[^a-z0-9]/g, '-')}/sparring-sessions</span>
+                <p className="text-small text-fg-secondary">
+                  Stream practice objections, rubric scorecards and{' '}
+                  <Tooltip content="Acknowledge, Respond, Move: the objection handling method.">
+                    <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">ARM</span>
+                  </Tooltip>{' '}
+                  feedback.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Token Box */}
-        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 flex items-center justify-between gap-3">
-          <div className="font-mono text-xs text-[#222021] truncate">
-            <span className="text-[#6b6968] mr-2">Authorization: Bearer</span>
-            <span className="font-bold">{mcpToken}</span>
-          </div>
-
-          <button
-            onClick={() => copyText(mcpToken, 'mcp')}
-            className="px-3 py-1.5 rounded-lg bg-white border border-[#222021]/15 hover:bg-stone-50 text-xs font-bold text-[#222021] flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
-          >
-            {copiedToken === 'mcp' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copiedToken === 'mcp' ? 'Copied' : 'Copy Bearer'}</span>
-          </button>
-        </div>
-
-        {/* Exposed MCP Resources Grid */}
-        <div className="pt-2 space-y-2">
-          <span className="text-[10px] font-mono font-bold uppercase text-[#6b6968] block">
-            Exposed MCP URIs & Autonomous Agent Capabilities:
-          </span>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#222021]/10 space-y-1">
-              <span className="font-mono font-bold text-purple-700 block text-[11px]">lms://{selectedTenant.toLowerCase().replace(/[^a-z0-9]/g, '-')}/leads</span>
-              <p className="text-[11px] text-[#6b6968]">Fetch assigned B2B leads, company tech stacks, and current cadence stages.</p>
-            </div>
-            <div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#222021]/10 space-y-1">
-              <span className="font-mono font-bold text-purple-700 block text-[11px]">lms://{selectedTenant.toLowerCase().replace(/[^a-z0-9]/g, '-')}/sparring-sessions</span>
-              <p className="text-[11px] text-[#6b6968]">Stream real-time sales rep objections, rubric scorecards, and ARM feedback.</p>
-            </div>
-          </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
       {/* 2. PUBLIC REST API KEYS */}
-      <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-black text-[#222021]">Tenant REST API Credentials</h3>
-            <p className="text-xs text-[#6b6968]">Public API keys for server-to-server integration with external dialers and CRMs.</p>
+      <Card>
+        <CardHeader
+          title="REST API key"
+          description="Server-to-server key for external dialers and CRMs."
+          actions={<span className="text-small tabular-nums text-fg-secondary">Rate limit: 60 req/min</span>}
+        />
+        <CardBody>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
+            <div className="truncate font-mono text-small text-fg">
+              <span className="mr-2 text-fg-secondary">API secret:</span>
+              <span>{apiKey}</span>
+            </div>
+            {copyButton(apiKey, 'api', 'Copy key')}
           </div>
-          <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            Rate Limit: 60 req/min
-          </span>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 flex items-center justify-between gap-3">
-          <div className="font-mono text-xs text-[#222021] truncate">
-            <span className="text-[#6b6968] mr-2">API Secret:</span>
-            <span className="font-bold">{apiKey}</span>
-          </div>
-
-          <button
-            onClick={() => copyText(apiKey, 'api')}
-            className="px-3 py-1.5 rounded-lg bg-white border border-[#222021]/15 hover:bg-stone-50 text-xs font-bold text-[#222021] flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
-          >
-            {copiedToken === 'api' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copiedToken === 'api' ? 'Copied' : 'Copy Key'}</span>
-          </button>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
       {/* 3. INBOUND WEBHOOK INGRESS GATEWAY */}
-      <div className="bg-white border border-[#222021]/10 rounded-2xl p-6 shadow-2xs space-y-4">
-        <div>
-          <h3 className="text-sm font-black text-[#222021]">Inbound Webhook Ingress Gateway</h3>
-          <p className="text-xs text-[#6b6968]">Endpoint URL for receiving inbound events from GoHighLevel, HubSpot, or custom external dialers.</p>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-[#F2F0EF] border border-[#222021]/10 flex items-center justify-between gap-3">
-          <div className="font-mono text-xs text-[#222021] truncate">
-            <span className="text-emerald-700 font-bold mr-2">POST</span>
-            <span>{webhookUrl}</span>
+      <Card>
+        <CardHeader
+          title="Inbound webhook"
+          description="Endpoint for inbound events from GoHighLevel, HubSpot or custom dialers."
+        />
+        <CardBody className="space-y-3">
+          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
+            <div className="truncate font-mono text-small text-fg">
+              <span className="mr-2 text-success-fg">POST</span>
+              <span>{webhookUrl}</span>
+            </div>
+            {copyButton(webhookUrl, 'wh', 'Copy URL')}
           </div>
 
-          <button
-            onClick={() => copyText(webhookUrl, 'wh')}
-            className="px-3 py-1.5 rounded-lg bg-white border border-[#222021]/15 hover:bg-stone-50 text-xs font-bold text-[#222021] flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
-          >
-            {copiedToken === 'wh' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-            <span>{copiedToken === 'wh' ? 'Copied' : 'Copy URL'}</span>
-          </button>
-        </div>
-
-        <div className="p-3 rounded-xl bg-zinc-100 border border-zinc-200 text-zinc-700 text-[11px] font-mono">
-          🔒 Verification Header: <span className="text-[#ED1C24]">X-Appointmentlyy-Signature: sha256=...</span> (Payloads validated in under 15ms).
-        </div>
-      </div>
-
+          <p className="flex items-center gap-2 text-small text-fg-secondary">
+            <Lock className="h-4 w-4 shrink-0 text-fg-secondary" />
+            <span>
+              Verification header <span className="font-mono text-fg">X-Appointmentlyy-Signature: sha256=...</span>. Payloads are validated in under 15ms.
+            </span>
+          </p>
+        </CardBody>
+      </Card>
     </div>
   );
 }

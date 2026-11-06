@@ -41,11 +41,10 @@ import {
   Share2,
   MoreHorizontal,
   Tag,
-  User,
-  Zap,
   ArrowLeft
 } from 'lucide-react';
 
+import { Button, IconButton, Kbd } from '@/components/ui';
 import { WorkflowCanvasNode } from '../canvas/WorkflowCanvasNode';
 import AddNodeModal from '../palette/AddNodeModal';
 import NodeConfigDrawer from '../panels/NodeConfigDrawer';
@@ -58,6 +57,12 @@ import {
 } from '../panels/WorkflowActionModals';
 import { INodeDefinition } from '@/registry';
 import { ProjectFolderRecord, WorkflowRecord } from '@/lib/db';
+
+// Connector look: ink-300 at rest, crimson on hover or select (presentational only).
+const EDGE_STYLE = { stroke: 'var(--ink-300)', strokeWidth: 2 };
+const EDGE_HOVER_CLS =
+  String.raw`[&_.react-flow\_\_edge:hover_.react-flow\_\_edge-path]:!stroke-[var(--brand-500)] ` +
+  String.raw`[&_.react-flow\_\_edge.selected_.react-flow\_\_edge-path]:!stroke-[var(--brand-500)]`;
 
 const nodeTypes = {
   customNode: WorkflowCanvasNode
@@ -141,7 +146,7 @@ export default function WorkflowAutomationStudio({
           (matched.edges || []).map((e: Edge) => ({
             ...e,
             animated: false,
-            style: { stroke: '#475569', strokeWidth: 2 }
+            style: EDGE_STYLE
           }))
         );
       }
@@ -184,7 +189,7 @@ export default function WorkflowAutomationStudio({
           {
             ...connection,
             animated: false,
-            style: { stroke: '#475569', strokeWidth: 2 }
+            style: EDGE_STYLE
           },
           eds
         )
@@ -225,7 +230,7 @@ export default function WorkflowAutomationStudio({
       (wf.edges || []).map((e: Edge) => ({
         ...e,
         animated: false,
-        style: { stroke: '#475569', strokeWidth: 2 }
+        style: EDGE_STYLE
       }))
     );
     setConfigNodeId(null);
@@ -467,39 +472,41 @@ export default function WorkflowAutomationStudio({
   const currentProject = projects.find((p) => p.id === currentWorkflow?.folderId);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] w-full bg-[#fbfbfb] rounded-2xl border border-stone-200 overflow-hidden shadow-2xs font-sans antialiased text-stone-900">
-      {/* n8n Signature Top Header Bar (Matching screenshot exactly) */}
-      <div className="h-14 px-4 border-b border-stone-200 bg-white flex items-center justify-between shrink-0">
+    <div className="flex flex-col h-[calc(100vh-270px)] min-h-[520px] w-full bg-app rounded-lg border border-line overflow-hidden shadow-xs font-sans antialiased text-fg">
+      {/* Editor header bar */}
+      <div className="h-14 px-3 border-b border-line bg-surface flex items-center justify-between gap-3 shrink-0">
         {/* Left: Project / Workflow Breadcrumb */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 min-w-0">
           {onBackToList && (
-            <button
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={onBackToList}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 text-xs font-bold transition-all shadow-2xs mr-1 cursor-pointer"
-              title="Return to Workflow List"
+              title="Back to workflows"
+              icon={<ArrowLeft className="h-4 w-4" />}
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Workflow List</span>
-            </button>
+              Workflows
+            </Button>
           )}
 
           <button
             onClick={() => setIsSidebarOpen((v) => !v)}
-            className="p-1.5 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors"
-            title="Toggle Projects & Folders Navigation"
+            className="focus-ring p-1.5 rounded-sm text-fg-secondary hover:text-fg hover:bg-subtle transition-colors"
+            title="Show or hide folders"
+            aria-label="Show or hide folders"
           >
             {isSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
           </button>
 
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="flex items-center gap-1 text-stone-500 font-medium">
-              <User className="h-3.5 w-3.5" />
-              <span>{currentProject?.name || 'Personal'}</span>
+          <div className="flex items-center gap-1.5 text-small min-w-0">
+            <span className="flex items-center gap-1 text-fg-secondary">
+              <Folder className="h-3.5 w-3.5" />
+              <span className="truncate">{currentProject?.name || 'Personal'}</span>
             </span>
-            <span className="text-stone-400">/</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-fg-tertiary" />
             <span
               onClick={() => setSettingsWorkflow(currentWorkflow)}
-              className="font-bold text-stone-900 hover:text-[#ED1C24] transition-colors cursor-pointer"
+              className="truncate text-body-strong text-fg hover:text-brand-text transition-colors cursor-pointer"
             >
               {currentWorkflow?.name || 'VoiceChatbot'}
             </span>
@@ -507,24 +514,24 @@ export default function WorkflowAutomationStudio({
 
           <button
             onClick={() => setSettingsWorkflow(currentWorkflow)}
-            className="text-[11px] font-medium text-stone-400 hover:text-stone-700 flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-stone-100 transition-colors"
+            className="focus-ring shrink-0 text-small text-fg-tertiary hover:text-fg flex items-center gap-1 px-2 py-0.5 rounded-sm hover:bg-subtle transition-colors"
           >
-            <Tag className="h-3 w-3" />
-            <span>+ Add tag</span>
+            <Tag className="h-3.5 w-3.5" />
+            <span>Add tag</span>
           </button>
         </div>
 
-        {/* Center: Editor / Executions Tab Pill */}
-        <div className="flex items-center bg-stone-100 p-0.5 rounded-lg text-xs font-semibold">
+        {/* Center: Editor / Executions */}
+        <div className="inline-flex items-center rounded-md border border-line bg-subtle p-0.5 text-small">
           <button
             onClick={() => {
               setViewMode('editor');
               setIsHistoryOpen(false);
             }}
-            className={`px-3 py-1 rounded-md transition-all ${
+            className={`focus-ring h-7 px-3 rounded-sm font-medium transition-colors ${
               viewMode === 'editor' && !isHistoryOpen
-                ? 'bg-white text-stone-900 shadow-2xs'
-                : 'text-stone-500 hover:text-stone-900'
+                ? 'bg-surface text-fg shadow-xs'
+                : 'text-fg-secondary hover:text-fg'
             }`}
           >
             Editor
@@ -534,73 +541,72 @@ export default function WorkflowAutomationStudio({
               setViewMode('executions');
               setIsHistoryOpen(true);
             }}
-            className={`px-3 py-1 rounded-md transition-all ${
+            className={`focus-ring h-7 px-3 rounded-sm font-medium transition-colors ${
               isHistoryOpen || viewMode === 'executions'
-                ? 'bg-white text-stone-900 shadow-2xs'
-                : 'text-stone-500 hover:text-stone-900'
+                ? 'bg-surface text-fg shadow-xs'
+                : 'text-fg-secondary hover:text-fg'
             }`}
           >
             Executions
           </button>
         </div>
 
-        {/* Right: Inactive toggle, Share, Save button, undo/redo */}
-        <div className="flex items-center gap-2">
+        {/* Right: Active toggle, Share, Save, undo/redo */}
+        <div className="flex items-center gap-1.5">
           {/* Active / Inactive switch */}
-          <div className="flex items-center gap-2 pr-2 border-r border-stone-200">
-            <span className="text-xs text-stone-500 font-medium">
+          <div className="flex items-center gap-2 pr-2 mr-1 border-r border-line">
+            <span className="text-small text-fg-secondary">
               {currentWorkflow?.active ? 'Active' : 'Inactive'}
             </span>
             <button
               onClick={handleToggleActive}
-              className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                currentWorkflow?.active ? 'bg-emerald-500' : 'bg-stone-300'
+              className={`focus-ring w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                currentWorkflow?.active ? 'bg-action' : 'bg-ink-300'
               }`}
             >
               <div
-                className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                className={`bg-surface w-4 h-4 rounded-full shadow-xs transform transition-transform ${
                   currentWorkflow?.active ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </button>
           </div>
 
+          {/* Undo / Redo */}
+          <IconButton label="Undo" size="sm" variant="ghost">
+            <RotateCcw className="h-4 w-4" />
+          </IconButton>
+          <IconButton label="Redo" size="sm" variant="ghost">
+            <RotateCw className="h-4 w-4" />
+          </IconButton>
+
           {/* Share */}
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => {
               navigator.clipboard.writeText(window.location.href);
               alert('Workflow sharing link copied to clipboard!');
             }}
-            className="px-3 py-1.5 rounded-lg border border-stone-200 hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
           >
             Share
-          </button>
+          </Button>
 
           {/* Save Button */}
-          <button
+          <Button
+            size="sm"
+            variant="brand"
             onClick={handleSaveWorkflow}
             disabled={isSaving}
-            className="px-4 py-1.5 rounded-lg bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            icon={<Save className="h-4 w-4" />}
           >
-            <Save className="h-3.5 w-3.5" />
-            <span>{isSaving ? 'Saving...' : 'Save'}</span>
-          </button>
-
-          {/* Undo / Redo */}
-          <button className="p-1.5 text-stone-400 hover:text-stone-700 rounded-md">
-            <RotateCcw className="h-4 w-4" />
-          </button>
-          <button className="p-1.5 text-stone-400 hover:text-stone-700 rounded-md">
-            <RotateCw className="h-4 w-4" />
-          </button>
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
 
           {/* More options */}
-          <button
-            onClick={() => setSettingsWorkflow(currentWorkflow)}
-            className="p-1.5 text-stone-400 hover:text-stone-700 rounded-md"
-          >
+          <IconButton label="Workflow settings" size="sm" variant="ghost" onClick={() => setSettingsWorkflow(currentWorkflow)}>
             <MoreHorizontal className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -608,84 +614,87 @@ export default function WorkflowAutomationStudio({
       <div className="flex-1 w-full h-full relative flex overflow-hidden">
         {/* Left Project / Folder Navigator Sidebar */}
         {isSidebarOpen && (
-          <aside className="w-72 border-r border-stone-200 bg-white flex flex-col shrink-0 overflow-hidden animate-in slide-in-from-left duration-200 z-10">
-            <div className="p-3 border-b border-stone-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-800">Projects & Folders</span>
-              <button
+          <aside className="w-64 border-r border-line bg-surface flex flex-col shrink-0 overflow-hidden animate-in slide-in-from-left duration-200 z-10">
+            <div className="h-11 px-3 border-b border-line flex items-center justify-between">
+              <span className="text-body-strong text-fg">Folders</span>
+              <Button
+                size="sm"
+                variant="ghost"
                 onClick={() => {
                   setEditingProject(null);
                   setIsProjectModalOpen(true);
                 }}
-                className="px-2 py-1 rounded bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                icon={<FolderPlus className="h-4 w-4" />}
+                className="h-7 px-2"
               >
-                <FolderPlus className="h-3.5 w-3.5" />
-                <span>New</span>
-              </button>
+                New
+              </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {projects.map((proj) => {
                 const isExpanded = expandedFolders[proj.id] ?? true;
                 const folderWorkflows = workflows.filter((w) => w.folderId === proj.id);
 
                 return (
-                  <div key={proj.id} className="rounded-xl border border-stone-200 bg-white overflow-hidden">
-                    <div className="p-2 bg-stone-50 hover:bg-stone-100 flex items-center justify-between gap-1 border-b border-stone-100">
+                  <div key={proj.id}>
+                    <div className="group h-8 px-1.5 rounded-sm hover:bg-subtle flex items-center justify-between gap-1">
                       <div
                         onClick={() => toggleFolder(proj.id)}
-                        className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer select-none text-xs font-bold text-stone-800"
+                        className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer select-none text-body text-fg"
                       >
-                        <span className="text-stone-400">
-                          {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        <span className="text-fg-tertiary">
+                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                         </span>
+                        <Folder className="h-4 w-4 shrink-0 text-fg-secondary" />
                         <span className="truncate">{proj.name}</span>
-                        <span className="text-[10px] text-stone-400 font-mono">({folderWorkflows.length})</span>
+                        <span className="text-caption tabular-nums text-fg-tertiary">{folderWorkflows.length}</span>
                       </div>
 
-                      <div className="flex items-center gap-0.5">
+                      <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleCreateNewWorkflow(proj.id)}
-                          className="p-1 rounded text-stone-400 hover:text-stone-800"
-                          title="New Workflow"
+                          className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-fg"
+                          title="New workflow"
                         >
-                          <Plus className="h-3 w-3" />
+                          <Plus className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => {
                             setEditingProject(proj);
                             setIsProjectModalOpen(true);
                           }}
-                          className="p-1 rounded text-stone-400 hover:text-stone-800"
-                          title="Edit Folder"
+                          className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-fg"
+                          title="Edit folder"
                         >
-                          <Edit className="h-3 w-3" />
+                          <Edit className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteProject(proj.id, proj.name)}
-                          className="p-1 rounded text-stone-400 hover:text-rose-600"
-                          title="Delete Folder"
+                          className="focus-ring p-1 rounded-sm text-fg-tertiary hover:text-danger-fg"
+                          title="Delete folder"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="p-1 space-y-0.5">
+                      <div className="pl-5 py-0.5 space-y-0.5">
                         {folderWorkflows.map((wf) => {
                           const isSelected = activeWorkflowId === wf.id;
                           return (
                             <div
                               key={wf.id}
                               onClick={() => handleSelectWorkflow(wf)}
-                              className={`group p-2 rounded-lg flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                              className={`group h-8 px-2 rounded-sm flex items-center justify-between text-body cursor-pointer transition-colors ${
                                 isSelected
-                                  ? 'bg-stone-100 text-stone-900 font-bold'
-                                  : 'hover:bg-stone-50 text-stone-600'
+                                  ? 'bg-selected text-fg font-medium'
+                                  : 'hover:bg-subtle text-fg-secondary'
                               }`}
                             >
                               <div className="flex items-center gap-2 truncate flex-1">
-                                <span className={`h-1.5 w-1.5 rounded-full ${wf.active ? 'bg-emerald-500' : 'bg-stone-300'}`} />
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${wf.active ? 'bg-success-500' : 'bg-ink-300'}`} />
                                 <span className="truncate">{wf.name}</span>
                               </div>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
@@ -694,20 +703,20 @@ export default function WorkflowAutomationStudio({
                                     e.stopPropagation();
                                     setDuplicatingWorkflow(wf);
                                   }}
-                                  className="text-stone-400 hover:text-stone-700"
+                                  className="focus-ring rounded-sm p-0.5 text-fg-tertiary hover:text-fg"
                                   title="Duplicate"
                                 >
-                                  <Copy className="h-3 w-3" />
+                                  <Copy className="h-3.5 w-3.5" />
                                 </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setMovingWorkflow(wf);
                                   }}
-                                  className="text-stone-400 hover:text-stone-700"
+                                  className="focus-ring rounded-sm p-0.5 text-fg-tertiary hover:text-fg"
                                   title="Move"
                                 >
-                                  <FolderInput className="h-3 w-3" />
+                                  <FolderInput className="h-3.5 w-3.5" />
                                 </button>
                               </div>
                             </div>
@@ -722,7 +731,7 @@ export default function WorkflowAutomationStudio({
           </aside>
         )}
 
-        {/* React Flow Canvas: Pure white, minimalist, static lines */}
+        {/* React Flow canvas: light, minimal, static lines */}
         <div className="flex-1 w-full h-full relative">
           <ReactFlow
             nodes={processedNodes}
@@ -733,56 +742,64 @@ export default function WorkflowAutomationStudio({
             nodeTypes={nodeTypes}
             fitView
             attributionPosition="bottom-left"
+            className={EDGE_HOVER_CLS}
             defaultEdgeOptions={{
               animated: false,
-              style: { stroke: '#475569', strokeWidth: 2 }
+              style: EDGE_STYLE
             }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e2e8f0" />
-            <Controls position="bottom-left" />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--ink-300)" />
+            <Controls
+              position="bottom-left"
+              className="!rounded-md !border !border-line !shadow-md overflow-hidden"
+            />
             <MiniMap
               position="bottom-right"
-              nodeColor={() => '#cbd5e1'}
-              className="!rounded-xl !border !border-stone-200 !shadow-xs overflow-hidden"
+              nodeColor={() => 'var(--ink-300)'}
+              className="!rounded-lg !border !border-line !shadow-md overflow-hidden"
             />
           </ReactFlow>
 
-          {/* Floating "+ Add Node" button on top-left of canvas */}
-          <div className="absolute top-4 left-4 z-10">
-            <button
+          {/* Floating toolbar: Add node */}
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-lg border border-line bg-surface p-1 shadow-md">
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => setIsAddNodeOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 shadow-xs text-xs font-bold text-stone-800 flex items-center gap-1.5 transition-all cursor-pointer"
+              icon={<Plus className="h-4 w-4" />}
+              className="text-fg"
             >
-              <Plus className="h-4 w-4" />
-              <span>Add Node</span>
-              <kbd className="text-[10px] bg-stone-100 px-1 py-0.2 rounded font-mono text-stone-400">/</kbd>
-            </button>
+              Add node
+              <Kbd>/</Kbd>
+            </Button>
           </div>
 
-          {/* Floating Bottom Center CTA: "Execute workflow" (Matching n8n screenshot) */}
+          {/* Floating bottom center: Run workflow */}
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-            <button
+            <Button
+              size="lg"
+              variant="primary"
               onClick={handleRunWorkflow}
               disabled={isRunning}
-              className="px-6 py-2.5 rounded-xl bg-[#ED1C24] hover:bg-[#d0181f] text-white text-xs font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer disabled:opacity-50"
+              className="shadow-md"
             >
               {isRunning ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Executing workflow...</span>
+                  <span>Running workflow...</span>
                 </>
               ) : runSuccess ? (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>Workflow Executed!</span>
+                  <span>Workflow ran</span>
                 </>
               ) : (
                 <>
-                  <Zap className="h-4 w-4 fill-current" />
-                  <span>Execute workflow</span>
+                  <Play className="h-4 w-4" />
+                  <span>Run workflow</span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

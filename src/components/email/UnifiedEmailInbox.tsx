@@ -1,33 +1,35 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Inbox, 
-  Send, 
-  Mail, 
-  Search, 
-  Reply, 
-  Star, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  AlertTriangle,
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  RotateCw, 
-  Sparkles, 
-  User, 
-  Building, 
-  Tag, 
-  ExternalLink,
-  ChevronRight,
-  Filter,
+import {
+  Inbox,
+  Send,
+  Mail,
+  ArrowUpRight,
+  ArrowDownLeft,
+  RotateCw,
+  Sparkles,
+  Building,
   Check,
-  Zap,
-  MoreVertical,
+  AlertTriangle,
   Trash2,
-  Share2
+  CalendarDays,
+  DollarSign,
+  MessageSquareReply,
+  X
 } from 'lucide-react';
+import {
+  Avatar,
+  Button,
+  ConfirmDialog,
+  Dialog,
+  EmptyState,
+  IconButton,
+  PageHeader,
+  SearchInput,
+  SegmentedControl,
+  Textarea
+} from '@/components/ui';
 import { 
   EmailMessage, 
   getStoredEmails, 
@@ -352,304 +354,276 @@ export default function UnifiedEmailInbox() {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-zinc-200/90 shadow-2xs overflow-hidden flex flex-col flex-1 min-h-0 text-zinc-900">
-      
-      {/* ========================================================================= */}
-      {/* 1. TOP INBOX TOOLBAR (Compact)                                            */}
-      {/* ========================================================================= */}
-      <div className="px-3.5 py-2 border-b border-zinc-200 bg-zinc-50/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-zinc-950 text-white flex items-center justify-center font-bold shadow-2xs">
-            <Inbox className="h-4 w-4 text-zinc-100" />
-          </div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold text-zinc-900 tracking-tight">
-              Unified Communications Inbox
-            </h2>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 flex items-center gap-1" title={`Live sender: ${senderFrom}`}>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {senderDisplayName} &bull; {verifiedSenderEmail}
-            </span>
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col text-fg">
 
-        {/* Search, Filter Pills & Clear */}
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="h-3 w-3 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
+      {/* ========================================================================= */}
+      {/* 1. PAGE HEADER                                                            */}
+      {/* ========================================================================= */}
+      <PageHeader
+        className="shrink-0 pb-4"
+        title="Inbox"
+        description="Replies and sent emails from your verified mailbox, grouped by conversation."
+        meta={
+          <span className="inline-flex items-center gap-2 text-small text-fg-secondary" title={`Live sender: ${senderFrom}`}>
+            <span className="size-2 shrink-0 rounded-full bg-success-500" aria-hidden />
+            <span className="font-mono">{verifiedSenderEmail}</span>
+          </span>
+        }
+        secondaryActions={
+          <>
+            {/* Live inbound sync from Resend */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleSyncInbound}
+              disabled={isSyncingInbound}
+              title="Sync incoming email replies live from Resend Inbound (reply@estuegai.resend.app)"
+            >
+              <RotateCw className={isSyncingInbound ? 'animate-spin' : ''} />
+              <span>{isSyncingInbound ? 'Syncing...' : (lastSyncStatus || 'Sync replies')}</span>
+            </Button>
+
+            {/* Clear all */}
+            {emails.length > 0 && (
+              <IconButton
+                label="Clear all stored emails"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowConfirmClearAll(true)}
+              >
+                <Trash2 />
+              </IconButton>
+            )}
+            <ConfirmDialog
+              open={showConfirmClearAll && emails.length > 0}
+              onClose={() => setShowConfirmClearAll(false)}
+              onConfirm={handleConfirmClearAll}
+              title={`Clear all ${emails.length} emails?`}
+              description="This removes every stored email from this device."
+              confirmLabel="Clear"
+              icon={<Trash2 />}
+            />
+          </>
+        }
+      />
+
+      {/* ========================================================================= */}
+      {/* 2. THREE PANES: threads, conversation, contact                            */}
+      {/* ========================================================================= */}
+      <div className="flex min-h-0 flex-1 divide-x divide-line overflow-hidden rounded-lg border border-line bg-surface shadow-xs">
+
+        {/* ======================================================================= */}
+        {/* LEFT PANE: THREAD LIST                                                  */}
+        {/* ======================================================================= */}
+        <div className="flex w-72 shrink-0 flex-col sm:w-[360px]">
+          <div className="shrink-0 space-y-2 border-b border-line p-3">
+            <SearchInput
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter emails..."
-              className="text-[11px] py-1 pl-7 pr-2.5 rounded-lg border border-zinc-200 bg-white text-zinc-900 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 w-36 sm:w-48 shadow-2xs"
+              className="h-8 text-small"
+            />
+            <SegmentedControl
+              size="sm"
+              label="Filter threads"
+              value={activeFilter}
+              onChange={(v) => setActiveFilter(v as 'all' | 'inbound' | 'outbound' | 'unread')}
+              className="w-full [&>*]:flex-1"
+              items={[
+                { value: 'all', label: <span className="tabular-nums">All ({emails.length})</span> },
+                {
+                  value: 'inbound',
+                  label: (
+                    <span className="flex items-center justify-center gap-1">
+                      <ArrowDownLeft className="h-3.5 w-3.5" />
+                      <span>Replies</span>
+                    </span>
+                  ),
+                },
+                {
+                  value: 'outbound',
+                  label: (
+                    <span className="flex items-center justify-center gap-1">
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                      <span>Sent</span>
+                    </span>
+                  ),
+                },
+              ]}
             />
           </div>
 
-          <div className="flex items-center gap-0.5 p-0.5 bg-zinc-200/60 rounded-lg border border-zinc-300/60">
-            <button
-              onClick={() => setActiveFilter('all')}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors ${
-                activeFilter === 'all' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              All ({emails.length})
-            </button>
-            <button
-              onClick={() => setActiveFilter('inbound')}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors flex items-center gap-1 ${
-                activeFilter === 'inbound' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              <ArrowDownLeft className="h-3 w-3 text-emerald-600" />
-              <span>Replies</span>
-            </button>
-            <button
-              onClick={() => setActiveFilter('outbound')}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors flex items-center gap-1 ${
-                activeFilter === 'outbound' ? 'bg-white text-blue-800 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              <ArrowUpRight className="h-3 w-3 text-blue-600" />
-              <span>Outbound</span>
-            </button>
-          </div>
-
-          {/* Live Inbound Sync from Resend Button */}
-          <button
-            onClick={handleSyncInbound}
-            disabled={isSyncingInbound}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-zinc-200 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 transition-colors shadow-2xs cursor-pointer"
-            title="Sync incoming email replies live from Resend Inbound (reply@estuegai.resend.app)"
-          >
-            <RotateCw className={`h-3 w-3 ${isSyncingInbound ? 'animate-spin text-emerald-600' : 'text-zinc-500'}`} />
-            <span>{isSyncingInbound ? 'Syncing...' : (lastSyncStatus || 'Sync Replies')}</span>
-          </button>
-
-          {/* Clear All Trigger */}
-          {emails.length > 0 && (
-            showConfirmClearAll ? (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-xs animate-in fade-in">
-                <span className="text-rose-700 font-semibold text-[10px]">Clear all {emails.length}?</span>
-                <button
-                  onClick={handleConfirmClearAll}
-                  className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[10px] hover:bg-rose-700"
-                >
-                  Clear
-                </button>
-                <button
-                  onClick={() => setShowConfirmClearAll(false)}
-                  className="px-1.5 py-0.2 rounded bg-zinc-200 text-zinc-700 text-[10px] hover:bg-zinc-300"
-                >
-                  Cancel
-                </button>
+          <div className="flex-1 overflow-y-auto">
+            {threadSummaries.length === 0 ? (
+              <div className="space-y-2 p-6 text-center">
+                <Mail className="mx-auto h-5 w-5 text-fg-tertiary" />
+                <p className="text-small text-fg-secondary">No messages match your filter.</p>
               </div>
             ) : (
-              <button
-                onClick={() => setShowConfirmClearAll(true)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 border border-zinc-200 hover:border-rose-200 transition-colors"
-                title="Clear all stored emails"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            )
-          )}
-        </div>
-      </div>
+              threadSummaries.map(({ threadId, latestEmail, messageCount }) => {
+                const isSelected = selectedThreadId === threadId;
+                const hasUnreadInbound = latestEmail.direction === 'inbound' && latestEmail.read === false;
 
-      {/* ========================================================================= */}
-      {/* 2. DUAL-PANE INBOX WORKSTATION (Compact Grid/Flex)                        */}
-      {/* ========================================================================= */}
-      <div className="flex flex-1 min-h-0 overflow-hidden divide-x divide-zinc-200">
-        
-        {/* ======================================================================= */}
-        {/* LEFT PANE: THREAD LIST (Compact Rail)                                   */}
-        {/* ======================================================================= */}
-        <div className="w-72 sm:w-80 shrink-0 overflow-y-auto divide-y divide-zinc-100 bg-zinc-50/40">
-          {threadSummaries.length === 0 ? (
-            <div className="p-6 text-center text-xs text-zinc-400 space-y-1">
-              <Mail className="h-5 w-5 mx-auto text-zinc-300" />
-              <p>No messages match your filter.</p>
-            </div>
-          ) : (
-            threadSummaries.map(({ threadId, latestEmail, messageCount }) => {
-              const isSelected = selectedThreadId === threadId;
-              const hasUnreadInbound = latestEmail.direction === 'inbound' && latestEmail.read === false;
+                return (
+                  <div
+                    key={threadId}
+                    onClick={() => setSelectedThreadId(threadId)}
+                    className={`cursor-pointer space-y-0.5 border-b border-l-2 border-b-line px-4 py-3 text-left transition-colors ${
+                      isSelected
+                        ? 'border-l-action bg-selected'
+                        : 'border-l-transparent hover:bg-subtle'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        {hasUnreadInbound && (
+                          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-action" aria-label="Unread" />
+                        )}
+                        <span className={`truncate text-body ${hasUnreadInbound ? 'font-semibold text-fg' : 'font-medium text-fg'}`}>
+                          {latestEmail.leadName}
+                        </span>
+                      </div>
 
-              return (
-                <div
-                  key={threadId}
-                  onClick={() => setSelectedThreadId(threadId)}
-                  className={`px-3 py-2.5 cursor-pointer transition-all text-left space-y-1 ${
-                    isSelected
-                      ? 'bg-white border-l-[3px] border-zinc-950 shadow-2xs'
-                      : 'hover:bg-zinc-100/70 border-l-[3px] border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {latestEmail.direction === 'inbound' ? (
-                        <span className="p-0.5 rounded bg-emerald-100 text-emerald-800 shrink-0">
-                          <ArrowDownLeft className="h-2.5 w-2.5" />
-                        </span>
-                      ) : (
-                        <span className="p-0.5 rounded bg-zinc-200 text-zinc-700 shrink-0">
-                          <ArrowUpRight className="h-2.5 w-2.5" />
-                        </span>
-                      )}
-                      <span className={`text-[11px] truncate ${hasUnreadInbound ? 'font-bold text-zinc-950' : 'font-semibold text-zinc-800'}`}>
-                        {latestEmail.leadName}
+                      <span className="shrink-0 text-caption font-normal tabular-nums text-fg-tertiary">
+                        {formatTimeAgo(latestEmail.timestamp)}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1 text-[10px] text-zinc-400 font-mono shrink-0">
-                      <span>{formatTimeAgo(latestEmail.timestamp)}</span>
-                      {hasUnreadInbound && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600 inline-block" />
+                    <div className="flex items-center gap-1.5 text-small text-fg">
+                      {latestEmail.direction === 'inbound' ? (
+                        <ArrowDownLeft className="h-3.5 w-3.5 shrink-0 text-fg-tertiary" aria-label="Reply" />
+                      ) : (
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-fg-tertiary" aria-label="Sent" />
                       )}
+                      <span className="truncate">{latestEmail.subject}</span>
+                    </div>
+
+                    <p className="truncate text-small leading-snug text-fg-tertiary">
+                      {latestEmail.body}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-0.5 text-caption font-normal text-fg-tertiary">
+                      <span className="max-w-[180px] truncate">
+                        {latestEmail.leadCompany}
+                      </span>
+                      <span className="tabular-nums">
+                        {messageCount} {messageCount === 1 ? 'message' : 'messages'}
+                      </span>
                     </div>
                   </div>
-
-                  <div className="text-[11px] font-medium text-zinc-900 truncate">
-                    {latestEmail.subject}
-                  </div>
-
-                  <p className="text-[10px] text-zinc-500 truncate leading-snug">
-                    {latestEmail.body}
-                  </p>
-
-                  <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
-                    <span className="truncate max-w-[150px] font-medium text-zinc-500">
-                      {latestEmail.leadCompany}
-                    </span>
-                    <span className="font-mono text-[9px] px-1 rounded bg-zinc-100 text-zinc-500">
-                      {messageCount} {messageCount === 1 ? 'msg' : 'msgs'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* ======================================================================= */}
-        {/* RIGHT PANE: ACTIVE THREAD & COMPOSER (Flex-1)                           */}
+        {/* CENTER PANE: CONVERSATION & REPLY                                       */}
         {/* ======================================================================= */}
-        <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-white">
-          
+        <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+
           {activeThreadLead ? (
             <>
-              {/* Compact Thread Header Dossier */}
-              <div className="px-4 py-2 border-b border-zinc-200 bg-zinc-50/60 flex items-center justify-between flex-wrap gap-2 shrink-0">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="h-7 w-7 rounded-full bg-zinc-950 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
-                    {activeThreadLead.leadName.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                  </div>
+              {/* Conversation header */}
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={activeThreadLead.leadName} />
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <strong className="font-bold text-zinc-900 truncate">{activeThreadLead.leadName}</strong>
-                      <span className="text-[11px] text-zinc-500 truncate">• {activeThreadLead.leadCompany}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-body-strong text-fg">{activeThreadLead.leadName}</span>
+                      <span className="truncate text-small text-fg-tertiary">{activeThreadLead.leadCompany}</span>
                     </div>
-                    <p className="text-[10px] text-zinc-400 font-mono truncate">
+                    <p className="truncate font-mono text-small text-fg-tertiary">
                       {activeThreadLead.direction === 'inbound' ? activeThreadLead.from : activeThreadLead.to}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
-                    {selectedThreadId}
-                  </span>
-
-                  <button
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowIngestModal(true)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors shadow-2xs cursor-pointer"
                     title="Ingest / paste a lead reply into this thread"
                   >
-                    <ArrowDownLeft className="h-3 w-3 text-emerald-600" />
-                    <span>+ Ingest Reply</span>
-                  </button>
+                    <ArrowDownLeft />
+                    <span>Add a reply</span>
+                  </Button>
 
                   {showConfirmDeleteThread ? (
-                    <div className="flex items-center gap-1 animate-in fade-in text-xs">
-                      <span className="text-[10px] text-rose-600 font-semibold">Delete thread?</span>
-                      <button
-                        onClick={handleConfirmDeleteThread}
-                        className="px-2 py-0.5 text-[10px] rounded bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors"
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setShowConfirmDeleteThread(false)}
-                        className="px-1.5 py-0.5 text-[10px] rounded bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-medium transition-colors"
-                      >
+                    <div className="flex items-center gap-1.5 animate-in fade-in">
+                      <span className="text-small text-danger-fg">Delete thread?</span>
+                      <Button variant="danger" size="sm" onClick={handleConfirmDeleteThread}>
+                        <Trash2 />
+                        <span>Delete</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowConfirmDeleteThread(false)}>
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowConfirmDeleteThread(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-zinc-500 hover:text-rose-600 hover:bg-rose-50 border border-zinc-200 hover:border-rose-200 transition-colors"
                       title="Delete this conversation thread"
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 />
                       <span>Delete</span>
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
 
-              {/* Thread Message Stream (Compact & Scrollable) */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2.5 bg-zinc-50/30">
+              {/* Threaded messages */}
+              <div className="flex-1 space-y-3 overflow-y-auto bg-app px-5 py-4">
                 {activeThreadMessages.map((msg) => {
                   const isInbound = msg.direction === 'inbound';
                   return (
                     <div
                       key={msg.id}
-                      className={`p-3 rounded-xl border text-left space-y-1.5 max-w-xl ${
-                        isInbound
-                          ? 'bg-white border-emerald-200 shadow-2xs ml-0 mr-auto ring-1 ring-emerald-100'
-                          : 'bg-zinc-900 text-white border-zinc-800 shadow-2xs ml-auto mr-0'
+                      className={`space-y-2 rounded-lg border border-line p-4 text-left ${
+                        isInbound ? 'bg-surface shadow-xs' : 'bg-subtle'
                       }`}
                     >
-                      <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200/40 text-[11px]">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                            isInbound ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-800 text-zinc-300'
-                          }`}>
-                            {isInbound ? '📥 Reply' : '📤 Sent'}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {isInbound ? (
+                            <ArrowDownLeft className="h-4 w-4 shrink-0 text-fg-secondary" />
+                          ) : (
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-fg-secondary" />
+                          )}
+                          <span className="shrink-0 text-small text-fg-secondary">
+                            {isInbound ? 'Reply from' : 'Sent by'}
                           </span>
-                          <span className={`font-semibold truncate text-[11px] ${isInbound ? 'text-zinc-900' : 'text-zinc-100'}`}>
+                          <span className="truncate text-body-strong text-fg">
                             {msg.from}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] font-mono text-zinc-400">
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className="text-small tabular-nums text-fg-tertiary">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          <button
+                          <IconButton
+                            label="Delete this message"
+                            size="sm"
                             onClick={() => handleDeleteMessage(msg.id)}
-                            className={`p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity ${
-                              isInbound 
-                                ? 'text-zinc-400 hover:text-rose-600 hover:bg-rose-50' 
-                                : 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800'
-                            }`}
-                            title="Delete this message"
+                            className="size-7 text-fg-tertiary hover:text-danger-fg"
                           >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                            <Trash2 />
+                          </IconButton>
                         </div>
                       </div>
 
-                      <div className={`text-[11px] font-bold ${isInbound ? 'text-zinc-900' : 'text-zinc-100'}`}>
+                      <div className="text-body-strong text-fg">
                         {msg.subject}
                       </div>
 
-                      <div className={`text-xs whitespace-pre-line leading-relaxed ${isInbound ? 'text-zinc-800' : 'text-zinc-200'}`}>
+                      <div className="whitespace-pre-line text-body leading-relaxed text-fg">
                         {msg.body}
                       </div>
 
-                      <div className="flex items-center justify-between pt-1 text-[9px] text-zinc-400 font-mono">
+                      <div className="flex items-center justify-between pt-1 text-caption font-normal text-fg-tertiary">
                         <span>{msg.provider === 'resend_live' ? 'Resend Live' : 'Sandbox'}</span>
                         <span>{msg.status}</span>
                       </div>
@@ -658,202 +632,236 @@ export default function UnifiedEmailInbox() {
                 })}
               </div>
 
-              {/* Compact AI Boris Quick Reply & Composer */}
-              <div className="p-3 px-4 border-t border-zinc-200 bg-white space-y-2 shrink-0">
-                {/* AI Preset Chips */}
-                <div className="flex items-center justify-between flex-wrap gap-1.5">
-                  <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider flex items-center gap-1">
-                    <Sparkles className="h-3 w-3 text-amber-500" />
-                    <span>Boris Copilot:</span>
+              {/* Reply composer */}
+              <div className="shrink-0 space-y-2 border-t border-line px-5 py-3">
+                {/* Copilot chips */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-1 flex items-center gap-1 text-small text-fg-secondary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Copilot</span>
                   </span>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleApplyAiReplyPreset('demo')}
-                      className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium transition-colors"
-                    >
-                      📅 Demo 15m
-                    </button>
-                    <button
-                      onClick={() => handleApplyAiReplyPreset('pricing')}
-                      className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-medium transition-colors"
-                    >
-                      💰 Pricing 50-Seat
-                    </button>
-                    <button
-                      onClick={() => handleApplyAiReplyPreset('objection')}
-                      className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-200 font-medium transition-colors"
-                    >
-                      ⚡ Rebuttals
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyAiReplyPreset('demo')}
+                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 text-fg-secondary" />
+                    Book demo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyAiReplyPreset('pricing')}
+                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
+                  >
+                    <DollarSign className="h-3.5 w-3.5 text-fg-secondary" />
+                    Pricing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyAiReplyPreset('objection')}
+                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
+                  >
+                    <MessageSquareReply className="h-3.5 w-3.5 text-fg-secondary" />
+                    Handle objection
+                  </button>
                 </div>
 
-                {/* Reply Composer */}
-                <div className="space-y-1.5">
-                  <textarea
-                    rows={2}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Write a direct reply... (or click a Boris copilot preset above)"
-                    className="w-full text-xs font-sans rounded-lg border border-zinc-200 p-2 text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 resize-none leading-relaxed"
-                  />
+                <Textarea
+                  rows={3}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Write a reply, or pick a Copilot suggestion above"
+                  className="min-h-0 resize-none font-sans leading-relaxed"
+                />
 
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[10px] text-zinc-500 truncate">
-                      {sendSuccessKey === 'reply_sent' ? (
-                        <span className="text-emerald-600 font-bold flex items-center gap-1">
-                          <Check className="h-3 w-3" />
-                          Reply dispatched via Resend!
-                        </span>
-                      ) : replyError ? (
-                        <span className="text-rose-600 font-semibold flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3 shrink-0" />
-                          Error: {replyError}
-                        </span>
-                      ) : (
-                        <span className="truncate">
-                          From: <strong className="font-mono text-zinc-700">emil@appointmentlyy.com</strong> &rarr; To: <strong>{activeThreadLead.leadName}</strong>
-                        </span>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={handleSendReply}
-                      disabled={isSendingReply || !replyText.trim()}
-                      className="px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-bold text-xs hover:bg-zinc-800 disabled:opacity-50 transition-colors shadow-2xs flex items-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      {isSendingReply ? (
-                        <>
-                          <RotateCw className="h-3 w-3 animate-spin" />
-                          <span>Sending...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-3 w-3" />
-                          <span>Send Reply</span>
-                        </>
-                      )}
-                    </button>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 truncate text-small text-fg-tertiary">
+                    {sendSuccessKey === 'reply_sent' ? (
+                      <span className="flex items-center gap-1 text-success-fg">
+                        <Check className="h-3.5 w-3.5" />
+                        Reply sent via Resend
+                      </span>
+                    ) : replyError ? (
+                      <span className="flex items-center gap-1 text-danger-fg">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        Error: {replyError}
+                      </span>
+                    ) : (
+                      <span className="truncate">
+                        From <span className="font-mono text-fg-secondary">emil@appointmentlyy.com</span> to <span className="text-fg-secondary">{activeThreadLead.leadName}</span>
+                      </span>
+                    )}
                   </div>
+
+                  <Button
+                    variant="brand"
+                    onClick={handleSendReply}
+                    disabled={isSendingReply || !replyText.trim()}
+                  >
+                    {isSendingReply ? (
+                      <>
+                        <RotateCw className="animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send />
+                        <span>Send reply</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-zinc-400 space-y-2">
-              <div className="h-10 w-10 rounded-xl bg-zinc-100 text-zinc-400 flex items-center justify-center shadow-2xs">
-                <Inbox className="h-5 w-5" />
-              </div>
-              <div className="space-y-0.5">
-                <p className="font-bold text-zinc-800 text-xs">Inbox is clear</p>
-                <p className="text-zinc-500 text-[11px] max-w-xs">
-                  All emails and threads have been pruned.
-                </p>
-              </div>
-              <button
-                onClick={handleResetSeeds}
-                className="mt-1 px-3 py-1 rounded-lg bg-zinc-950 text-white font-medium hover:bg-zinc-800 transition-colors shadow-2xs text-[11px]"
-              >
-                Restore Demo Threads
-              </button>
-            </div>
+            <EmptyState
+              className="flex-1"
+              icon={<Inbox />}
+              title="Inbox is clear"
+              description="All emails and threads have been removed."
+              action={
+                <Button variant="secondary" size="sm" onClick={handleResetSeeds}>
+                  Restore demo threads
+                </Button>
+              }
+            />
           )}
 
         </div>
 
-      </div>
+        {/* ======================================================================= */}
+        {/* RIGHT PANE: CONTACT CONTEXT (wide screens)                              */}
+        {/* ======================================================================= */}
+        {activeThreadLead && (
+          <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto xl:flex">
+            <div className="space-y-4 p-5">
+              <div className="flex items-center gap-3">
+                <Avatar name={activeThreadLead.leadName} size="lg" />
+                <div className="min-w-0">
+                  <div className="truncate text-body-strong text-fg">{activeThreadLead.leadName}</div>
+                  {activeThreadLead.leadTitle && (
+                    <div className="truncate text-small text-fg-secondary">{activeThreadLead.leadTitle}</div>
+                  )}
+                </div>
+              </div>
 
-      {/* Ingest Inbound Reply Modal */}
-      {showIngestModal && activeThreadLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-zinc-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                  <ArrowDownLeft className="h-4 w-4" />
+              <dl className="space-y-3 text-small">
+                <div>
+                  <dt className="text-caption text-fg-tertiary">Company</dt>
+                  <dd className="mt-0.5 flex items-center gap-1.5 text-fg">
+                    <Building className="h-3.5 w-3.5 text-fg-secondary" />
+                    <span className="truncate">{activeThreadLead.leadCompany}</span>
+                  </dd>
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-zinc-900">
-                    Ingest Inbound Lead Reply
-                  </h3>
-                  <p className="text-[10px] text-zinc-500">
-                    From: <strong className="font-mono text-zinc-700">{activeThreadLead.direction === 'inbound' ? activeThreadLead.from : activeThreadLead.to}</strong>
-                  </p>
+                  <dt className="text-caption text-fg-tertiary">Email</dt>
+                  <dd className="mt-0.5 break-all font-mono text-fg">
+                    {activeThreadLead.direction === 'inbound' ? activeThreadLead.from : activeThreadLead.to}
+                  </dd>
                 </div>
+                <div>
+                  <dt className="text-caption text-fg-tertiary">Messages in thread</dt>
+                  <dd className="mt-0.5 tabular-nums text-fg">{activeThreadMessages.length}</dd>
+                </div>
+                <div>
+                  <dt className="text-caption text-fg-tertiary">Thread ID</dt>
+                  <dd className="mt-0.5 break-all font-mono text-caption font-normal text-fg-secondary">{selectedThreadId}</dd>
+                </div>
+              </dl>
+            </div>
+          </aside>
+        )}
+
+      </div>
+
+      {/* Add (ingest) inbound reply modal */}
+      <Dialog
+        open={showIngestModal && !!activeThreadLead}
+        onClose={() => setShowIngestModal(false)}
+        title="Add a lead reply"
+        size="md"
+        bare
+      >
+        {activeThreadLead && (
+          <div className="w-full space-y-4 p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-h2 text-fg">
+                  Add a lead reply
+                </h3>
+                <p className="mt-0.5 truncate text-small text-fg-secondary">
+                  From <span className="font-mono">{activeThreadLead.direction === 'inbound' ? activeThreadLead.from : activeThreadLead.to}</span>
+                </p>
               </div>
-              <button
-                onClick={() => setShowIngestModal(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
-              >
-                ✕
-              </button>
+              <IconButton label="Close" size="sm" onClick={() => setShowIngestModal(false)}>
+                <X />
+              </IconButton>
             </div>
 
-            {/* Quick Presets */}
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                1-Click Preset Replies (Click to auto-inject):
+            {/* Quick presets */}
+            <div className="space-y-2">
+              <span className="block text-small font-medium text-fg">
+                Add a sample reply in one click
               </span>
-              <div className="grid grid-cols-1 gap-1.5">
+              <div className="grid grid-cols-1 gap-2">
                 <button
+                  type="button"
                   onClick={() => handleIngestReply("Hey Emil,\n\nSaw your email. Send over that 2-minute video. If it looks solid, I'm open to a 15-minute screen share with my floor QA lead Thursday.\n\nBest,\n" + activeThreadLead.leadName)}
-                  className="text-left p-2 rounded-lg bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200/80 transition-colors text-[11px] text-emerald-950 font-medium"
+                  className="focus-ring rounded-md border border-line bg-surface p-3 text-left transition-colors hover:bg-subtle"
                 >
-                  <strong className="text-emerald-800 font-bold block text-[10px]">🔥 Positive / Ready for Video:</strong>
-                  "Send over that 2-minute video. Open to a 15-minute screen share Thursday."
+                  <span className="block text-small font-medium text-fg">Positive, ready for video</span>
+                  <span className="block text-small text-fg-secondary">&ldquo;Send over that 2-minute video. Open to a 15-minute screen share Thursday.&rdquo;</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleIngestReply("Hi Emil,\n\nFair question on price. We are currently locked into an annual contract with another vendor. What is the typical seat cost for a 50-seat team?\n\nBest,\n" + activeThreadLead.leadName)}
-                  className="text-left p-2 rounded-lg bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200/80 transition-colors text-[11px] text-blue-950 font-medium"
+                  className="focus-ring rounded-md border border-line bg-surface p-3 text-left transition-colors hover:bg-subtle"
                 >
-                  <strong className="text-blue-800 font-bold block text-[10px]">💰 Price & Competitor Lock-in:</strong>
-                  "What is the typical seat cost for a 50-seat team?"
+                  <span className="block text-small font-medium text-fg">Price and competitor lock-in</span>
+                  <span className="block text-small text-fg-secondary">&ldquo;What is the typical seat cost for a 50-seat team?&rdquo;</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleIngestReply("Hey Emil,\n\nWe just restructured our outbound floor. Bad timing right now, please ping me back in Q1.\n\n" + activeThreadLead.leadName)}
-                  className="text-left p-2 rounded-lg bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 transition-colors text-[11px] text-zinc-800 font-medium"
+                  className="focus-ring rounded-md border border-line bg-surface p-3 text-left transition-colors hover:bg-subtle"
                 >
-                  <strong className="text-zinc-600 font-bold block text-[10px]">⏰ Timing Constraint:</strong>
-                  "Bad timing right now, please ping me back in Q1."
+                  <span className="block text-small font-medium text-fg">Bad timing</span>
+                  <span className="block text-small text-fg-secondary">&ldquo;Bad timing right now, please ping me back in Q1.&rdquo;</span>
                 </button>
               </div>
             </div>
 
-            {/* Custom Paste Textarea */}
-            <div className="space-y-1.5 pt-2 border-t border-zinc-100">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                Or Paste Custom Reply (From Gmail / Callview AI):
-              </span>
-              <textarea
+            {/* Custom paste */}
+            <div className="space-y-1.5 border-t border-line pt-4">
+              <label htmlFor="ingest-reply-body" className="block text-small font-medium text-fg">
+                Or paste a reply (from Gmail or Callview AI)
+              </label>
+              <Textarea
+                id="ingest-reply-body"
                 rows={3}
                 value={ingestBody}
                 onChange={(e) => setIngestBody(e.target.value)}
                 placeholder="Paste the reply body you sent from Callview AI email here..."
-                className="w-full text-xs font-sans rounded-lg border border-zinc-300 p-2 text-zinc-900 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 resize-none leading-relaxed"
+                className="min-h-0 resize-none font-sans leading-relaxed"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
-              <button
-                type="button"
-                onClick={() => setShowIngestModal(false)}
-                className="px-3 py-1.5 text-xs rounded-lg text-zinc-600 hover:bg-zinc-100 transition-colors font-semibold"
-              >
+            <div className="flex items-center justify-end gap-2 border-t border-line pt-4">
+              <Button variant="ghost" onClick={() => setShowIngestModal(false)}>
                 Cancel
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => handleIngestReply()}
                 disabled={!ingestBody.trim()}
-                className="px-3.5 py-1.5 text-xs rounded-lg bg-zinc-950 hover:bg-zinc-800 disabled:opacity-50 text-white font-bold transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
               >
-                <ArrowDownLeft className="h-3 w-3" />
-                <span>Inject Reply into Thread</span>
-              </button>
+                <ArrowDownLeft />
+                <span>Add to thread</span>
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
 
     </div>
   );

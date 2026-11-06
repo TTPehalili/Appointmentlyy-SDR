@@ -9,7 +9,6 @@ import {
   Users,
   Download,
   Lock,
-  ShieldCheck,
   Sparkles,
   CheckCircle2,
   PhoneCall,
@@ -17,8 +16,7 @@ import {
   SlidersHorizontal,
   RefreshCw,
   ArrowRight,
-  CreditCard,
-  KeyRound,
+  ArrowLeft,
   AlertTriangle,
   Eye,
   ChevronDown,
@@ -58,15 +56,16 @@ import {
   getAllTenantQuotas,
   getAvailablePullBalance,
   deductTenantQuota,
-  creditTenantRecords,
   updateTenantRepsRoster,
   normalizeTenantKey,
   getSuperAdminMasterDataKey,
-  setSuperAdminMasterDataKey,
   subscribeToQuotaStore,
 } from '@/lib/icpQuotaStore';
+import { can } from '@/lib/permissions';
 import type { SanitizedIcpProspect } from '@/app/api/intelligence/icp/route';
 import QuotaTopUpModal from './QuotaTopUpModal';
+import { useIcpTargetTenant } from './LeadCreditsAdmin';
+import { Button, Badge, Dialog, Meter, PageHeader, buttonClasses } from '@/components/ui';
 
 const SENIORITY_OPTIONS = ['C-Suite', 'VP', 'Director', 'Owner', 'Partner', 'Manager'];
 
@@ -284,17 +283,13 @@ export default function IcpListBuilderHub() {
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canBuildAndDistribute = canUserReassignLeads(role);
+  const canOpenAdmin = can(role, 'admin');
 
-  // Active target tenant
-  const [targetTenantCode, setTargetTenantCode] = useState<string>(() =>
+  // Active target tenant (Super Admin picks it in Admin > Lead credits & quota)
+  const [targetTenantCode] = useIcpTargetTenant(
+    isSuperAdmin,
     normalizeTenantKey(session.tenantCode || tenantName)
   );
-
-  useEffect(() => {
-    if (!isSuperAdmin) {
-      setTargetTenantCode(normalizeTenantKey(session.tenantCode || tenantName));
-    }
-  }, [session.tenantCode, tenantName, isSuperAdmin]);
 
   const [allQuotas, setAllQuotas] = useState<Record<string, TenantQuotaState>>(() =>
     getAllTenantQuotas()
@@ -327,13 +322,8 @@ export default function IcpListBuilderHub() {
   const [redistributeReps, setRedistributeReps] = useState<string[]>([]);
   const [newRepInput, setNewRepInput] = useState('');
 
-  // Top-up modal state
+  // Top-up modal state (opens automatically when a pull exceeds the available balance)
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
-
-  // Super Admin Master Key drawer
-  const [showMasterKeyPanel, setShowMasterKeyPanel] = useState(false);
-  const [masterKeyInput, setMasterKeyInput] = useState(() => getSuperAdminMasterDataKey());
-  const [masterKeySavedToast, setMasterKeySavedToast] = useState(false);
 
   // ICP Filter state (Defaulted to Outsource Accelerator BPO & Virtual Assistant Leaders)
   const [activeBlueprintId, setActiveBlueprintId] = useState<string>('bp_oa_bpo');
@@ -649,7 +639,7 @@ export default function IcpListBuilderHub() {
     if (pullCount > balance.totalPullableNow) {
       setPullBanner({
         type: 'error',
-        message: `Your workspace has ${balance.totalPullableNow.toLocaleString()} records available right now, which is less than the requested ${pullCount.toLocaleString()} records. Click "+ Tap Up Quota" to add records.`,
+        message: `Your workspace has ${balance.totalPullableNow.toLocaleString()} records available right now, which is less than the requested ${pullCount.toLocaleString()} records. Top up your quota to add records.`,
       });
       setIsTopUpModalOpen(true);
       return;
@@ -827,382 +817,147 @@ export default function IcpListBuilderHub() {
         )
       : 100;
 
-  const monthlyPct =
-    activeQuota.monthlyIncludedAllowance > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (activeQuota.monthlyBaseUsed / activeQuota.monthlyIncludedAllowance) *
-              100
-          )
-        )
-      : 100;
-
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-[#FAFAFA] font-sans antialiased text-zinc-900">
+    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {!canAccessIcp ? (
-          <main className="flex-1 overflow-y-auto px-6 py-12 max-w-2xl w-full mx-auto flex items-center justify-center">
-            <div className="bg-white border border-zinc-200/90 rounded-2xl p-8 text-center space-y-4 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-zinc-100 border border-zinc-200 text-zinc-500 flex items-center justify-center mx-auto">
-                <Lock className="w-6 h-6 text-zinc-700" />
+          <main className="flex-1 overflow-y-auto px-4 py-12 md:px-8 max-w-2xl w-full mx-auto flex items-center justify-center">
+            <div className="bg-surface border border-line rounded-lg p-8 text-center space-y-4 shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-subtle border border-line flex items-center justify-center mx-auto">
+                <Lock className="w-5 h-5 text-fg-secondary" />
               </div>
               <div className="space-y-1.5">
-                <div className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-                  PERMISSION_RESTRICTED // ROLE_GATE
+                <div className="text-caption text-fg-tertiary">
+                  Restricted for your role
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-zinc-950">
-                  ICP List Builder is Restricted for Your Role ({role})
+                <h2 className="text-h2 text-fg">
+                  Lead Finder isn&apos;t available for your role ({role})
                 </h2>
-                <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
-                  Only workspace Administrators, Customers, and Tenants are authorized to run ICP queries, pull prospect batches, and distribute lists. SDR reps can access leads already assigned to them on the Calling Floor and Global Contacts.
+                <p className="text-body text-fg-secondary max-w-md mx-auto">
+                  Only workspace admins, customers and tenants can search for leads, pull lists and assign them. Reps can work the leads already assigned to them on the Calling Floor and in Contacts.
                 </p>
               </div>
               <div className="pt-2 flex items-center justify-center gap-3">
-                <Link
-                  href="/dialer"
-                  className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-semibold text-xs transition shadow-xs"
-                >
+                <Link href="/dialer" className={buttonClasses('primary', 'md')}>
                   Return to Calling Floor
                 </Link>
-                <Link
-                  href="/contacts"
-                  className="px-4 py-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-medium text-xs transition"
-                >
-                  View My Assigned Leads
+                <Link href="/contacts" className={buttonClasses('secondary', 'md')}>
+                  View my assigned leads
                 </Link>
               </div>
             </div>
           </main>
         ) : (
-          <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-[1440px] w-full mx-auto">
-          {/* 1. SUPER ADMIN PROVISIONING BAR */}
-          {isSuperAdmin && (
-            <div className="bg-zinc-950 text-white rounded-2xl px-5 py-3.5 border border-zinc-800/80 shadow-xs">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="px-2 py-0.5 rounded bg-white text-zinc-950 text-[10px] font-mono font-bold uppercase tracking-widest">
-                    Super Admin Mode
-                  </span>
-                  <span className="text-xs text-zinc-400">
-                    Active Client Workspace:
-                  </span>
-                  <select
-                    value={targetTenantCode}
-                    onChange={(e) => setTargetTenantCode(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold text-white focus:outline-none cursor-pointer"
-                  >
-                    {Object.values(allQuotas).map((q) => (
-                      <option key={q.tenantCode} value={q.tenantCode}>
-                        {q.tenantName} ({q.tenantCode}) &bull;{' '}
-                        {q.billingStage === 'month1'
-                          ? 'Month 1 (2k/wk Included)'
-                          : 'Month 2+ ($249 BYOK + Volume)'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextStage =
-                        activeQuota.billingStage === 'month1'
-                          ? 'month2+'
-                          : 'month1';
-                      creditTenantRecords(activeQuota.tenantCode, 0, {
-                        setBillingStage: nextStage,
-                        resetMonth1: nextStage === 'month1',
-                      });
-                      setAllQuotas(getAllTenantQuotas());
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-300 border border-zinc-800 cursor-pointer"
-                  >
-                    Stage:{' '}
-                    <strong className="text-white">
-                      {activeQuota.billingStage === 'month1'
-                        ? 'Month 1 (Free 8k)'
-                        : 'Month 2+ (Paid Packs)'}
-                    </strong>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      creditTenantRecords(activeQuota.tenantCode, 2000);
-                      setAllQuotas(getAllTenantQuotas());
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-white text-zinc-950 hover:bg-zinc-200 text-xs font-semibold cursor-pointer"
-                  >
-                    + Credit 2,000 Records
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowMasterKeyPanel(!showMasterKeyPanel)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-300 border border-zinc-800 cursor-pointer"
-                  >
-                    <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Master Engine Key</span>
-                  </button>
-                </div>
-              </div>
-
-              {showMasterKeyPanel && (
-                <div className="mt-3 pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="text-xs text-zinc-400">
-                    <strong className="text-white">
-                      Master Data Engine API Key:
-                    </strong>{' '}
-                    100% hidden on the server. Powers all client workspaces via{' '}
-                    <code className="text-zinc-200">/api/intelligence/icp</code>.
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      value={masterKeyInput}
-                      onChange={(e) => setMasterKeyInput(e.target.value)}
-                      placeholder="Paste master x-api-key..."
-                      className="w-64 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white font-mono focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSuperAdminMasterDataKey(masterKeyInput);
-                        setMasterKeySavedToast(true);
-                        setTimeout(() => setMasterKeySavedToast(false), 2000);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-white text-zinc-950 text-xs font-bold cursor-pointer"
-                    >
-                      {masterKeySavedToast ? '✓ Saved' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 2. ULTRA-MINIMALIST EDITORIAL HERO & TELEMETRY STRIP */}
-          <div className="bg-white border border-zinc-200/90 rounded-2xl overflow-hidden shadow-2xs">
-            {/* Top Bar */}
-            <div className="p-6 pb-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5 border-b border-zinc-100">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white text-[11px] font-mono font-medium tracking-tight">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span>APPOINTMENTLYY DATA CLOUD</span>
-                  </span>
-                  <span className="text-xs font-mono text-zinc-400">
-                    {activeQuota.tenantName}
-                  </span>
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">
-                    {canExport
-                      ? `${role} • Full Export Access`
-                      : `${role} • Assigned View Only (CSV Locked)`}
-                  </span>
-                </div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
-                  ICP List Builder &amp; Folder Studio
-                </h1>
-                <p className="text-xs text-zinc-500 max-w-2xl">
-                  Follow the 3-step guided workflow below to pinpoint verified decision-makers, organize campaigns into folders, and distribute leads equally across your SDR floor.
-                </p>
-              </div>
-
-              {/* Right Quick Actions */}
-              <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('academy')}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                    activeTab === 'academy'
-                      ? 'bg-zinc-900 text-white border-zinc-900'
-                      : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                  }`}
-                >
-                  <GraduationCap className="w-4 h-4 text-zinc-500" />
-                  <span>Interactive User Guide (2 Min)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsTopUpModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-950 text-white hover:bg-zinc-800 transition cursor-pointer shadow-2xs"
-                >
-                  <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Tap Up Quota</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Minimalist 3-Column Usage vs. Allowance Telemetry Strip */}
-            <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-zinc-100 bg-zinc-50/40">
-              {/* Column 1: Weekly Pace */}
-              <div className="px-6 py-4 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Weekly Allowance
-                  </span>
-                  <span className="font-mono text-zinc-500">
-                    {activeQuota.billingStage === 'month1'
-                      ? `Week ${activeQuota.currentWeekNumber} of 4 • Resets Mon`
-                      : 'Month 2+ Paid Volume'}
-                  </span>
-                </div>
-                {activeQuota.billingStage === 'month1' ? (
-                  <>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-xl font-semibold font-mono tracking-tight text-zinc-950">
-                        {activeQuota.weeklyUsed.toLocaleString()}{' '}
-                        <span className="text-xs font-normal text-zinc-400">
-                          / {activeQuota.weeklyAllowance.toLocaleString()}
-                        </span>
-                      </span>
-                      <span className="text-xs font-mono text-zinc-600">
-                        {balance.weeklyRemaining.toLocaleString()} remaining
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-zinc-200/80 overflow-hidden">
-                      <div
-                        className="h-full bg-zinc-950 rounded-full transition-all duration-300"
-                        style={{ width: `${weeklyPct}%` }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-xs text-zinc-500 pt-1">
-                    $249/mo BYOK active. Pulls deduct from your Tap-Up Balance.
-                  </div>
-                )}
-              </div>
-
-              {/* Column 2: Month 1 Base Pool */}
-              <div className="px-6 py-4 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Month 1 Included Pool
-                  </span>
-                  <span className="font-mono text-zinc-500">
-                    4 Wks × 2,000
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-xl font-semibold font-mono tracking-tight text-zinc-950">
-                    {activeQuota.monthlyBaseUsed.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">
-                      / 8,000
+          <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 max-w-[1440px] w-full mx-auto">
+          {/* PAGE HEADER, QUOTA METER & SUB-VIEW TABS */}
+          <div className="space-y-5">
+            <PageHeader
+              className="pb-0"
+              title="Lead Finder"
+              description="Find verified decision-makers and split them evenly across your reps."
+              meta={
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-1 min-w-[180px]">
+                    <span className="text-small tabular-nums text-fg-secondary whitespace-nowrap">
+                      {activeQuota.billingStage === 'month1' ? (
+                        <>
+                          <span className="font-medium text-fg">
+                            {activeQuota.weeklyUsed.toLocaleString()}
+                          </span>{' '}
+                          of {activeQuota.weeklyAllowance.toLocaleString()} this week
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-medium text-fg">
+                            {balance.totalPullableNow.toLocaleString()}
+                          </span>{' '}
+                          records available
+                        </>
+                      )}
                     </span>
-                  </span>
-                  <span className="text-xs font-mono text-zinc-600">
-                    {balance.monthlyBaseRemaining.toLocaleString()} left
-                  </span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-zinc-200/80 overflow-hidden">
-                  <div
-                    className="h-full bg-zinc-600 rounded-full transition-all duration-300"
-                    style={{ width: `${monthlyPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Column 3: Total Available Now + Bonus Credits */}
-              <div className="px-6 py-4 flex items-center justify-between gap-4 bg-white">
-                <div className="space-y-1">
-                  <div className="text-xs text-zinc-400 font-medium flex items-center gap-2">
-                    <span>Available to Pull Now</span>
-                    {balance.bonusRemaining > 0 && (
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-[10px]">
-                        +{balance.bonusRemaining.toLocaleString()} bonus
-                      </span>
+                    {activeQuota.billingStage === 'month1' && (
+                      <Meter value={weeklyPct / 100} label="Weekly allowance used" />
                     )}
                   </div>
-                  <div className="text-2xl font-semibold font-mono tracking-tight text-zinc-950">
-                    {balance.totalPullableNow.toLocaleString()}{' '}
-                    <span className="text-xs font-normal text-zinc-400">
-                      records
-                    </span>
-                  </div>
+                  {canOpenAdmin && (
+                    <Link
+                      href="/admin/lead-credits"
+                      className="focus-ring rounded-sm text-small font-medium text-fg-secondary hover:text-fg underline decoration-line-strong underline-offset-2 whitespace-nowrap"
+                    >
+                      Get more
+                    </Link>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsTopUpModalOpen(true)}
-                  className="px-3 py-1.5 rounded-lg border border-zinc-200 hover:border-zinc-900 text-xs font-semibold text-zinc-900 transition cursor-pointer shrink-0"
+              }
+              secondaryActions={
+                <Button
+                  variant={activeTab === 'academy' ? 'primary' : 'ghost'}
+                  icon={<GraduationCap />}
+                  onClick={() => setActiveTab('academy')}
                 >
-                  + Add Volume
-                </button>
-              </div>
+                  User guide (2 min)
+                </Button>
+              }
+            />
+
+            <div className="text-small text-fg-secondary -mt-2">
+              {activeQuota.tenantName} &middot;{' '}
+              {canExport
+                ? `${role}, full export access`
+                : `${role}, assigned view only (CSV locked)`}
             </div>
 
-            {/* Bottom Navigation Bar */}
-            <div className="px-6 py-3 border-t border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('builder')}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    activeTab === 'builder'
-                      ? 'bg-zinc-950 text-white'
-                      : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
-                  }`}
-                >
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>Guided List Builder</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('folders')}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    activeTab === 'folders'
-                      ? 'bg-zinc-950 text-white'
-                      : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
-                  }`}
-                >
-                  <FolderKanban className="w-3.5 h-3.5" />
-                  <span>Saved ICP Folders</span>
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full font-mono text-[10px] ${
-                      activeTab === 'folders'
-                        ? 'bg-zinc-800 text-white'
-                        : 'bg-zinc-100 text-zinc-700'
-                    }`}
-                  >
-                    {visibleFolders.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('academy')}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    activeTab === 'academy'
-                      ? 'bg-zinc-950 text-white'
-                      : 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>Training &amp; User Guide</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-[10px]">
-                    {completedModules.length}/{TRAINING_MODULES.length}
-                  </span>
-                </button>
+            {/* Sub-view tabs */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-line">
+              <div role="tablist" aria-label="Lead Finder views" className="flex items-center gap-5 flex-wrap">
+                {(
+                  [
+                    { id: 'builder' as const, label: 'Guided list builder', icon: Compass, count: undefined as string | undefined },
+                    { id: 'folders' as const, label: 'Saved folders', icon: FolderKanban, count: String(visibleFolders.length) },
+                    { id: 'academy' as const, label: 'Training & guide', icon: BookOpen, count: `${completedModules.length}/${TRAINING_MODULES.length}` },
+                  ]
+                ).map((t) => {
+                  const TabIcon = t.icon;
+                  const selected = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setActiveTab(t.id)}
+                      className={`focus-ring -mb-px inline-flex h-10 items-center gap-1.5 rounded-t-sm border-b-2 text-body transition-colors duration-150 cursor-pointer ${
+                        selected
+                          ? 'border-action text-fg font-medium'
+                          : 'border-transparent text-fg-secondary hover:text-fg'
+                      }`}
+                    >
+                      <TabIcon className="w-4 h-4 text-fg-secondary" />
+                      <span>{t.label}</span>
+                      {t.count !== undefined && (
+                        <span className="text-caption tabular-nums text-fg-tertiary">
+                          {t.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="flex items-center gap-3 text-xs text-zinc-400">
+              <div className="flex items-center gap-2 pb-2.5 text-small text-fg-tertiary">
                 <span>Synced with</span>
                 <Link
                   href="/contacts"
-                  className="text-zinc-700 hover:text-zinc-950 font-medium underline decoration-zinc-300"
+                  className="focus-ring rounded-sm text-fg-secondary hover:text-fg font-medium underline decoration-line-strong underline-offset-2"
                 >
-                  Global Contacts
+                  Contacts
                 </Link>
-                <span>&bull;</span>
+                <span>&middot;</span>
                 <Link
                   href="/dialer"
-                  className="text-zinc-700 hover:text-zinc-950 font-medium underline decoration-zinc-300"
+                  className="focus-ring rounded-sm text-fg-secondary hover:text-fg font-medium underline decoration-line-strong underline-offset-2"
                 >
                   Calling Floor
                 </Link>
@@ -1213,42 +968,40 @@ export default function IcpListBuilderHub() {
           {/* Feedback Banner after Pulling */}
           {pullBanner && (
             <div
-              className={`rounded-2xl p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              className={`rounded-lg p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                 pullBanner.type === 'success'
-                  ? 'bg-white border-zinc-900 text-zinc-900 shadow-xs'
-                  : 'bg-red-50 border-red-200 text-red-950'
+                  ? 'bg-surface border-line text-fg shadow-xs'
+                  : 'bg-danger-bg border-danger-fg/30 text-danger-fg'
               }`}
             >
-              <div className="flex items-start gap-3 text-xs">
+              <div className="flex items-start gap-3 text-body">
                 {pullBanner.type === 'success' ? (
-                  <div className="h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                  <div className="h-6 w-6 rounded-full bg-success-bg text-success-fg flex items-center justify-center shrink-0">
                     <Check className="w-3.5 h-3.5" />
                   </div>
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-4 h-4 text-danger-fg shrink-0 mt-0.5" />
                 )}
                 <div>
-                  <div className="font-bold text-zinc-950">
+                  <div className="text-body-strong text-fg">
                     {pullBanner.type === 'success'
-                      ? 'List Pulled, Saved to Folder & Distributed Equally'
-                      : 'Action Required'}
+                      ? 'List pulled, saved to a folder and split evenly'
+                      : 'Action required'}
                   </div>
-                  <div className="text-zinc-600 mt-0.5">{pullBanner.message}</div>
+                  <div className="text-small text-fg-secondary mt-0.5">{pullBanner.message}</div>
                 </div>
               </div>
               {pullBanner.type === 'success' && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<ArrowRight />}
                     onClick={() => setActiveTab('folders')}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
                   >
-                    Open Folder &rarr;
-                  </button>
-                  <Link
-                    href="/dialer"
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
-                  >
+                    Open folder
+                  </Button>
+                  <Link href="/dialer" className={buttonClasses('secondary', 'sm')}>
                     Go to Calling Floor
                   </Link>
                 </div>
@@ -1261,87 +1014,97 @@ export default function IcpListBuilderHub() {
           ===================================================================== */}
           {activeTab === 'builder' && (
             <div className="space-y-6">
-              {/* Interactive 3-Step Progress Track */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Wizard stepper: done steps are clickable to go back, upcoming steps are reached with Continue */}
+              <ol aria-label="Progress" className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {[
                   {
                     step: 1 as const,
-                    title: 'Step 01 — Define Your ICP',
-                    desc: 'Pick a 1-click blueprint or customize titles, industry & location.',
+                    title: 'Describe your buyer',
+                    desc: 'Describe them to AI, pick a blueprint, or set titles, industry and location.',
                     badge: industry,
                   },
                   {
                     step: 2 as const,
-                    title: 'Step 02 — Preview Market (Free)',
-                    desc: 'Verify total addressable market & sample verified profiles at 0 cost.',
+                    title: 'Preview matches (free)',
+                    desc: 'Check how many people match and look at sample profiles, at no cost.',
                     badge: `${totalMatching.toLocaleString()} matches`,
                   },
                   {
                     step: 3 as const,
-                    title: 'Step 03 — Name Folder & Split to Reps',
-                    desc: 'Save into a clean folder and distribute equally across your SDRs.',
+                    title: 'Save and assign',
+                    desc: 'Name the folder and split the leads evenly across your reps.',
                     badge: `${pullCount} leads ÷ ${selectedRepsForPull.length || 1} reps`,
                   },
                 ].map((s) => {
                   const isCurrent = activeWizardStep === s.step;
                   const isDone = activeWizardStep > s.step;
                   return (
+                    <li key={s.step} className="flex">
                     <button
-                      key={s.step}
                       type="button"
+                      aria-current={isCurrent ? 'step' : undefined}
+                      disabled={!isDone && !isCurrent}
                       onClick={() => setActiveWizardStep(s.step)}
-                      className={`text-left p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                      className={`focus-ring w-full text-left px-4 py-3 rounded-lg border transition-colors duration-150 flex flex-col justify-between gap-1.5 ${
                         isCurrent
-                          ? 'bg-zinc-950 text-white border-zinc-950 shadow-sm'
-                          : 'bg-white text-zinc-900 border-zinc-200/90 hover:border-zinc-400'
+                          ? 'bg-surface border-action shadow-xs cursor-default'
+                          : isDone
+                          ? 'bg-surface border-line hover:border-line-strong hover:bg-subtle cursor-pointer'
+                          : 'bg-app border-line cursor-not-allowed'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`text-xs font-bold tracking-tight ${
-                            isCurrent ? 'text-white' : 'text-zinc-900'
-                          }`}
-                        >
-                          {s.title}
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-caption tabular-nums ${
+                              isDone
+                                ? 'border-action bg-action text-action-fg'
+                                : isCurrent
+                                ? 'border-action text-fg'
+                                : 'border-line-strong text-fg-tertiary'
+                            }`}
+                          >
+                            {isDone ? <Check className="w-3.5 h-3.5" /> : s.step}
+                          </span>
+                          <span
+                            className={`text-body-strong truncate ${
+                              isCurrent || isDone ? 'text-fg' : 'text-fg-tertiary'
+                            }`}
+                          >
+                            {s.title}
+                          </span>
                         </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
-                            isCurrent
-                              ? 'bg-zinc-800 text-emerald-400'
-                              : isDone
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-zinc-100 text-zinc-600'
-                          }`}
-                        >
+                        <span className="text-caption tabular-nums text-fg-tertiary truncate max-w-[45%]">
                           {s.badge}
                         </span>
                       </div>
-                      <p
-                        className={`text-xs leading-relaxed ${
-                          isCurrent ? 'text-zinc-400' : 'text-zinc-500'
-                        }`}
-                      >
+                      <p className="text-small text-fg-secondary">
                         {s.desc}
                       </p>
                     </button>
+                    </li>
                   );
                 })}
-              </div>
+              </ol>
+
+              {/* STEP 1: Describe your buyer */}
+              {activeWizardStep === 1 && (
+              <div className="space-y-6">
 
               {/* AI Prompt-to-ICP Builder (Gemini) */}
-              <div className="bg-zinc-950 text-white rounded-2xl p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-bold">
-                    Describe your ideal customer (AI)
+              <div className="bg-ink-950 text-ink-50 rounded-lg p-5 space-y-3">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <Sparkles className="w-4 h-4 text-ink-400 self-center" />
+                  <span className="text-h3 text-ink-50">
+                    Describe your ideal customer
                   </span>
-                  <span className="text-xs text-zinc-400">
-                    AI fills the filters below. Nothing is pulled or charged until you confirm.
+                  <span className="text-small text-ink-400">
+                    AI fills in the filters below. Nothing is pulled or charged until you confirm.
                   </span>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
-                    type="text"
+ aria-label="Describe your ideal customer"                    type="text"
                     value={aiPromptInput}
                     onChange={(e) => setAiPromptInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1349,31 +1112,35 @@ export default function IcpListBuilderHub() {
                     }}
                     maxLength={1000}
                     placeholder='e.g. "CEOs and founders of 50-200 seat BPOs in the Philippines and Australia, phone + verified email"'
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-400"
+                    className="focus-ring flex-1 h-11 px-3.5 rounded-md bg-ink-900 border border-ink-700 text-body text-ink-50 placeholder:text-ink-400"
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="brand"
+                    size="lg"
+                    icon={<Sparkles />}
                     onClick={handleAiPromptParse}
                     disabled={aiParsing || !aiPromptInput.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-zinc-950 text-xs font-bold cursor-pointer shrink-0"
                   >
-                    {aiParsing ? 'Interpreting...' : 'Build Filters with AI'}
-                  </button>
+                    {aiParsing ? 'Interpreting...' : 'Build filters with AI'}
+                  </Button>
                 </div>
                 {aiError && (
-                  <div className="text-xs text-red-400">{aiError}</div>
+                  <div className="flex items-center gap-1.5 text-small text-ink-50">
+                    <AlertTriangle className="w-4 h-4 text-ink-400 shrink-0" />
+                    {aiError}
+                  </div>
                 )}
                 {aiInterpretation && (
                   <div className="space-y-2">
-                    <div className="text-xs text-zinc-300 leading-relaxed">
-                      <span className="text-emerald-400 font-semibold">
+                    <div className="text-small text-ink-400">
+                      <span className="text-ink-50 font-medium">
                         {aiInterpretation.source === 'gemini'
                           ? 'Gemini understood: '
                           : 'Keyword parser understood: '}
                       </span>
                       {aiInterpretation.text}
                     </div>
-                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <div className="flex flex-wrap gap-1.5 text-caption">
                       {[
                         titles && `Titles: ${titles}`,
                         industry && `Industry: ${industry}`,
@@ -1387,24 +1154,24 @@ export default function IcpListBuilderHub() {
                         .map((chip, i) => (
                           <span
                             key={i}
-                            className="px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-200"
+                            className="px-2 py-0.5 rounded-full bg-ink-800 border border-ink-700 text-ink-50"
                           >
                             {chip}
                           </span>
                         ))}
                     </div>
                     <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => handleCalculateMarketSize(true)}
                         disabled={sizingLoading}
-                        className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-bold cursor-pointer disabled:opacity-50"
                       >
                         {sizingLoading
                           ? 'Sizing market...'
-                          : 'Preview Audience (0 credits)'}
-                      </button>
-                      <span className="text-[11px] text-zinc-500">
+                          : 'Preview matches (free)'}
+                      </Button>
+                      <span className="text-caption text-ink-400">
                         Review or edit the filters below first. You can adjust anything.
                       </span>
                     </div>
@@ -1413,23 +1180,23 @@ export default function IcpListBuilderHub() {
               </div>
 
               {/* 1-Click Smart ICP Blueprints Strip */}
-              <div className="bg-white border border-zinc-200/90 rounded-2xl p-5 space-y-4">
+              <div className="bg-surface border border-line rounded-lg shadow-xs p-5 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-zinc-900" />
-                    <span className="text-xs font-bold text-zinc-950">
-                      Quick Start: 1-Click Proven ICP Blueprints
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <Zap className="w-4 h-4 text-fg-secondary self-center" />
+                    <span className="text-h3 text-fg">
+                      Or start from a blueprint
                     </span>
-                    <span className="text-xs text-zinc-400">
-                      (Click any template to auto-configure filters &amp; folder name)
+                    <span className="text-small text-fg-secondary">
+                      Pick a proven template to fill in the filters and folder name.
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveTab('academy')}
-                    className="text-xs font-medium text-zinc-500 hover:text-zinc-950 underline cursor-pointer"
+                    className="focus-ring rounded-sm text-small font-medium text-fg-secondary hover:text-fg underline underline-offset-2 decoration-line-strong cursor-pointer"
                   >
-                    New here? Read the 2-minute guide &rarr;
+                    New here? Read the 2-minute guide
                   </button>
                 </div>
 
@@ -1441,41 +1208,36 @@ export default function IcpListBuilderHub() {
                         key={bp.id}
                         type="button"
                         onClick={() => applySmartBlueprint(bp)}
-                        className={`text-left p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                        aria-pressed={selected}
+                        className={`focus-ring text-left p-3.5 rounded-lg border transition-colors duration-150 cursor-pointer flex flex-col justify-between ${
                           selected
-                            ? 'bg-zinc-950 text-white border-zinc-950'
-                            : 'bg-zinc-50/70 text-zinc-900 border-zinc-200/80 hover:bg-white hover:border-zinc-400'
+                            ? 'bg-selected text-fg border-action'
+                            : 'bg-surface text-fg border-line hover:bg-subtle hover:border-line-strong'
                         }`}
                       >
                         <div>
-                          <div
-                            className={`text-[10px] font-mono uppercase tracking-wider mb-1 ${
-                              selected ? 'text-zinc-400' : 'text-zinc-400'
-                            }`}
-                          >
+                          <div className="text-caption text-fg-tertiary mb-1">
                             {bp.tag}
                           </div>
-                          <div className="text-xs font-bold">{bp.title}</div>
-                          <div
-                            className={`text-xs mt-1 leading-snug ${
-                              selected ? 'text-zinc-300' : 'text-zinc-500'
-                            }`}
-                          >
+                          <div className="text-body-strong text-fg">{bp.title}</div>
+                          <div className="text-small mt-1 text-fg-secondary">
                             {bp.subtitle}
                           </div>
                         </div>
-                        <div className="mt-3 pt-2 border-t border-zinc-200/20 flex items-center justify-between text-[11px] font-mono">
-                          <span className={selected ? 'text-zinc-400' : 'text-zinc-500'}>
+                        <div className="mt-3 pt-2 border-t border-line flex items-center justify-between text-caption">
+                          <span className="text-fg-tertiary">
                             {bp.country}
                           </span>
                           <span
-                            className={
+                            className={`inline-flex items-center gap-1 ${
                               selected
-                                ? 'text-emerald-400 font-semibold'
-                                : 'text-zinc-700'
-                            }
+                                ? 'text-fg font-medium'
+                                : 'text-fg-secondary'
+                            }`}
                           >
-                            {selected ? '✓ Active' : 'Apply →'}
+                            {selected ? <Check className="w-3.5 h-3.5" /> : null}
+                            {selected ? 'Active' : 'Apply'}
+                            {selected ? null : <ArrowRight className="w-3.5 h-3.5" />}
                           </span>
                         </div>
                       </button>
@@ -1484,52 +1246,52 @@ export default function IcpListBuilderHub() {
                 </div>
 
                 {/* Instant Single LinkedIn URL Enrich Bar */}
-                <div className="pt-3 border-t border-zinc-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs text-zinc-600">
-                    <Link2 className="w-3.5 h-3.5 text-zinc-900 shrink-0" />
-                    <span className="font-semibold text-zinc-900">
-                      Instant LinkedIn Profile Enrich:
+                <div className="pt-3 border-t border-line flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-fg-secondary">
+                    <Link2 className="w-4 h-4 text-fg-secondary shrink-0" />
+                    <span className="text-body-strong text-fg">
+                      Enrich a LinkedIn profile
                     </span>
-                    <span className="text-zinc-500">
-                      Paste any LinkedIn profile URL to unlock direct phone, verified work email &amp; company website
+                    <span className="text-fg-secondary">
+                      Paste a profile URL to get the direct phone, work email and company website.
                     </span>
                   </div>
                   <div className="flex items-center gap-2 w-full md:w-auto">
                     <input
-                      type="url"
+ aria-label="LinkedIn profile URL"                      type="url"
                       value={linkedinUrlInput}
                       onChange={(e) => setLinkedinUrlInput(e.target.value)}
                       placeholder="https://www.linkedin.com/in/derek-gallimore"
-                      className="flex-1 md:w-80 px-3 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50/70 focus:bg-white text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-900"
+                      className="focus-ring flex-1 md:w-80 h-8 px-3 rounded-sm border border-line-strong bg-surface text-small font-mono text-fg placeholder:text-fg-disabled"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       disabled={enrichingSingleUrl || !linkedinUrlInput.trim()}
                       onClick={handleEnrichSingleLinkedinUrl}
-                      className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
                     >
-                      {enrichingSingleUrl ? 'Enriching...' : 'Enrich Profile →'}
-                    </button>
+                      {enrichingSingleUrl ? 'Enriching...' : 'Enrich profile'}
+                    </Button>
                   </div>
                 </div>
 
                 {enrichedSingleProspect && (
-                  <div className="p-3.5 rounded-xl bg-zinc-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="p-3.5 rounded-lg border border-line bg-subtle text-fg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-small">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-white">
+                        <span className="text-body-strong text-fg">
                           {enrichedSingleProspect.name}
                         </span>
-                        <span className="text-zinc-400">
+                        <span className="text-fg-secondary">
                           {enrichedSingleProspect.title} @{' '}
-                          <strong className="text-zinc-200">
+                          <span className="font-medium text-fg">
                             {enrichedSingleProspect.company}
-                          </strong>
+                          </span>
                         </span>
-                        <span className="font-mono text-emerald-400">
+                        <span className="font-mono text-fg">
                           {enrichedSingleProspect.phone}
                         </span>
-                        <span className="font-mono text-zinc-300">
+                        <span className="font-mono text-fg-secondary">
                           {enrichedSingleProspect.email}
                         </span>
                       </div>
@@ -1540,9 +1302,9 @@ export default function IcpListBuilderHub() {
                           href={enrichedSingleProspect.website}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-[11px]"
+                          className={buttonClasses('secondary', 'sm')}
                         >
-                          <Globe className="w-3 h-3 text-emerald-400" />
+                          <Globe className="text-fg-secondary" />
                           <span>{enrichedSingleProspect.companyDomain || 'Website'}</span>
                         </a>
                       )}
@@ -1551,9 +1313,9 @@ export default function IcpListBuilderHub() {
                           href={enrichedSingleProspect.linkedinUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-[11px]"
+                          className={buttonClasses('secondary', 'sm')}
                         >
-                          <ExternalLink className="w-3 h-3 text-sky-400" />
+                          <ExternalLink className="text-fg-secondary" />
                           <span>LinkedIn</span>
                         </a>
                       )}
@@ -1562,64 +1324,57 @@ export default function IcpListBuilderHub() {
                 )}
               </div>
 
-              {/* MAIN WORKSPACE GRID: LEFT = STEP 1 FILTERS, RIGHT = STEP 2 PREVIEW + STEP 3 FOLDER & EQUAL DISTRIBUTION */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* LEFT 5 COLS: Step 01 — Precision ICP Parameters */}
-                <div
-                  className={`lg:col-span-5 bg-white rounded-2xl p-6 space-y-5 border transition ${
-                    activeWizardStep === 1
-                      ? 'border-zinc-900 ring-1 ring-zinc-900/5 shadow-xs'
-                      : 'border-zinc-200/90'
-                  }`}
-                >
-                  <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                {/* Step 1 filters: Precision ICP Parameters */}
+                <div className="bg-surface rounded-lg p-6 space-y-5 border border-line shadow-xs">
+                  <div className="flex items-center justify-between pb-3 border-b border-line">
                     <div>
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">
-                        Step 01 of 03
+                      <span className="text-caption text-fg-tertiary">
+                        Step 1 of 3
                       </span>
-                      <h2 className="text-sm font-bold text-zinc-950 mt-0.5">
-                        Target Buyer Persona &amp; Firmographics
+                      <h2 className="text-h3 text-fg mt-0.5">
+                        Buyer and company filters
                       </h2>
                     </div>
-                    <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
-                      0 Credits to Size
+                    <span className="text-small text-fg-secondary">
+                      Free to preview
                     </span>
                   </div>
 
+
                   {/* Section A: Role & Seniority */}
-                  <div className="space-y-3 text-xs">
+                  <div className="space-y-3 text-small">
                     <div className="flex items-center justify-between">
-                      <label className="font-semibold text-zinc-900">
-                        Decision-Maker Job Titles
+                      <label className="font-medium text-fg">
+                        Job titles
                       </label>
-                      <span className="text-zinc-400">Comma-separated</span>
+                      <span className="text-fg-tertiary">Comma-separated</span>
                     </div>
-                    <input
+                    <input aria-label="Job titles"
                       type="text"
                       value={titles}
                       onFocus={() => setActiveWizardStep(1)}
                       onChange={(e) => setTitles(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 bg-zinc-50/50 focus:bg-white text-zinc-900 focus:outline-none focus:border-zinc-900 transition"
+                      className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                       placeholder="Owner, CEO, President, VP of Sales"
                     />
 
                     <div>
-                      <label className="block font-medium text-zinc-500 mb-1">
-                        Exclude Titles (Keep out non-decision makers)
+                      <label className="block font-medium text-fg mb-1">
+                        Exclude titles <span className="font-normal text-fg-tertiary">(keeps out non-decision-makers)</span>
                       </label>
-                      <input
+                      <input aria-label="Exclude titles (keeps out non-decision-makers)"
                         type="text"
                         value={excludeTitles}
                         onFocus={() => setActiveWizardStep(1)}
                         onChange={(e) => setExcludeTitles(e.target.value)}
-                        className="w-full px-3.5 py-2 rounded-xl border border-zinc-200 bg-zinc-50/30 focus:bg-white text-zinc-700 focus:outline-none focus:border-zinc-900 transition"
+                        className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                         placeholder="Intern, Assistant, Junior"
                       />
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-zinc-900 mb-2">
-                        Seniority Levels
+                      <label className="block font-medium text-fg mb-2">
+                        Seniority
                       </label>
                       <div className="flex flex-wrap gap-1.5">
                         {SENIORITY_OPTIONS.map((sen) => {
@@ -1632,10 +1387,11 @@ export default function IcpListBuilderHub() {
                                 setActiveWizardStep(1);
                                 toggleSeniority(sen);
                               }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
+                              aria-pressed={active}
+                              className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
                                 active
-                                  ? 'bg-zinc-950 text-white border-zinc-950'
-                                  : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                                  ? 'bg-selected text-fg border-action'
+                                  : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
                               }`}
                             >
                               {sen}
@@ -1647,19 +1403,19 @@ export default function IcpListBuilderHub() {
                   </div>
 
                   {/* Section B: Company Industry & Size */}
-                  <div className="pt-4 border-t border-zinc-100 space-y-3 text-xs">
+                  <div className="pt-4 border-t border-line space-y-3 text-small">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block font-semibold text-zinc-900 mb-1">
-                          Industry Vertical
+                        <label className="block font-medium text-fg mb-1">
+                          Industry
                         </label>
-                        <select
+                        <select aria-label="Industry"
                           value={industry}
                           onChange={(e) => {
                             setActiveWizardStep(1);
                             setIndustry(e.target.value);
                           }}
-                          className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 bg-white text-zinc-900 focus:outline-none focus:border-zinc-900"
+                          className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body text-fg cursor-pointer"
                         >
                           {INDUSTRY_PRESETS.map((ind) => (
                             <option key={ind} value={ind}>
@@ -1670,16 +1426,16 @@ export default function IcpListBuilderHub() {
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-zinc-900 mb-1">
-                          Company Headcount
+                        <label className="block font-medium text-fg mb-1">
+                          Company size
                         </label>
-                        <select
+                        <select aria-label="Company size"
                           value={headcountRange}
                           onChange={(e) => {
                             setActiveWizardStep(1);
                             setHeadcountRange(e.target.value);
                           }}
-                          className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 bg-white text-zinc-900 focus:outline-none focus:border-zinc-900"
+                          className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body text-fg cursor-pointer"
                         >
                           {HEADCOUNT_OPTIONS.map((hc) => (
                             <option key={hc} value={hc}>
@@ -1693,26 +1449,26 @@ export default function IcpListBuilderHub() {
                     {/* Section C: Geography & Tech Stack */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block font-semibold text-zinc-900 mb-1">
+                        <label className="block font-medium text-fg mb-1">
                           Country
                         </label>
-                        <input
+                        <input aria-label="Country"
                           type="text"
                           value={country}
                           onChange={(e) => setCountry(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50/50 focus:bg-white text-zinc-900"
+                          className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                           placeholder="United States"
                         />
                       </div>
                       <div>
-                        <label className="block font-semibold text-zinc-900 mb-1">
-                          State / Province
+                        <label className="block font-medium text-fg mb-1">
+                          State or province
                         </label>
-                        <input
+                        <input aria-label="State or province"
                           type="text"
                           value={state}
                           onChange={(e) => setState(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50/50 focus:bg-white text-zinc-900"
+                          className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                           placeholder="Texas"
                         />
                       </div>
@@ -1720,26 +1476,26 @@ export default function IcpListBuilderHub() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block font-medium text-zinc-600 mb-1">
-                          City (Optional)
+                        <label className="block font-medium text-fg mb-1">
+                          City <span className="font-normal text-fg-tertiary">(optional)</span>
                         </label>
-                        <input
+                        <input aria-label="City (optional)"
                           type="text"
                           value={city}
                           onChange={(e) => setCity(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50/50 focus:bg-white text-zinc-900"
+                          className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                           placeholder="Austin, Dallas"
                         />
                       </div>
                       <div>
-                        <label className="block font-medium text-zinc-600 mb-1">
-                          Tech Stack Signals
+                        <label className="block font-medium text-fg mb-1">
+                          Tools they use
                         </label>
-                        <input
+                        <input aria-label="Tools they use"
                           type="text"
                           value={technologies}
                           onChange={(e) => setTechnologies(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-200 bg-zinc-50/50 focus:bg-white text-zinc-900"
+                          className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
                           placeholder="HubSpot, Salesforce"
                         />
                       </div>
@@ -1747,35 +1503,35 @@ export default function IcpListBuilderHub() {
                   </div>
 
                   {/* Section D: Quality Guardrails */}
-                  <div className="pt-4 border-t border-zinc-100 space-y-2 text-xs">
-                    <div className="font-semibold text-zinc-900 mb-1">
-                      Calling Floor &amp; Email Quality Gates
+                  <div className="pt-4 border-t border-line space-y-2 text-small">
+                    <div className="font-medium text-fg mb-1">
+                      Lead quality
                     </div>
-                    <label className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/70 cursor-pointer">
-                      <span className="text-zinc-700 font-medium">
-                        Require Callable Direct / Mobile Phone
+                    <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
+                      <span className="text-fg">
+                        Must have a direct or mobile phone
                       </span>
                       <input
                         type="checkbox"
                         checked={requirePhone}
                         onChange={(e) => setRequirePhone(e.target.checked)}
-                        className="rounded border-zinc-300"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/70 cursor-pointer">
-                      <span className="text-zinc-700 font-medium">
-                        Require Verified Work Email
+                    <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
+                      <span className="text-fg">
+                        Must have a verified work email
                       </span>
                       <input
                         type="checkbox"
                         checked={requireVerifiedEmail}
                         onChange={(e) => setRequireVerifiedEmail(e.target.checked)}
-                        className="rounded border-zinc-300"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/70 cursor-pointer">
-                      <span className="text-zinc-700 font-medium">
-                        Exclude Previously Pulled Workspace Leads
+                    <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
+                      <span className="text-fg">
+                        Skip leads this workspace already pulled
                       </span>
                       <input
                         type="checkbox"
@@ -1783,53 +1539,32 @@ export default function IcpListBuilderHub() {
                         onChange={(e) =>
                           setExcludePreviouslyPulled(e.target.checked)
                         }
-                        className="rounded border-zinc-300"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
                       />
                     </label>
                   </div>
 
-                  {/* Step 1 Action CTA */}
-                  <button
-                    type="button"
-                    disabled={sizingLoading}
-                    onClick={() => handleCalculateMarketSize(true)}
-                    className="w-full py-3 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 ${sizingLoading ? 'animate-spin' : ''}`}
-                    />
-                    <span>
-                      {sizingLoading
-                        ? 'Calculating Addressable Market...'
-                        : 'Step 2: Calculate Market Size & Preview (0 Credits) →'}
-                    </span>
-                  </button>
                 </div>
+              </div>
+              )}
 
-                {/* RIGHT 7 COLS: Step 02 (Market Sizing & Preview) + Step 03 (Folder & Equal Rep Distribution) */}
-                <div className="lg:col-span-7 space-y-6">
-                  {/* STEP 02 CARD: Live Market Sizing & Breakdown */}
-                  <div
-                    className={`bg-white rounded-2xl p-6 space-y-5 border transition ${
-                      activeWizardStep === 2
-                        ? 'border-zinc-900 ring-1 ring-zinc-900/5 shadow-xs'
-                        : 'border-zinc-200/90'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-100">
+              {/* STEP 2: Preview matches (free) */}
+              {activeWizardStep === 2 && (
+                  <div className="bg-surface rounded-lg p-6 space-y-5 border border-line shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-line">
                       <div>
-                        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">
-                          Step 02 of 03 &bull; Free Market Sizing
+                        <span className="text-caption text-fg-tertiary">
+                          Step 2 of 3, free preview
                         </span>
-                        <h3 className="text-sm font-bold text-zinc-950 mt-0.5">
-                          Verified Addressable Market &amp; Sample Preview
+                        <h3 className="text-h3 text-fg mt-0.5">
+                          Matching people and sample profiles
                         </h3>
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-mono font-bold text-zinc-950">
+                        <span className="text-kpi tabular-nums text-fg">
                           {totalMatching.toLocaleString()}
                         </span>
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-small text-fg-secondary">
                           verified decision-makers
                         </span>
                       </div>
@@ -1837,47 +1572,37 @@ export default function IcpListBuilderHub() {
 
                     {/* Visual Breakdown Bars */}
                     {breakdowns && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                        <div className="p-3.5 rounded-xl bg-zinc-50/70 border border-zinc-200/60 space-y-2">
-                          <div className="font-semibold text-zinc-700">
-                            Distribution by Vertical
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-small">
+                        <div className="p-3.5 rounded-lg bg-subtle border border-line space-y-2">
+                          <div className="font-medium text-fg">
+                            By industry
                           </div>
                           {breakdowns.byIndustry.map((item, i) => (
                             <div key={i} className="space-y-1">
-                              <div className="flex justify-between text-zinc-600">
+                              <div className="flex justify-between text-fg-secondary">
                                 <span className="truncate pr-2">{item.label}</span>
-                                <span className="font-mono text-zinc-900">
+                                <span className="tabular-nums text-fg">
                                   {item.pct}%
                                 </span>
                               </div>
-                              <div className="w-full h-1 rounded-full bg-zinc-200">
-                                <div
-                                  className="h-full bg-zinc-900 rounded-full"
-                                  style={{ width: `${item.pct}%` }}
-                                />
-                              </div>
+                              <Meter value={item.pct / 100} label={item.label} className="h-1 bg-surface" />
                             </div>
                           ))}
                         </div>
 
-                        <div className="p-3.5 rounded-xl bg-zinc-50/70 border border-zinc-200/60 space-y-2">
-                          <div className="font-semibold text-zinc-700">
-                            Distribution by Headcount
+                        <div className="p-3.5 rounded-lg bg-subtle border border-line space-y-2">
+                          <div className="font-medium text-fg">
+                            By company size
                           </div>
                           {breakdowns.byHeadcount.map((item, i) => (
                             <div key={i} className="space-y-1">
-                              <div className="flex justify-between text-zinc-600">
+                              <div className="flex justify-between text-fg-secondary">
                                 <span className="truncate pr-2">{item.label}</span>
-                                <span className="font-mono text-zinc-900">
+                                <span className="tabular-nums text-fg">
                                   {item.pct}%
                                 </span>
                               </div>
-                              <div className="w-full h-1 rounded-full bg-zinc-200">
-                                <div
-                                  className="h-full bg-zinc-900 rounded-full"
-                                  style={{ width: `${item.pct}%` }}
-                                />
-                              </div>
+                              <Meter value={item.pct / 100} label={item.label} className="h-1 bg-surface" />
                             </div>
                           ))}
                         </div>
@@ -1885,68 +1610,64 @@ export default function IcpListBuilderHub() {
                     )}
 
                     {/* 25-Per-Page Paginated Preview Table */}
-                    <div className="border border-zinc-200/80 rounded-xl overflow-hidden select-none">
-                      <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="border border-line rounded-lg overflow-hidden select-none">
+                      <div className="bg-surface px-4 py-2.5 border-b border-line flex flex-wrap items-center justify-between gap-2 text-small">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-zinc-700">
-                            Matching Profiles — Page {previewPage} ({previewProspects.length} of 25 per page)
+                          <span className="font-medium text-fg whitespace-nowrap">
+                            Matching profiles
+                          </span>
+                          <span className="tabular-nums text-fg-tertiary whitespace-nowrap">
+                            Page {previewPage}, {previewProspects.length} of 25 shown
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             disabled={previewPage <= 1 || sizingLoading}
                             onClick={handlePrevPreviewPage}
-                            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
                           >
-                            &larr; Prev 25
-                          </button>
-                          <span className="font-mono text-zinc-500">
+                            Previous 25
+                          </Button>
+                          <span className="tabular-nums text-fg-tertiary whitespace-nowrap">
                             Page {previewPage}
                           </span>
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             disabled={!nextCursor || sizingLoading}
                             onClick={handleNextPreviewPage}
-                            className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-900 font-semibold disabled:opacity-40 cursor-pointer"
                           >
-                            Next 25 &rarr;
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveWizardStep(3)}
-                            className="ml-2 font-semibold text-zinc-950 hover:underline cursor-pointer"
-                          >
-                            Proceed to Step 3 &darr;
-                          </button>
+                            Next 25
+                          </Button>
                         </div>
                       </div>
                       <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                        <table className="w-full text-left border-collapse text-xs">
+                        <table className="w-full text-left border-collapse text-small">
                           <thead>
-                            <tr className="border-b border-zinc-100 text-zinc-400 font-normal">
-                              <th className="py-2.5 px-4 font-normal">#</th>
-                              <th className="py-2.5 px-4 font-normal">
-                                Decision Maker &amp; LinkedIn
+                            <tr className="bg-subtle border-b border-line text-caption text-fg-tertiary">
+                              <th className="py-2.5 px-4 font-medium">#</th>
+                              <th className="py-2.5 px-4 font-medium">
+                                Decision-maker
                               </th>
-                              <th className="py-2.5 px-4 font-normal">
-                                Company &amp; Website
+                              <th className="py-2.5 px-4 font-medium">
+                                Company
                               </th>
-                              <th className="py-2.5 px-4 font-normal">Location</th>
-                              <th className="py-2.5 px-4 font-normal text-right">
-                                Verified Channels
+                              <th className="py-2.5 px-4 font-medium">Location</th>
+                              <th className="py-2.5 px-4 font-medium text-right">
+                                Verified channels
                               </th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-zinc-100">
+                          <tbody className="divide-y divide-line">
                             {previewProspects.slice(0, 25).map((p, idx) => (
-                              <tr key={p.id} className="hover:bg-zinc-50/60">
-                                <td className="py-2.5 px-4 font-mono text-zinc-400">
+                              <tr key={p.id} className="hover:bg-subtle">
+                                <td className="py-2.5 px-4 tabular-nums text-fg-tertiary">
                                   {(previewPage - 1) * 25 + idx + 1}
                                 </td>
                                 <td className="py-2.5 px-4">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="font-semibold text-zinc-900">
+                                    <span className="font-medium text-fg">
                                       {p.name}
                                     </span>
                                     {p.linkedinUrl && (
@@ -1955,17 +1676,17 @@ export default function IcpListBuilderHub() {
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         title={`Open ${p.name}'s LinkedIn Profile`}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-mono text-[10px]"
+                                        className="focus-ring inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-fg-secondary hover:text-fg hover:bg-subtle border border-line text-caption"
                                       >
                                         <span>in</span>
-                                        <ExternalLink className="w-2.5 h-2.5" />
+                                        <ExternalLink className="w-3 h-3" />
                                       </a>
                                     )}
                                   </div>
-                                  <div className="text-zinc-500">{p.title}</div>
+                                  <div className="text-fg-tertiary">{p.title}</div>
                                 </td>
                                 <td className="py-2.5 px-4">
-                                  <div className="font-medium text-zinc-800">
+                                  <div className="font-medium text-fg">
                                     {p.company}
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
@@ -1974,30 +1695,30 @@ export default function IcpListBuilderHub() {
                                         href={p.website}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-zinc-600 hover:text-zinc-950 font-mono text-[11px] underline decoration-zinc-300"
+                                        className="focus-ring rounded-sm inline-flex items-center gap-1 text-fg-secondary hover:text-fg text-caption underline decoration-line-strong underline-offset-2"
                                       >
-                                        <Globe className="w-3 h-3 text-zinc-400" />
+                                        <Globe className="w-3 h-3 text-fg-tertiary" />
                                         <span>
                                           {p.companyDomain ||
                                             p.website.replace(/^https?:\/\//, '')}
                                         </span>
                                       </a>
                                     ) : (
-                                      <span className="text-zinc-400 font-mono">
+                                      <span className="text-fg-tertiary">
                                         {p.headcount}
                                       </span>
                                     )}
                                   </div>
                                 </td>
-                                <td className="py-2.5 px-4 text-zinc-600">
+                                <td className="py-2.5 px-4 text-fg-secondary">
                                   {p.location}
                                 </td>
-                                <td className="py-2.5 px-4 text-right font-mono">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <td className="py-2.5 px-4 text-right">
+                                  <Badge tone="success">
                                     <PhoneCall className="w-3 h-3" />
                                     <Mail className="w-3 h-3" />
                                     <span>Ready</span>
-                                  </span>
+                                  </Badge>
                                 </td>
                               </tr>
                             ))}
@@ -2005,110 +1726,107 @@ export default function IcpListBuilderHub() {
                         </table>
                       </div>
                       {/* Bottom Pagination Bar (25 Results Per Page) */}
-                      <div className="bg-zinc-50 px-4 py-2.5 border-t border-zinc-200/80 flex items-center justify-between text-xs">
-                        <span className="text-zinc-500 font-mono">
-                          Showing rows {(previewPage - 1) * 25 + 1}–
+                      <div className="bg-surface px-4 py-2.5 border-t border-line flex items-center justify-between text-small">
+                        <span className="tabular-nums text-fg-tertiary">
+                          Showing rows {(previewPage - 1) * 25 + 1} to{' '}
                           {(previewPage - 1) * 25 + previewProspects.slice(0, 25).length} (25 per page)
                         </span>
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             disabled={previewPage <= 1 || sizingLoading}
                             onClick={handlePrevPreviewPage}
-                            className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
                           >
-                            &larr; Previous 25
-                          </button>
-                          <button
-                            type="button"
+                            Previous 25
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             disabled={!nextCursor || sizingLoading}
                             onClick={handleNextPreviewPage}
-                            className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
                           >
-                            Next 25 Results &rarr;
-                          </button>
+                            Next 25
+                          </Button>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* STEP 03 CARD: Name Folder & Equal Round-Robin Rep Distribution */}
-                  <div
-                    className={`bg-white rounded-2xl p-6 space-y-5 border transition ${
-                      activeWizardStep === 3
-                        ? 'border-zinc-950 ring-1 ring-zinc-950/10 shadow-sm'
-                        : 'border-zinc-200/90'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-zinc-100">
+              )}
+
+              {/* STEP 3: Save to a folder and split across reps */}
+              {activeWizardStep === 3 && (
+                  <div className="bg-surface rounded-lg p-6 space-y-5 border border-line shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-line">
                       <div>
-                        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">
-                          Step 03 of 03 &bull; Folder &amp; Equal Team Split
+                        <span className="text-caption text-fg-tertiary">
+                          Step 3 of 3
                         </span>
-                        <h3 className="text-sm font-bold text-zinc-950 mt-0.5">
-                          Save to Named Folder &amp; Distribute Equally Across X Reps
+                        <h3 className="text-h3 text-fg mt-0.5">
+                          Save to a folder and split across reps
                         </h3>
                       </div>
-                      <span className="text-xs font-mono text-zinc-500">
+                      <span className="text-small tabular-nums text-fg-secondary">
                         {balance.totalPullableNow.toLocaleString()} records available
                       </span>
                     </div>
 
                     {canBuildAndDistribute ? (
                       <>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-small">
                           <div className="sm:col-span-2">
-                            <label className="block font-semibold text-zinc-900 mb-1.5">
-                              1. Name Your Campaign Folder
+                            <label className="block font-medium text-fg mb-1">
+                              Folder name
                             </label>
-                            <input
+                            <input aria-label="Folder name"
                               type="text"
                               value={folderNameInput}
                               onFocus={() => setActiveWizardStep(3)}
                               onChange={(e) => setFolderNameInput(e.target.value)}
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 text-zinc-900 font-medium focus:outline-none focus:border-zinc-950"
-                              placeholder="e.g. Texas Commercial HVAC Owners — Q4"
+                              className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled"
+                              placeholder="e.g. Texas Commercial HVAC Owners, Q4"
                             />
-                            <p className="text-zinc-400 mt-1">
-                              Appears in Saved ICP Folders and in the Global Contacts folder filter.
+                            <p className="text-fg-tertiary mt-1">
+                              Shows in Saved folders and in the Contacts folder filter.
                             </p>
                           </div>
 
                           <div>
-                            <label className="block font-semibold text-zinc-900 mb-1.5">
-                              2. Batch Size to Pull
+                            <label className="block font-medium text-fg mb-1">
+                              How many leads
                             </label>
-                            <select
+                            <select aria-label="How many leads"
                               value={pullCount}
                               onFocus={() => setActiveWizardStep(3)}
                               onChange={(e) => setPullCount(Number(e.target.value))}
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 text-zinc-950 font-mono font-bold bg-white focus:outline-none focus:border-zinc-950"
+                              className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body tabular-nums text-fg cursor-pointer"
                             >
-                              <option value={25}>25 Records (1 Page)</option>
-                              <option value={50}>50 Records (2 Pages)</option>
-                              <option value={100}>100 Records (4 Pages)</option>
-                              <option value={250}>250 Records</option>
-                              <option value={500}>500 Records</option>
-                              <option value={1000}>1,000 Records</option>
+                              <option value={25}>25 records (1 page)</option>
+                              <option value={50}>50 records (2 pages)</option>
+                              <option value={100}>100 records (4 pages)</option>
+                              <option value={250}>250 records</option>
+                              <option value={500}>500 records</option>
+                              <option value={1000}>1,000 records</option>
                             </select>
                           </div>
                         </div>
 
                         {/* Visual Equal Round-Robin Split Configurator */}
-                        <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80 space-y-3.5 text-xs">
+                        <div className="p-4 rounded-lg bg-subtle border border-line space-y-3.5 text-small">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div>
-                              <div className="font-bold text-zinc-950">
-                                3. Select SDR Reps for Equal Round-Robin Distribution
+                              <div className="font-medium text-fg">
+                                Reps who get this list (split evenly)
                               </div>
-                              <div className="text-zinc-500 mt-0.5">
+                              <div className="text-fg-secondary mt-0.5">
                                 {selectedRepsForPull.length > 0 ? (
                                   <>
                                     Splitting <strong>{pullCount} leads</strong>{' '}
                                     equally across{' '}
                                     <strong>{selectedRepsForPull.length} reps</strong>{' '}
                                     ={' '}
-                                    <strong className="text-zinc-950 font-mono">
+                                    <strong className="text-fg tabular-nums">
                                       ~
                                       {Math.floor(
                                         pullCount / selectedRepsForPull.length
@@ -2129,16 +1847,16 @@ export default function IcpListBuilderHub() {
                                 value={newRepInput}
                                 onChange={(e) => setNewRepInput(e.target.value)}
                                 placeholder="Add rep name..."
-                                className="px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white text-xs text-zinc-900 w-36 focus:outline-none"
+                                className="focus-ring h-8 px-2.5 rounded-sm border border-line-strong bg-surface text-small text-fg w-36 placeholder:text-fg-disabled"
                               />
-                              <button
-                                type="button"
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon={<UserPlus />}
                                 onClick={handleAddRepToRoster}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold cursor-pointer"
                               >
-                                <UserPlus className="w-3 h-3" />
-                                <span>Add</span>
-                              </button>
+                                Add
+                              </Button>
                             </div>
                           </div>
 
@@ -2156,18 +1874,19 @@ export default function IcpListBuilderHub() {
                                   key={rep}
                                   type="button"
                                   onClick={() => toggleRepForPull(rep)}
-                                  className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition cursor-pointer ${
+                                  aria-pressed={isChecked}
+                                  className={`focus-ring p-2.5 rounded-md border text-left flex items-center justify-between bg-surface transition-colors duration-150 cursor-pointer ${
                                     isChecked
-                                      ? 'bg-zinc-950 text-white border-zinc-950'
-                                      : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                                      ? 'text-fg border-action'
+                                      : 'text-fg-secondary border-line hover:border-line-strong'
                                   }`}
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <span
-                                      className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                                      className={`w-4 h-4 rounded-[4px] flex items-center justify-center border shrink-0 ${
                                         isChecked
-                                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                                          : 'border-zinc-300'
+                                          ? 'bg-action border-action text-action-fg'
+                                          : 'border-line-strong bg-surface'
                                       }`}
                                     >
                                       {isChecked && <Check className="w-3 h-3" />}
@@ -2177,10 +1896,10 @@ export default function IcpListBuilderHub() {
                                     </span>
                                   </div>
                                   <span
-                                    className={`font-mono text-xs px-2 py-0.5 rounded ${
+                                    className={`tabular-nums text-small ${
                                       isChecked
-                                        ? 'bg-zinc-800 text-emerald-400 font-semibold'
-                                        : 'text-zinc-400'
+                                        ? 'text-fg font-medium'
+                                        : 'text-fg-tertiary'
                                     }`}
                                   >
                                     {isChecked ? `${sliceCount} leads` : 'Skipped'}
@@ -2191,38 +1910,82 @@ export default function IcpListBuilderHub() {
                           </div>
                         </div>
 
-                        {/* Final Pull CTA */}
-                        <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="text-xs text-zinc-500 flex items-center gap-1.5">
-                            <Lock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                            <span>
-                              Reps will see their assigned slice on the Calling Floor (CSV export locked).
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={pullingList}
-                            onClick={handlePullAndDistribute}
-                            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold shadow-sm transition cursor-pointer disabled:opacity-50 shrink-0"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>
-                              {pullingList
-                                ? `Pulling & Distributing ${pullCount} Leads...`
-                                : `Pull ${pullCount} Verified Leads & Distribute Equally`}
-                            </span>
-                          </button>
+                        <div className="text-small text-fg-secondary flex items-center gap-1.5">
+                          <Lock className="w-4 h-4 text-fg-tertiary shrink-0" />
+                          <span>
+                            Reps will see their assigned slice on the Calling Floor (CSV export locked).
+                          </span>
                         </div>
                       </>
                     ) : (
-                      <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600 flex items-center gap-2">
-                        <Lock className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="p-4 rounded-lg bg-subtle border border-line text-small text-fg-secondary flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-fg-tertiary shrink-0" />
                         <span>
-                          List pulling and folder distribution are managed by your Account Administrator. Open the <strong>Saved ICP Folders</strong> tab above to dial leads assigned to you.
+                          Your account admin pulls lists and assigns folders. Open the <span className="font-medium text-fg">Saved folders</span> tab above to call the leads assigned to you.
                         </span>
                       </div>
                     )}
                   </div>
+              )}
+
+              {/* Wizard footer: Back / Continue */}
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 border-t border-line pt-4">
+                <Button
+                  variant="secondary"
+                  icon={<ArrowLeft />}
+                  disabled={activeWizardStep === 1}
+                  onClick={() =>
+                    setActiveWizardStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))
+                  }
+                >
+                  Back
+                </Button>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <span className="text-small tabular-nums text-fg-tertiary">
+                    Step {activeWizardStep} of 3
+                  </span>
+                  {activeWizardStep === 1 && (
+                    <Button
+                      variant="primary"
+                      disabled={sizingLoading}
+                      onClick={() => handleCalculateMarketSize(true)}
+                      icon={
+                        <RefreshCw
+                          className={sizingLoading ? 'animate-spin' : ''}
+                        />
+                      }
+                    >
+                      <span>
+                        {sizingLoading
+                          ? 'Counting matches...'
+                          : 'Preview matches (free)'}
+                      </span>
+                    </Button>
+                  )}
+                  {activeWizardStep === 2 && (
+                    <Button
+                      variant="brand"
+                      disabled={sizingLoading}
+                      onClick={() => setActiveWizardStep(3)}
+                      icon={<ArrowRight />}
+                    >
+                      Continue
+                    </Button>
+                  )}
+                  {activeWizardStep === 3 && canBuildAndDistribute && (
+                    <Button
+                      variant="brand"
+                      disabled={pullingList}
+                      onClick={handlePullAndDistribute}
+                      icon={<Users />}
+                    >
+                      <span>
+                        {pullingList
+                          ? `Pulling and splitting ${pullCount} leads...`
+                          : `Pull ${pullCount} leads and split evenly`}
+                      </span>
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2234,21 +1997,21 @@ export default function IcpListBuilderHub() {
           {activeTab === 'folders' && (
             <div className="space-y-4">
               {visibleFolders.length === 0 ? (
-                <div className="bg-white border border-zinc-200 rounded-2xl p-12 text-center space-y-3">
-                  <FolderKanban className="w-8 h-8 text-zinc-400 mx-auto" />
-                  <div className="text-sm font-bold text-zinc-950">
-                    No ICP Folders Created Yet
+                <div className="bg-surface border border-line rounded-lg shadow-xs p-12 text-center space-y-3">
+                  <FolderKanban className="w-6 h-6 text-fg-tertiary mx-auto" />
+                  <div className="text-h3 text-fg">
+                    No folders yet
                   </div>
-                  <p className="text-xs text-zinc-500 max-w-md mx-auto">
-                    Use the Guided List Builder tab to pull your first verified list into a named folder and split it equally across your reps.
+                  <p className="text-body text-fg-secondary max-w-md mx-auto">
+                    Use the guided list builder to pull your first verified list into a folder and split it evenly across your reps.
                   </p>
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    icon={<ArrowRight />}
                     onClick={() => setActiveTab('builder')}
-                    className="px-4 py-2 rounded-xl bg-zinc-950 text-white text-xs font-semibold cursor-pointer"
                   >
-                    Build Your First Folder &rarr;
-                  </button>
+                    Build your first folder
+                  </Button>
                 </div>
               ) : (
                 visibleFolders.map((folder) => {
@@ -2261,51 +2024,51 @@ export default function IcpListBuilderHub() {
                   return (
                     <div
                       key={folder.id}
-                      className="bg-white border border-zinc-200/90 rounded-2xl overflow-hidden shadow-2xs"
+                      className="bg-surface border border-line rounded-lg overflow-hidden shadow-xs"
                     >
                       <div className="p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-2.5 flex-wrap">
-                            <span className="px-3 py-1 rounded-lg bg-zinc-950 text-white text-xs font-bold flex items-center gap-2">
-                              <FolderKanban className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-h3 text-fg flex items-center gap-2">
+                              <FolderKanban className="w-4 h-4 text-fg-secondary" />
                               <span>{folder.name}</span>
                             </span>
-                            <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-900">
+                            <span className="text-small tabular-nums text-fg-secondary">
                               {role === 'Rep'
-                                ? `${folderContacts.length} Assigned to You`
-                                : `${folder.totalLeads} Verified Leads`}
+                                ? `${folderContacts.length} assigned to you`
+                                : `${folder.totalLeads} verified leads`}
                             </span>
                             {bookedCount > 0 && (
-                              <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                {bookedCount} Booked
-                              </span>
+                              <Badge tone="success">
+                                {bookedCount} booked
+                              </Badge>
                             )}
-                            <span className="text-xs text-zinc-400">
+                            <span className="text-small text-fg-tertiary">
                               Created {new Date(folder.createdAt).toLocaleDateString()}{' '}
                               by {folder.createdBy}
                             </span>
                           </div>
 
                           {/* Folder ICP Tags */}
-                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                            <span className="text-zinc-400">ICP Contents:</span>
+                          <div className="flex flex-wrap items-center gap-1.5 text-small">
+                            <span className="text-fg-tertiary">Filters:</span>
                             {folder.filtersSummary.industry && (
-                              <span className="px-2 py-0.5 rounded bg-zinc-50 text-zinc-700 border border-zinc-200/80">
+                              <span className="px-2 py-0.5 rounded-sm bg-subtle text-fg-secondary">
                                 {folder.filtersSummary.industry}
                               </span>
                             )}
                             {folder.filtersSummary.titles && (
-                              <span className="px-2 py-0.5 rounded bg-zinc-50 text-zinc-700 border border-zinc-200/80">
+                              <span className="px-2 py-0.5 rounded-sm bg-subtle text-fg-secondary">
                                 {folder.filtersSummary.titles}
                               </span>
                             )}
                             {folder.filtersSummary.headcount && (
-                              <span className="px-2 py-0.5 rounded bg-zinc-50 text-zinc-700 border border-zinc-200/80">
+                              <span className="px-2 py-0.5 rounded-sm bg-subtle text-fg-secondary">
                                 {folder.filtersSummary.headcount}
                               </span>
                             )}
                             {folder.filtersSummary.location && (
-                              <span className="px-2 py-0.5 rounded bg-zinc-50 text-zinc-700 border border-zinc-200/80">
+                              <span className="px-2 py-0.5 rounded-sm bg-subtle text-fg-secondary">
                                 {folder.filtersSummary.location}
                               </span>
                             )}
@@ -2313,19 +2076,19 @@ export default function IcpListBuilderHub() {
 
                           {/* Equal Rep Distribution Breakdown */}
                           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            <span className="text-xs text-zinc-400">
-                              Equal Rep Split ({folder.distributedReps.length} Reps):
+                            <span className="text-small text-fg-tertiary">
+                              Split across {folder.distributedReps.length} reps:
                             </span>
                             {folder.distributedReps.map((slice) => (
                               <span
                                 key={slice.repName}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-zinc-50 border border-zinc-200 text-xs text-zinc-800"
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border border-line text-small text-fg"
                               >
-                                <Users className="w-3 h-3 text-zinc-400" />
+                                <Users className="w-3 h-3 text-fg-tertiary" />
                                 <span>{slice.repName}:</span>
-                                <strong className="font-mono text-zinc-950">
+                                <span className="font-medium tabular-nums text-fg">
                                   {slice.leadCount}
-                                </strong>
+                                </span>
                               </span>
                             ))}
                           </div>
@@ -2333,57 +2096,54 @@ export default function IcpListBuilderHub() {
 
                         {/* Folder Actions */}
                         <div className="flex items-center gap-2 flex-wrap shrink-0">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-expanded={isExpanded}
+                            icon={<Eye />}
                             onClick={() =>
                               setExpandedFolderId(isExpanded ? null : folder.id)
                             }
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-800 transition cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" />
                             <span>
                               {isExpanded
-                                ? 'Hide Leads'
-                                : `Inspect Leads (${folderContacts.length})`}
+                                ? 'Hide leads'
+                                : `View leads (${folderContacts.length})`}
                             </span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                            {isExpanded ? <ChevronUp /> : <ChevronDown />}
+                          </Button>
 
                           {canBuildAndDistribute && (
-                            <button
-                              type="button"
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={<Users />}
                               onClick={() => {
                                 setRedistributeFolder(folder);
                                 setRedistributeReps(
                                   folder.distributedReps.map((r) => r.repName)
                                 );
                               }}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-zinc-300 text-zinc-800 hover:bg-zinc-50 transition cursor-pointer"
                             >
-                              <Users className="w-3.5 h-3.5" />
-                              <span>Re-Distribute Equally</span>
-                            </button>
+                              Re-split evenly
+                            </Button>
                           )}
 
                           {canExport ? (
-                            <button
-                              type="button"
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={<Download />}
                               onClick={() =>
                                 exportContactsToCsv(folderContacts, folder.name)
                               }
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-950 text-white hover:bg-zinc-800 transition cursor-pointer"
                             >
-                              <Download className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Export CSV</span>
-                            </button>
+                              Export CSV
+                            </Button>
                           ) : (
-                            <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-zinc-100 border border-zinc-200 text-zinc-500 select-none">
-                              <Lock className="w-3.5 h-3.5 text-zinc-400" />
-                              <span>CSV Locked (Admin Only)</span>
+                            <div className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-small bg-subtle border border-line text-fg-tertiary select-none">
+                              <Lock className="w-4 h-4 text-fg-tertiary" />
+                              <span>CSV locked (admins only)</span>
                             </div>
                           )}
                         </div>
@@ -2407,44 +2167,44 @@ export default function IcpListBuilderHub() {
 
                         return (
                           <div
-                            className={`border-t border-zinc-100 overflow-x-auto ${
+                            className={`border-t border-line overflow-x-auto ${
                               !canExport ? 'select-none' : ''
                             }`}
                           >
-                            <table className="w-full text-left border-collapse text-xs">
+                            <table className="w-full text-left border-collapse text-small">
                               <thead>
-                                <tr className="bg-zinc-50/70 border-b border-zinc-100 text-zinc-400 font-normal">
-                                  <th className="py-2.5 px-5 font-normal">#</th>
-                                  <th className="py-2.5 px-5 font-normal">ID</th>
-                                  <th className="py-2.5 px-5 font-normal">
-                                    Decision Maker &amp; LinkedIn
+                                <tr className="bg-subtle border-b border-line text-caption text-fg-tertiary">
+                                  <th className="py-2.5 px-5 font-medium">#</th>
+                                  <th className="py-2.5 px-5 font-medium">ID</th>
+                                  <th className="py-2.5 px-5 font-medium">
+                                    Decision-maker
                                   </th>
-                                  <th className="py-2.5 px-5 font-normal">
-                                    Company &amp; Website
+                                  <th className="py-2.5 px-5 font-medium">
+                                    Company
                                   </th>
-                                  <th className="py-2.5 px-5 font-normal">
-                                    Direct Phone &amp; Email
+                                  <th className="py-2.5 px-5 font-medium">
+                                    Phone and email
                                   </th>
-                                  <th className="py-2.5 px-5 font-normal">
-                                    Assigned Rep
+                                  <th className="py-2.5 px-5 font-medium">
+                                    Assigned rep
                                   </th>
-                                  <th className="py-2.5 px-5 font-normal text-right">
+                                  <th className="py-2.5 px-5 font-medium text-right">
                                     Calling Floor
                                   </th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-zinc-100">
+                              <tbody className="divide-y divide-line">
                                 {pageSlice.map((lead, idx) => (
-                                  <tr key={lead.id} className="hover:bg-zinc-50/60">
-                                    <td className="py-3 px-5 font-mono text-zinc-400">
+                                  <tr key={lead.id} className="hover:bg-subtle">
+                                    <td className="py-3 px-5 tabular-nums text-fg-tertiary">
                                       {(safePage - 1) * PAGE_SIZE + idx + 1}
                                     </td>
-                                    <td className="py-3 px-5 font-mono text-zinc-400">
+                                    <td className="py-3 px-5 font-mono text-caption text-fg-tertiary">
                                       {lead.id}
                                     </td>
                                     <td className="py-3 px-5">
                                       <div className="flex items-center gap-1.5">
-                                        <span className="font-semibold text-zinc-900">
+                                        <span className="font-medium text-fg">
                                           {lead.name}
                                         </span>
                                         {lead.linkedinUrl && (
@@ -2453,17 +2213,17 @@ export default function IcpListBuilderHub() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             title={`Open ${lead.name}'s LinkedIn Profile`}
-                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 font-mono text-[10px]"
+                                            className="focus-ring inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-fg-secondary hover:text-fg hover:bg-subtle border border-line text-caption"
                                           >
                                             <span>LinkedIn</span>
-                                            <ExternalLink className="w-2.5 h-2.5" />
+                                            <ExternalLink className="w-3 h-3" />
                                           </a>
                                         )}
                                       </div>
-                                      <div className="text-zinc-500">{lead.title}</div>
+                                      <div className="text-fg-tertiary">{lead.title}</div>
                                     </td>
                                     <td className="py-3 px-5">
-                                      <div className="font-medium text-zinc-800">
+                                      <div className="font-medium text-fg">
                                         {lead.company}
                                       </div>
                                       <div className="flex items-center gap-2 mt-0.5">
@@ -2476,25 +2236,25 @@ export default function IcpListBuilderHub() {
                                             }
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 text-zinc-600 hover:text-zinc-950 font-mono text-[11px] underline decoration-zinc-300"
+                                            className="focus-ring rounded-sm inline-flex items-center gap-1 text-fg-secondary hover:text-fg text-caption underline decoration-line-strong underline-offset-2"
                                           >
-                                            <Globe className="w-3 h-3 text-zinc-400" />
+                                            <Globe className="w-3 h-3 text-fg-tertiary" />
                                             <span>
                                               {lead.website.replace(/^https?:\/\//, '')}
                                             </span>
                                           </a>
                                         ) : (
-                                          <span className="text-zinc-400">
+                                          <span className="text-fg-tertiary">
                                             {lead.industry || lead.headcount}
                                           </span>
                                         )}
                                       </div>
                                     </td>
-                                    <td className="py-3 px-5 font-mono">
-                                      <div className="text-zinc-900 font-medium">
+                                    <td className="py-3 px-5 font-mono text-small">
+                                      <div className="text-fg">
                                         {lead.phone}
                                       </div>
-                                      <div className="text-zinc-500">{lead.email}</div>
+                                      <div className="text-fg-tertiary">{lead.email}</div>
                                     </td>
                                     <td className="py-3 px-5">
                                       {canBuildAndDistribute ? (
@@ -2510,7 +2270,7 @@ export default function IcpListBuilderHub() {
                                             setContacts(getStoredContacts());
                                             setFolders(getStoredFolders());
                                           }}
-                                          className="px-2.5 py-1 rounded-md bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-900 font-semibold text-xs cursor-pointer focus:outline-none focus:border-zinc-900"
+                                          className="focus-ring h-8 px-2 rounded-sm bg-surface hover:bg-subtle border border-line-strong text-fg text-small cursor-pointer"
                                         >
                                           {Array.from(
                                             new Set([
@@ -2519,12 +2279,12 @@ export default function IcpListBuilderHub() {
                                             ])
                                           ).map((r) => (
                                             <option key={r} value={r}>
-                                              👤 {r}
+                                              {r}
                                             </option>
                                           ))}
                                         </select>
                                       ) : (
-                                        <span className="px-2.5 py-0.5 rounded-md bg-zinc-100 text-zinc-800 font-medium">
+                                        <span className="text-fg">
                                           {lead.assignedRep}
                                         </span>
                                       )}
@@ -2532,10 +2292,10 @@ export default function IcpListBuilderHub() {
                                     <td className="py-3 px-5 text-right">
                                       <Link
                                         href="/dialer"
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 text-white font-semibold hover:bg-zinc-800"
+                                        className={buttonClasses('secondary', 'sm')}
                                       >
-                                        <PhoneCall className="w-3 h-3 text-emerald-400" />
-                                        <span>Dial Now</span>
+                                        <PhoneCall className="text-fg-secondary" />
+                                        <span>Call</span>
                                       </Link>
                                     </td>
                                   </tr>
@@ -2544,15 +2304,16 @@ export default function IcpListBuilderHub() {
                             </table>
 
                             {/* 25-Per-Page Folder Footer Pagination */}
-                            <div className="bg-zinc-50/80 px-5 py-3 border-t border-zinc-100 flex items-center justify-between text-xs">
-                              <span className="text-zinc-500 font-mono">
-                                Showing {(safePage - 1) * PAGE_SIZE + 1}–
+                            <div className="bg-surface px-5 py-3 border-t border-line flex items-center justify-between text-small">
+                              <span className="tabular-nums text-fg-tertiary">
+                                Showing {(safePage - 1) * PAGE_SIZE + 1} to{' '}
                                 {(safePage - 1) * PAGE_SIZE + pageSlice.length} of{' '}
                                 {folderContacts.length} leads (25 per page)
                               </span>
                               <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
                                   disabled={safePage <= 1}
                                   onClick={() =>
                                     setFolderPageMap((prev) => ({
@@ -2560,15 +2321,15 @@ export default function IcpListBuilderHub() {
                                       [folder.id]: Math.max(1, safePage - 1),
                                     }))
                                   }
-                                  className="px-3 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 font-semibold disabled:opacity-40 cursor-pointer"
                                 >
-                                  &larr; Prev 25
-                                </button>
-                                <span className="font-mono text-zinc-600">
+                                  Previous 25
+                                </Button>
+                                <span className="tabular-nums text-fg-secondary">
                                   Page {safePage} of {totalFolderPages}
                                 </span>
-                                <button
-                                  type="button"
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
                                   disabled={safePage >= totalFolderPages}
                                   onClick={() =>
                                     setFolderPageMap((prev) => ({
@@ -2579,10 +2340,9 @@ export default function IcpListBuilderHub() {
                                       ),
                                     }))
                                   }
-                                  className="px-3 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-semibold disabled:opacity-40 cursor-pointer"
                                 >
-                                  Next 25 &rarr;
-                                </button>
+                                  Next 25
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -2601,40 +2361,31 @@ export default function IcpListBuilderHub() {
           {activeTab === 'academy' && (
             <div className="space-y-6">
               {/* Academy Header Banner */}
-              <div className="bg-zinc-950 text-white rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="space-y-2 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-zinc-800 text-emerald-400 text-xs font-mono">
-                    <GraduationCap className="w-3.5 h-3.5" />
-                    <span>SELF-SERVE ONBOARDING ACADEMY</span>
-                  </div>
-                  <h2 className="text-xl font-bold tracking-tight">
-                    How to Build, Organize &amp; Distribute High-Converting ICP Lists
+              <div className="bg-surface border border-line shadow-xs rounded-lg p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-1 max-w-2xl">
+                  <h2 className="text-h2 text-fg">
+                    How to build, organise and assign lead lists
                   </h2>
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    Complete these 4 short walkthrough modules (under 3 minutes total) to master zero-cost market sizing, folder organization, equal round-robin rep distribution, and data security.
+                  <p className="text-body text-fg-secondary">
+                    Four short modules, under 3 minutes in total: free market sizing, folders, even splits across reps, and data security.
                   </p>
                 </div>
 
                 {/* Progress Meter */}
-                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 min-w-[220px] space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-zinc-400">Training Progress</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      {completedModules.length} / {TRAINING_MODULES.length} Completed
+                <div className="bg-subtle border border-line rounded-lg p-4 min-w-[220px] space-y-2">
+                  <div className="flex items-center justify-between text-small">
+                    <span className="text-fg-secondary">Your progress</span>
+                    <span className="font-medium tabular-nums text-fg">
+                      {completedModules.length} of {TRAINING_MODULES.length} done
                     </span>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-400 rounded-full transition-all"
-                      style={{
-                        width: `${
-                          (completedModules.length / TRAINING_MODULES.length) * 100
-                        }%`,
-                      }}
-                    />
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    Click &ldquo;Mark Complete&rdquo; or &ldquo;Practice Step&rdquo; on each module below.
+                  <Meter
+                    value={completedModules.length / TRAINING_MODULES.length}
+                    label="Training progress"
+                    className="bg-surface"
+                  />
+                  <div className="text-caption text-fg-tertiary">
+                    Mark each module complete, or jump straight to practising the step.
                   </div>
                 </div>
               </div>
@@ -2646,38 +2397,38 @@ export default function IcpListBuilderHub() {
                   return (
                     <div
                       key={mod.id}
-                      className={`bg-white rounded-2xl p-6 border transition flex flex-col justify-between space-y-5 ${
-                        isDone ? 'border-zinc-300' : 'border-zinc-200/90'
-                      }`}
+                      className="bg-surface rounded-lg p-6 border border-line shadow-xs flex flex-col justify-between space-y-5"
                     >
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded bg-zinc-950 text-white font-mono text-[10px] font-bold">
+                          <div className="flex items-center gap-2 text-caption">
+                            <span className="inline-block lowercase first-letter:uppercase text-fg-secondary">
                               {mod.stepNumber}
                             </span>
-                            <span className="text-xs font-mono text-zinc-400">
+                            <span className="text-fg-tertiary">&middot;</span>
+                            <span className="text-fg-tertiary">
                               {mod.duration}
                             </span>
                           </div>
                           <button
                             type="button"
+                            aria-pressed={isDone}
                             onClick={() => toggleModuleComplete(mod.id)}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition cursor-pointer ${
+                            className={`focus-ring inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
                               isDone
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:text-zinc-900'
+                                ? 'bg-success-bg text-success-fg border-transparent'
+                                : 'bg-surface text-fg-secondary border-line hover:text-fg hover:border-line-strong'
                             }`}
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>{isDone ? 'Completed' : 'Mark Complete'}</span>
+                            <span>{isDone ? 'Completed' : 'Mark complete'}</span>
                           </button>
                         </div>
 
-                        <h3 className="text-base font-bold text-zinc-950">
+                        <h3 className="text-h3 text-fg">
                           {mod.title}
                         </h3>
-                        <p className="text-xs text-zinc-600 leading-relaxed">
+                        <p className="text-body text-fg-secondary">
                           {mod.summary}
                         </p>
 
@@ -2685,25 +2436,27 @@ export default function IcpListBuilderHub() {
                           {mod.keyTakeaways.map((point, idx) => (
                             <div
                               key={idx}
-                              className="flex items-start gap-2 text-xs text-zinc-700"
+                              className="flex items-start gap-2 text-small text-fg"
                             >
-                              <span className="w-4 h-4 rounded-full bg-zinc-100 text-zinc-900 font-mono text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                              <span className="w-5 h-5 rounded-full bg-subtle text-fg-secondary text-caption tabular-nums flex items-center justify-center shrink-0">
                                 {idx + 1}
                               </span>
-                              <span className="leading-relaxed">{point}</span>
+                              <span>{point}</span>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-4 border-t border-zinc-100">
-                        <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/60 text-xs text-zinc-600">
-                          <strong className="text-zinc-900">Pro Tip:</strong>{' '}
+                      <div className="space-y-3 pt-4 border-t border-line">
+                        <div className="p-3 rounded-md bg-subtle text-small text-fg-secondary">
+                          <span className="font-medium text-fg">Tip:</span>{' '}
                           {mod.proTip}
                         </div>
 
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          className="w-full"
+                          icon={<Play />}
                           onClick={() => {
                             if (!completedModules.includes(mod.id)) {
                               toggleModuleComplete(mod.id);
@@ -2713,11 +2466,9 @@ export default function IcpListBuilderHub() {
                               setActiveWizardStep(mod.targetWizardStep);
                             }
                           }}
-                          className="w-full py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
                         >
-                          <Play className="w-3 h-3 fill-current" />
-                          <span>{mod.actionLabel} &rarr;</span>
-                        </button>
+                          <span>{mod.actionLabel}</span>
+                        </Button>
                       </div>
                     </div>
                   );
@@ -2725,15 +2476,15 @@ export default function IcpListBuilderHub() {
               </div>
 
               {/* Frequently Asked Questions Accordion */}
-              <div className="bg-white border border-zinc-200/90 rounded-2xl p-6 space-y-4">
+              <div className="bg-surface border border-line rounded-lg shadow-xs p-6 space-y-4">
                 <div className="flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-zinc-900" />
-                  <h3 className="text-sm font-bold text-zinc-950">
-                    Frequently Asked Questions (Quick Reference)
+                  <HelpCircle className="w-4 h-4 text-fg-secondary" />
+                  <h3 className="text-h3 text-fg">
+                    Frequently asked questions
                   </h3>
                 </div>
 
-                <div className="divide-y divide-zinc-100">
+                <div className="divide-y divide-line">
                   {TRAINING_FAQS.map((faq, idx) => {
                     const isOpen = openFaqIdx === idx;
                     return (
@@ -2741,17 +2492,18 @@ export default function IcpListBuilderHub() {
                         <button
                           type="button"
                           onClick={() => setOpenFaqIdx(isOpen ? null : idx)}
-                          className="w-full text-left flex items-center justify-between gap-4 text-xs font-semibold text-zinc-900 cursor-pointer"
+                          aria-expanded={isOpen}
+                          className="focus-ring rounded-sm w-full text-left flex items-center justify-between gap-4 text-body-strong text-fg cursor-pointer"
                         >
                           <span>{faq.q}</span>
                           {isOpen ? (
-                            <ChevronUp className="w-4 h-4 text-zinc-400 shrink-0" />
+                            <ChevronUp className="w-4 h-4 text-fg-secondary shrink-0" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                            <ChevronDown className="w-4 h-4 text-fg-secondary shrink-0" />
                           )}
                         </button>
                         {isOpen && (
-                          <p className="mt-2 text-xs text-zinc-600 leading-relaxed pr-6">
+                          <p className="mt-2 text-body text-fg-secondary pr-6">
                             {faq.a}
                           </p>
                         )}
@@ -2767,31 +2519,39 @@ export default function IcpListBuilderHub() {
       </div>
 
       {/* Modal: Re-Distribute Folder Equally Across X Reps */}
-      {redistributeFolder && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-              <div>
-                <h3 className="text-sm font-bold text-zinc-950">
-                  Equal Round-Robin Rep Distribution
-                </h3>
-                <p className="text-xs text-zinc-500">
-                  Folder: <strong>{redistributeFolder.name}</strong> (
-                  {redistributeFolder.totalLeads} total leads)
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRedistributeFolder(null)}
-                className="text-xs text-zinc-400 hover:text-zinc-800 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="font-semibold text-zinc-700">
-                Select SDR Reps to Split This Folder Equally:
+      <Dialog
+        open={redistributeFolder !== null}
+        onClose={() => setRedistributeFolder(null)}
+        title="Re-split folder across reps"
+        description={
+          redistributeFolder ? (
+            <>
+              <span className="font-medium text-fg">{redistributeFolder.name}</span>{' '}
+              (<span className="tabular-nums">{redistributeFolder.totalLeads}</span> leads)
+            </>
+          ) : undefined
+        }
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setRedistributeFolder(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleConfirmRedistribute}
+            >
+              Split evenly now
+            </Button>
+          </>
+        }
+      >
+        {redistributeFolder && (
+            <div className="space-y-2 text-small">
+              <div className="font-medium text-fg">
+                Choose the reps to split this folder between
               </div>
               <div className="flex flex-wrap gap-2">
                 {(activeQuota.repsRoster || []).map((rep) => {
@@ -2807,13 +2567,14 @@ export default function IcpListBuilderHub() {
                             : [...prev, rep]
                         )
                       }
-                      className={`px-3 py-1.5 rounded-lg border font-medium cursor-pointer ${
+                      aria-pressed={active}
+                      className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full border text-small font-medium transition-colors duration-150 cursor-pointer ${
                         active
-                          ? 'bg-zinc-950 text-white border-zinc-950'
-                          : 'bg-zinc-50 text-zinc-700 border-zinc-200'
+                          ? 'bg-selected text-fg border-action'
+                          : 'bg-surface text-fg-secondary border-line hover:border-line-strong'
                       }`}
                     >
-                      {active ? '✓ ' : ''}
+                      {active ? <Check className="w-3.5 h-3.5" /> : null}
                       {rep}
                     </button>
                   );
@@ -2821,10 +2582,10 @@ export default function IcpListBuilderHub() {
               </div>
 
               {redistributeReps.length > 0 && (
-                <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-900 font-medium mt-2">
-                  Splitting <strong>{redistributeFolder.totalLeads}</strong> leads
-                  equally across <strong>{redistributeReps.length}</strong> rep(s) ={' '}
-                  <strong>
+                <div className="p-3 rounded-md bg-subtle text-fg-secondary mt-2 tabular-nums">
+                  Splitting <strong className="font-medium text-fg">{redistributeFolder.totalLeads}</strong> leads
+                  evenly across <strong className="font-medium text-fg">{redistributeReps.length}</strong> rep(s) ={' '}
+                  <strong className="font-medium text-fg">
                     ~
                     {Math.floor(
                       redistributeFolder.totalLeads / redistributeReps.length
@@ -2835,26 +2596,8 @@ export default function IcpListBuilderHub() {
                 </div>
               )}
             </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setRedistributeFolder(null)}
-                className="px-4 py-2 rounded-lg text-xs font-semibold border border-zinc-200 text-zinc-600 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmRedistribute}
-                className="px-4 py-2 rounded-lg text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 cursor-pointer"
-              >
-                Distribute Equally Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </Dialog>
 
       {/* Modal: Tap Up Quota (+2k/$50, +5k/$75, +10k/$150) */}
       <QuotaTopUpModal
