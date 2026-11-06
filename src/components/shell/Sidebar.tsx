@@ -36,7 +36,10 @@ function NavLink({ item, collapsed, active }: { item: NavItem; collapsed: boolea
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { collapsed, toggleCollapsed } = useShell();
+  const { collapsed: savedCollapsed, toggleCollapsed } = useShell();
+  // Admin and the Platform Console bring their own 240px sub-nav, so the main sidebar becomes an icon rail.
+  const inSettings = pathname.startsWith('/admin') || pathname.startsWith('/platform');
+  const collapsed = savedCollapsed || inSettings;
   const items = useVisibleNav();
 
   const groups = GROUP_ORDER.map((g) => ({ group: g, items: items.filter((i) => i.group === g) })).filter(

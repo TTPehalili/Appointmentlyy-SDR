@@ -15,7 +15,6 @@ import {
   Radio,
   FileCheck
 } from 'lucide-react';
-import AdminNavigationHeader from '@/components/AdminNavigationHeader';
 
 interface RepRecord {
   id: string;
@@ -88,7 +87,6 @@ export default function AdminRepsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-      <AdminNavigationHeader activeSection="reps" />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-8 flex flex-col gap-6">

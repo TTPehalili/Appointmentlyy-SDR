@@ -15,7 +15,8 @@ export type Permission =
   | 'work' // Home → Reports
   | 'team' // Live floor, Coaching
   | 'leadFinder' // ICP builder, also gated by the role permission matrix
-  | 'admin' // Admin area (Org Admin+)
+  | 'admin' // Admin area entry and team-level sections (Manager+)
+  | 'adminOrg' // Org-level Admin sections: members, roles, integrations, branding, billing, audit (Org Admin+)
   | 'agency' // Agency clients, white-label, billing
   | 'platform' // Platform Console, cross-tenant views
   | 'switchWorkspace'; // switch between client workspaces
@@ -39,6 +40,8 @@ export function can(role: UserRole | string, permission: Permission): boolean {
     case 'leadFinder':
       return canUserAccessIcpBuilder(r);
     case 'admin':
+      return rank >= 1;
+    case 'adminOrg':
       return rank >= 2;
     case 'agency':
     case 'platform':

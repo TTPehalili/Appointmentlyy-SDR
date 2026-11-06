@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { Lead, CadencePackage } from '@/types';
 import { CadenceGenerator } from '@/lib/cadenceGenerator';
-import AdminNavigationHeader from '@/components/AdminNavigationHeader';
 
 function CampaignLeadsContent() {
   const params = useParams();
@@ -140,7 +139,6 @@ function CampaignLeadsContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-      <AdminNavigationHeader activeSection="leads" />
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-8 flex flex-col gap-6">

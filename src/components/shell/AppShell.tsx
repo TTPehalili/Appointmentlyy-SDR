@@ -2,13 +2,14 @@
 
 import * as React from 'react';
 import { ToastProvider } from '@/components/ui';
-import { ShellProvider } from './ShellContext';
+import { ShellProvider, useShell } from './ShellContext';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { CopilotPanel } from './CopilotPanel';
 import { MobileTabBar } from './MobileTabBar';
 import { ShellCommandPalette } from './ShellCommandPalette';
+import { cn } from '@/lib/cn';
 
 /**
  * App shell (redesign spec 4):
@@ -24,21 +25,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex h-dvh w-full flex-col overflow-hidden bg-app text-fg">
           <ImpersonationBanner />
           <div className="flex min-h-0 flex-1">
-            <Sidebar />
+            {/* URL-reading shell parts sit in Suspense so dynamic routes can still prerender (Cache Components). */}
+            <React.Suspense fallback={<SidebarPlaceholder />}>
+              <Sidebar />
+            </React.Suspense>
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
               <div className="flex min-h-0 flex-1">
                 <main id="main" className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   {children}
                 </main>
-                <CopilotPanel />
+                <React.Suspense fallback={null}>
+                  <CopilotPanel />
+                </React.Suspense>
               </div>
             </div>
           </div>
-          <MobileTabBar />
+          <React.Suspense fallback={null}>
+            <MobileTabBar />
+          </React.Suspense>
         </div>
         <ShellCommandPalette />
       </ToastProvider>
     </ShellProvider>
   );
+}
+
+/** Same footprint as the sidebar while it streams in, so content doesn't shift. */
+function SidebarPlaceholder() {
+  const { collapsed } = useShell();
+  return <div aria-hidden className={cn('hidden shrink-0 border-r border-line bg-app md:block', collapsed ? 'w-16' : 'w-60')} />;
 }

@@ -6,7 +6,7 @@ import { PanelLeft, Settings, Sparkles, Wrench } from 'lucide-react';
 import { CommandPalette, type CommandItem } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
-import { ADMIN_TOOLS } from '@/lib/nav';
+import { ADMIN_NAV, PLATFORM_NAV } from '@/lib/adminNav';
 import { useShell } from './ShellContext';
 import { useVisibleNav } from './useVisibleNav';
 
@@ -49,9 +49,13 @@ export function ShellCommandPalette() {
       keywords: t.keywords,
       onRun: () => router.push(t.href),
     }));
-    const admin: CommandItem[] = ADMIN_TOOLS.filter((t) => can(role, t.permission)).map((t) => ({
+    const sections = [
+      ...ADMIN_NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: 'Admin' }))),
+      ...PLATFORM_NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: 'Platform Console' }))),
+    ];
+    const admin: CommandItem[] = sections.filter((t) => can(role, t.permission)).map((t) => ({
       id: `admin-${t.id}`,
-      group: 'Admin',
+      group: t.group,
       label: t.label,
       icon: <Settings />,
       keywords: t.keywords,

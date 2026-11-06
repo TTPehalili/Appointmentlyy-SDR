@@ -201,8 +201,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                 role="menuitem"
                 onClick={() => {
                   setOpen(false);
-                  // DESIGN-NOTE: Phase 3 builds the dedicated Platform Console; until then it opens Admin.
-                  router.push('/admin');
+                  router.push('/platform');
                 }}
                 className="flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-body text-fg outline-none hover:bg-subtle focus-visible:bg-subtle"
               >
@@ -215,7 +214,8 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               role="menuitem"
               onClick={() => {
                 setOpen(false);
-                router.push('/admin');
+                // New workspaces are provisioned from Platform Console › Tenants.
+                router.push('/platform/tenants');
               }}
               className="flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-body text-fg-secondary outline-none hover:bg-subtle hover:text-fg focus-visible:bg-subtle"
             >

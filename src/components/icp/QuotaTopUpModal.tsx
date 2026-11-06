@@ -179,7 +179,7 @@ export default function QuotaTopUpModal({
                     </p>
                   </div>
                   <Link
-                    href="/tickets"
+                    href="/admin/support"
                     onClick={onClose}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100 shrink-0"
                   >
@@ -385,7 +385,7 @@ export default function QuotaTopUpModal({
                   </a>
                   {generatedInvoice.ticketId && (
                     <Link
-                      href={`/tickets?id=${generatedInvoice.ticketId}`}
+                      href={`/admin/support?id=${generatedInvoice.ticketId}`}
                       onClick={onClose}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-emerald-300 text-emerald-900 hover:bg-emerald-100 transition"
                     >

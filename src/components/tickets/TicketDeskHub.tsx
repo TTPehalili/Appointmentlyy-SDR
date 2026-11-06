@@ -37,11 +37,16 @@ import NewTicketModal from '@/components/tickets/NewTicketModal';
 import QuotaTopUpModal from '@/components/icp/QuotaTopUpModal';
 import { creditTenantRecords, normalizeTenantKey, WISE_PAYMENT_LINK, WISE_QR_PATH } from '@/lib/icpQuotaStore';
 
-export default function TicketDeskHub() {
+/**
+ * perspective: when set, the desk is locked to that view and the switcher is hidden.
+ * Admin › Support uses 'tenant' (customer desk); Platform Console › Support desk uses 'admin'.
+ */
+export default function TicketDeskHub({ perspective }: { perspective?: 'admin' | 'tenant' } = {}) {
   const { session, role, isAdmin, tenantName, repName, email } = useSession();
 
   // Mode: Floor Admin (all tickets + internal notes) vs Customer/Tenant (tenant-focused view)
-  const [viewPerspective, setViewPerspective] = useState<'admin' | 'tenant'>(isAdmin ? 'admin' : 'tenant');
+  const [chosenPerspective, setViewPerspective] = useState<'admin' | 'tenant'>(isAdmin ? 'admin' : 'tenant');
+  const viewPerspective = perspective ?? chosenPerspective;
 
   const [tickets, setTickets] = useState<TroubleTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -326,6 +331,7 @@ export default function TicketDeskHub() {
         {/* Action Controls */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* View Perspective Switcher */}
+          {!perspective && (
           <div className="flex items-center bg-zinc-200/70 p-0.5 rounded-lg border border-zinc-300/60 text-xs">
             <button
               onClick={() => setViewPerspective('tenant')}
@@ -351,6 +357,7 @@ export default function TicketDeskHub() {
               <span>Emil Desk (Admin)</span>
             </button>
           </div>
+          )}
 
           {/* Refresh */}
           <button

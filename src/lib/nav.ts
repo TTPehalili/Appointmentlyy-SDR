@@ -51,7 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'coaching', label: 'Coaching', icon: GraduationCap, href: '/coaching', group: 'team', permission: 'team', featureFlag: 'coaching' },
 
   { id: 'help', label: 'Help', icon: LifeBuoy, href: '/help', group: 'footer', keywords: 'guide playbooks' },
-  { id: 'admin', label: 'Admin', icon: Settings, href: '/admin', group: 'footer', permission: 'admin', match: ['/workflows', '/settings', '/tickets', '/assistant', '/certification'], keywords: 'settings management' },
+  { id: 'admin', label: 'Admin', icon: Settings, href: '/admin', group: 'footer', permission: 'admin', keywords: 'settings management' },
 ];
 
 export const NAV_GROUP_LABELS: Partial<Record<NavGroup, string>> = {
@@ -59,20 +59,6 @@ export const NAV_GROUP_LABELS: Partial<Record<NavGroup, string>> = {
   improve: 'Improve',
   team: 'Team',
 };
-
-/**
- * Management tools that still live at their old URLs until Phase 3 moves them into
- * the Admin settings shell. They are reachable from ⌘K (Org Admin+) and from Admin.
- * DESIGN-NOTE: Phase 3 replaces this list with Admin sub-nav sections.
- */
-export const ADMIN_TOOLS: { id: string; label: string; href: string; permission: Permission; keywords?: string }[] = [
-  { id: 'admin-control', label: 'Admin control centre', href: '/admin', permission: 'admin', keywords: 'people seats' },
-  { id: 'playbooks', label: 'Playbooks', href: '/admin/frameworks', permission: 'admin', keywords: 'upload playbook ingestion' },
-  { id: 'workflows', label: 'Workflows', href: '/workflows', permission: 'admin', keywords: 'automation studio cadences' },
-  { id: 'domains', label: 'Branding & domains', href: '/settings/domains', permission: 'admin', keywords: 'custom domains white-label dns' },
-  { id: 'tickets', label: 'Support tickets', href: '/tickets', permission: 'admin', keywords: 'support help desk' },
-  { id: 'ops-intel', label: 'Operations intel', href: '/assistant', permission: 'platform', keywords: 'executive assistant' },
-];
 
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
   if (item.href === '/') return pathname === '/';

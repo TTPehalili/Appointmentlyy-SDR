@@ -51,11 +51,11 @@ export default function CustomDomainsManager() {
     () => (session.tenantCode || 'APPOINTMENTLYY').toUpperCase()
   );
 
+  // The configured workspace follows the shell's workspace switcher (redesign Phase 3:
+  // no per-page tenant selectors). Super Admin switches workspace to edit a client's domain.
   useEffect(() => {
-    if (!isSuperAdmin) {
-      setSelectedTenantCode((session.tenantCode || 'APPOINTMENTLYY').toUpperCase());
-    }
-  }, [session.tenantCode, isSuperAdmin]);
+    setSelectedTenantCode((session.tenantCode || 'APPOINTMENTLYY').toUpperCase());
+  }, [session.tenantCode]);
 
   const activeConfig = useMemo(
     () =>
@@ -255,25 +255,7 @@ export default function CustomDomainsManager() {
                 </p>
               </div>
 
-              {/* Super Admin Tenant Selector */}
-              {isSuperAdmin && (
-                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 flex flex-col gap-1.5 min-w-[260px]">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-bold">
-                    Super Admin — Select Client Workspace
-                  </span>
-                  <select
-                    value={selectedTenantCode}
-                    onChange={(e) => setSelectedTenantCode(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-zinc-300 text-xs font-bold text-zinc-950 focus:outline-none cursor-pointer"
-                  >
-                    {Object.values(allConfigs).map((cfg) => (
-                      <option key={cfg.tenantCode} value={cfg.tenantCode}>
-                        {cfg.tenantName} ({cfg.customDomain})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Workspace is chosen with the shell workspace switcher (Phase 3: no per-page tenant selectors). */}
             </div>
 
             {/* Active Simulation Banner if previewing a customer's custom domain */}

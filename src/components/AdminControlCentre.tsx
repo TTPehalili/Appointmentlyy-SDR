@@ -100,9 +100,12 @@ interface TenantRecord {
   createdDate: string;
 }
 
-export default function AdminControlCentre() {
+export type AdminControlSection = 'jobradar' | 'tenants' | 'dispositions' | 'byok' | 'crm' | 'invoicing' | 'mcp' | 'people' | 'modules' | 'access' | 'leads' | 'reps' | 'feedback' | 'audit';
+
+export default function AdminControlCentre({ section }: { section: AdminControlSection }) {
   const { role, isAdmin, updateSession } = useSession();
-  const [activeTab, setActiveTab] = useState<'jobradar' | 'tenants' | 'dispositions' | 'byok' | 'crm' | 'invoicing' | 'mcp' | 'people' | 'modules' | 'access' | 'leads' | 'reps' | 'feedback' | 'audit'>('jobradar');
+  // Which section to show is now chosen by the Admin / Platform Console sub-nav (redesign Phase 3).
+  const activeTab = section;
 
   // Role Permission Matrix State with persistence & live sync
   const [rolePermissions, setRolePermissions] = useState<RolePermissionMatrixItem[]>(() =>
@@ -467,130 +470,8 @@ export default function AdminControlCentre() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-zinc-50/70 font-sans antialiased text-zinc-900">
-      
-
-      {/* 2. MAIN APP SHELL */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        
-
-        {/* Minimalist Shadow Mode Alert Banner */}
-        {impersonatingTenant && (
-          <div className="bg-zinc-900 text-white px-6 py-2 text-xs flex items-center justify-between shrink-0 border-b border-zinc-800">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>
-                Shadowing <strong>{impersonatingTenant.name}</strong> ({impersonatingTenant.slug})
-              </span>
-              <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
-                {impersonatingTenant.plan}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/dialer"
-                className="px-2.5 py-1 rounded bg-white text-zinc-950 font-medium text-xs hover:bg-zinc-100 transition-colors"
-              >
-                Launch Cockpit as {impersonatingTenant.name.split(' ')[0]}
-              </Link>
-              <button
-                onClick={handleExitShadow}
-                className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
-              >
-                Exit Shadow
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Scrollable Main Area */}
-        <main className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8 space-y-6">
-          
-          {/* Header Bar */}
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 block mb-1">
-                SYSTEM ADMINISTRATION
-              </span>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
-                Admin Control Centre
-              </h1>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                Multi-tenant access, seat quotas, BYOK vaults, CRM mapper, and team roster.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <Link
-                href="/admin/frameworks"
-                className="px-3.5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <UploadCloud className="h-4 w-4 text-emerald-400" />
-                <span>Upload Playbook (AI Vectorizer)</span>
-              </Link>
-
-              {/* Tenant Selector Dropdown */}
-              <div className="relative">
-                <select
-                  value={tenantFilter}
-                  onChange={(e) => setTenantFilter(e.target.value)}
-                  className="px-4 py-2 rounded-xl bg-white border border-[#222021]/15 text-xs font-semibold text-[#222021] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#ED1C24] cursor-pointer"
-                >
-                  <option value="all">All tenants (global view)</option>
-                  <option value="Enterprise Outbound Q4">Enterprise Outbound Q4</option>
-                  <option value="Fintech Scaleups">Fintech Scaleups</option>
-                  <option value="SaaS SMB Pipeline">SaaS SMB Pipeline</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Sub-Tabs */}
-          <div className="flex items-center gap-6 border-b border-[#222021]/10 text-sm font-semibold overflow-x-auto scrollbar-none">
-            {[
-              { id: 'jobradar', label: '⚡ Job Signals Radar (US & AU)' },
-              { id: 'tenants', label: 'Tenants & Client Access' },
-              { id: 'playbooks', label: 'Playbook Ingestion & AI' },
-              { id: 'dispositions', label: 'Call Dispositions' },
-              { id: 'byok', label: 'BYOK AI Vault' },
-              { id: 'crm', label: 'Universal CRM & Mapper' },
-              { id: 'invoicing', label: 'Billing & Invoicing' },
-              { id: 'mcp', label: 'MCP & Ingress' },
-              { id: 'people', label: 'People & Seats' },
-              { id: 'modules', label: 'Training Modules' },
-              { id: 'access', label: 'Module Access' },
-              { id: 'leads', label: 'Leads & Cadence CRM' },
-              { id: 'reps', label: 'Sales Reps' },
-              { id: 'audit', label: 'Audit Log' },
-            ].map(tab => (
-              tab.id === 'playbooks' ? (
-                <Link
-                  key={tab.id}
-                  href="/admin/frameworks"
-                  className="pb-3 transition-colors relative whitespace-nowrap text-zinc-900 font-bold hover:text-[#ED1C24] flex items-center gap-1.5 cursor-pointer"
-                >
-                  <UploadCloud className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>{tab.label} ↗</span>
-                </Link>
-              ) : (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`pb-3 transition-colors relative whitespace-nowrap cursor-pointer ${
-                    activeTab === tab.id
-                      ? 'text-[#222021] font-bold'
-                      : 'text-[#6b6968] hover:text-[#222021]'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  {activeTab === tab.id && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ED1C24]" />
-                  )}
-                </button>
-              )
-            ))}
-          </div>
-
+    <div className="w-full">
+      <div className="flex min-w-0 flex-col gap-6">
           {/* TAB: JOB SIGNALS RADAR (Super Admin Exclusive) */}
           {activeTab === 'jobradar' && (
             <JobRadarManager />
@@ -1470,7 +1351,6 @@ export default function AdminControlCentre() {
           {activeTab === 'dispositions' && (
             <CallDispositionManager />
           )}
-        </main>
       </div>
 
       {/* Add Person Modal */}

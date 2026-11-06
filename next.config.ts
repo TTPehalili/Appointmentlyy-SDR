@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
       ['/analytics', '/reports'],
       ['/monitoring', '/live-floor'],
       ['/guide', '/help'],
+      // Phase 3: management tools moved into Admin and the Platform Console.
+      ['/workflows', '/admin/workflows'],
+      ['/settings/domains', '/admin/domains'],
+      ['/tickets', '/admin/support'],
+      ['/assistant', '/platform/ops-intel'],
     ];
     return moved.map(([source, destination]) => ({ source, destination, permanent: false }));
   },

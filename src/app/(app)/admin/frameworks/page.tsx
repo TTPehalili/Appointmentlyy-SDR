@@ -17,7 +17,6 @@ import {
   Mail
 } from 'lucide-react';
 import { ExtractedArmEntry, SynthesizedPlaybookResult } from '@/lib/parsers/armExtractor';
-import AdminNavigationHeader from '@/components/AdminNavigationHeader';
 import OutboundFrameworkManager from '@/components/admin/OutboundFrameworkManager';
 
 export default function AdminFrameworksPage() {
@@ -115,7 +114,6 @@ export default function AdminFrameworksPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans">
-      <AdminNavigationHeader activeSection="playbooks" />
 
       {/* SUB-HEADER / VIEW SELECTOR */}
       <div className="bg-white border-b border-zinc-200 px-6 py-3">
