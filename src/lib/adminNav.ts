@@ -60,6 +60,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { id: 'crm', label: 'CRM & field mapping', href: '/admin/crm', permission: 'adminOrg', keywords: 'universal crm mapper hubspot salesforce' },
       { id: 'mcp', label: 'MCP server & webhooks', href: '/admin/mcp', permission: 'adminOrg', keywords: 'mcp ingress api developer gateway' },
       { id: 'ai-providers', label: 'AI providers', href: '/admin/ai-providers', permission: 'adminOrg', keywords: 'byok ai vault keys' },
+      { id: 'phone-system', label: 'Phone system', href: '/admin/phone-system', permission: 'adminOrg', keywords: 'vicidial dialer telephony calls sip click to call' },
     ],
   },
   {

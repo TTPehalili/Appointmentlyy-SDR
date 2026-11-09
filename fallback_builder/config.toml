@@ -1,0 +1,49 @@
+# Maps your source file's column names onto the fields the builder understands.
+# Change the right-hand side to match whatever export you load (Lead Finder, CRM, provider).
+# Leave a value as "" if your file has no such column.
+
+[source_map]
+company_name = "Company"
+website      = "Website"
+contact_name = "Contact Name"   # split into First Name / Last Name
+first_name   = ""               # use these instead if your file already splits names
+last_name    = ""
+title        = "Title"
+email        = "Email"
+phone        = "Phone"
+linkedin     = "LinkedIn URL"
+seats        = ""               # a true seat count column, if your file has one ("Seat")
+headcount    = "Headcount"      # employee range; only used for seats when it says "seats"
+locations    = "Location"
+revenue      = ""               # -> ARR (e.g. "Revenue"); kept exactly as published
+industry     = "Industry"       # used only for the ICP-fit note in the review file
+record_id    = "Lead ID"        # carried into the review file so you can find the row again
+
+[audit]
+# A phone number shared by this many different companies is treated as a placeholder.
+shared_phone_min_companies = 3
+
+[domain_aliases]
+# Email domains that legitimately belong to the same company as a different website domain
+# (rebrands, mergers). Add a group when the audit flags a mismatch you know is fine.
+groups = [
+  ["wtwco.com", "willistowerswatson.com", "willis.com"],
+  ["bny.com", "bnymellon.com"],
+  ["foundever.com", "sitel.com"],
+  ["teleperformance.com", "majorel.com"],
+  ["concentrix.com", "convergys.com"],
+  ["dxc.com", "csc.com"],
+  ["claconnect.com", "larsonallen.com"],
+  ["spectrum.com", "charter.com"],
+  ["bdo.com", "horne.com"],
+]
+
+[enrich]
+# Optional: an address site owners can reach you at; added to the user agent so you're identifiable.
+contact_email = ""
+min_delay = 3        # seconds between requests to the same website (robots.txt Crawl-delay wins if longer)
+max_delay = 5
+timeout = 15
+max_pages = 6        # pages per company website: home + contact/about/team/locations
+workers = 6          # different companies checked in parallel (never two requests to one site at once)
+fill_role_email = true   # use a published general address (info@, sales@) when the person's email is blank

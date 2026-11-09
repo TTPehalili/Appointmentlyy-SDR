@@ -346,6 +346,24 @@ function buildUpstreamFilterObject(
   return payload;
 }
 
+/** Registrable part of a domain: taskus.com, rsm.com.au, kmc.solutions. */
+function registrableDomain(domain: string): string {
+  const parts = domain.toLowerCase().replace(/^www\./, '').split('.').filter(Boolean);
+  const secondLevel = ['co', 'com', 'org', 'net', 'gov', 'ac', 'edu'];
+  if (parts.length >= 3 && secondLevel.includes(parts[parts.length - 2]) && parts[parts.length - 1].length === 2) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
+}
+
+/** True when an email domain belongs to the company's website domain (taskus.ph vs taskus.com counts). */
+function sameOrganisationDomain(emailDomain: string, companyDomain: string): boolean {
+  if (!emailDomain || !companyDomain) return false;
+  const a = registrableDomain(emailDomain);
+  const b = registrableDomain(companyDomain);
+  return a === b || a.split('.')[0] === b.split('.')[0];
+}
+
 /**
  * Parse a `leadocean.person.v1` record from `/v1/people/search` or `/v1/enrich`
  * into our sanitized Appointmentlyy schema with accurate LinkedIn URL & Company Website.
@@ -441,13 +459,16 @@ function parseLeadOceanRecord(
   )
     ? contactData.contact_emails
     : [];
-  const bestVerifiedEmailObj =
-    emailsList.find(
-      (e) => e.status === 'verified' && (e.type === 'work' || e.type === 'work_other')
-    ) ||
-    emailsList.find((e) => e.status === 'verified') ||
-    emailsList.find((e) => e.status !== 'invalid') ||
-    emailsList[0];
+  // Only a work email LeadOcean has VERIFIED at the person's CURRENT employer counts. LeadOcean also
+  // returns past-employer, personal, catch-all and untested addresses; showing those as "verified"
+  // put stale emails (e.g. a TaskUs lead with a Concentrix address) in front of reps.
+  const bestVerifiedEmailObj = emailsList.find(
+    (e) =>
+      e.status === 'verified' &&
+      typeof e.email === 'string' &&
+      e.type !== 'personal' &&
+      sameOrganisationDomain(e.email.split('@')[1] || '', rawDomain)
+  );
 
   const phonesList: Record<string, any>[] = Array.isArray(
     contactData.contact_phones
@@ -459,13 +480,10 @@ function parseLeadOceanRecord(
     phonesList.find((p) => p.type === 'office' || p.ddi) ||
     phonesList[0];
 
-  const unlockedEmail =
-    bestVerifiedEmailObj?.email ||
-    (rawDomain
-      ? `${(profile.profile_first_name || 'contact').toLowerCase()}@${rawDomain}`
-      : 'verified@company.com');
-
-  const unlockedPhone = bestPhoneObj?.phone || '+1 (415) 890-2340';
+  // Never invent contact details: an empty value is honest, a guessed address or placeholder number
+  // wastes reps' dials and sends.
+  const unlockedEmail: string = bestVerifiedEmailObj?.email || '';
+  const unlockedPhone: string = bestPhoneObj?.phone || '';
 
   const maskedDomain = rawDomain || 'company.com';
   const firstInitial = (profile.profile_first_name || fullName || 'c')[0].toLowerCase();
@@ -477,10 +495,10 @@ function parseLeadOceanRecord(
     title: jobTitle,
     seniority,
     department,
-    email: revealContact ? unlockedEmail : `${firstInitial}•••@${maskedDomain}`,
-    emailVerified: true,
-    phone: revealContact ? unlockedPhone : '+1 (•••) •••-••84',
-    hasDirectPhone: true,
+    email: revealContact ? unlockedEmail : unlockedEmail ? `${firstInitial}•••@${maskedDomain}` : '',
+    emailVerified: Boolean(bestVerifiedEmailObj),
+    phone: revealContact ? unlockedPhone : unlockedPhone ? '+1 (•••) •••-••84' : '',
+    hasDirectPhone: Boolean(bestPhoneObj?.phone),
     headcount: headcountStr,
     industry: industryStr,
     location: locationStr,

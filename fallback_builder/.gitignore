@@ -1,0 +1,7 @@
+# Lead data is personal data: never commit inputs, outputs or run state.
+input/
+output/
+state/
+.venv/
+__pycache__/
+*.pyc

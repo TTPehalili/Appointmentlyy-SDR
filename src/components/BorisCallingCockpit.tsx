@@ -47,6 +47,7 @@ import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 import { logCadenceActivity, getDailyActivitySummary, subscribeToActivities } from '@/lib/activityStore';
 import { getStoredDispositions, subscribeToDispositions, CallDisposition } from '@/lib/dispositionStore';
 import { useSession, isRoleAdmin } from '@/lib/session';
+import { useTelephony } from '@/lib/telephony/useTelephony';
 import {
   CallTelemetryState,
   INITIAL_TELEMETRY_STATE,
@@ -152,6 +153,16 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
   }
 ];
 
+
+const AGENT_STATE_LABEL: Record<string, string> = {
+  ready: 'Ready',
+  paused: 'Paused',
+  in_call: 'On call',
+  wrap_up: 'Wrap-up',
+  logged_out: 'Not logged in',
+  unknown: 'Connecting',
+};
+
 export default function BorisCallingCockpit() {
   const { session, role, isAdmin, tenantName: sessionTenant, repName: sessionRep } = useSession();
   const repName = sessionRep || 'Emil Halili';
@@ -215,6 +226,16 @@ export default function BorisCallingCockpit() {
   const [disposition, setDisposition] = useState<string | null>(null);
   const [dispositionNotes, setDispositionNotes] = useState<string>('');
   const [activityToast, setActivityToast] = useState<string | null>(null);
+
+  // Real calls through the rep's VICIdial agent session when it's set up (Admin › Phone system +
+  // Settings); otherwise the original tel: link. Call state then comes from VICIdial, not a local timer.
+  const telephony = useTelephony();
+  const viaVicidial = telephony.mode === 'vicidial';
+  const callActive = viaVicidial ? telephony.agentState === 'in_call' : isCallingActive;
+  const showTelephonyNotice = (message: string) => {
+    setActivityToast(`VICIdial: ${message}`);
+    setTimeout(() => setActivityToast(null), 5000);
+  };
   const [completedActivityCount, setCompletedActivityCount] = useState<number>(0);
 
   // Script & Objections State
@@ -440,7 +461,7 @@ export default function BorisCallingCockpit() {
   // 3. Call Timer
   useEffect(() => {
     let interval: any = null;
-    if (isCallingActive) {
+    if (callActive) {
       interval = setInterval(() => {
         setCallTimerSeconds(prev => prev + 1);
       }, 1000);
@@ -448,7 +469,7 @@ export default function BorisCallingCockpit() {
       setCallTimerSeconds(0);
     }
     return () => clearInterval(interval);
-  }, [isCallingActive]);
+  }, [callActive]);
 
   // Sync Active Lead when Queue Index Changes
   const selectLeadAtIndex = (index: number) => {
@@ -694,10 +715,18 @@ export default function BorisCallingCockpit() {
   };
 
   // Handle Call Outcome / Disposition Selection
-  const handleSelectDisposition = (dispName: string, opts?: { suppressToast?: boolean }): string | undefined => {
+  const handleSelectDisposition = (
+    dispName: string,
+    opts?: { suppressToast?: boolean; skipTelephony?: boolean }
+  ): string | undefined => {
     if (!dispName) return;
     setDisposition(dispName);
     setIsCallingActive(false);
+    if (viaVicidial && !opts?.skipTelephony) {
+      void telephony.setOutcome(dispName).then((r) => {
+        if (!r.ok) showTelephonyNotice(r.message);
+      });
+    }
 
     const updatedNotes = buildNotes({ disp: dispName });
     setNotesDraft(updatedNotes);
@@ -761,7 +790,15 @@ export default function BorisCallingCockpit() {
   const handleConfirmCallback = (input: ScheduleCallbackInput) => {
     const targetId = activeLead.id || directEmail;
     // Same disposition path as every other outcome (footprint, activity log, CRM notes)
-    const activityId = handleSelectDisposition(CALLBACK_DISPOSITION, { suppressToast: true });
+    const activityId = handleSelectDisposition(CALLBACK_DISPOSITION, { suppressToast: true, skipTelephony: true });
+    if (viaVicidial) {
+      // The callback time goes to VICIdial too, so its own callback list matches ours.
+      void telephony
+        .setOutcome(CALLBACK_DISPOSITION, { dueAt: input.dueAt, note: input.note, userOnly: input.assignedTo === repName })
+        .then((r) => {
+          if (!r.ok) showTelephonyNotice(r.message);
+        });
+    }
     const task = createCallbackTask({
       tenantCode: orgTenantCode,
       contactId: targetId,
@@ -1039,6 +1076,31 @@ export default function BorisCallingCockpit() {
               <div className="flex flex-wrap items-center gap-2">
                 {/* INLINE CLICK-TO-CALL (the one crimson action on this screen) */}
                 <div className="flex items-center gap-2">
+                  {viaVicidial ? (
+                    <button
+                      type="button"
+                      disabled={callActive}
+                      onClick={async () => {
+                        if (!phone) {
+                          alert('No phone number entered for this prospect.');
+                          return;
+                        }
+                        const r = await telephony.dial(phone, activeLead.id);
+                        if (!r.ok) showTelephonyNotice(r.message);
+                      }}
+                      className="focus-ring inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover disabled:cursor-default"
+                    >
+                      {callActive ? (
+                        <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
+                      ) : (
+                        <PhoneCall className="size-4 shrink-0" />
+                      )}
+                      <span className="tabular-nums" aria-live="polite">{callActive ? `On call (${callTimerSeconds}s)` : 'Call'}</span>
+                      <span className="border-l border-action-brand-fg/30 pl-2 font-mono text-small">
+                        {phone || 'No phone'}
+                      </span>
+                    </button>
+                  ) : (
                   <a
                     href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
                     onClick={() => {
@@ -1060,16 +1122,43 @@ export default function BorisCallingCockpit() {
                       {phone || 'No phone'}
                     </span>
                   </a>
+                  )}
 
-                  {isCallingActive && (
+                  {callActive && (
                     <IconButton
                       label="Hang up"
                       variant="danger"
                       className="size-10"
-                      onClick={() => setIsCallingActive(false)}
+                      onClick={async () => {
+                        if (viaVicidial) {
+                          const r = await telephony.hangup();
+                          if (!r.ok) showTelephonyNotice(r.message);
+                        }
+                        setIsCallingActive(false);
+                      }}
                     >
                       <PhoneOff />
                     </IconButton>
+                  )}
+
+                  {viaVicidial && (
+                    <span
+                      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line px-2.5 text-caption text-fg-secondary"
+                      title={telephony.problem || `VICIdial agent ${telephony.agentUser}`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`size-1.5 rounded-full ${
+                          telephony.agentState === 'ready' || telephony.agentState === 'in_call'
+                            ? 'bg-success-500'
+                            : telephony.agentState === 'paused' || telephony.agentState === 'wrap_up'
+                              ? 'bg-warning-400'
+                              : 'bg-danger-700'
+                        }`}
+                      />
+                      VICIdial · {AGENT_STATE_LABEL[telephony.agentState] ?? 'Connecting'}
+                      {telephony.agentState === 'unknown' && telephony.problem ? ' (offline)' : ''}
+                    </span>
                   )}
                 </div>
 
