@@ -3,6 +3,7 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { PageHeader, SegmentedControl, SettingsSection } from '@/components/ui';
 import { useColorMode, type ColorMode } from '@/lib/colorMode';
+import { AgentLinkSettings } from '@/components/telephony/AgentLinkSettings';
 
 const MODES: { value: ColorMode; label: string; icon: React.ReactNode }[] = [
   { value: 'light', label: 'Light', icon: <Sun className="size-4" aria-hidden /> },
@@ -45,6 +46,12 @@ export default function SettingsPage() {
               {HINTS[mode]}
             </p>
           </div>
+        </SettingsSection>
+        <SettingsSection
+          title="Phone system"
+          description="Dial through your company's VICIdial from the Dialer."
+        >
+          <AgentLinkSettings />
         </SettingsSection>
       </div>
     </div>
