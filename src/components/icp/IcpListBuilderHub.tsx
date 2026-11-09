@@ -609,7 +609,7 @@ export default function IcpListBuilderHub() {
       ]);
       setPullBanner({
         type: 'success',
-        message: `Enriched ${data.prospect.name} (${data.prospect.title} @ ${data.prospect.company}) • Website: ${data.prospect.website || 'N/A'} • Email: ${data.prospect.email} • Phone: ${data.prospect.phone}`,
+        message: `Enriched ${data.prospect.name} (${data.prospect.title} @ ${data.prospect.company}) • Website: ${data.prospect.website || 'N/A'} • Email: ${data.prospect.email || 'no verified email'} • Phone: ${data.prospect.phone || 'none'}`,
       });
     } catch (err: unknown) {
       setPullBanner({
@@ -1289,10 +1289,10 @@ export default function IcpListBuilderHub() {
                           </span>
                         </span>
                         <span className="font-mono text-fg">
-                          {enrichedSingleProspect.phone}
+                          {enrichedSingleProspect.phone || <span className="font-sans text-fg-tertiary">No phone</span>}
                         </span>
                         <span className="font-mono text-fg-secondary">
-                          {enrichedSingleProspect.email}
+                          {enrichedSingleProspect.email || <span className="font-sans text-fg-tertiary">No verified email</span>}
                         </span>
                       </div>
                     </div>
@@ -2252,9 +2252,11 @@ export default function IcpListBuilderHub() {
                                     </td>
                                     <td className="py-3 px-5 font-mono text-small">
                                       <div className="text-fg">
-                                        {lead.phone}
+                                        {lead.phone || <span className="font-sans text-fg-tertiary">No phone</span>}
                                       </div>
-                                      <div className="text-fg-tertiary">{lead.email}</div>
+                                      <div className="text-fg-tertiary">
+                                        {lead.email || <span className="font-sans">No verified email</span>}
+                                      </div>
                                     </td>
                                     <td className="py-3 px-5">
                                       {canBuildAndDistribute ? (
