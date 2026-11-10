@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/server/session';
 
 /**
  * Appointmentlyy ICP Data Cloud — Stealth Server-Side Proxy Gateway
@@ -517,10 +518,13 @@ function parseLeadOceanRecord(
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
+    // The workspace (used for de-duplicating pulls) comes from the session, never the request.
+    const tenantCode = session.tenantCode;
     const body = (await req.json()) as IcpSearchRequestPayload;
     const {
       mode = 'size',
-      tenantCode = 'APEX-GLOBAL',
       pullCount = 25,
       cursor,
       linkedinUrlToEnrich,

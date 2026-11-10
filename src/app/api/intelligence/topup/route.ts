@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/server/session';
 import {
   readStoredTicketsServer,
   writeStoredTicketsServer,
@@ -20,7 +21,27 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+    const raw = await req.json();
+    // Clients can only top up their own workspace, invoiced to themselves. Staff can invoice anyone.
+    const body = session.isPlatformAdmin
+      ? raw
+      : {
+          ...raw,
+          tenantName: session.identity.tenant.name,
+          tenantCode: session.tenantCode,
+          clientContactName: session.name,
+          clientEmail: session.email,
+          scenario: 'icp_topup',
+          invoiceNumber: undefined,
+          lineItems: undefined,
+          issueDate: undefined,
+          dueDate: undefined,
+        };
+    if (!session.isPlatformAdmin && raw?.scenario && raw.scenario !== 'icp_topup') {
+      return NextResponse.json({ error: 'Only Appointmentlyy staff can issue that invoice.' }, { status: 403 });
+    }
     const {
       invoiceNumber: customInvNumber,
       tenantName = 'Appointmentlyy Client Workspace',

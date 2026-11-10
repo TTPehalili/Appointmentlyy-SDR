@@ -30,6 +30,8 @@ import {
   getStoredPasswordMap,
 } from '@/lib/session';
 import { Badge, Button, Dialog, IconButton, buttonClasses } from '@/components/ui';
+import { DEMO_LOGIN } from '@/lib/authClient';
+import { claimTenantStorage } from '@/lib/tenantStorage';
 
 const KNOWN_TENANTS: Record<string, { name: string; code: string; defaultRep: string }> = {
   'appointmentlyy.com': { name: 'Appointmentlyy', code: 'APPOINTMENTLYY', defaultRep: 'Emil Halili' },
@@ -786,7 +788,270 @@ function SdrLoginContent() {
   );
 }
 
+/**
+ * Real sign-in. Members sign in with a password or an emailed link; "Forgot password?" emails a
+ * reset link. Role and workspace come from their membership on the server, never from this page.
+ */
+type RealMode = 'password' | 'link' | 'forgot';
+
+function RealLogin() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<RealMode>('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ kind: 'link' | 'reset'; to: string; demoUrl?: string } | null>(null);
+
+  const go = (m: RealMode) => {
+    setMode(m);
+    setError(null);
+  };
+
+  const validEmail = () => {
+    const clean = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(clean)) {
+      setError('Enter your work email.');
+      return null;
+    }
+    return clean;
+  };
+
+  const post = async (url: string, body: unknown) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data.success, data };
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const clean = validEmail();
+    if (!clean) return;
+    if (mode === 'password' && !password) {
+      setError('Enter your password.');
+      return;
+    }
+    setBusy(true);
+    try {
+      if (mode === 'password') {
+        const { ok, data } = await post('/api/auth/password/login', { email: clean, password });
+        if (!ok) {
+          setError(data.error || 'Could not sign in.');
+          return;
+        }
+        const user = data.identity;
+        claimTenantStorage(user.email, user.tenantCode);
+        setStoredSession({
+          email: user.email,
+          role: user.role,
+          tenantName: user.tenantName,
+          tenantCode: user.tenantCode,
+          repName: user.repName,
+          isAuthenticated: true,
+        });
+        const next = searchParams.get('next');
+        // Only same-site paths (blocks "//evil.com", "/\evil.com" and absolute URLs).
+        let safeNext: string | null = null;
+        if (next) {
+          const target = new URL(next, window.location.origin);
+          if (target.origin === window.location.origin) safeNext = target.pathname + target.search + target.hash;
+        }
+        router.replace(safeNext ?? (user.role === 'Super Admin' || user.role === 'Admin' ? '/admin' : '/dialer'));
+        return;
+      }
+      const { ok, data } = await post(mode === 'link' ? '/api/auth/send-link' : '/api/auth/password/forgot', { email: clean });
+      if (!ok) {
+        setError(data.error || 'Something went wrong. Try again.');
+        return;
+      }
+      setSent({ kind: mode === 'link' ? 'link' : 'reset', to: clean, demoUrl: data.loginUrl || data.resetUrl });
+    } catch {
+      setError('Network error. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputClass =
+    'focus-ring w-full h-10 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled focus:outline-none transition-colors';
+  const segBtn = (active: boolean) =>
+    `focus-ring h-8 px-2 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
+      active ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+    }`;
+
+  return (
+    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
+        <img src="/appointmentlyy-logo.png" alt="Appointmentlyy" className="h-8 w-auto object-contain" />
+      </header>
+
+      <main className="w-full max-w-md mx-auto my-auto py-6">
+        <div className="bg-surface rounded-xl p-8 border border-line shadow-xs">
+          {sent ? (
+            <div className="space-y-4 text-center" role="status">
+              <div className="size-12 rounded-full bg-success-bg text-success-fg flex items-center justify-center mx-auto">
+                {sent.kind === 'reset' ? <KeyRound className="w-6 h-6" aria-hidden /> : <Mail className="w-6 h-6" aria-hidden />}
+              </div>
+              <div>
+                <h1 className="text-h2 text-fg">Check your inbox</h1>
+                <p className="text-body text-fg-secondary mt-1">
+                  {sent.kind === 'reset' ? (
+                    <>
+                      If <span className="font-medium text-fg">{sent.to}</span> has an Appointmentlyy account, we sent a link to choose a new
+                      password. It expires in 30 minutes.
+                    </>
+                  ) : (
+                    <>
+                      If <span className="font-medium text-fg">{sent.to}</span> has access to an Appointmentlyy workspace, a sign-in link is on
+                      its way. It expires in 15 minutes.
+                    </>
+                  )}
+                </p>
+              </div>
+              {sent.demoUrl && (
+                <a href={sent.demoUrl} className={buttonClasses('secondary', 'md', 'w-full')}>
+                  Open the link (demo build)
+                </a>
+              )}
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setSent(null);
+                  go('password');
+                }}
+              >
+                Back to sign in
+              </Button>
+              <p className="text-small text-fg-tertiary">No email after a few minutes? Check spam, or ask your workspace admin.</p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-4" noValidate>
+              <div>
+                <h1 className="text-h1 text-fg">{mode === 'forgot' ? 'Reset your password' : 'Sign in'}</h1>
+                <p className="text-body text-fg-secondary mt-1">
+                  {mode === 'forgot'
+                    ? 'Enter your work email and we’ll send you a link to choose a new password.'
+                    : 'Welcome back. Sign in to your Appointmentlyy workspace.'}
+                </p>
+              </div>
+
+              {mode !== 'forgot' && (
+                <div className="grid grid-cols-2 gap-0.5 p-0.5 rounded-md border border-line bg-subtle" role="group" aria-label="Sign-in method">
+                  <button type="button" onClick={() => go('password')} aria-pressed={mode === 'password'} className={segBtn(mode === 'password')}>
+                    <Lock className="w-3.5 h-3.5" aria-hidden />
+                    Password
+                  </button>
+                  <button type="button" onClick={() => go('link')} aria-pressed={mode === 'link'} className={segBtn(mode === 'link')}>
+                    <Mail className="w-3.5 h-3.5" aria-hidden />
+                    Email me a link
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="signin-email" className="block mb-1.5 text-small font-medium text-fg">
+                  Work email
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-fg-tertiary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
+                  <input
+                    id="signin-email"
+                    type="email"
+                    autoComplete="email"
+                    autoFocus
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    className={`${inputClass} pl-9 pr-3`}
+                  />
+                </div>
+              </div>
+
+              {mode === 'password' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="signin-password" className="block text-small font-medium text-fg">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => go('forgot')}
+                      className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg underline underline-offset-2 cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-fg-tertiary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
+                    <input
+                      id="signin-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`${inputClass} pl-9 pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-fg-tertiary hover:text-fg cursor-pointer"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div role="alert" className="px-3 py-2.5 rounded-md bg-danger-bg border border-danger-fg/30 text-danger-fg text-small flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" aria-hidden />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <Button type="submit" variant="brand" size="lg" className="w-full" loading={busy}>
+                {mode === 'password' ? 'Sign in' : mode === 'link' ? 'Email me a sign-in link' : 'Send reset link'}
+                {!busy && <ArrowRight aria-hidden />}
+              </Button>
+
+              {mode === 'forgot' ? (
+                <button
+                  type="button"
+                  onClick={() => go('password')}
+                  className="focus-ring block mx-auto rounded-sm text-small text-fg-secondary hover:text-fg underline underline-offset-2"
+                >
+                  Back to sign in
+                </button>
+              ) : (
+                <p className="text-small text-fg-tertiary text-center">
+                  {mode === 'password'
+                    ? 'No password yet? Use “Email me a link”, then set one in Settings.'
+                    : 'New here? Your workspace admin sends you an invite by email.'}
+                </p>
+              )}
+            </form>
+          )}
+        </div>
+      </main>
+
+      <footer className="w-full max-w-md mx-auto py-6 text-center text-caption text-fg-tertiary">© 2026 Appointmentlyy</footer>
+    </div>
+  );
+}
+
 export default function SdrLoginPage() {
+  if (!DEMO_LOGIN) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-app" />}>
+        <RealLogin />
+      </Suspense>
+    );
+  }
   return (
     <Suspense
       fallback={

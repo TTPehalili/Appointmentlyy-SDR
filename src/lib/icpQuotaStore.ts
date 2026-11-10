@@ -1,3 +1,4 @@
+import { DEMO_LOGIN } from '@/lib/demoMode';
 /**
  * Appointmentlyy ICP Data Cloud — Multi-Tenant Quota & Invoice Ledger
  *
@@ -119,7 +120,7 @@ function getNextMondayIso(): string {
   return nextMon.toISOString();
 }
 
-export const INITIAL_TENANT_QUOTAS: Record<string, TenantQuotaState> = {
+const DEMO_INITIAL_TENANT_QUOTAS: Record<string, TenantQuotaState> = {
   'APPOINTMENTLYY': {
     tenantCode: 'APPOINTMENTLYY',
     tenantName: 'Appointmentlyy',
@@ -207,7 +208,7 @@ export const INITIAL_TENANT_QUOTAS: Record<string, TenantQuotaState> = {
   },
 };
 
-export const INITIAL_SYSTEM_INVOICES: SystemInvoice[] = [
+const DEMO_INITIAL_SYSTEM_INVOICES: SystemInvoice[] = [
   {
     id: 'inv_seed_1001',
     invoiceNumber: 'INV-2026-1001',
@@ -367,7 +368,7 @@ export function getTenantQuota(tenantCode?: string, tenantName?: string): Tenant
     bonusTopUpBalance: 0,
     totalLifetimePulled: 0,
     weekResetDateIso: getNextMondayIso(),
-    repsRoster: ['Rep 1', 'Rep 2', 'Rep 3', 'Rep 4'],
+    repsRoster: DEMO_LOGIN ? ['Rep 1', 'Rep 2', 'Rep 3', 'Rep 4'] : [],
     updatedAt: new Date().toISOString(),
   };
   all[key] = fresh;
@@ -616,3 +617,6 @@ export function subscribeToQuotaStore(callback: () => void): () => void {
   };
 }
 
+// Sample data is for demo builds only: real workspaces start empty.
+export const INITIAL_TENANT_QUOTAS: Record<string, TenantQuotaState> = DEMO_LOGIN ? DEMO_INITIAL_TENANT_QUOTAS : {};
+export const INITIAL_SYSTEM_INVOICES: SystemInvoice[] = DEMO_LOGIN ? DEMO_INITIAL_SYSTEM_INVOICES : [];

@@ -1,3 +1,4 @@
+import { DEMO_LOGIN } from '@/lib/demoMode';
 /**
  * Unified Email Store & Communications Engine
  * 
@@ -95,7 +96,7 @@ export function getConversationThreadKey(msg: {
   return 'thread_default';
 }
 
-export const INITIAL_SEED_EMAILS: EmailMessage[] = [
+const DEMO_INITIAL_SEED_EMAILS: EmailMessage[] = [
   {
     id: 'msg_seed_001',
     threadId: 'thread_julian_apexglobalbpo_com_apex_lead_burn',
@@ -373,3 +374,6 @@ export function resetToInitialSeeds(): EmailMessage[] {
     return INITIAL_SEED_EMAILS;
   }
 }
+
+// Sample data is for demo builds only: real workspaces start empty.
+export const INITIAL_SEED_EMAILS: EmailMessage[] = DEMO_LOGIN ? DEMO_INITIAL_SEED_EMAILS : [];

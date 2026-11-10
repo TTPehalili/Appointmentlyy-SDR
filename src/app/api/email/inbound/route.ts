@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getResendApiKey } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
+import { getServerSession } from '@/lib/server/session';
 
 const INBOUND_STORE_FILE = path.join(process.cwd(), '.inbound_emails.json');
 
@@ -131,8 +132,14 @@ async function syncFromResendReceiving(): Promise<any[]> {
 /**
  * GET: Retrieve all inbound emails received by Resend Inbound or local ingest
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    // The platform inbox receives replies for every workspace. Until each message is tagged with
+    // its workspace, only Appointmentlyy staff can read it; client workspaces get their own
+    // tagged messages only.
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+
     // 1. Sync from Resend Receiving API
     await syncFromResendReceiving();
 
@@ -174,10 +181,11 @@ export async function GET() {
       writeStoredInboundEmails(emails);
     }
 
+    const visible = session.isPlatformAdmin ? emails : emails.filter((m: any) => m.tenantCode === session.tenantCode);
     return NextResponse.json({
       success: true,
-      count: emails.length,
-      emails
+      count: visible.length,
+      emails: visible
     });
   } catch (error: any) {
     return NextResponse.json(

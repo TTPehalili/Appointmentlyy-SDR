@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useCallback, useSyncExternalStore } from 'react';
+import { DEMO_LOGIN } from '@/lib/demoMode';
+import { clearTenantStorage } from '@/lib/tenantStorage';
 
 export type UserRole = 'Super Admin' | 'Admin' | 'Manager' | 'Supervisor' | 'Rep';
 
@@ -283,7 +285,7 @@ export function getDefaultDemoPassword(email: string): string {
 
 export const SDR_SESSION_EVENT = 'appointmentlyy_sdr_session_updated';
 
-export const DEFAULT_SESSION: SdrSession = {
+const DEMO_SESSION: SdrSession = {
   role: 'Super Admin',
   tenantName: 'Appointmentlyy',
   tenantCode: 'APPOINTMENTLYY',
@@ -292,6 +294,18 @@ export const DEFAULT_SESSION: SdrSession = {
   headcount: 'CEO/Founder',
   isAuthenticated: true,
 };
+
+/** Signed-out placeholder until the server session (/api/auth/me) fills the real identity in. */
+const SIGNED_OUT_SESSION: SdrSession = {
+  role: 'Rep',
+  tenantName: '',
+  tenantCode: '',
+  email: '',
+  repName: '',
+  isAuthenticated: false,
+};
+
+export const DEFAULT_SESSION: SdrSession = DEMO_LOGIN ? DEMO_SESSION : SIGNED_OUT_SESSION;
 
 /**
  * Format an email or string into a clean person name (e.g. julian.vance@company.com -> Julian Vance)
@@ -313,14 +327,16 @@ export function formatRepNameFromEmail(emailOrName: string): string {
  * Normalize role string to valid UserRole
  */
 export function normalizeUserRole(rawRole?: string | null): UserRole {
-  if (!rawRole) return 'Super Admin';
+  // Unknown or missing roles get the least access (demo builds keep the old Super Admin default).
+  const fallback: UserRole = DEMO_LOGIN ? 'Super Admin' : 'Rep';
+  if (!rawRole) return fallback;
   const r = rawRole.trim().toLowerCase();
   if (r === 'super admin' || r === 'superadmin' || r === 'director' || r === 'owner') return 'Super Admin';
   if (r === 'admin' || r === 'administrator' || r === 'client admin') return 'Admin';
   if (r === 'manager' || r === 'sales manager') return 'Manager';
   if (r === 'supervisor' || r === 'lead' || r === 'team lead' || r === 'floor supervisor') return 'Supervisor';
   if (r === 'rep' || r === 'sdr' || r === 'bdr' || r === 'sales rep' || r === 'agent') return 'Rep';
-  return 'Super Admin';
+  return fallback;
 }
 
 /**
@@ -369,8 +385,8 @@ export function getStoredSession(): SdrSession {
     const headcountRaw = localStorage.getItem(SDR_SESSION_STORAGE_KEYS.HEADCOUNT);
     const authRaw = localStorage.getItem(SDR_SESSION_STORAGE_KEYS.AUTH_FLAG);
 
-    // Auto-migrate legacy Alex Mercer demo profile to Emil Halili / Appointmentlyy production state
-    if (!repNameRaw || repNameRaw === 'Alex Mercer' || emailRaw === 'alex.mercer@apexglobalbpo.ph') {
+    // Demo builds: auto-migrate the legacy Alex Mercer demo profile to the Emil Halili demo profile.
+    if (DEMO_LOGIN && (!repNameRaw || repNameRaw === 'Alex Mercer' || emailRaw === 'alex.mercer@apexglobalbpo.ph')) {
       localStorage.setItem(SDR_SESSION_STORAGE_KEYS.REP_NAME, 'Emil Halili');
       localStorage.setItem(SDR_SESSION_STORAGE_KEYS.EMAIL, 'emil@appointmentlyy.com');
       localStorage.setItem(SDR_SESSION_STORAGE_KEYS.TENANT_NAME, 'Appointmentlyy');
@@ -380,6 +396,7 @@ export function getStoredSession(): SdrSession {
       localStorage.setItem(SDR_SESSION_STORAGE_KEYS.AUTH_FLAG, 'true');
       return DEFAULT_SESSION;
     }
+    if (!DEMO_LOGIN && authRaw !== 'true') return SIGNED_OUT_SESSION;
 
     return {
       role: normalizeUserRole(roleRaw || DEFAULT_SESSION.role),
@@ -388,7 +405,7 @@ export function getStoredSession(): SdrSession {
       email: emailRaw || DEFAULT_SESSION.email,
       repName: repNameRaw || (emailRaw ? formatRepNameFromEmail(emailRaw) : DEFAULT_SESSION.repName),
       headcount: headcountRaw || DEFAULT_SESSION.headcount,
-      isAuthenticated: authRaw !== 'false',
+      isAuthenticated: DEMO_LOGIN ? authRaw !== 'false' : true,
     };
   } catch (err) {
     console.warn('[Session] Failed to read from localStorage:', err);
@@ -442,6 +459,7 @@ export function setStoredSession(sessionUpdates: Partial<SdrSession>): SdrSessio
  */
 export function clearStoredSession() {
   if (typeof window === 'undefined') return;
+  clearTenantStorage();
 
   try {
     localStorage.removeItem(SDR_SESSION_STORAGE_KEYS.ROLE);
@@ -469,6 +487,8 @@ export function clearStoredSession() {
  */
 export function syncSessionFromUrl(): SdrSession {
   if (typeof window === 'undefined') return DEFAULT_SESSION;
+  // Real builds never let a URL change who you are or which workspace you're in.
+  if (!DEMO_LOGIN) return getStoredSession();
 
   try {
     const params = new URLSearchParams(window.location.search);
@@ -511,7 +531,7 @@ interface SessionSnapshot {
 
 const SERVER_SNAPSHOT: SessionSnapshot = {
   session: DEFAULT_SESSION,
-  canAccessIcp: true, // DEFAULT_SESSION is Super Admin
+  canAccessIcp: DEMO_LOGIN, // DEMO_SESSION is Super Admin; the signed-out placeholder is a Rep
 };
 
 let cachedKey = '';

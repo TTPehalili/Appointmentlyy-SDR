@@ -1,5 +1,6 @@
 'use client';
 
+import { DEMO_LOGIN, signOutOnServer } from '@/lib/authClient';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronsUpDown, KeyRound, LogOut, Mail, Settings } from 'lucide-react';
@@ -85,9 +86,9 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
             </div>
           </div>
 
-          {/* DESIGN-NOTE: role switching is a testing aid carried over from the old header. Remove before GA. */}
-          <p className="px-2 pb-0.5 pt-2 text-group text-fg-tertiary">View as role (testing)</p>
-          {TEST_ROLES.map((r) => (
+          {/* Role switching is a demo/testing aid only; real roles come from the server. */}
+          {DEMO_LOGIN && <p className="px-2 pb-0.5 pt-2 text-group text-fg-tertiary">View as role (testing)</p>}
+          {DEMO_LOGIN && TEST_ROLES.map((r) => (
             <button
               key={r}
               type="button"
@@ -117,6 +118,22 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
               <Settings className="text-fg-secondary" aria-hidden />
               Settings
             </button>
+            {!DEMO_LOGIN && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  router.push('/settings#password');
+                }}
+                className={cn(item, 'text-fg')}
+              >
+                <KeyRound className="text-fg-secondary" aria-hidden />
+                Password
+              </button>
+            )}
+            {/* Demo builds: local passwords and on-screen login emails. */}
+            {DEMO_LOGIN && (<>
             <button
               type="button"
               role="menuitem"
@@ -141,10 +158,12 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
               <Mail className="text-fg-secondary" aria-hidden />
               Send a login email
             </button>
+            </>)}
             <button
               type="button"
               role="menuitem"
-              onClick={() => {
+              onClick={async () => {
+                await signOutOnServer();
                 logout();
                 router.push('/login');
               }}

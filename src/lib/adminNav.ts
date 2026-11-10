@@ -52,13 +52,13 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   },
   {
     label: 'Automation',
-    items: [{ id: 'workflows', label: 'Workflows', href: '/admin/workflows', permission: 'admin', keywords: 'workflow studio automation' }],
+    items: [{ id: 'workflows', label: 'Workflows', href: '/admin/workflows', permission: 'platform', keywords: 'workflow studio automation' }],
   },
   {
     label: 'Integrations',
     items: [
       { id: 'crm', label: 'CRM & field mapping', href: '/admin/crm', permission: 'adminOrg', keywords: 'universal crm mapper hubspot salesforce' },
-      { id: 'mcp', label: 'MCP server & webhooks', href: '/admin/mcp', permission: 'adminOrg', keywords: 'mcp ingress api developer gateway' },
+      { id: 'mcp', label: 'MCP server & webhooks', href: '/admin/mcp', permission: 'platform', keywords: 'mcp ingress api developer gateway' },
       { id: 'ai-providers', label: 'AI providers', href: '/admin/ai-providers', permission: 'adminOrg', keywords: 'byok ai vault keys' },
       { id: 'phone-system', label: 'Phone system', href: '/admin/phone-system', permission: 'adminOrg', keywords: 'vicidial dialer telephony calls sip click to call' },
     ],

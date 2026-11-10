@@ -42,3 +42,6 @@ next-env.d.ts
 !.env.example
 .inbound_emails.json
 .tickets.json
+
+# tenant/member file store (local dev)
+.data/

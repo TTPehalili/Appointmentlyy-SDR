@@ -1,3 +1,4 @@
+import { DEMO_LOGIN } from '@/lib/demoMode';
 /**
  * Appointmentlyy SDR — Multi-Tenant Custom Domain & White-Label Store
  *
@@ -92,7 +93,7 @@ export function generateVerificationToken(tenantCode: string, domain: string): s
   return `appy-verify-${cleanTenant}-${cleanDom}-9f82b4c1`;
 }
 
-export const INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainConfig> = {
+const DEMO_INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainConfig> = {
   APPOINTMENTLYY: {
     tenantCode: 'APPOINTMENTLYY',
     tenantName: 'Appointmentlyy',
@@ -400,3 +401,5 @@ export function subscribeToCustomDomains(
   };
 }
 
+// Sample data is for demo builds only: real workspaces start empty.
+export const INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainConfig> = DEMO_LOGIN ? DEMO_INITIAL_CUSTOM_DOMAIN_CONFIGS : {};

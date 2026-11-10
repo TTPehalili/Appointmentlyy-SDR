@@ -55,6 +55,9 @@ import BillingInvoiceManager from './admin/BillingInvoiceManager';
 import McpDeveloperGateway from './admin/McpDeveloperGateway';
 import CallDispositionManager from './admin/CallDispositionManager';
 import JobRadarManager from './admin/JobRadarManager';
+import { TenantDirectory } from './admin/TenantDirectory';
+import { MembersManager } from './admin/MembersManager';
+import { DEMO_LOGIN } from '@/lib/demoMode';
 import {
   Badge,
   Button,
@@ -481,13 +484,15 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                 <Link href="/dialer" className={buttonClasses('primary', 'md', 'w-full')}>
                   Return to calling floor
                 </Link>
-                <Button
-                  variant="secondary"
-                  onClick={() => updateSession({ role: 'Super Admin' })}
-                  className="w-full"
-                >
-                  Elevate to admin (testing)
-                </Button>
+                {DEMO_LOGIN && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => updateSession({ role: 'Super Admin' })}
+                    className="w-full"
+                  >
+                    Elevate to admin (testing)
+                  </Button>
+                )}
               </div>
             </div>
           </main>
@@ -504,8 +509,9 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
             <JobRadarManager />
           )}
 
-          {/* TAB 0: TENANTS & CLIENT ACCESS */}
-          {activeTab === 'tenants' && (
+          {/* TAB 0: TENANTS & CLIENT ACCESS (real workspaces from the server; demo builds keep the sample list) */}
+          {activeTab === 'tenants' && !DEMO_LOGIN && <TenantDirectory />}
+          {activeTab === 'tenants' && DEMO_LOGIN && (
             <div>
               <PageHeader
                 title="Tenants"
@@ -746,8 +752,9 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
             </div>
           )}
 
-          {/* TAB 1: PEOPLE (User Management) */}
-          {activeTab === 'people' && (
+          {/* TAB 1: PEOPLE (members of the current workspace; demo builds keep the sample list) */}
+          {activeTab === 'people' && !DEMO_LOGIN && <MembersManager />}
+          {activeTab === 'people' && DEMO_LOGIN && (
             <div>
               <PageHeader
                 title="Members & seats"

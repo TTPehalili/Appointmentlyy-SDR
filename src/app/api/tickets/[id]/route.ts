@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readStoredTicketsServer, writeStoredTicketsServer, TroubleTicket } from '@/lib/ticketStore';
+import { getServerSession } from '@/lib/server/session';
+import { scopeTicketsFor } from '@/lib/server/ticketScope';
 
 /**
  * GET /api/tickets/[id]
@@ -9,8 +11,10 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
     const { id } = await context.params;
-    const tickets = readStoredTicketsServer();
+    const tickets = scopeTicketsFor(readStoredTicketsServer(), session);
     const ticket = tickets.find(t => t.id.toLowerCase() === id.toLowerCase());
 
     if (!ticket) {
@@ -33,9 +37,14 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Status, priority and assignment are managed by Appointmentlyy support staff.
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+    if (!session.isPlatformAdmin) return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
     const { id } = await context.params;
     const body = await req.json();
-    const { status, priority, assignedTo, updatedBy = 'Emil Halili' } = body;
+    const { status, priority, assignedTo } = body;
+    const updatedBy = session.name;
 
     const tickets = readStoredTicketsServer();
     const ticketIndex = tickets.findIndex(t => t.id.toLowerCase() === id.toLowerCase());

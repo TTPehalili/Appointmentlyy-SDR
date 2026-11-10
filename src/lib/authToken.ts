@@ -5,7 +5,7 @@
 import crypto from 'node:crypto';
 import type { UserRole } from '@/lib/session';
 
-export type AuthTokenType = 'login' | 'invite' | 'session';
+export type AuthTokenType = 'login' | 'invite' | 'session' | 'reset';
 
 export interface AuthTokenPayload {
   typ: AuthTokenType;
@@ -15,6 +15,8 @@ export interface AuthTokenPayload {
   tenantCode: string;
   repName: string;
   invitedBy?: string;
+  /** Invite tokens: must match the member's current invite nonce (newest invite wins). */
+  nonce?: string;
   iat: number;
   exp: number;
 }

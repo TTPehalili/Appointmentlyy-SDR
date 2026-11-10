@@ -9,6 +9,7 @@
 
 import { getStoredSession, normalizeUserRole, canUserReassignLeads } from './session';
 import liveBpo1000Raw from './liveBpo1000Data.json';
+import { DEMO_LOGIN } from '@/lib/demoMode';
 
 export interface LeadFootprintItem {
   id: string;
@@ -195,7 +196,7 @@ export function canUserExportCsv(roleInput?: string): boolean {
   return activeRole === 'Super Admin' || activeRole === 'Admin';
 }
 
-export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
+const DEMO_INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
   {
     id: 'folder_oa_bpo_va_live',
     name: 'Outsource Accelerator BPO & Virtual Assistant Leaders (1,000 Live)',
@@ -242,7 +243,7 @@ export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
 ];
 
 // Default starter contacts with 1,000 real live-pulled Outsource Accelerator BPO & Virtual Assistant leaders
-export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
+const DEMO_INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
   ...(liveBpo1000Raw as ContactRecord[]),
   {
     id: 'lead_fresh_d2',
@@ -1358,3 +1359,7 @@ export function subscribeToContacts(callback: (contacts: ContactRecord[]) => voi
     if (channel) channel.close();
   };
 }
+
+// Sample data is for demo builds only: real workspaces start empty.
+export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = DEMO_LOGIN ? DEMO_INITIAL_DEFAULT_FOLDERS : [];
+export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = DEMO_LOGIN ? DEMO_INITIAL_DEFAULT_CONTACTS : [];

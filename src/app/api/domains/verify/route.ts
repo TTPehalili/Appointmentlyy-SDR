@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession, hasRank } from '@/lib/server/session';
 import dns from 'node:dns/promises';
 
 /**
@@ -27,14 +28,22 @@ function sanitizeDomain(input: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
+    if (!hasRank(session, 'Admin')) {
+      return NextResponse.json({ success: false, error: 'Only admins can change the workspace domain.' }, { status: 403 });
+    }
+    // Workspace from the session only (the old body field let anyone claim the platform's domain).
+    const tenantCode = session.tenantCode;
     const body = await req.json();
     const {
       customDomain,
-      tenantCode = 'CUSTOMER',
       action = 'verify', // 'register' | 'verify'
-      simulateVerified = false,
+      simulateVerified: simulateRequested = false,
     } = body;
 
+    // The demo "mark as verified" shortcut is for Appointmentlyy staff only.
+    const simulateVerified = session.isPlatformAdmin && Boolean(simulateRequested);
     const cleanDomain = sanitizeDomain(customDomain);
 
     if (!cleanDomain || !cleanDomain.includes('.')) {

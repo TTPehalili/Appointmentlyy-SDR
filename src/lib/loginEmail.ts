@@ -2,7 +2,7 @@
  * Techy, email-client-safe (table + inline CSS) login / invite email template.
  */
 export interface LoginEmailParams {
-  kind: 'login' | 'invite';
+  kind: 'login' | 'invite' | 'reset';
   recipientName: string;
   workspaceName: string;
   role: string;
@@ -17,6 +17,7 @@ const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function buildLoginEmailSubject(p: LoginEmailParams): string {
+  if (p.kind === 'reset') return 'Reset your Appointmentlyy SDR password';
   return p.kind === 'invite'
     ? `You're invited to ${p.workspaceName} on Appointmentlyy SDR`
     : 'Your Appointmentlyy SDR login link';
@@ -24,20 +25,24 @@ export function buildLoginEmailSubject(p: LoginEmailParams): string {
 
 export function buildLoginEmailText(p: LoginEmailParams): string {
   const intro =
-    p.kind === 'invite'
+    p.kind === 'reset'
+      ? `Someone asked to reset the password for your Appointmentlyy SDR account. Use the link below to choose a new one.`
+      : p.kind === 'invite'
       ? `${p.invitedBy || 'Your admin'} invited you to ${p.workspaceName} on Appointmentlyy SDR as ${p.role}.`
       : `Use the link below to sign in to ${p.workspaceName} on Appointmentlyy SDR.`;
-  return `${intro}\n\nSign in: ${p.loginUrl}\n\nThis link expires in ${p.expiresText}. If you didn't request it, you can safely ignore this email.\n\nAppointmentlyy SDR`;
+  return `${intro}\n\n${p.kind === 'reset' ? 'Reset password' : 'Sign in'}: ${p.loginUrl}\n\nThis link expires in ${p.expiresText}. If you didn't request it, you can safely ignore this email.\n\nAppointmentlyy SDR`;
 }
 
 export function buildLoginEmailHtml(p: LoginEmailParams): string {
   const headline =
-    p.kind === 'invite' ? 'You have been invited.' : 'Your secure login link.';
+    p.kind === 'reset' ? 'Reset your password.' : p.kind === 'invite' ? 'You have been invited.' : 'Your secure login link.';
   const lead =
-    p.kind === 'invite'
+    p.kind === 'reset'
+      ? `Someone asked to reset the password for your Appointmentlyy SDR account. Press the button below to choose a new one. If it wasn't you, ignore this email: your password stays the same.`
+      : p.kind === 'invite'
       ? `<strong style="color:#09090b;">${esc(p.invitedBy || 'Your admin')}</strong> invited you to join <strong style="color:#09090b;">${esc(p.workspaceName)}</strong> on Appointmentlyy SDR.`
       : `Press the button below to sign in to <strong style="color:#09090b;">${esc(p.workspaceName)}</strong>. No password needed.`;
-  const cta = p.kind === 'invite' ? 'Accept Invite &amp; Log In' : 'Log In to Appointmentlyy SDR';
+  const cta = p.kind === 'reset' ? 'Choose a New Password' : p.kind === 'invite' ? 'Accept Invite &amp; Log In' : 'Log In to Appointmentlyy SDR';
   const mono = "'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace";
   const sans = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
@@ -50,7 +55,7 @@ export function buildLoginEmailHtml(p: LoginEmailParams): string {
 <title>${esc(buildLoginEmailSubject(p))}</title>
 </head>
 <body style="margin:0;padding:0;background:#09090b;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(p.kind === 'invite' ? 'Accept your invite and log in to Appointmentlyy SDR' : 'Your secure one-click login link')}</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(p.kind === 'reset' ? 'Reset your Appointmentlyy SDR password' : p.kind === 'invite' ? 'Accept your invite and log in to Appointmentlyy SDR' : 'Your secure one-click login link')}</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#09090b;">
   <tr><td align="center" style="padding:40px 16px;">
     <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="width:100%;max-width:560px;">
@@ -62,7 +67,7 @@ export function buildLoginEmailHtml(p: LoginEmailParams): string {
       </td></tr>
       <tr><td style="background:#fafafa;padding:32px 36px 8px 36px;font-family:${sans};">
         <div style="font-family:${mono};font-size:11px;letter-spacing:1.5px;color:#71717a;margin-bottom:10px;">
-          ${p.kind === 'invite' ? 'NEW_USER_INVITE' : 'LOGIN_REQUEST'}
+          ${p.kind === 'reset' ? 'PASSWORD_RESET' : p.kind === 'invite' ? 'NEW_USER_INVITE' : 'LOGIN_REQUEST'}
         </div>
         <h1 style="margin:0 0 12px 0;font-size:26px;line-height:1.2;color:#09090b;letter-spacing:-0.5px;">${headline}</h1>
         <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#3f3f46;">Hi ${esc(p.recipientName)},<br>${lead}</p>

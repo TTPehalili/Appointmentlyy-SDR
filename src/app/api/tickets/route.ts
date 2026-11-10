@@ -11,6 +11,9 @@ import {
   sendCustomerTicketConfirmation, 
   sendAdminTicketAlert 
 } from '@/lib/ticketEmailer';
+import { getServerSession } from '@/lib/server/session';
+import { scopeTicketsFor } from '@/lib/server/ticketScope';
+
 
 /**
  * GET /api/tickets
@@ -18,13 +21,15 @@ import {
  */
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
     const { searchParams } = new URL(req.url);
     const tenantFilter = searchParams.get('tenant');
     const statusFilter = searchParams.get('status');
     const priorityFilter = searchParams.get('priority');
     const searchQuery = searchParams.get('search');
 
-    let tickets = readStoredTicketsServer();
+    let tickets = scopeTicketsFor(readStoredTicketsServer(), session);
 
     if (tenantFilter && tenantFilter !== 'all') {
       tickets = tickets.filter(t => 
@@ -74,12 +79,15 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
     const body = await req.json();
+    // Workspace and requester come from the session; staff may file on a client's behalf.
+    const tenantName = session.identity.tenant.name;
+    const tenantCode = session.tenantCode;
+    const requesterName: string = session.isPlatformAdmin && body.requesterName ? String(body.requesterName) : session.name;
+    const requesterEmail: string = session.isPlatformAdmin && body.requesterEmail ? String(body.requesterEmail) : session.email;
     const {
-      tenantName = 'Appointmentlyy Workspace',
-      tenantCode = 'APPOINTMENTLYY',
-      requesterName = 'Customer User',
-      requesterEmail,
       subject,
       description,
       category = 'bug_general',

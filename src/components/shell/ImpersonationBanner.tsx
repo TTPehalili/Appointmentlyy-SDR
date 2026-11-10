@@ -1,20 +1,41 @@
 'use client';
 
+import * as React from 'react';
 import { Eye } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { HOME_WORKSPACE } from '@/lib/workspaces';
+import { DEMO_LOGIN, getServerAuth, switchWorkspaceOnServer, useServerAuth } from '@/lib/authClient';
+import { setStoredSession } from '@/lib/session';
+import { claimTenantStorage } from '@/lib/tenantStorage';
 
 /**
  * Shown on ink-950 across the top of the app whenever a Super Admin is inside a client
- * workspace. It cannot be dismissed, only exited (redesign spec 3.5).
- *
- * DESIGN-NOTE: the spec shows a "Read-only ▾" access-mode menu here. There is no
- * read-only enforcement behind impersonation yet, so the menu is left out rather than
- * showing a mode that does nothing. Add it once the server supports it.
+ * workspace. It cannot be dismissed, only exited (redesign spec 3.5). Entering and leaving a
+ * client workspace goes through the server and is written to the audit log.
  */
 export function ImpersonationBanner() {
   const { role, tenantName, tenantCode, updateSession } = useSession();
-  if (role !== 'Super Admin' || tenantCode === HOME_WORKSPACE.code) return null;
+  const server = useServerAuth();
+  const [leaving, setLeaving] = React.useState(false);
+  const isStaff = DEMO_LOGIN ? role === 'Super Admin' : Boolean(server.identity?.isPlatformAdmin);
+  if (!isStaff || !tenantCode || tenantCode === HOME_WORKSPACE.code) return null;
+
+  const exit = async () => {
+    if (DEMO_LOGIN) {
+      updateSession({ tenantName: HOME_WORKSPACE.name, tenantCode: HOME_WORKSPACE.code });
+      return;
+    }
+    setLeaving(true);
+    const res = await switchWorkspaceOnServer(HOME_WORKSPACE.code);
+    const id = getServerAuth().identity;
+    if (!res.ok || !id) {
+      setLeaving(false);
+      return;
+    }
+    claimTenantStorage(id.email, id.tenantCode);
+    setStoredSession({ email: id.email, role: id.role, tenantCode: id.tenantCode, tenantName: id.tenantName, repName: id.repName, isAuthenticated: true });
+    window.location.assign(new URL('/platform/tenants', window.location.origin).href);
+  };
 
   return (
     <div
@@ -30,10 +51,11 @@ export function ImpersonationBanner() {
       </span>
       <button
         type="button"
-        onClick={() => updateSession({ tenantName: HOME_WORKSPACE.name, tenantCode: HOME_WORKSPACE.code })}
-        className="focus-ring rounded-sm font-medium text-ink-50 underline underline-offset-2 hover:text-white"
+        onClick={exit}
+        disabled={leaving}
+        className="focus-ring rounded-sm font-medium text-ink-50 underline underline-offset-2 hover:text-white disabled:opacity-60"
       >
-        Exit
+        {leaving ? 'Leaving…' : 'Exit'}
       </button>
     </div>
   );

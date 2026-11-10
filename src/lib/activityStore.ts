@@ -1,3 +1,4 @@
+import { DEMO_LOGIN } from '@/lib/demoMode';
 export interface CadenceActivityRecord {
   id: string;
   timestamp: string; // e.g. "10:45 AM"
@@ -34,7 +35,7 @@ export interface DailyActivitySummary {
 const STORAGE_KEY = 'appointmentlyy_sdr_activity_log_v1';
 const BROADCAST_CHANNEL_NAME = 'appointmentlyy_activity_sync';
 
-export const INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = [
+const DEMO_INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = [
   {
     id: 'act_demo_1',
     timestamp: '10:42 AM',
@@ -264,3 +265,6 @@ export function subscribeToActivities(callback: (activities: CadenceActivityReco
     if (channel) channel.close();
   };
 }
+
+// Sample data is for demo builds only: real workspaces start empty.
+export const INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = DEMO_LOGIN ? DEMO_INITIAL_DEMO_ACTIVITIES : [];

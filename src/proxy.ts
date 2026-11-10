@@ -1,5 +1,80 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { AUTH_COOKIE_NAME, verifyAuthToken } from '@/lib/authToken';
+import { getServerSession } from '@/lib/server/session';
+
+const DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === '1';
+
+/** Pages anyone can open. Everything else in the app needs a signed-in session. */
+function isPublicPage(pathname: string): boolean {
+  return ['/login', '/design'].some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.startsWith('/certificate/');
+}
+
+/** API routes that work without a session (they authenticate some other way, or are sign-in itself). */
+function isPublicApi(pathname: string, method: string): boolean {
+  if (
+    [
+      '/api/auth/send-link',
+      '/api/auth/verify',
+      '/api/auth/logout',
+      '/api/auth/me',
+      '/api/auth/password/login',
+      '/api/auth/password/forgot',
+      '/api/auth/password/reset',
+      '/api/health',
+    ].includes(pathname)
+  ) {
+    return true;
+  }
+  // Workflow webhooks require their own secret; ElevenLabs posts call events.
+  if (pathname.startsWith('/api/webhooks/') && !pathname.startsWith('/api/webhooks/test')) return true;
+  // Resend delivers inbound mail here.
+  if (pathname === '/api/email/inbound' && method === 'POST') return true;
+  return false;
+}
+
+/** API areas only Appointmentlyy staff may call: they run code, hold shared credentials or bill. */
+const STAFF_ONLY_API_PREFIXES = [
+  '/api/workflows',
+  '/api/projects',
+  '/api/executions',
+  '/api/credentials',
+  '/api/mcp',
+  '/api/nodes',
+  '/api/admin/',
+  '/api/webhooks/test',
+  '/api/platform/',
+];
+
+/**
+ * Coarse gate in front of every request: a valid, unexpired session cookie, and Super Admin for
+ * staff-only APIs. Route handlers still re-check membership against storage (getServerSession),
+ * so removed people and suspended workspaces are refused there even if their cookie is valid.
+ */
+async function authGate(request: NextRequest): Promise<NextResponse | null> {
+  if (DEMO_LOGIN) return null; // demo builds keep the local, browser-only login
+  const { pathname } = request.nextUrl;
+  const isApi = pathname.startsWith('/api/');
+  if (isApi ? isPublicApi(pathname, request.method) : isPublicPage(pathname)) return null;
+
+  const session = verifyAuthToken(request.cookies.get(AUTH_COOKIE_NAME)?.value, ['session']);
+  if (!session) {
+    if (isApi) return NextResponse.json({ success: false, error: 'Please sign in.' }, { status: 401 });
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = pathname === '/' ? '' : `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
+    return NextResponse.redirect(url);
+  }
+  if (isApi && STAFF_ONLY_API_PREFIXES.some((p) => pathname.startsWith(p))) {
+    // These routes don't check the session themselves, so confirm staff status against storage
+    // now (a cookie alone could belong to someone removed from the staff list).
+    const live = session.role === 'Super Admin' ? await getServerSession(request) : null;
+    if (!live?.isPlatformAdmin) {
+      return NextResponse.json({ success: false, error: 'Appointmentlyy staff only.' }, { status: 403 });
+    }
+  }
+  return null;
+}
 
 /**
  * Appointmentlyy SDR — Multi-Tenant Custom Domain Edge Router (Next.js 16 `proxy.ts`)
@@ -49,7 +124,10 @@ const KNOWN_CUSTOM_DOMAINS: Record<
   },
 };
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const blocked = await authGate(request);
+  if (blocked) return blocked;
+
   const rawHost =
     request.headers.get('x-forwarded-host') ||
     request.headers.get('host') ||
@@ -58,11 +136,10 @@ export function proxy(request: NextRequest) {
   // Strip port (e.g., localhost:3001 -> localhost)
   const cleanHost = rawHost.toLowerCase().replace(/:\d+$/, '').trim();
 
-  // Allow query parameter `?custom_domain=app.customerwebsiteurl.com` for instant testing
-  const previewDomainParam = request.nextUrl.searchParams
-    .get('custom_domain')
-    ?.toLowerCase()
-    .trim();
+  // `?custom_domain=app.customerwebsiteurl.com` previews a white-label host (demo builds only).
+  const previewDomainParam = DEMO_LOGIN
+    ? request.nextUrl.searchParams.get('custom_domain')?.toLowerCase().trim()
+    : undefined;
 
   const effectiveHost = previewDomainParam || cleanHost;
   const isCustomCustomerDomain =
@@ -95,12 +172,10 @@ export function proxy(request: NextRequest) {
   });
 
   // White-label theme (redesign spec 7): the tenant brand colour rides in a cookie that the
-  // <head> boot script in the root layout applies before first paint. Platform hosts get
-  // the default Appointmentlyy brand.
+  // <head> boot script in the root layout applies before first paint. On platform hosts the
+  // signed-in workspace's brand sets that cookie (ThemeSync), so it is left alone here.
   if (matchedTenant?.brandColor && isCustomCustomerDomain) {
     response.cookies.set('appy_brand', matchedTenant.brandColor, { path: '/', sameSite: 'lax' });
-  } else if (!isCustomCustomerDomain && request.cookies.get('appy_brand')) {
-    response.cookies.delete('appy_brand');
   }
 
   if (matchedTenant) {

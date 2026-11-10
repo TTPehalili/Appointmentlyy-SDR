@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const apiKey = (process.env.ELEVENLABS_API_KEY || process.env.NEXT_PUBLIC_ELEVENLABS_API_KEY || '').trim();
+    const apiKey = (process.env.ELEVENLABS_API_KEY || '').trim();
 
     // Default to Eric (conversational executive male) if voiceId not provided
     const targetVoiceId = voiceId || 'cjVigY5qzO86Huf0OWal';

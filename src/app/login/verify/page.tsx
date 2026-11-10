@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { setStoredSession, UserRole } from '@/lib/session';
+import { claimTenantStorage } from '@/lib/tenantStorage';
 import { Badge, Button, buttonClasses } from '@/components/ui';
 
 function VerifyLoginContent() {
@@ -48,6 +49,8 @@ function VerifyLoginContent() {
 
         const user = data.identity;
         setIdentity(user);
+        // Wipe anything a previous person or workspace left in this browser before adopting the new identity.
+        claimTenantStorage(user.email, user.tenantCode);
         setStoredSession({
           email: user.email,
           role: user.role,

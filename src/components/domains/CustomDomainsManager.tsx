@@ -23,6 +23,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
+import { DEMO_LOGIN, apiJson, refreshServerIdentity } from '@/lib/authClient';
 import {
   TenantCustomDomainConfig,
   PRIMARY_PLATFORM_HOST,
@@ -119,6 +120,54 @@ export default function CustomDomainsManager() {
       '--bg-selected': t['--brand-50'],
     } as unknown as React.CSSProperties;
   }, [brandHex]);
+
+  // Real builds: the brand lives on the server (Admin › Branding), so every member of the
+  // workspace gets it on any device. Load it into the form once.
+  const [brandSaving, setBrandSaving] = useState(false);
+  const [canEditBrand, setCanEditBrand] = useState(DEMO_LOGIN);
+  useEffect(() => {
+    if (DEMO_LOGIN) return;
+    let alive = true;
+    apiJson<{ branding: { brandColor?: string; displayName?: string; logoInitials?: string; supportEmail?: string }; canEdit: boolean; tenantName: string }>(
+      '/api/tenant/branding',
+    ).then((res) => {
+      if (!alive || !res.success) return;
+      setCanEditBrand(res.canEdit);
+      setBrandColorInput(res.branding.brandColor ?? '');
+      setDisplayNameInput(res.branding.displayName ?? res.tenantName);
+      setInitialsInput(res.branding.logoInitials ?? '');
+      setSupportEmailInput(res.branding.supportEmail ?? '');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session.tenantCode]);
+
+  const handleSaveBrand = async () => {
+    if (brandCheck && !brandCheck.ok) {
+      setToastMessage(`Brand colour not saved: ${brandCheck.message}`);
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+    setBrandSaving(true);
+    const res = await apiJson('/api/tenant/branding', {
+      method: 'PATCH',
+      body: {
+        brandColor: brandHex ?? '',
+        displayName: displayNameInput.trim(),
+        logoInitials: initialsInput.trim(),
+        supportEmail: supportEmailInput.trim(),
+      },
+    });
+    setBrandSaving(false);
+    if (!res.success) {
+      setToastMessage(res.error || 'Could not save the brand.');
+    } else {
+      await refreshServerIdentity(); // re-themes the app for everyone on their next load, and here now
+      setToastMessage('Brand saved. Everyone in this workspace sees it next time they open the app.');
+    }
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const [verifying, setVerifying] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -465,6 +514,15 @@ export default function CustomDomainsManager() {
                       className="focus-ring size-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer"
                     />
                   </label>
+
+                  {!DEMO_LOGIN && (
+                    <div className="flex items-center justify-end gap-3 border-t border-line pt-4">
+                      {!canEditBrand && <span className="text-small text-fg-tertiary">Only workspace admins can change the brand.</span>}
+                      <Button variant="primary" onClick={handleSaveBrand} loading={brandSaving} disabled={!canEditBrand}>
+                        Save brand
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 

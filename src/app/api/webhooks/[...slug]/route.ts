@@ -36,8 +36,14 @@ async function handleProductionWebhook(
     );
     const config = webhookNode?.data?.config || webhookNode?.config || {};
 
-    // Validate Auth Secret if configured
-    if (config.authSecret) {
+    // A webhook runs a workflow on the server, so it must have a secret (anonymous calls are refused).
+    if (!config.authSecret) {
+      return NextResponse.json(
+        { success: false, error: 'This webhook has no secret configured. Add one in the workflow before calling it.' },
+        { status: 401 }
+      );
+    }
+    {
       const authHeader = request.headers.get('authorization') || '';
       const secretHeader = request.headers.get('x-webhook-secret') || '';
       const querySecret = new URL(request.url).searchParams.get('secret') || '';

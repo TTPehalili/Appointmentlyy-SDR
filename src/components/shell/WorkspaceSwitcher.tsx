@@ -13,6 +13,9 @@ import {
   type TenantCustomDomainConfig,
 } from '@/lib/customDomainStore';
 import { HOME_WORKSPACE, WORKSPACES, getRecentWorkspaceCodes, pushRecentWorkspace } from '@/lib/workspaces';
+import { DEMO_LOGIN, getServerAuth, switchWorkspaceOnServer, useServerAuth } from '@/lib/authClient';
+import { setStoredSession } from '@/lib/session';
+import { claimTenantStorage } from '@/lib/tenantStorage';
 
 /** Tenant config when the app is served from a client's custom domain (white-label lock). */
 export function useWhiteLabel(): TenantCustomDomainConfig | null {
@@ -66,17 +69,30 @@ function initialsOf(name: string) {
 export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const { tenantName, tenantCode, updateSession } = useSession();
-  const canSwitch = usePermission('switchWorkspace');
   const canPlatform = usePermission('platform');
   const whiteLabel = useWhiteLabel();
+  const server = useServerAuth();
+  const [switching, setSwitching] = React.useState<string | null>(null);
+  const [switchError, setSwitchError] = React.useState<string | null>(null);
+  // Real builds: the workspaces the server says this person belongs to. Demo builds: the static list.
+  const workspaces = DEMO_LOGIN
+    ? WORKSPACES.map((w) => ({ code: w.code, name: w.name }))
+    : server.workspaces.map((w) => ({ code: w.code, name: w.displayName || w.name }));
+  const canSwitchDemo = usePermission('switchWorkspace');
+  const canSwitch = DEMO_LOGIN ? canSwitchDemo : workspaces.length > 1;
+  const branding = server.identity?.branding;
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const [recents, setRecents] = React.useState<string[]>([]);
   const ref = React.useRef<HTMLDivElement>(null);
 
   const isHome = tenantCode === HOME_WORKSPACE.code;
-  const displayName = whiteLabel?.branding.workspaceDisplayName ?? tenantName;
-  const markInitials = whiteLabel ? whiteLabel.branding.logoInitials : isHome ? undefined : initialsOf(tenantName);
+  const displayName = whiteLabel?.branding.workspaceDisplayName ?? (branding?.displayName || tenantName);
+  const markInitials = whiteLabel
+    ? whiteLabel.branding.logoInitials
+    : isHome
+      ? undefined
+      : branding?.logoInitials || initialsOf(displayName);
   const interactive = canSwitch && !whiteLabel;
 
   React.useEffect(() => {
@@ -101,17 +117,38 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     setOpen((o) => !o);
   };
 
-  const switchTo = (code: string) => {
-    const ws = WORKSPACES.find((w) => w.code === code);
-    if (!ws) return;
-    pushRecentWorkspace(ws.code);
-    updateSession({ tenantName: ws.name, tenantCode: ws.code });
-    setOpen(false);
+  const switchTo = async (code: string) => {
+    const ws = workspaces.find((w) => w.code === code);
+    if (!ws || code === tenantCode) {
+      setOpen(false);
+      return;
+    }
+    if (DEMO_LOGIN) {
+      pushRecentWorkspace(ws.code);
+      updateSession({ tenantName: ws.name, tenantCode: ws.code });
+      setOpen(false);
+      return;
+    }
+    // The server re-issues the session for the new workspace; this browser's data from the old
+    // workspace is wiped and the app reloads into the new one.
+    setSwitching(code);
+    setSwitchError(null);
+    const res = await switchWorkspaceOnServer(code);
+    const id = res.ok ? getServerAuth().identity : null;
+    if (!res.ok || !id) {
+      setSwitching(null);
+      setSwitchError(res.error || 'Could not switch workspace.');
+      return;
+    }
+    claimTenantStorage(id.email, id.tenantCode);
+    pushRecentWorkspace(id.tenantCode);
+    setStoredSession({ email: id.email, role: id.role, tenantCode: id.tenantCode, tenantName: id.tenantName, repName: id.repName, isAuthenticated: true });
+    window.location.assign(new URL('/', window.location.origin).href);
   };
 
   const q = query.trim().toLowerCase();
-  const matches = WORKSPACES.filter((w) => w.name.toLowerCase().includes(q));
-  const recentList = q ? [] : recents.map((c) => WORKSPACES.find((w) => w.code === c)).filter((w): w is (typeof WORKSPACES)[number] => !!w);
+  const matches = workspaces.filter((w) => w.name.toLowerCase().includes(q));
+  const recentList = q ? [] : recents.map((c) => workspaces.find((w) => w.code === c)).filter((w): w is (typeof workspaces)[number] => !!w);
   const rest = matches.filter((w) => !recentList.some((r) => r.code === w.code));
 
   const trigger = (
@@ -144,6 +181,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     >
       <WorkspaceMark initials={code === HOME_WORKSPACE.code ? undefined : initialsOf(name)} size={20} />
       <span className="flex-1 truncate">{name}</span>
+      {switching === code && <span className="size-3.5 animate-spin rounded-full border-2 border-line-strong border-t-transparent" aria-label="Switching" />}
       {code === tenantCode && <Check className="size-4 text-fg-secondary" aria-hidden />}
     </button>
   );
@@ -195,6 +233,11 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               <Row key={w.code} code={w.code} name={w.name} />
             ))}
             {matches.length === 0 && <p className="px-2 py-3 text-small text-fg-tertiary">No workspaces match</p>}
+            {switchError && (
+              <p role="alert" className="px-2 py-2 text-small text-danger-fg">
+                {switchError}
+              </p>
+            )}
           </div>
           <div className="mt-1 border-t border-line pt-1">
             {canPlatform && (
@@ -211,6 +254,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                 Platform Console
               </button>
             )}
+            {canPlatform && (
             <button
               type="button"
               role="menuitem"
@@ -224,6 +268,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               <Plus className="size-4" aria-hidden />
               New workspace
             </button>
+            )}
           </div>
         </div>
       )}

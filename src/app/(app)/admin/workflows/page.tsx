@@ -1,37 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useSession } from '@/lib/session';
 import Link from 'next/link';
 import WorkflowAutomationStudio from '@/components/admin/WorkflowAutomationStudio';
 import WorkflowListHub from '@/components/admin/WorkflowListHub';
-import { Lock, ArrowLeft, KeyRound, Layers, ChevronRight, Workflow } from 'lucide-react';
-import { Badge, Button, buttonClasses } from '@/components/ui';
+import { Lock, ArrowLeft, Layers, ChevronRight, Workflow } from 'lucide-react';
+import { Badge, buttonClasses } from '@/components/ui';
 
 export default function WorkflowsStandalonePage() {
-  const [userRole, setUserRole] = useState<string>('Super Admin');
-  const [isLoading, setIsLoading] = useState(true);
+  const { role: userRole } = useSession();
+  const isLoading = false;
   const [view, setView] = useState<'list' | 'canvas'>('list');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | undefined>('wf-voice-chatbot');
 
-  useEffect(() => {
-    // Check saved role from localStorage
-    const savedRole = localStorage.getItem('user_role');
-    if (savedRole) {
-      setUserRole(savedRole);
-    } else {
-      // Default to Super Admin so admins have immediate access
-      localStorage.setItem('user_role', 'Super Admin');
-      setUserRole('Super Admin');
-    }
-    setIsLoading(false);
-  }, []);
-
-  const isAdmin = userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Manager';
-
-  const handleElevateToAdmin = () => {
-    localStorage.setItem('user_role', 'Super Admin');
-    setUserRole('Super Admin');
-  };
+  // Workflows can run code on the server, so the builder is for Appointmentlyy staff only
+  // (the API enforces the same rule).
+  const isAdmin = userRole === 'Super Admin';
 
   return (
     <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
@@ -63,14 +48,6 @@ export default function WorkflowsStandalonePage() {
                   <span>Back to home</span>
                 </Link>
 
-                <Button
-                  variant="primary"
-                  onClick={handleElevateToAdmin}
-                  icon={<KeyRound className="h-4 w-4" />}
-                  className="w-full sm:w-auto"
-                >
-                  Switch to Super Admin
-                </Button>
               </div>
             </div>
           ) : (

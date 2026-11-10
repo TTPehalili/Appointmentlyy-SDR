@@ -10,6 +10,7 @@ import { CopilotPanel } from './CopilotPanel';
 import { MobileTabBar } from './MobileTabBar';
 import { ShellCommandPalette } from './ShellCommandPalette';
 import { ThemeSync } from './ThemeSync';
+import { SessionSync } from './SessionSync';
 import { cn } from '@/lib/cn';
 
 /**
@@ -54,6 +55,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <ShellCommandPalette />
         <ThemeSync />
+        <React.Suspense fallback={null}>
+          <SessionSync />
+        </React.Suspense>
       </ToastProvider>
     </ShellProvider>
   );

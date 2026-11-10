@@ -4,6 +4,8 @@ import { Monitor, Moon, Sun } from 'lucide-react';
 import { PageHeader, SegmentedControl, SettingsSection } from '@/components/ui';
 import { useColorMode, type ColorMode } from '@/lib/colorMode';
 import { AgentLinkSettings } from '@/components/telephony/AgentLinkSettings';
+import { PasswordSettings } from '@/components/account/PasswordSettings';
+import { DEMO_LOGIN } from '@/lib/demoMode';
 
 const MODES: { value: ColorMode; label: string; icon: React.ReactNode }[] = [
   { value: 'light', label: 'Light', icon: <Sun className="size-4" aria-hidden /> },
@@ -23,8 +25,18 @@ export default function SettingsPage() {
 
   return (
     <div className="w-full max-w-[880px] px-4 py-6 md:px-8">
-      <PageHeader title="Settings" description="Personal preferences for this device." />
+      <PageHeader title="Settings" description="Your sign-in and personal preferences." />
       <div className="flex flex-col divide-y divide-line border-t border-line">
+        {!DEMO_LOGIN && (
+          <SettingsSection
+            title="Password"
+            description="Sign in with a password, or with a link we email you. If you forget it, use “Forgot password?” on the sign-in page."
+          >
+            <div id="password">
+              <PasswordSettings />
+            </div>
+          </SettingsSection>
+        )}
         <SettingsSection title="Appearance" description="Choose how Appointmentlyy looks to you.">
           <div className="flex flex-col gap-2">
             <SegmentedControl

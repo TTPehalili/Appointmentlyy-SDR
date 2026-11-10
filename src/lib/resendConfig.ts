@@ -6,8 +6,6 @@
  * that outbound email dispatch never fails.
  */
 
-const FALLBACK_B64_KEY = 'cmVfU3lzNHRwRk1fVG1kUGZwZjEzWkRkVHZaa0ozVXBWR1Fl';
-
 export function getResendApiKey(customApiKey?: string): string {
   // 1. If customer brings a custom Resend API Key, use it
   if (customApiKey && customApiKey.trim().startsWith('re_')) {
@@ -17,23 +15,15 @@ export function getResendApiKey(customApiKey?: string): string {
   if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) {
     return process.env.RESEND_API_KEY.trim();
   }
-  // 3. Resilient platform fallback
-  try {
-    return Buffer.from(FALLBACK_B64_KEY, 'base64').toString('utf-8');
-  } catch {
-    return '';
-  }
+  // No key configured: callers report "email provider is not configured".
+  return '';
 }
 
 export function getPlatformFallbackKey(): string {
   if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) {
     return process.env.RESEND_API_KEY.trim();
   }
-  try {
-    return Buffer.from(FALLBACK_B64_KEY, 'base64').toString('utf-8');
-  } catch {
-    return '';
-  }
+  return '';
 }
 
 export function getResendFromEmail(customDomainOrEmail?: string): string {
