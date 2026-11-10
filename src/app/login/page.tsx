@@ -1030,7 +1030,7 @@ function RealLogin() {
               ) : (
                 <p className="text-small text-fg-tertiary text-center">
                   {mode === 'password'
-                    ? 'No password yet? Use “Email me a link”, then set one in Settings.'
+                    ? 'First time here? Use “Email me a link”: you’ll create your password right after.'
                     : 'New here? Your workspace admin sends you an invite by email.'}
                 </p>
               )}

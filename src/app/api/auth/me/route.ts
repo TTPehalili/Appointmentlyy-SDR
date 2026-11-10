@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession, publicIdentity, clearSessionCookie } from '@/lib/server/session';
 import { listWorkspacesFor } from '@/lib/server/tenancy';
+import { getTenantStore } from '@/lib/server/tenantStore';
 
 /**
  * GET /api/auth/me
@@ -21,8 +22,10 @@ export async function GET(req: NextRequest) {
     logoInitials: t.branding.logoInitials || '',
     status: t.status,
   }));
+  // Everyone must create a password on first sign-in; the app sends them to /login/set-password until they do.
+  const hasPassword = Boolean(await getTenantStore().getCredential(session.email));
   return NextResponse.json(
-    { success: true, identity: publicIdentity(session.identity), workspaces },
+    { success: true, identity: publicIdentity(session.identity), workspaces, hasPassword },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

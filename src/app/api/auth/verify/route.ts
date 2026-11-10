@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
     if (!identity) return fail('You no longer have access to this workspace. Ask your admin.', 403);
 
     await recordLogin(identity, payload.typ);
-    const res = NextResponse.json({ success: true, identity: publicIdentity(identity) });
+    // First sign-in without a password: the page asks them to create one.
+    const hasPassword = Boolean(await getTenantStore().getCredential(payload.email));
+    const res = NextResponse.json({ success: true, identity: publicIdentity(identity), hasPassword });
     await setSessionCookie(res, identity);
     return res;
   } catch (err) {

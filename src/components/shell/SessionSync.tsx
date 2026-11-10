@@ -39,6 +39,11 @@ export function SessionSync() {
         return;
       }
       if (state.status !== 'signed-in' || !state.identity) return;
+      // A password is required: nobody uses the app until they've created one.
+      if (state.hasPassword === false) {
+        router.replace('/login/set-password');
+        return;
+      }
       const id = state.identity;
       const wiped = claimTenantStorage(id.email, id.tenantCode);
       const nowOwner = getStorageOwner();

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CheckCircle2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { setStoredSession, UserRole } from '@/lib/session';
 import { claimTenantStorage } from '@/lib/tenantStorage';
+import { CreatePasswordForm } from '@/components/account/CreatePasswordForm';
 import { Badge, Button, buttonClasses } from '@/components/ui';
 
 function VerifyLoginContent() {
@@ -13,7 +14,7 @@ function VerifyLoginContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
 
-  const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
+  const [status, setStatus] = useState<'verifying' | 'set-password' | 'success' | 'error'>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [identity, setIdentity] = useState<{
     email: string;
@@ -59,6 +60,11 @@ function VerifyLoginContent() {
           repName: user.repName,
           isAuthenticated: true,
         });
+        // First sign-in (no password yet): ask them to create one so next time they can just type it.
+        if (!data.hasPassword) {
+          setStatus('set-password');
+          return;
+        }
         setStatus('success');
 
         setTimeout(() => {
@@ -108,6 +114,14 @@ function VerifyLoginContent() {
                 </p>
               </div>
             </div>
+          )}
+
+          {status === 'set-password' && identity && (
+            <CreatePasswordForm
+              name={identity.repName}
+              workspace={identity.tenantName}
+              onDone={() => router.push(identity.role === 'Super Admin' || identity.role === 'Admin' ? '/admin' : '/dialer')}
+            />
           )}
 
           {status === 'success' && identity && (

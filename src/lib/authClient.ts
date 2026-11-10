@@ -39,6 +39,8 @@ interface AuthState {
   status: 'unknown' | 'signed-in' | 'signed-out';
   identity: ServerIdentity | null;
   workspaces: WorkspaceOption[];
+  /** False until the person has created a password (required on first sign-in). */
+  hasPassword?: boolean;
 }
 
 const EVENT = 'appy:server-identity';
@@ -73,7 +75,7 @@ export async function refreshServerIdentity(): Promise<AuthState> {
     }
     const data = await res.json();
     if (!res.ok || !data.success) return state; // transient error: keep what we have
-    setState({ status: 'signed-in', identity: data.identity, workspaces: data.workspaces ?? [] });
+    setState({ status: 'signed-in', identity: data.identity, workspaces: data.workspaces ?? [], hasPassword: data.hasPassword !== false });
   } catch {
     // offline / server restarting: keep the current state
   }
