@@ -24,6 +24,8 @@ interface NodeConfigDrawerProps {
   initialNodeData: any;
   onClose: () => void;
   onSaveConfig: (nodeId: string, updatedConfig: Record<string, any>, updatedLabel?: string) => void;
+  /** "Test step" runs the node's code in the browser with sample data; platform staff only. */
+  allowTestStep?: boolean;
 }
 
 export default function NodeConfigDrawer({
@@ -31,7 +33,8 @@ export default function NodeConfigDrawer({
   workflowId,
   initialNodeData,
   onClose,
-  onSaveConfig
+  onSaveConfig,
+  allowTestStep = true
 }: NodeConfigDrawerProps) {
   const [nodeDef, setNodeDef] = useState<INodeDefinition | null>(null);
   const [label, setLabel] = useState('');
@@ -328,6 +331,7 @@ export default function NodeConfigDrawer({
         </div>
 
         {/* Test Step Inspector */}
+        {allowTestStep && (
         <div className="pt-4 border-t border-line space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-h3 text-fg">Test step</h3>
@@ -366,6 +370,7 @@ export default function NodeConfigDrawer({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Footer */}

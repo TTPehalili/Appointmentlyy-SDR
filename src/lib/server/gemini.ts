@@ -13,7 +13,7 @@ export interface GeminiOptions {
   temperature?: number;
 }
 
-export const COPILOT_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'];
+export const COPILOT_MODELS = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'];
 
 export function callGemini(model: string, apiKey: string, prompt: string, opts: GeminiOptions = {}): Promise<string | null> {
   return new Promise((resolve) => {

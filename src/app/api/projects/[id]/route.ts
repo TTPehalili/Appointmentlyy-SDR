@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { requireWorkflowAdmin } from '@/lib/server/workflowAccess';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const { id } = await params;
     const project = await db.getProject(id);
@@ -37,6 +40,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -61,9 +67,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const { id } = await params;
     const deleted = await db.deleteProject(id);

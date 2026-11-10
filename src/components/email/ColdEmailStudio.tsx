@@ -47,6 +47,8 @@ import { ASSISTANT_WORD_LIMIT, AUTO_FRAMEWORK_ID, enforceWordLimit, replaceClosi
 import { describeCampaign, getCampaignMessage, postText, saveCampaignMessage, type CampaignMessage } from '@/lib/campaignMessage';
 import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
 import CampaignMessageCard from '@/components/outreach/CampaignMessageCard';
+import TemplatePicker from '@/components/outreach/TemplatePicker';
+import MergeFieldGaps, { unfilledMergeFields } from '@/components/outreach/MergeFieldGaps';
 import { useSession } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
@@ -247,9 +249,29 @@ export default function ColdEmailStudio() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Merge-field values for templates: the prospect fields above and the signed-in sender.
+  const senderFirstName = senderDisplayName === 'You' ? '' : senderDisplayName.trim().split(/\s+/)[0] || '';
+  const templateValues = useMemo(
+    () => ({
+      first_name: prospectName.trim().split(/\s+/)[0] || '',
+      company: prospectCompany.trim(),
+      title: prospectTitle.trim(),
+      sender_name: senderFirstName,
+      sender_company: session?.tenantName || '',
+    }),
+    [prospectName, prospectCompany, prospectTitle, senderFirstName, session?.tenantName],
+  );
+  // A template field left unfilled ({{meeting_time}}...) must never reach the prospect.
+  const unfilledFields = unfilledMergeFields(subjectText, editableBody);
+
   // Live Dispatch via Resend API
   const handleDirectSendEmail = async () => {
     if (sendButtonState === 'sent' || isSendingDirectEmail) {
+      return;
+    }
+
+    if (unfilledFields.length > 0) {
+      setDirectSendStatus(`Error: Fill ${unfilledFields.map((k) => `{{${k}}}`).join(', ')} before sending`);
       return;
     }
 
@@ -489,9 +511,23 @@ export default function ColdEmailStudio() {
 
           {/* Composer toolbar */}
           <div className="flex flex-col gap-3 border-b border-line px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-h3 text-fg">Draft</h2>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+              <h2 className="text-h3 text-fg">Draft</h2>
+              <TemplatePicker
+                id="cold-email-template-picker"
+                values={templateValues}
+                current={{ subject: subjectText, body: editableBody }}
+                onApply={(subject, body) => {
+                  setSubjectText(subject);
+                  setEditableBody(body);
+                  setSendButtonState('idle');
+                  setDirectSendStatus(null);
+                }}
+              />
+            </div>
             <SegmentedControl
               size="sm"
+              className="shrink-0 self-start sm:self-auto [&_button]:whitespace-nowrap"
               label="Editor or inbox preview"
               value={viewMode}
               onChange={(v) => setViewMode(v as 'editor' | 'preview')}
@@ -602,6 +638,21 @@ export default function ColdEmailStudio() {
               </div>
             )}
           </div>
+
+          {unfilledFields.length > 0 && (
+            <div className="border-b border-line px-5 py-3">
+              <MergeFieldGaps
+                subject={subjectText}
+                body={editableBody}
+                values={templateValues}
+                onFill={(subject, body) => {
+                  setSubjectText(subject);
+                  setEditableBody(body);
+                  setDirectSendStatus(null);
+                }}
+              />
+            </div>
+          )}
 
           {/* Editor vs inbox preview */}
           {viewMode === 'editor' ? (
@@ -757,10 +808,12 @@ export default function ColdEmailStudio() {
               <Button
                 variant="brand"
                 onClick={handleDirectSendEmail}
-                disabled={isSendingDirectEmail || sendButtonState === 'sent'}
+                disabled={isSendingDirectEmail || sendButtonState === 'sent' || unfilledFields.length > 0}
                 className={`flex-1 px-5 sm:flex-initial ${sendButtonState === 'sending' ? 'cursor-wait' : ''}`}
                 title={
-                  sendButtonState === 'sent'
+                  unfilledFields.length > 0
+                    ? `Fill ${unfilledFields.map((k) => `{{${k}}}`).join(', ')} before sending`
+                    : sendButtonState === 'sent'
                     ? `Sent to ${prospectEmail}. Change the recipient or generate a new draft to send another.`
                     : `Dispatch live email from ${senderFrom} to ${prospectEmail}`
                 }

@@ -13,10 +13,12 @@ export default function WorkflowsStandalonePage() {
   const isLoading = false;
   const [view, setView] = useState<'list' | 'canvas'>('list');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | undefined>('wf-voice-chatbot');
+  // Set when the assistant just built a workflow: the canvas opens its chat and checks every step.
+  const [autoAssist, setAutoAssist] = useState(false);
 
-  // Workflows can run code on the server, so the builder is for Appointmentlyy staff only
-  // (the API enforces the same rule).
-  const isAdmin = userRole === 'Super Admin';
+  // Workspace admins (and platform staff) build workflows. Each workspace has its own workflows;
+  // only platform staff can switch one on or run it (the API enforces the same rules).
+  const isAdmin = userRole === 'Super Admin' || userRole === 'Admin';
 
   return (
     <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
@@ -38,7 +40,7 @@ export default function WorkflowsStandalonePage() {
                 <Badge tone="danger">Role restricted: {userRole}</Badge>
                 <h2 className="text-h2 text-fg mt-3">Admin access required</h2>
                 <p className="text-body text-fg-secondary mt-1.5">
-                  Workflows run live webhook triggers, CRM sync and AI evaluations. Only workspace admins and managers can open the workflow builder.
+                  Workflows run live webhook triggers, CRM sync and AI evaluations. Only workspace admins can open the workflow builder.
                 </p>
               </div>
 
@@ -120,8 +122,9 @@ export default function WorkflowsStandalonePage() {
               {/* Dynamic View Component */}
               {view === 'list' ? (
                 <WorkflowListHub
-                  onOpenCanvas={(wfId) => {
+                  onOpenCanvas={(wfId, opts) => {
                     if (wfId) setSelectedWorkflowId(wfId);
+                    setAutoAssist(Boolean(opts?.fromAssistant));
                     setView('canvas');
                   }}
                 />
@@ -129,6 +132,8 @@ export default function WorkflowsStandalonePage() {
                 <WorkflowAutomationStudio
                   initialWorkflowId={selectedWorkflowId}
                   onBackToList={() => setView('list')}
+                  autoAssist={autoAssist}
+                  onAutoAssistDone={() => setAutoAssist(false)}
                 />
               )}
             </div>

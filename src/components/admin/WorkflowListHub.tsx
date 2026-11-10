@@ -47,6 +47,10 @@ import {
 } from '../panels/WorkflowActionModals';
 import TemplateGalleryModal from '../panels/TemplateGalleryModal';
 import { WorkflowTemplate, PRELOADED_WORKFLOW_TEMPLATES } from '@/lib/workflowTemplates';
+import { useSession } from '@/lib/session';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { scrubDemoDeep } from '@/lib/workflowAssistant';
+import WorkflowAssistantDialog from '../workflows/WorkflowAssistantDialog';
 
 const menuItem =
   'focus-ring w-full px-3 py-1.5 text-left text-body text-fg hover:bg-subtle flex items-center gap-2 transition-colors cursor-pointer';
@@ -56,10 +60,16 @@ const menuIcon = 'h-4 w-4 shrink-0 text-fg-secondary';
 const checkboxCls = 'focus-ring h-4 w-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer';
 
 interface WorkflowListHubProps {
-  onOpenCanvas: (workflowId?: string) => void;
+  onOpenCanvas: (workflowId?: string, opts?: { fromAssistant?: boolean }) => void;
 }
 
 export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) {
+  const { role, tenantCode, email } = useSession();
+  const isDemo = useDemoWorkspace();
+  // Only platform staff can switch workflows on; workspace admins build drafts.
+  const canActivate = role === 'Super Admin';
+  const canUseAssistant = role === 'Super Admin' || role === 'Admin';
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectFolderRecord[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -301,14 +311,16 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
   const handleDeployTemplate = async (template: WorkflowTemplate, targetFolderId?: string) => {
     setIsTemplateGalleryOpen(false);
     setIsCreateMenuOpen(false);
+    // Templates were written for the demo workspace: client workspaces get them without sample names.
+    const tpl = isDemo ? template : scrubDemoDeep(template);
     const res = await fetch('/api/workflows', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: template.name,
+        name: tpl.name,
         folderId: targetFolderId || currentFolderId || undefined,
-        nodes: template.nodes,
-        edges: template.edges
+        nodes: tpl.nodes,
+        edges: tpl.edges
       })
     });
     const data = await res.json();
@@ -391,7 +403,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
             }`}
           >
             <span>Needs review</span>
-            <span className="text-caption tabular-nums text-fg-tertiary">3</span>
+            <span className="text-caption tabular-nums text-fg-tertiary">{isDemo ? 3 : workflows.filter((w) => !w.active).length}</span>
           </button>
 
           <button
@@ -451,7 +463,27 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
             </Button>
 
             {isCreateMenuOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-72 rounded-md bg-surface border border-line shadow-md py-1 z-30 divide-y divide-line">
+              <div className="absolute right-0 top-full mt-1.5 w-80 rounded-md bg-surface border border-line shadow-md py-1 z-30 divide-y divide-line">
+                {canUseAssistant && (
+                  <div className="p-1.5">
+                    <button
+                      onClick={() => {
+                        setIsCreateMenuOpen(false);
+                        setIsAssistantOpen(true);
+                      }}
+                      className="focus-ring w-full rounded-md border border-brand-600/40 bg-selected px-3 py-2 text-left flex items-start gap-2.5 transition-colors hover:border-brand-600 cursor-pointer"
+                    >
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-text" />
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-body-strong text-fg">
+                          Build with AI assistant
+                          <Badge tone="brand">Recommended</Badge>
+                        </span>
+                        <span className="block text-small text-fg-secondary">Describe it in plain words. You approve the plan before anything is built.</span>
+                      </span>
+                    </button>
+                  </div>
+                )}
                 <div className="py-1">
                   <button onClick={() => handleCreateWorkflow('scratch')} className={menuItem}>
                     <Plus className={menuIcon} />
@@ -653,15 +685,15 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       </td>
 
                       <td className="py-3 px-4 text-small text-fg-secondary">Folder</td>
-                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{folderWfs.length * 12}</td>
-                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{folderWfs.length * 8}</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{isDemo ? folderWfs.length * 12 : 0}</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{isDemo ? folderWfs.length * 8 : 0}</td>
                       <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(proj.updatedAt).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(proj.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">99.2%</td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">{isDemo ? '99.2%' : '—'}</td>
 
                       {/* Three-Dot Menu */}
                       <td className="py-3 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
@@ -745,8 +777,10 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                       {/* Active Status Switch */}
                       <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">
+                          {canActivate && (
                           <button
                             onClick={() => handleToggleActive(wf)}
+                            aria-label={wf.active ? `Switch off ${wf.name}` : `Switch on ${wf.name}`}
                             className={`focus-ring w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
                               wf.active ? 'bg-action' : 'bg-ink-300'
                             }`}
@@ -757,21 +791,22 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                               }`}
                             />
                           </button>
+                          )}
                           <Badge tone={wf.active ? 'success' : 'neutral'}>
                             {wf.active ? 'Published' : 'Draft'}
                           </Badge>
                         </div>
                       </td>
 
-                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">42</td>
-                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">38</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{isDemo ? 42 : 0}</td>
+                      <td className="py-3 px-4 text-right tabular-nums text-fg-secondary">{isDemo ? 38 : 0}</td>
                       <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(wf.updatedAt).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">
                         {new Date(wf.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">100%</td>
+                      <td className="py-3 px-4 text-small tabular-nums text-fg-secondary">{isDemo ? '100%' : '—'}</td>
 
                       {/* Three-Dot Menu */}
                       <td className="py-3 px-4 text-right relative" onClick={(e) => e.stopPropagation()}>
@@ -845,6 +880,27 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                     </tr>
                   );
                 })}
+
+                {visibleProjects.length === 0 && visibleWorkflows.length === 0 && (
+                  <tr className="border-t border-line">
+                    <td colSpan={9} className="py-12 px-4 text-center">
+                      <Workflow className="mx-auto h-6 w-6 text-fg-tertiary" />
+                      <p className="mt-2 text-body-strong text-fg">{searchQuery.trim() ? 'No workflows match your search' : 'No workflows yet'}</p>
+                      {!searchQuery.trim() && (
+                        <>
+                          <p className="mt-1 text-small text-fg-secondary">Describe what you want to automate and the assistant will plan it with you.</p>
+                          {canUseAssistant && (
+                            <div className="mt-3 flex justify-center">
+                              <Button size="sm" variant="brand" onClick={() => setIsAssistantOpen(true)} icon={<Sparkles className="h-4 w-4" />}>
+                                Build with AI assistant
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )}
               </>
             )}
           </tbody>
@@ -889,6 +945,20 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
         }}
         onDelete={handleDeleteWorkflow}
       />
+
+      {canUseAssistant && (
+        <WorkflowAssistantDialog
+          key={`${tenantCode}:${email}`}
+          open={isAssistantOpen}
+          onClose={() => setIsAssistantOpen(false)}
+          folderId={currentFolderId}
+          onBuilt={(id) => {
+            setIsAssistantOpen(false);
+            loadData();
+            onOpenCanvas(id, { fromAssistant: true });
+          }}
+        />
+      )}
 
       <TemplateGalleryModal
         isOpen={isTemplateGalleryOpen}

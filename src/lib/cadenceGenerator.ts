@@ -46,19 +46,29 @@ Output a STRICT JSON object conforming exactly to this structure:
 
 Return pure JSON only.`;
 
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${googleApiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-            })
+        // Fast, available models first; each try is capped so a slow model can't stall the import.
+        let res: Response | null = null;
+        for (const model of ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest']) {
+          try {
+            res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+                }),
+                signal: AbortSignal.timeout(15000)
+              }
+            );
+            if (res.ok) break;
+          } catch {
+            res = null;
           }
-        );
+        }
 
-        if (res.ok) {
+        if (res?.ok) {
           const data = await res.json();
           const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (candidate) {

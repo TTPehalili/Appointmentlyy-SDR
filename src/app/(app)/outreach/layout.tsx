@@ -7,9 +7,10 @@ import { cn } from '@/lib/cn';
 const TABS = [
   { href: '/outreach/email', label: 'Cold email' },
   { href: '/outreach/linkedin', label: 'LinkedIn' },
+  { href: '/outreach/templates', label: 'Templates' },
 ];
 
-/** Outreach = Cold Email Studio + LinkedIn Studio, switched by underline tabs (redesign spec 3.3). */
+/** Outreach = Cold Email Studio + LinkedIn Studio + the email template library, switched by underline tabs (redesign spec 3.3). */
 export default function OutreachLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (

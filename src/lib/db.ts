@@ -1,6 +1,7 @@
 import { WorkflowItem } from '../engine/item-pipeline';
 import { encryptSecret, decryptSecret } from './crypto';
 import { PRELOADED_WORKFLOW_TEMPLATES } from './workflowTemplates';
+import { PLATFORM_TENANT_CODE } from './roles';
 
 export interface ProjectFolderRecord {
   id: string;
@@ -68,8 +69,9 @@ class WorkflowDatabase {
   private credentials: Map<string, CredentialRecord> = new Map();
   private testListeners: Map<string, EphemeralWebhookListener> = new Map();
 
-  constructor() {
-    this.seedDefaults();
+  /** `seed` false gives an empty store (client workspaces start clean, with no sample workflows). */
+  constructor(seed = true) {
+    if (seed) this.seedDefaults();
   }
 
   // --- Project Folders ---
@@ -646,6 +648,33 @@ class WorkflowDatabase {
 }
 
 // Global Singleton for Next.js hot module reloads
-const globalForDb = global as unknown as { workflowDatabase?: WorkflowDatabase };
+const globalForDb = global as unknown as {
+  workflowDatabase?: WorkflowDatabase;
+  tenantWorkflowDatabases?: Map<string, WorkflowDatabase>;
+};
+/**
+ * The platform's own store (APPOINTMENTLYY, the demo workspace), seeded with sample workflows.
+ * Webhooks, MCP and the runner only ever read this one, so workflows saved in a client
+ * workspace's store are drafts that never run on the server.
+ */
 export const db = globalForDb.workflowDatabase || new WorkflowDatabase();
 if (process.env.NODE_ENV !== 'production') globalForDb.workflowDatabase = db;
+
+const tenantDbs = globalForDb.tenantWorkflowDatabases || new Map<string, WorkflowDatabase>();
+globalForDb.tenantWorkflowDatabases = tenantDbs;
+
+/**
+ * Workflow storage for one workspace. The platform (demo) workspace uses the seeded `db`; every
+ * client workspace gets its own empty store, so one workspace never sees another's workflows.
+ */
+export function workflowDbForTenant(tenantCode: string): WorkflowDatabase {
+  if (tenantCode === PLATFORM_TENANT_CODE) return db;
+  let store = tenantDbs.get(tenantCode);
+  if (!store) {
+    store = new WorkflowDatabase(false);
+    tenantDbs.set(tenantCode, store);
+  }
+  return store;
+}
+
+export type { WorkflowDatabase };

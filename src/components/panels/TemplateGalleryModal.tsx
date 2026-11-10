@@ -27,6 +27,8 @@ import {
 import { PRELOADED_WORKFLOW_TEMPLATES, WorkflowTemplate, OutboundCategory } from '@/lib/workflowTemplates';
 import { ProjectFolderRecord } from '@/lib/db';
 import { Badge, Button, Dialog, IconButton } from '@/components/ui';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { scrubDemoText } from '@/lib/workflowAssistant';
 
 interface TemplateGalleryModalProps {
   isOpen: boolean;
@@ -67,6 +69,8 @@ export default function TemplateGalleryModal({
   projects,
   currentFolderId
 }: TemplateGalleryModalProps) {
+  const isDemo = useDemoWorkspace();
+  const shown = (t: string) => (isDemo ? t : scrubDemoText(t));
   const [selectedCategory, setSelectedCategory] = useState<OutboundCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string>(currentFolderId || 'proj-cadence');
@@ -193,12 +197,12 @@ export default function TemplateGalleryModal({
 
                     {/* Title */}
                     <h3 className="text-h3 text-fg">
-                      {template.name}
+                      {shown(template.name)}
                     </h3>
 
                     {/* Description */}
                     <p className="text-small text-fg-secondary line-clamp-3">
-                      {template.description}
+                      {shown(template.description)}
                     </p>
 
                     {/* Cadence Touches preview (if 21-day blueprint) */}
@@ -209,7 +213,7 @@ export default function TemplateGalleryModal({
                         </span>
                         <ul className="list-disc list-inside text-fg-secondary space-y-0.5 line-clamp-3">
                           {template.cadenceTouches.slice(0, 3).map((touch, i) => (
-                            <li key={i}>{touch}</li>
+                            <li key={i}>{shown(touch)}</li>
                           ))}
                         </ul>
                         {template.cadenceTouches.length > 3 && (

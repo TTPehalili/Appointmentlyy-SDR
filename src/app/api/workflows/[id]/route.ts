@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { cleanGraph, cleanName, requireWorkflowAdmin } from '@/lib/server/workflowAccess';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
   try {
     const { id } = await params;
-    const workflow = await db.getWorkflow(id);
+    const workflow = await access.store.getWorkflow(id);
 
     if (!workflow) {
       return NextResponse.json(
@@ -32,18 +34,34 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
   try {
     const { id } = await params;
     const body = await request.json();
+    const existing = await access.store.getWorkflow(id);
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: `Workflow not found with id: ${id}` },
+        { status: 404 }
+      );
+    }
 
-    const updated = await db.saveWorkflow({
+    // Partial updates (e.g. only `active`, or only name and description) keep everything else.
+    const graph = cleanGraph(body.nodes, body.edges);
+    const nodes = Array.isArray(body.nodes) ? graph.nodes : existing.nodes;
+    const edges = Array.isArray(body.edges) ? graph.edges : existing.edges;
+    // Only platform staff may switch a workflow on; anyone else's save keeps it a draft.
+    const active = access.isStaff ? (typeof body.active === 'boolean' ? body.active : existing.active) : false;
+
+    const updated = await access.store.saveWorkflow({
       id,
-      name: body.name || 'Untitled Workflow',
-      description: body.description,
-      active: body.active,
-      nodes: body.nodes || [],
-      edges: body.edges || [],
-      webhookPath: body.webhookPath
+      name: cleanName(body.name, existing.name),
+      description: typeof body.description === 'string' ? body.description.slice(0, 600) : existing.description,
+      active,
+      nodes,
+      edges,
+      webhookPath: typeof body.webhookPath === 'string' ? body.webhookPath.slice(0, 80) : existing.webhookPath
     });
 
     return NextResponse.json({
@@ -59,12 +77,14 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
   try {
     const { id } = await params;
-    const deleted = await db.deleteWorkflow(id);
+    const deleted = await access.store.deleteWorkflow(id);
 
     return NextResponse.json({
       success: deleted,

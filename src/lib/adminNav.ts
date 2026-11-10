@@ -52,7 +52,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   },
   {
     label: 'Automation',
-    items: [{ id: 'workflows', label: 'Workflows', href: '/admin/workflows', permission: 'platform', keywords: 'workflow studio automation' }],
+    items: [{ id: 'workflows', label: 'Workflows', href: '/admin/workflows', permission: 'adminOrg', keywords: 'workflow studio automation assistant' }],
   },
   {
     label: 'Integrations',

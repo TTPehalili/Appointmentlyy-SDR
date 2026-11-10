@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,7 +12,8 @@ import {
   Connection,
   Edge,
   Node,
-  BackgroundVariant
+  BackgroundVariant,
+  type ReactFlowInstance
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -57,6 +58,10 @@ import {
 } from '../panels/WorkflowActionModals';
 import { INodeDefinition } from '@/registry';
 import { ProjectFolderRecord, WorkflowRecord } from '@/lib/db';
+import { useSession } from '@/lib/session';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { scrubDemoDeep, type CanvasEdgeLite, type CanvasNodeLite, type CanvasProposal } from '@/lib/workflowAssistant';
+import WorkflowAssistantWidget, { type ApplyResult, type CanvasGraph } from '../workflows/WorkflowAssistantWidget';
 
 // Connector look: ink-300 at rest, crimson on hover or select (presentational only).
 const EDGE_STYLE = { stroke: 'var(--ink-300)', strokeWidth: 2 };
@@ -71,12 +76,21 @@ const nodeTypes = {
 interface WorkflowAutomationStudioProps {
   initialWorkflowId?: string;
   onBackToList?: () => void;
+  /** Just built by the assistant: open its chat and walk through the checklist. */
+  autoAssist?: boolean;
+  onAutoAssistDone?: () => void;
 }
 
 export default function WorkflowAutomationStudio({
   initialWorkflowId,
-  onBackToList
+  onBackToList,
+  autoAssist = false,
+  onAutoAssistDone
 }: WorkflowAutomationStudioProps) {
+  const { role } = useSession();
+  // Only platform staff can switch workflows on or run them; workspace admins build drafts.
+  const isStaff = role === 'Super Admin';
+  const isDemo = useDemoWorkspace();
   const [projects, setProjects] = useState<ProjectFolderRecord[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowRecord[]>([]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(
@@ -106,6 +120,8 @@ export default function WorkflowAutomationStudio({
   const [isRunning, setIsRunning] = useState(false);
   const [runSuccess, setRunSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadedWorkflowId, setLoadedWorkflowId] = useState<string | null>(null);
+  const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
 
   // Project modal states
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -140,6 +156,7 @@ export default function WorkflowAutomationStudio({
 
         setActiveWorkflowId(matched.id);
         setCurrentWorkflow(matched);
+        setLoadedWorkflowId(matched.id);
         setNodes(matched.nodes || []);
         // STATIC connecting lines: animated: false, clean neutral gray
         setEdges(
@@ -225,6 +242,7 @@ export default function WorkflowAutomationStudio({
   const handleSelectWorkflow = (wf: WorkflowRecord) => {
     setActiveWorkflowId(wf.id);
     setCurrentWorkflow(wf);
+    setLoadedWorkflowId(wf.id);
     setNodes(wf.nodes || []);
     setEdges(
       (wf.edges || []).map((e: Edge) => ({
@@ -250,13 +268,110 @@ export default function WorkflowAutomationStudio({
         label: def.displayName,
         category: def.category,
         icon: def.icon,
-        config: def.properties.reduce((acc, p) => ({ ...acc, [p.name]: p.default }), {})
+        // Node defaults were written for the demo workspace; client workspaces get them without sample names.
+        config: (() => {
+          const defaults = def.properties.reduce((acc, p) => ({ ...acc, [p.name]: p.default }), {} as Record<string, unknown>);
+          return isDemo ? defaults : scrubDemoDeep(defaults);
+        })()
       }
     };
 
     setNodes((nds) => [...nds, newNode]);
     setConfigNodeId(newId);
   };
+
+  // ---- Assistant hooks: read the canvas, apply a proposed change (and save), undo, highlight a step.
+  const graphRef = useRef<{ nodes: Node[]; edges: Edge[]; workflow: WorkflowRecord | null }>({ nodes: [], edges: [], workflow: null });
+  // Layout effect: it runs before the assistant's own effects, so the assistant never reads a stale graph.
+  useLayoutEffect(() => {
+    graphRef.current = { nodes, edges, workflow: currentWorkflow };
+  }, [nodes, edges, currentWorkflow]);
+
+  const getGraph = useCallback(
+    (): CanvasGraph => ({
+      nodes: graphRef.current.nodes as unknown as CanvasNodeLite[],
+      edges: graphRef.current.edges as unknown as CanvasEdgeLite[]
+    }),
+    []
+  );
+
+  const persist = useCallback(async (nextNodes: Node[], nextEdges: Edge[]): Promise<boolean> => {
+    const wf = graphRef.current.workflow;
+    if (!wf) return false;
+    try {
+      const res = await fetch(`/api/workflows/${wf.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: wf.name,
+          description: wf.description,
+          nodes: nextNodes.map((n) => ({ ...n, selected: false, data: { ...n.data, status: undefined } })),
+          edges: nextEdges.map((e) => ({ ...e, animated: false }))
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentWorkflow(data.data);
+        setWorkflows((prev) => prev.map((w) => (w.id === data.data.id ? data.data : w)));
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to save the assistant change:', err);
+    }
+    return false;
+  }, []);
+
+  const styleEdges = (list: Edge[]) => list.map((e) => ({ ...e, animated: false, style: EDGE_STYLE }));
+
+  const applyProposal = useCallback(
+    async (p: CanvasProposal): Promise<ApplyResult> => {
+      const before = { nodes: graphRef.current.nodes, edges: graphRef.current.edges };
+      const updated = new Map(p.updated.map((u) => [u.id, u]));
+      const removed = new Set(p.removedIds);
+      const nextNodes: Node[] = [
+        ...before.nodes
+          .filter((n) => !removed.has(n.id))
+          .map((n) => {
+            const u = updated.get(n.id);
+            return u ? { ...n, position: u.position || n.position, data: { ...n.data, ...u.data } } : n;
+          }),
+        ...p.added.map((a) => ({ ...a, type: 'customNode', position: a.position || { x: 0, y: 0 } }) as Node)
+      ];
+      const nextEdges = styleEdges(p.edges as unknown as Edge[]);
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      graphRef.current = { ...graphRef.current, nodes: nextNodes, edges: nextEdges };
+      const saved = await persist(nextNodes, nextEdges);
+      return {
+        saved,
+        snapshot: before,
+        graph: { nodes: nextNodes as unknown as CanvasNodeLite[], edges: nextEdges as unknown as CanvasEdgeLite[] }
+      };
+    },
+    [persist, setNodes, setEdges]
+  );
+
+  const restoreSnapshot = useCallback(
+    async (snapshot: unknown): Promise<boolean> => {
+      const snap = snapshot as { nodes: Node[]; edges: Edge[] } | null;
+      if (!snap) return false;
+      setNodes(snap.nodes);
+      setEdges(snap.edges);
+      graphRef.current = { ...graphRef.current, nodes: snap.nodes, edges: snap.edges };
+      return persist(snap.nodes, snap.edges);
+    },
+    [persist, setNodes, setEdges]
+  );
+
+  const focusNode = useCallback(
+    (nodeId: string | null) => {
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: nodeId !== null && n.id === nodeId })));
+      if (nodeId && flow) {
+        flow.fitView({ nodes: [{ id: nodeId }], duration: 400, maxZoom: 1.1, padding: 0.8 });
+      }
+    },
+    [flow, setNodes]
+  );
 
   const handleSaveWorkflow = async () => {
     if (!currentWorkflow) return;
@@ -536,6 +651,7 @@ export default function WorkflowAutomationStudio({
           >
             Editor
           </button>
+          {isStaff && (
           <button
             onClick={() => {
               setViewMode('executions');
@@ -549,11 +665,18 @@ export default function WorkflowAutomationStudio({
           >
             Executions
           </button>
+          )}
         </div>
 
         {/* Right: Active toggle, Share, Save, undo/redo */}
         <div className="flex items-center gap-1.5">
-          {/* Active / Inactive switch */}
+          {/* Active / Inactive switch (platform staff only; everyone else builds drafts) */}
+          {!isStaff && (
+            <span className="pr-2 mr-1 border-r border-line text-small text-fg-secondary" title="Drafts don’t run. Switching a workflow on is done by your platform team.">
+              Draft
+            </span>
+          )}
+          {isStaff && (
           <div className="flex items-center gap-2 pr-2 mr-1 border-r border-line">
             <span className="text-small text-fg-secondary">
               {currentWorkflow?.active ? 'Active' : 'Inactive'}
@@ -571,6 +694,7 @@ export default function WorkflowAutomationStudio({
               />
             </button>
           </div>
+          )}
 
           {/* Undo / Redo */}
           <IconButton label="Undo" size="sm" variant="ghost">
@@ -740,6 +864,7 @@ export default function WorkflowAutomationStudio({
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             nodeTypes={nodeTypes}
+            onInit={setFlow}
             fitView
             attributionPosition="bottom-left"
             className={EDGE_HOVER_CLS}
@@ -774,7 +899,21 @@ export default function WorkflowAutomationStudio({
             </Button>
           </div>
 
-          {/* Floating bottom center: Run workflow */}
+          {/* Workflow assistant (floating chat) */}
+          <WorkflowAssistantWidget
+            key={activeWorkflowId}
+            getGraph={getGraph}
+            applyProposal={applyProposal}
+            restore={restoreSnapshot}
+            focusNode={focusNode}
+            autoCheck={autoAssist}
+            onAutoCheckDone={() => onAutoAssistDone?.()}
+            graphReady={loadedWorkflowId === activeWorkflowId && nodes.length > 0}
+            canActivate={isStaff}
+          />
+
+          {/* Floating bottom center: Run workflow (platform staff only; it runs on the server) */}
+          {isStaff && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
             <Button
               size="lg"
@@ -801,6 +940,7 @@ export default function WorkflowAutomationStudio({
               )}
             </Button>
           </div>
+          )}
         </div>
       </div>
 
@@ -816,6 +956,7 @@ export default function WorkflowAutomationStudio({
         nodeId={configNodeId}
         workflowId={activeWorkflowId}
         initialNodeData={selectedNode?.data}
+        allowTestStep={isStaff}
         onClose={() => setConfigNodeId(null)}
         onSaveConfig={(id, updatedConfig, updatedLabel) => {
           setNodes((nds) =>

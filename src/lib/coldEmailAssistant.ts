@@ -37,6 +37,8 @@ export interface AssistantPlan {
   beats: string[];
   ctaType: string;
   targetWords: number;
+  /** purpose 'template' sequences: suggested campaign name for the saved templates. */
+  campaignName?: string;
 }
 
 export interface AssistantTurn {
@@ -69,11 +71,48 @@ export interface AssistantCallContext {
   transcript?: string;
 }
 
-export type AssistantPurpose = 'cold' | 'followup';
+/**
+ * 'template': reusable copy for the template library, written with {{merge_fields}} instead of a
+ * specific prospect; can also draft a whole sequence (several emails plus a breakup).
+ */
+export type AssistantPurpose = 'cold' | 'followup' | 'template';
+
+/** What a library template is for (same values as TemplatePurpose in lib/emailTemplates). */
+export type AssistantTemplateKind = 'cold' | 'followup' | 'sequence' | 'breakup' | 'reply';
+
+/** One email of a drafted sequence (purpose 'template'). */
+export interface AssistantSequenceEmail {
+  step: number;
+  purpose: 'sequence' | 'breakup';
+  name: string;
+  subject: string;
+  body: string;
+  wordCount: number;
+  /** Suggested days to wait after the previous email (0 for the first). */
+  waitDays: number;
+  frameworkId: string;
+  trimmed?: boolean;
+}
+
+/** What the assistant suggests for a single library template. */
+export interface AssistantTemplateMeta {
+  name: string;
+  purpose: AssistantTemplateKind;
+  outcomeTags: string[];
+  frameworkId: string;
+}
+
+/** Most beats a plan carries: 4 for one email, up to 6 for a template sequence (5 emails + breakup). */
+export const MAX_PLAN_BEATS = 4;
+export const MAX_SEQUENCE_BEATS = 6;
 
 export interface AssistantRequest {
   stage: AssistantStage;
   purpose?: AssistantPurpose;
+  /** purpose 'template': what the template is for (a hint; the idea can ask for a sequence). */
+  templateKind?: AssistantTemplateKind;
+  /** purpose 'template': the drafted sequence being refined. */
+  currentSequence?: { subject: string; body: string; purpose?: 'sequence' | 'breakup' }[];
   callContext?: AssistantCallContext;
   /** The rep's original idea for this email. */
   idea: string;
@@ -105,8 +144,23 @@ export interface AssistantResponse {
   /** Angle, pain, proof and offer as used in this draft (fills an empty campaign message). */
   campaign?: AssistantCampaign;
   post?: AssistantLinkedInPost;
+  /** purpose 'template': a drafted sequence (one library template per email). */
+  sequence?: AssistantSequenceEmail[];
+  /** purpose 'template': suggested campaign name for a sequence. */
+  campaignName?: string;
+  /** purpose 'template': suggested name, purpose and outcome tags for a single template. */
+  template?: AssistantTemplateMeta;
   source: 'gemini' | 'fallback';
 }
+
+/** Anti-sales style rules every assistant prompt carries (cold, follow-up and template). */
+export const ASSISTANT_STYLE_RULES = `STYLE (anti-sales, non-negotiable):
+- Calm, curious, peer-to-peer. One idea per email. No hype, no feature dumps, no buzzwords ("game-changing", "revolutionary", "leverage", "synergy").
+- Never: "hope this finds you well", "I'm reaching out", "just checking in", "touching base", "circling back", "quick intro".
+- Exactly ONE call to action: a low-pressure question, interest-based ("Worth a look?") or permission-based ("Open to me sending a 2-minute video?"). No calendar links, no demanding a meeting time.
+- Facts: NEVER invent statistics, percentages, customer names, case studies, results, prices, tools or competitors. Use only facts given in the idea, the answers, the campaign message, the recipient fields, the current draft or the LinkedIn post. Numbers the rep gave must be used exactly as given, written as digits ("72 hours", never "seventy-two hours"). Never add durations, timelines or percentages the rep did not give (e.g. no "takes four weeks to ramp" unless the rep said so). If you have no proof, write without proof.
+- About 80% about the recipient's world, under 20% about the sender.
+- No em dashes or en dashes, no emojis, plain text, short paragraphs separated by a blank line, reading grade 5 to 7.`;
 
 // =========================================================================
 // Framework catalogue (cold email studio list, enriched with outboundFrameworks definitions)

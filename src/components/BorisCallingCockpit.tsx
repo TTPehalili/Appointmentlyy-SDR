@@ -62,6 +62,8 @@ import { getPresetRebuttals } from '@/lib/dialerRebuttals';
 import { useTelephony } from '@/lib/telephony/useTelephony';
 import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
 import type { AssistantCallContext } from '@/lib/coldEmailAssistant';
+import TemplatePicker from '@/components/outreach/TemplatePicker';
+import MergeFieldGaps, { unfilledMergeFields } from '@/components/outreach/MergeFieldGaps';
 import {
   CallTelemetryState,
   INITIAL_TELEMETRY_STATE,
@@ -1030,10 +1032,27 @@ export default function BorisCallingCockpit({
     );
   };
 
+  // When the open callback for this lead is due, e.g. "Friday 10:00 AM" ('' when none).
+  const openCallbackWhen = () =>
+    lastCallback && lastCallback.status === 'open' ? new Date(lastCallback.dueAt).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) : '';
+
+  // Merge-field values for follow-up templates: the lead, this call and the signed-in rep.
+  const followUpTemplateValues = () => ({
+    first_name: (customerName || '').trim().split(/\s+/)[0] || '',
+    company: (partnerName || '').trim(),
+    title: (title || '').trim(),
+    sender_name: repName.trim().split(/\s+/)[0] || '',
+    sender_company: sessionTenant || '',
+    meeting_time: bookingSlot || '',
+    callback_time: openCallbackWhen(),
+  });
+  // A template field left unfilled ({{meeting_time}}...) must never reach the prospect.
+  const quickEmailGaps = unfilledMergeFields(quickEmailSubject, quickEmailBody);
+
   // What the follow-up assistant knows from this call.
   const buildFollowUpContext = (): AssistantCallContext => {
     const step = scriptSteps.find((s) => s.step === currentStep) || scriptSteps[currentStep - 1];
-    const callbackWhen = lastCallback && lastCallback.status === 'open' ? new Date(lastCallback.dueAt).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) : '';
+    const callbackWhen = openCallbackWhen();
     const turns = followUpTurnsRef.current.slice(-12);
     return {
       outcome: disposition || '',
@@ -1066,6 +1085,7 @@ export default function BorisCallingCockpit({
   const handleSendQuickEmail = async () => {
     // Already sent (or sending): never dispatch the same follow-up twice.
     if (isSendingQuickEmail || quickEmailSuccess) return;
+    if (quickEmailGaps.length > 0) return;
     if (!directEmail || !directEmail.includes('@')) {
       alert('Please enter a valid recipient email address.');
       return;
@@ -2372,6 +2392,19 @@ export default function BorisCallingCockpit({
                 />
               </section>
 
+              {/* Secondary: start from a team template (best match for this call's outcome first) */}
+              <TemplatePicker
+                id="followup-template-picker"
+                label="Or use a template"
+                values={followUpTemplateValues()}
+                outcome={quickEmailCallContext?.outcome || disposition || ''}
+                current={{ subject: quickEmailSubject, body: quickEmailBody }}
+                onApply={(subject, body) => {
+                  setQuickEmailSubject(subject);
+                  setQuickEmailBody(body);
+                }}
+              />
+
               <div>
                 <label className="mb-1.5 block text-caption text-fg-secondary">
                   Recipient email (confirmed on call)
@@ -2408,6 +2441,16 @@ export default function BorisCallingCockpit({
                 />
               </div>
 
+              <MergeFieldGaps
+                subject={quickEmailSubject}
+                body={quickEmailBody}
+                values={followUpTemplateValues()}
+                onFill={(subject, body) => {
+                  setQuickEmailSubject(subject);
+                  setQuickEmailBody(body);
+                }}
+              />
+
               {quickEmailSuccess && (
                 <div className="flex items-center gap-2 rounded-md border border-success-500/40 bg-success-bg p-2.5 text-small font-medium text-success-fg">
                   <CheckCircle2 className="size-4 text-success-fg" />
@@ -2432,7 +2475,8 @@ export default function BorisCallingCockpit({
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={isSendingQuickEmail || !!quickEmailSuccess || !quickEmailBody.trim()}
+                  disabled={isSendingQuickEmail || !!quickEmailSuccess || !quickEmailBody.trim() || quickEmailGaps.length > 0}
+                  title={quickEmailGaps.length > 0 ? `Fill ${quickEmailGaps.map((k) => `{{${k}}}`).join(', ')} before sending` : undefined}
                   onClick={handleSendQuickEmail}
                   icon={quickEmailSuccess ? <Check /> : <Send />}
                 >

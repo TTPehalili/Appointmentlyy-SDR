@@ -4,10 +4,13 @@ import { applyRateLimit } from '@/lib/security';
 import { sanitizeColdEmail } from '@/lib/coldEmailStudio';
 import {
   ASSISTANT_FRAMEWORKS,
+  ASSISTANT_STYLE_RULES,
   ASSISTANT_TARGET_WORDS,
   ASSISTANT_WORD_LIMIT,
   AUTO_FRAMEWORK_ID,
+  MAX_PLAN_BEATS,
   MAX_QUESTIONS,
+  MAX_SEQUENCE_BEATS,
   campaignBrief,
   cleanBody,
   countWords,
@@ -27,6 +30,7 @@ import {
   type AssistantResponse,
   type AssistantStage,
 } from '@/lib/coldEmailAssistant';
+import { parseTemplateKind, templateDraftStage, templatePlanStage, templateQuestionsStage } from '@/lib/server/templateAssistant';
 
 /**
  * Cold email writing assistant. Plans before it writes:
@@ -95,7 +99,15 @@ function parseRequest(raw: unknown): AssistantRequest | null {
   const call = obj(o.callContext);
   return {
     stage,
-    purpose: o.purpose === 'followup' ? 'followup' : 'cold',
+    purpose: o.purpose === 'followup' ? 'followup' : o.purpose === 'template' ? 'template' : 'cold',
+    templateKind: o.purpose === 'template' ? parseTemplateKind(o.templateKind) : undefined,
+    currentSequence: o.purpose === 'template' && Array.isArray(o.currentSequence)
+      ? o.currentSequence
+          .slice(0, MAX_SEQUENCE_BEATS)
+          .map((e) => obj(e))
+          .map((e) => ({ subject: s(e.subject, 150), body: s(e.body, 2000), purpose: e.purpose === 'breakup' ? ('breakup' as const) : ('sequence' as const) }))
+          .filter((e) => e.body)
+      : undefined,
     callContext: o.purpose === 'followup'
       ? {
           outcome: s(call.outcome, 120),
@@ -124,9 +136,10 @@ function parseRequest(raw: unknown): AssistantRequest | null {
           frameworkName: s(plan.frameworkName, 120),
           why: s(plan.why, 300),
           angle: s(plan.angle, 300),
-          beats: (plan.beats as unknown[]).slice(0, 4).map((b) => s(b, 200)).filter(Boolean),
+          beats: (plan.beats as unknown[]).slice(0, o.purpose === 'template' ? MAX_SEQUENCE_BEATS : MAX_PLAN_BEATS).map((b) => s(b, 200)).filter(Boolean),
           ctaType: s(plan.ctaType, 120),
           targetWords: ASSISTANT_TARGET_WORDS,
+          ...(o.purpose === 'template' && s(plan.campaignName, 60) ? { campaignName: s(plan.campaignName, 60) } : {}),
         }
       : undefined,
     currentDraft: draft.body ? { subject: s(draft.subject, 120), body: s(draft.body, 2000) } : undefined,
@@ -147,13 +160,7 @@ function parseRequest(raw: unknown): AssistantRequest | null {
 // Prompt pieces
 // ---------------------------------------------------------------------------
 
-const STYLE_RULES = `STYLE (anti-sales, non-negotiable):
-- Calm, curious, peer-to-peer. One idea per email. No hype, no feature dumps, no buzzwords ("game-changing", "revolutionary", "leverage", "synergy").
-- Never: "hope this finds you well", "I'm reaching out", "just checking in", "touching base", "circling back", "quick intro".
-- Exactly ONE call to action: a low-pressure question, interest-based ("Worth a look?") or permission-based ("Open to me sending a 2-minute video?"). No calendar links, no demanding a meeting time.
-- Facts: NEVER invent statistics, percentages, customer names, case studies, results, prices, tools or competitors. Use only facts given in the idea, the answers, the campaign message, the recipient fields, the current draft or the LinkedIn post. Numbers the rep gave must be used exactly as given, written as digits ("72 hours", never "seventy-two hours"). Never add durations, timelines or percentages the rep did not give (e.g. no "takes four weeks to ramp" unless the rep said so). If you have no proof, write without proof.
-- About 80% about the recipient's world, under 20% about the sender.
-- No em dashes or en dashes, no emojis, plain text, short paragraphs separated by a blank line, reading grade 5 to 7.`;
+const STYLE_RULES = ASSISTANT_STYLE_RULES;
 
 function firstName(name?: string) {
   return (name || '').trim().split(/\s+/)[0] || '';
@@ -762,6 +769,18 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.GOOGLE_API_KEY;
   try {
+    if (r.purpose === 'template') {
+      // Library templates: reusable copy with merge fields (no LinkedIn stage).
+      if (r.stage === 'linkedin') return NextResponse.json({ error: 'LinkedIn posts are not available for templates.' }, { status: 400 });
+      const ask = (prompt: string, temperature?: number) => callGemini(apiKey, prompt, temperature);
+      const result =
+        r.stage === 'questions'
+          ? await templateQuestionsStage(r, ask)
+          : r.stage === 'plan'
+            ? await templatePlanStage(r, ask)
+            : await templateDraftStage(r, ask);
+      return NextResponse.json(result);
+    }
     const result =
       r.stage === 'questions'
         ? await questionsStage(r, apiKey)

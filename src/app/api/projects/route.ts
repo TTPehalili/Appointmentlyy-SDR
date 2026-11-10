@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { requireWorkflowAdmin } from '@/lib/server/workflowAccess';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const projects = await db.listProjects();
     const workflows = await db.listWorkflows();
@@ -25,6 +28,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const body = await request.json();
     if (!body.name || !body.name.trim()) {

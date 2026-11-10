@@ -33,10 +33,21 @@ function isPublicApi(pathname: string, method: string): boolean {
   return false;
 }
 
+/**
+ * Workflow drafts: workspace admins may list, build and edit their own workspace's workflows. The
+ * route handlers re-check the live session and scope every read and write to that workspace;
+ * running a workflow stays staff-only (see isStaffOnlyApi).
+ */
+const ADMIN_API_PREFIXES = ['/api/workflows', '/api/projects'];
+
+function isStaffOnlyApi(pathname: string): boolean {
+  if (/^\/api\/workflows\/[^/]+\/execute\/?$/.test(pathname)) return true;
+  if (ADMIN_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return false;
+  return STAFF_ONLY_API_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 /** API areas only Appointmentlyy staff may call: they run code, hold shared credentials or bill. */
 const STAFF_ONLY_API_PREFIXES = [
-  '/api/workflows',
-  '/api/projects',
   '/api/executions',
   '/api/credentials',
   '/api/mcp',
@@ -65,7 +76,13 @@ async function authGate(request: NextRequest): Promise<NextResponse | null> {
     url.search = pathname === '/' ? '' : `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
     return NextResponse.redirect(url);
   }
-  if (isApi && STAFF_ONLY_API_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (isApi && ADMIN_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && !isStaffOnlyApi(pathname)) {
+    if (session.role !== 'Super Admin' && session.role !== 'Admin') {
+      return NextResponse.json({ success: false, error: 'Only workspace admins can use workflows.' }, { status: 403 });
+    }
+    return null;
+  }
+  if (isApi && isStaffOnlyApi(pathname)) {
     // These routes don't check the session themselves, so confirm staff status against storage
     // now (a cookie alone could belong to someone removed from the staff list).
     const live = session.role === 'Super Admin' ? await getServerSession(request) : null;

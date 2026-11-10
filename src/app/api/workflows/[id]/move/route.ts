@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { requireWorkflowAdmin } from '@/lib/server/workflowAccess';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
+  const db = access.store;
   try {
     const { id } = await params;
     const body = await request.json();

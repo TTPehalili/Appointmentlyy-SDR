@@ -120,7 +120,8 @@ Return valid JSON only.`;
           turnAnnotations?: TurnAnnotation[];
         }
 
-        const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+        // Fast, available models first; each try is capped so a slow model can't stall the scorecard.
+        const candidateModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash'];
         let parsed: ParsedQaOutput | null = null;
 
         for (const model of candidateModels) {
@@ -133,7 +134,8 @@ Return valid JSON only.`;
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: prompt }] }],
                   generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
-                })
+                }),
+                signal: AbortSignal.timeout(20000)
               }
             );
 

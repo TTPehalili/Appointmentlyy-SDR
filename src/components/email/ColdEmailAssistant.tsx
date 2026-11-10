@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import Link from 'next/link';
 import {
   ArrowUp,
+  BookmarkPlus,
   Check,
   Copy,
   ExternalLink,
@@ -31,7 +32,10 @@ import {
   type AssistantQuestion,
   type AssistantRequest,
   type AssistantResponse,
+  type AssistantSequenceEmail,
   type AssistantStage,
+  type AssistantTemplateKind,
+  type AssistantTemplateMeta,
 } from '@/lib/coldEmailAssistant';
 import { fillEmptyCampaignFields, saveCampaignMessage, useCampaignMessage, postText } from '@/lib/campaignMessage';
 
@@ -42,7 +46,8 @@ type ChatItem =
   | { id: string; kind: 'note'; text: string; retry?: () => void }
   | { id: string; kind: 'questions'; text: string; questions: AssistantQuestion[] }
   | { id: string; kind: 'plan'; text: string; plan: AssistantPlan }
-  | { id: string; kind: 'draft'; text: string; subject: string; body: string; wordCount: number; frameworkName: string; trimmed?: boolean }
+  | { id: string; kind: 'draft'; text: string; subject: string; body: string; wordCount: number; frameworkName: string; trimmed?: boolean; meta?: AssistantTemplateMeta }
+  | { id: string; kind: 'sequence'; text: string; emails: AssistantSequenceEmail[]; campaignName: string; frameworkName: string }
   | { id: string; kind: 'post'; text: string; post: AssistantLinkedInPost };
 
 type Phase = 'idle' | 'questions' | 'plan' | 'changing' | 'drafted';
@@ -78,6 +83,12 @@ export interface ColdEmailAssistantProps {
   className?: string;
   /** Hide the heading (when the host already shows one). */
   hideHeading?: boolean;
+  /** purpose 'template': what the template is for (a hint; the idea can still ask for a sequence). */
+  templateKind?: AssistantTemplateKind;
+  /** purpose 'template': adds "Save as template" to drafts. Resolve true when saved. */
+  onSaveTemplate?: (t: { subject: string; body: string; meta?: AssistantTemplateMeta }) => Promise<boolean> | boolean;
+  /** purpose 'template': adds "Save all as templates" to drafted sequences. Resolve true when saved. */
+  onSaveSequence?: (emails: AssistantSequenceEmail[], campaignName: string) => Promise<boolean> | boolean;
 }
 
 let seq = 0;
@@ -98,7 +109,11 @@ export default function ColdEmailAssistant({
   logClassName,
   className,
   hideHeading,
+  templateKind,
+  onSaveTemplate,
+  onSaveSequence,
 }: ColdEmailAssistantProps) {
+  const isTemplate = purpose === 'template';
   const campaign = useCampaignMessage();
   const [items, setItems] = useState<ChatItem[]>([]);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -113,6 +128,7 @@ export default function ColdEmailAssistant({
   const [insertedId, setInsertedId] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ subject: string; body: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Record<string, 'saving' | 'saved'>>({});
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -139,6 +155,7 @@ export default function ColdEmailAssistant({
           if (it.kind === 'draft') return { role: 'assistant' as const, text: `${it.text} [Draft] Subject: ${it.subject} | ${it.body}` };
           if (it.kind === 'plan') return { role: 'assistant' as const, text: `${it.text} [Plan] ${it.plan.frameworkName}: ${it.plan.beats.join(' / ')}` };
           if (it.kind === 'questions') return { role: 'assistant' as const, text: `${it.text} ${it.questions.map((q) => q.text).join(' ')}` };
+          if (it.kind === 'sequence') return { role: 'assistant' as const, text: `${it.text} [Sequence] ${it.emails.map((e) => `${e.step}. ${e.subject}`).join(' / ')}` };
           return { role: 'assistant' as const, text: it.text };
         })
         .slice(-12),
@@ -173,6 +190,7 @@ export default function ColdEmailAssistant({
       const body: AssistantRequest = {
         stage,
         purpose,
+        ...(purpose === 'template' ? { templateKind, currentSequence: extra.currentSequence } : {}),
         callContext: purpose === 'followup' ? callContext : undefined,
         idea: extra.idea ?? idea,
         message: extra.message,
@@ -209,6 +227,16 @@ export default function ColdEmailAssistant({
           setPlan(data.plan);
           setPhase('plan');
           push({ id: nextId(), kind: 'plan', text: data.message, plan: data.plan });
+        } else if (data.stage === 'draft' && data.sequence && data.sequence.length > 0) {
+          push({
+            id: nextId(),
+            kind: 'sequence',
+            text: data.message,
+            emails: data.sequence,
+            campaignName: data.campaignName || '',
+            frameworkName: data.framework.name,
+          });
+          setPhase('drafted');
         } else if (data.stage === 'draft' && data.body) {
           const id = nextId();
           const subject = data.subject || '';
@@ -221,13 +249,17 @@ export default function ColdEmailAssistant({
             wordCount: data.wordCount ?? countWords(data.body),
             frameworkName: data.framework.name,
             trimmed: data.trimmed,
+            meta: data.template,
           });
           setPhase('drafted');
           if (data.framework.id && data.framework.id !== AUTO_FRAMEWORK_ID && frameworkId !== AUTO_FRAMEWORK_ID && data.framework.id !== frameworkId) {
             onFrameworkChange(data.framework.id);
           }
-          if (data.campaign) fillEmptyCampaignFields(data.campaign);
-          saveCampaignMessage({ lastEmail: { subject, body: data.body, at: new Date().toISOString() } });
+          // Templates use merge fields: keep them out of the rep's shared campaign message.
+          if (purpose !== 'template') {
+            if (data.campaign) fillEmptyCampaignFields(data.campaign);
+            saveCampaignMessage({ lastEmail: { subject, body: data.body, at: new Date().toISOString() } });
+          }
           // Empty editor: put the draft straight in (Undo stays available).
           if (!draftRef.current.subject.trim() && !draftRef.current.body.trim()) apply(id, subject, data.body);
         } else if (data.stage === 'linkedin' && data.post) {
@@ -247,7 +279,7 @@ export default function ColdEmailAssistant({
         setBusy(null);
       }
     },
-    [purpose, callContext, idea, history, answers, plan, recipient, sender, frameworkId, campaign, push, onFrameworkChange, apply],
+    [purpose, templateKind, callContext, idea, history, answers, plan, recipient, sender, frameworkId, campaign, push, onFrameworkChange, apply],
   );
 
   useLayoutEffect(() => {
@@ -263,6 +295,7 @@ export default function ColdEmailAssistant({
     setAnswers([]);
     setPendingQuestions([]);
     setInsertedId(null);
+    setSaved({});
     setInput('');
     inputRef.current?.focus();
   };
@@ -313,6 +346,36 @@ export default function ColdEmailAssistant({
     return undefined;
   };
 
+  /** The newest result, when it is a drafted sequence (refinements then rewrite the whole sequence). */
+  const latestSequence = () => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.kind === 'draft') return undefined;
+      if (it.kind === 'sequence') return it.emails.map((e) => ({ subject: e.subject, body: e.body, purpose: e.purpose }));
+    }
+    return undefined;
+  };
+
+  const markSaved = (itemId: string, ok: boolean) =>
+    setSaved((m) => {
+      const next = { ...m };
+      if (ok) next[itemId] = 'saved';
+      else delete next[itemId];
+      return next;
+    });
+
+  const saveOne = async (itemId: string, t: { subject: string; body: string; meta?: AssistantTemplateMeta }) => {
+    if (!onSaveTemplate || saved[itemId]) return;
+    setSaved((m) => ({ ...m, [itemId]: 'saving' }));
+    markSaved(itemId, await Promise.resolve(onSaveTemplate(t)).catch(() => false));
+  };
+
+  const saveAll = async (itemId: string, emails: AssistantSequenceEmail[], campaignName: string) => {
+    if (!onSaveSequence || saved[itemId]) return;
+    setSaved((m) => ({ ...m, [itemId]: 'saving' }));
+    markSaved(itemId, await Promise.resolve(onSaveSequence(emails, campaignName)).catch(() => false));
+  };
+
   const send = () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -331,7 +394,12 @@ export default function ColdEmailAssistant({
       void run('plan', { message: text, plan: plan ?? undefined });
       return;
     }
-    // Drafted: refine the email in the editor (or the latest draft).
+    // Drafted: refine the latest sequence, or the email in the editor (or the latest draft).
+    const sequence = isTemplate ? latestSequence() : undefined;
+    if (sequence) {
+      void run('draft', { message: text, currentSequence: sequence });
+      return;
+    }
     void run('draft', { message: text, currentDraft: editorDraft() || latestDraft() });
   };
 
@@ -398,7 +466,10 @@ export default function ColdEmailAssistant({
         ? 'What should change in the plan?'
         : phase === 'drafted'
           ? 'Refine: "softer close", "shorter", "mention Salesforce"'
-          : placeholder || 'Your idea in plain words, e.g. "follow up after our call, they are scaling outbound seats, soft CTA"';
+          : placeholder ||
+            (isTemplate
+              ? 'What is the template for? e.g. "draft a 3-step cold sequence for logistics companies"'
+              : 'Your idea in plain words, e.g. "follow up after our call, they are scaling outbound seats, soft CTA"');
 
   return (
     <div className={cn('flex min-w-0 flex-col', className)}>
@@ -449,7 +520,9 @@ export default function ColdEmailAssistant({
       >
         {items.length === 0 && !busy && (
           <p className="text-small text-fg-tertiary">
-            Tell me what the email is about. I&apos;ll ask a couple of quick questions, show a short plan, then write it under {ASSISTANT_WORD_LIMIT} words.
+            {isTemplate
+              ? `Tell me what the template is for, or ask for a whole sequence. I'll ask a couple of quick questions, show a short plan, then write reusable copy with merge fields, each email under ${ASSISTANT_WORD_LIMIT} words.`
+              : `Tell me what the email is about. I'll ask a couple of quick questions, show a short plan, then write it under ${ASSISTANT_WORD_LIMIT} words.`}
           </p>
         )}
 
@@ -610,12 +683,24 @@ export default function ColdEmailAssistant({
                       )}
                     </>
                   ) : (
-                    <Button variant="primary" size="sm" onClick={() => apply(it.id, it.subject, it.body)}>
+                    <Button variant={onSaveTemplate ? 'secondary' : 'primary'} size="sm" onClick={() => apply(it.id, it.subject, it.body)}>
                       <FileText />
-                      <span>Insert into email</span>
+                      <span>{isTemplate ? 'Use this draft' : 'Insert into email'}</span>
                     </Button>
                   )}
-                  {enableLinkedInMirror && (
+                  {onSaveTemplate && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      loading={saved[it.id] === 'saving'}
+                      disabled={saved[it.id] === 'saved'}
+                      onClick={() => void saveOne(it.id, { subject: it.subject, body: it.body, meta: it.meta })}
+                    >
+                      {saved[it.id] === 'saved' ? <Check /> : saved[it.id] === 'saving' ? null : <BookmarkPlus />}
+                      <span>{saved[it.id] === 'saved' ? 'Saved as template' : 'Save as template'}</span>
+                    </Button>
+                  )}
+                  {enableLinkedInMirror && !isTemplate && (
                     <Button variant="secondary" size="sm" onClick={() => mirror({ subject: it.subject, body: it.body })} disabled={!!busy}>
                       <LinkedinIcon className="size-4" />
                       <span>Mirror on LinkedIn</span>
@@ -625,6 +710,63 @@ export default function ColdEmailAssistant({
                     {copied === it.id ? <Check /> : <Copy />}
                   </IconButton>
                 </div>
+              </div>
+            );
+          }
+          if (it.kind === 'sequence') {
+            const state = saved[it.id];
+            return (
+              <div key={it.id} className="space-y-2">
+                <p className="text-small text-fg">{it.text}</p>
+                {it.campaignName && (
+                  <p className="text-caption text-fg-tertiary">
+                    Campaign: <span className="font-medium text-fg-secondary">{it.campaignName}</span>
+                  </p>
+                )}
+                <ol className="space-y-2">
+                  {it.emails.map((e) => {
+                    const key = `${it.id}-${e.step}`;
+                    return (
+                      <li key={e.step} className="space-y-2 rounded-md border border-line bg-surface p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-caption text-fg-tertiary">
+                          <span className="font-medium text-fg-secondary">
+                            {e.purpose === 'breakup' ? `Email ${e.step}: breakup` : `Email ${e.step}`}
+                            {e.step > 1 && e.waitDays > 0 ? `, ${e.waitDays} days later` : ''}
+                          </span>
+                          <span className={cn('tabular-nums', e.wordCount >= ASSISTANT_WORD_LIMIT ? 'text-danger-fg' : 'text-success-fg')}>
+                            {e.wordCount} words{e.trimmed ? ', trimmed to fit' : ''}
+                          </span>
+                        </div>
+                        <p className="text-small text-fg">
+                          <span className="text-fg-tertiary">Subject: </span>
+                          <span className="font-medium">{e.subject}</span>
+                        </p>
+                        <p className="whitespace-pre-wrap text-small leading-relaxed text-fg">{e.body}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button variant="ghost" size="sm" onClick={() => apply(key, e.subject, e.body)}>
+                            {insertedId === key ? <Check /> : <FileText />}
+                            <span>{insertedId === key ? 'In the editor' : 'Use this one'}</span>
+                          </Button>
+                          <IconButton label={`Copy email ${e.step}`} size="sm" onClick={() => copy(`Subject: ${e.subject}\n\n${e.body}`, key)}>
+                            {copied === key ? <Check /> : <Copy />}
+                          </IconButton>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {onSaveSequence && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={state === 'saving'}
+                    disabled={state === 'saved'}
+                    onClick={() => void saveAll(it.id, it.emails, it.campaignName)}
+                  >
+                    {state === 'saved' ? <Check /> : state === 'saving' ? null : <BookmarkPlus />}
+                    <span>{state === 'saved' ? `Saved ${it.emails.length} templates` : `Save all ${it.emails.length} as templates`}</span>
+                  </Button>
+                )}
               </div>
             );
           }
@@ -661,7 +803,7 @@ export default function ColdEmailAssistant({
           <p className="flex items-center gap-2 text-small text-fg-secondary" role="status">
             <Loader2 className="size-4 animate-spin" aria-hidden />
             <span>
-              {busy === 'questions' ? 'Reading your idea...' : busy === 'plan' ? 'Planning...' : busy === 'linkedin' ? 'Writing the LinkedIn post...' : 'Writing...'}
+              {busy === 'questions' ? 'Reading your idea...' : busy === 'plan' ? 'Planning...' : busy === 'linkedin' ? 'Writing the LinkedIn post...' : isTemplate ? 'Writing the template...' : 'Writing...'}
             </span>
           </p>
         )}
@@ -710,7 +852,7 @@ export default function ColdEmailAssistant({
             Skip questions, just draft
           </button>
           <span className={cn('tabular-nums', overLimit && 'text-danger-fg')} aria-live="polite">
-            Email: {editorWords} / under {ASSISTANT_WORD_LIMIT} words
+            {isTemplate ? 'Template' : 'Email'}: {editorWords} / under {ASSISTANT_WORD_LIMIT} words
           </span>
         </div>
         <p className="text-caption text-fg-tertiary">Enter to send, Shift+Enter for a new line.</p>

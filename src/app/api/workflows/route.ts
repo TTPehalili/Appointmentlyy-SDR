@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { cleanGraph, cleanName, requireWorkflowAdmin } from '@/lib/server/workflowAccess';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
   try {
-    const workflows = await db.listWorkflows();
+    const workflows = await access.store.listWorkflows();
     return NextResponse.json({
       success: true,
       data: workflows
@@ -17,6 +19,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await requireWorkflowAdmin(request);
+  if (access instanceof NextResponse) return access;
   try {
     const body = await request.json();
     if (!body.name) {
@@ -26,14 +30,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const workflow = await db.saveWorkflow({
-      id: body.id,
-      name: body.name,
-      description: body.description || '',
-      active: body.active ?? true,
-      nodes: body.nodes || [],
-      edges: body.edges || [],
-      webhookPath: body.webhookPath
+    const { nodes, edges } = cleanGraph(body.nodes, body.edges);
+    // Only platform staff may create a workflow that is already switched on.
+    const active = access.isStaff ? body.active ?? true : false;
+    const workflow = await access.store.saveWorkflow({
+      name: cleanName(body.name, 'Untitled Workflow'),
+      description: typeof body.description === 'string' ? body.description.slice(0, 600) : '',
+      folderId: typeof body.folderId === 'string' && body.folderId ? body.folderId : undefined,
+      active,
+      nodes,
+      edges,
+      webhookPath: typeof body.webhookPath === 'string' ? body.webhookPath.slice(0, 80) : undefined
     });
 
     return NextResponse.json({
