@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import { EMAIL_RE } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     if (!identity) return NextResponse.json({ success: true, message: GENERIC });
 
     const store = getTenantStore();
-    const work = (async () => {
+    const work = async () => {
       const sent = await sendPasswordReset({
         email,
         name: identity.name,
@@ -40,11 +40,18 @@ export async function POST(req: NextRequest) {
       });
       if (!sent.delivered) console.warn('[password/forgot] email not delivered:', sent.error);
       await store.addAudit({ actorEmail: email, tenantCode: identity.tenant.code, action: 'password.reset_requested', target: email, detail: {} });
+      if (sent.delivered) console.info('[password/forgot] reset email sent');
       return sent;
-    })();
-    if (isDemoLogin()) return NextResponse.json({ success: true, message: GENERIC, resetUrl: (await work).resetUrl });
-    // Don't wait: a slower reply would reveal that the account exists.
-    work.catch((err) => console.warn('[password/forgot] failed:', err));
+    };
+    if (isDemoLogin()) return NextResponse.json({ success: true, message: GENERIC, resetUrl: (await work()).resetUrl });
+    // Send after replying (Next.js `after`), so a slower reply can't reveal that the account exists.
+    after(async () => {
+      try {
+        await work();
+      } catch (err) {
+        console.warn('[password/forgot] failed:', err);
+      }
+    });
     return NextResponse.json({ success: true, message: GENERIC });
   } catch (err) {
     console.error('[password/forgot]', err);

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import { EMAIL_RE } from '@/lib/roles';
 import { pickLoginWorkspace, resolveIdentity } from '@/lib/server/tenancy';
@@ -34,22 +34,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: GENERIC });
     }
 
-    const sending = sendLoginLink({
-      email,
-      name: identity.name,
-      role: identity.role,
-      tenant: identity.tenant,
-      requestOrigin: req.nextUrl.origin,
-    });
+    const send = () =>
+      sendLoginLink({
+        email,
+        name: identity.name,
+        role: identity.role,
+        tenant: identity.tenant,
+        requestOrigin: req.nextUrl.origin,
+      });
     if (isDemoLogin()) {
       // Demo builds only: show the link on screen (lets local testing work without an inbox).
-      const sent = await sending;
+      const sent = await send();
       return NextResponse.json({ success: true, message: GENERIC, loginUrl: sent.loginUrl, emailDelivered: sent.delivered });
     }
-    // Don't wait for the email provider: a slower reply would reveal that the account exists.
-    sending
-      .then((sent) => !sent.delivered && console.warn('[Auth send-link] email not delivered:', sent.error))
-      .catch((err) => console.warn('[Auth send-link] email failed:', err));
+    // Send after replying (Next.js `after`), so a slower reply can't reveal that the account exists.
+    after(async () => {
+      try {
+        const sent = await send();
+        if (sent.delivered) console.info('[Auth send-link] sign-in email sent');
+        else console.warn('[Auth send-link] email not delivered:', sent.error);
+      } catch (err) {
+        console.warn('[Auth send-link] email failed:', err);
+      }
+    });
     return NextResponse.json({ success: true, message: GENERIC });
   } catch (err) {
     console.error('[Auth send-link]', err);
