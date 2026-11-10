@@ -7,10 +7,10 @@ export default function NotFound() {
       <h1 className="text-h1 text-fg">We can’t find that page</h1>
       <p className="max-w-sm text-body text-fg-secondary">It may have moved during the redesign. Use search or go back home.</p>
       <Link
-        href="/"
+        href="/dialer"
         className="focus-ring mt-2 inline-flex h-9 items-center rounded-md bg-action px-3.5 text-body font-medium text-action-fg hover:bg-action-hover"
       >
-        Go home
+        Go to the Dialer
       </Link>
     </main>
   );

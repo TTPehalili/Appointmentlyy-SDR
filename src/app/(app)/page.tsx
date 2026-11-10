@@ -1,7 +1,6 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import MissionTargetsHub from '@/components/MissionTargetsHub';
-
-export default function MissionPage() {
-  return <MissionTargetsHub />;
+/** There is no Home page: the app opens on the Dialer. */
+export default function RootPage() {
+  redirect('/dialer');
 }

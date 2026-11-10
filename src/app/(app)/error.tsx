@@ -21,10 +21,10 @@ export default function AppError({ error, retry }: { error: unknown; retry: () =
         </p>
         <div className="flex gap-2 pt-1">
           <Link
-            href="/"
+            href="/dialer"
             className="focus-ring inline-flex h-9 items-center rounded-md border border-line-strong bg-surface px-3.5 text-body font-medium text-fg hover:bg-subtle"
           >
-            Go home
+            Go to the Dialer
           </Link>
           <Button variant="primary" icon={<RotateCw />} onClick={() => retry()}>
             Try again

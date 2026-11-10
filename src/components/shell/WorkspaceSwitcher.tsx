@@ -143,7 +143,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     claimTenantStorage(id.email, id.tenantCode);
     pushRecentWorkspace(id.tenantCode);
     setStoredSession({ email: id.email, role: id.role, tenantCode: id.tenantCode, tenantName: id.tenantName, repName: id.repName, isAuthenticated: true });
-    window.location.assign(new URL('/', window.location.origin).href);
+    window.location.assign(new URL('/dialer', window.location.origin).href);
   };
 
   const q = query.trim().toLowerCase();

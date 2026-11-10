@@ -2,7 +2,6 @@ import {
   BarChart3,
   Contact,
   GraduationCap,
-  Home,
   Inbox,
   Kanban,
   LifeBuoy,
@@ -35,7 +34,6 @@ export interface NavItem {
 
 /** Redesign spec 3.3: 9 rep items in 3 groups, Team (Manager+), then Help and Admin. */
 export const NAV_ITEMS: NavItem[] = [
-  { id: 'home', label: 'Home', icon: Home, href: '/', group: 'main', keywords: 'today mission targets' },
   { id: 'dialer', label: 'Dialer', icon: Phone, href: '/dialer', group: 'main', keywords: 'calling floor cockpit call' },
   { id: 'inbox', label: 'Inbox', icon: Inbox, href: '/inbox', group: 'main', keywords: 'email replies' },
 

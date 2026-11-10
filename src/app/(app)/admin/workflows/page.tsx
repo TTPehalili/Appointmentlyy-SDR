@@ -43,9 +43,9 @@ export default function WorkflowsStandalonePage() {
               </div>
 
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
-                <Link href="/" className={buttonClasses('secondary', 'md', 'w-full sm:w-auto')}>
+                <Link href="/dialer" className={buttonClasses('secondary', 'md', 'w-full sm:w-auto')}>
                   <ArrowLeft className="h-4 w-4" />
-                  <span>Back to home</span>
+                  <span>Back to the Dialer</span>
                 </Link>
 
               </div>

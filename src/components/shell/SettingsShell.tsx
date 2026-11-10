@@ -118,10 +118,10 @@ export function NoAccess({ area }: { area: string }) {
         action={
           <div className="flex gap-2">
             <Link
-              href="/"
+              href="/dialer"
               className="focus-ring inline-flex h-9 items-center rounded-md border border-line-strong bg-surface px-3.5 text-body font-medium text-fg hover:bg-subtle"
             >
-              Go home
+              Go to the Dialer
             </Link>
             <Button variant="primary" onClick={() => toast({ message: 'Access request sent to your admin' })}>
               Request access

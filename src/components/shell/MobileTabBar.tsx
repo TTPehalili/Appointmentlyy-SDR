@@ -11,7 +11,7 @@ import { useVisibleNav } from './useVisibleNav';
 import { ProfileMenu } from './ProfileMenu';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
-const PRIMARY = ['home', 'dialer', 'inbox', 'contacts'];
+const PRIMARY = ['dialer', 'inbox', 'contacts', 'pipeline'];
 
 /** Below 768px the sidebar becomes a bottom tab bar: Home, Dialer, Inbox, Contacts, More. */
 export function MobileTabBar() {
