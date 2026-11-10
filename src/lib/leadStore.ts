@@ -7,7 +7,7 @@
  * Enforces strict Admin-only CSV export and Rep-level row isolation.
  */
 
-import { getStoredSession, normalizeUserRole, canUserReassignLeads } from './session';
+import { getStoredSession, normalizeUserRole, canUserReassignLeads, formatRepNameFromEmail } from './session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 
 export interface LeadFootprintItem {
@@ -44,6 +44,11 @@ export interface ContactRecord {
   touchNumber: number;
   leadNotes: string; // Direct notes on the lead for non-CRM users
   footprint: LeadFootprintItem[];
+  /** The last call outcome a rep picked in the Dialer (the raw disposition name) and when. */
+  lastDisposition?: string;
+  lastDispositionAt?: string;
+  /** Who logged that outcome (rep display name). A rep's Pipeline includes leads they worked. */
+  lastDispositionBy?: string;
 }
 
 export interface IcpFolderRepSlice {
@@ -438,6 +443,16 @@ export function getStoredContacts(): ContactRecord[] {
     const raw = localStorage.getItem(CONTACTS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     if (Array.isArray(parsed) && parsed.length > 0) {
+      // Demo: the sample-lead fetch can be cut short by navigating away right after the seed was
+      // written. While the store still holds only seed leads, fetch them again.
+      if (
+        isDemoWorkspace() &&
+        !demoBulkRequested &&
+        parsed.length <= DEMO_INITIAL_DEFAULT_CONTACTS.length &&
+        parsed.every((c: ContactRecord) => DEMO_SEED_IDS.has(c.id))
+      ) {
+        loadDemoBulkContacts();
+      }
       return parsed;
     }
     const seed = initialDefaultContacts();
@@ -453,6 +468,7 @@ export function getStoredContacts(): ContactRecord[] {
 }
 
 let demoBulkRequested = false;
+const DEMO_SEED_IDS = new Set(DEMO_INITIAL_DEFAULT_CONTACTS.map((c) => c.id));
 
 /**
  * Demo workspace only: fetch the 1,000 sample contacts from the staff-only API (they're kept out
@@ -567,6 +583,56 @@ export function getStoredPipelineStages(): PipelineStageConfig[] {
   }
 }
 
+let stagesSnapshotRaw: string | null | undefined;
+let stagesSnapshot: PipelineStageConfig[] = DEFAULT_PIPELINE_STAGES;
+
+/**
+ * Read-only, referentially stable view of the pipeline stages for useSyncExternalStore
+ * (pair with subscribeToPipelineStages). Never writes to storage.
+ */
+export function getPipelineStagesSnapshot(): PipelineStageConfig[] {
+  if (typeof window === 'undefined') return DEFAULT_PIPELINE_STAGES;
+  try {
+    const raw = localStorage.getItem(PIPELINE_STAGES_STORAGE_KEY);
+    if (raw === stagesSnapshotRaw) return stagesSnapshot;
+    stagesSnapshotRaw = raw;
+    const parsed = raw ? JSON.parse(raw) : null;
+    stagesSnapshot = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PIPELINE_STAGES;
+  } catch {
+    stagesSnapshot = DEFAULT_PIPELINE_STAGES;
+  }
+  return stagesSnapshot;
+}
+
+/** Server snapshot for useSyncExternalStore. */
+export function getServerPipelineStagesSnapshot(): PipelineStageConfig[] {
+  return DEFAULT_PIPELINE_STAGES;
+}
+
+const STAGES_LOCAL_EVENT = 'appointmentlyy_pipeline_stages_changed';
+
+/** Subscribe to pipeline stage edits (this tab, other tabs and other windows). */
+export function subscribeToPipelineStages(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === PIPELINE_STAGES_STORAGE_KEY) callback();
+  };
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(STAGES_LOCAL_EVENT, callback);
+  let channel: BroadcastChannel | null = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    channel = new BroadcastChannel(CONTACTS_BROADCAST);
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'STAGES_UPDATED') callback();
+    };
+  }
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(STAGES_LOCAL_EVENT, callback);
+    if (channel) channel.close();
+  };
+}
+
 /**
  * Save Pipeline Kanban Stages and broadcast update
  */
@@ -574,6 +640,7 @@ export function saveStoredPipelineStages(stages: PipelineStageConfig[]): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(PIPELINE_STAGES_STORAGE_KEY, JSON.stringify(stages));
+    window.dispatchEvent(new Event(STAGES_LOCAL_EVENT));
     if (typeof BroadcastChannel !== 'undefined') {
       const ch = new BroadcastChannel(CONTACTS_BROADCAST);
       ch.postMessage({ type: 'STAGES_UPDATED', stages });
@@ -1043,6 +1110,280 @@ export function updateContactPipelineStage(
   contacts[index] = updatedContact;
   saveStoredContacts(contacts);
   return updatedContact;
+}
+
+// ------------------------------------------------------------------ Rep ownership
+
+/** Comparable form of a rep name or email: lower case, letters and digits only. */
+function repKey(value?: string | null): string {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const UNASSIGNED_KEYS = new Set(['', 'unassigned', 'none', 'rep']);
+
+/** True when a lead has no real owner yet. */
+export function isContactUnassigned(contact: Pick<ContactRecord, 'assignedRep'>): boolean {
+  return UNASSIGNED_KEYS.has(repKey(contact.assignedRep));
+}
+
+/**
+ * The ways one person can appear in ContactRecord.assignedRep: their display name, their email,
+ * the email's local part and the name derived from it ("julian.vance@x.com" → "Julian Vance").
+ * Compared case- and punctuation-insensitively.
+ */
+export function getRepIdentityKeys(user: { repName?: string | null; email?: string | null }): Set<string> {
+  const keys = new Set<string>();
+  const add = (v?: string | null) => {
+    const k = repKey(v);
+    if (k && !UNASSIGNED_KEYS.has(k)) keys.add(k);
+  };
+  add(user.repName);
+  const email = (user.email || '').trim();
+  if (email) {
+    add(email);
+    if (email.includes('@')) {
+      add(email.split('@')[0]);
+      add(formatRepNameFromEmail(email));
+    }
+  }
+  return keys;
+}
+
+/** Whether a lead is assigned to this person (by name or email, case-insensitive). */
+export function isContactAssignedTo(
+  contact: Pick<ContactRecord, 'assignedRep'>,
+  user: { repName?: string | null; email?: string | null } | Set<string>
+): boolean {
+  const k = repKey(contact.assignedRep);
+  if (!k || UNASSIGNED_KEYS.has(k)) return false;
+  const keys = user instanceof Set ? user : getRepIdentityKeys(user);
+  return keys.has(k);
+}
+
+/** Whether two rep labels name the same person (case- and punctuation-insensitive). */
+export function isSameRep(a?: string | null, b?: string | null): boolean {
+  const ka = repKey(a);
+  return !!ka && ka === repKey(b);
+}
+
+// ------------------------------------------------------------------ Dialer call outcomes
+
+function footprintTimestamp(now: Date): string {
+  const formattedDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const formattedTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `${formattedDate} • ${formattedTime}`;
+}
+
+function findContactIndex(contacts: ContactRecord[], idOrEmail: string): number {
+  const needle = idOrEmail.trim().toLowerCase();
+  if (!needle) return -1;
+  const byId = contacts.findIndex((c) => c.id === idOrEmail);
+  if (byId !== -1) return byId;
+  return contacts.findIndex((c) => !!c.email && c.email.trim().toLowerCase() === needle);
+}
+
+/** Lead fields the Dialer knows about, used to add a lead that isn't in Contacts yet. */
+export interface DialerLeadSnapshot {
+  id?: string;
+  name: string;
+  company?: string;
+  title?: string;
+  department?: string;
+  email?: string;
+  phone?: string;
+  headcount?: string;
+  website?: string;
+  linkedinUrl?: string;
+  cadenceDay?: number;
+  touchNumber?: number;
+}
+
+/**
+ * Log a Dialer call outcome on a lead and move it to the outcome's pipeline stage, in one save so
+ * the Pipeline updates at once (same broadcast as every contact change).
+ *
+ * - `stageStatus`: the target stage's statusValue, or null to keep the lead's current stage.
+ * - A lead without an owner becomes the caller's, so it shows in their Pipeline.
+ * - A lead that only exists in the Dialer queue (e.g. an old cached CSV) is added to Contacts,
+ *   owned by the caller, when `lead` is given.
+ */
+export function recordCallOutcome(params: {
+  contactIdOrEmail: string;
+  disposition: string;
+  stageStatus: string | null;
+  title: string;
+  summary: string;
+  repName: string;
+  tenantId?: string;
+  lead?: DialerLeadSnapshot;
+}): ContactRecord | null {
+  if (typeof window === 'undefined' || !params.contactIdOrEmail) return null;
+
+  const contacts = [...getStoredContacts()];
+  let index = findContactIndex(contacts, params.contactIdOrEmail);
+  const now = new Date();
+  const timestamp = footprintTimestamp(now);
+  const rep = (params.repName || '').trim();
+
+  if (index === -1) {
+    const lead = params.lead;
+    if (!lead || !lead.name?.trim()) return null;
+    const created: ContactRecord = {
+      id: lead.id || `contact_${now.getTime()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: lead.name.trim(),
+      company: lead.company || '',
+      title: lead.title || '',
+      department: lead.department || '',
+      email: lead.email || '',
+      phone: lead.phone || '',
+      headcount: lead.headcount || '',
+      website: lead.website || '',
+      linkedinUrl: lead.linkedinUrl || '',
+      assignedRep: rep || 'Unassigned',
+      tenantId: params.tenantId || '',
+      status: 'New Lead',
+      cadenceDay: lead.cadenceDay || 1,
+      touchNumber: lead.touchNumber || 0,
+      leadNotes: '',
+      footprint: [
+        {
+          id: `fp_added_${now.getTime()}`,
+          timestamp,
+          isoDate: now.toISOString(),
+          type: 'status',
+          title: 'Added from the Dialer',
+          summary: `Called from the Dialer queue and added to Contacts, owned by ${rep || 'Unassigned'}.`,
+          repName: rep || 'System',
+        },
+      ],
+    };
+    contacts.unshift(created);
+    index = 0;
+  }
+
+  const current = contacts[index];
+  const callFootprint: LeadFootprintItem = {
+    id: `fp_${now.getTime()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp,
+    isoDate: now.toISOString(),
+    type: 'call',
+    title: params.title,
+    summary: params.summary,
+    repName: rep || 'System',
+    disposition: params.disposition,
+  };
+
+  const updated: ContactRecord = {
+    ...current,
+    assignedRep: isContactUnassigned(current) && rep ? rep : current.assignedRep,
+    status: params.stageStatus || current.status || 'New Lead',
+    lastDisposition: params.disposition,
+    lastDispositionAt: now.toISOString(),
+    lastDispositionBy: rep || current.lastDispositionBy,
+    footprint: [callFootprint, ...(current.footprint || [])],
+  };
+
+  contacts[index] = updated;
+  saveStoredContacts(contacts);
+  return updated;
+}
+
+// ------------------------------------------------------------------ Batch import with owner
+
+/** A lead from a CSV or campaign import, before it becomes a ContactRecord. */
+export interface ImportedLeadInput {
+  id?: string;
+  name: string;
+  company?: string;
+  title?: string;
+  department?: string;
+  email?: string;
+  phone?: string;
+  headcount?: string;
+  website?: string;
+  linkedinUrl?: string;
+  industry?: string;
+  location?: string;
+  cadenceDay?: number;
+  leadNotes?: string;
+}
+
+/**
+ * Add imported leads to Contacts, owned by `assignedRep`, so they show in that rep's Pipeline
+ * (New Lead stage) and Dialer. A lead already in Contacts (same id, or same email in the same
+ * workspace) is reassigned to the rep instead of duplicated; its stage is kept.
+ */
+export function importLeadsIntoContacts(
+  leads: ImportedLeadInput[],
+  opts: { assignedRep: string; tenantId: string; actorName: string; source: string; folderId?: string; folderName?: string }
+): { added: ContactRecord[]; reassigned: number } {
+  if (typeof window === 'undefined' || leads.length === 0) return { added: [], reassigned: 0 };
+  const rep = (opts.assignedRep || '').trim() || 'Unassigned';
+  const tenantKey = (opts.tenantId || '').trim().toLowerCase();
+  const now = new Date();
+  const timestamp = footprintTimestamp(now);
+  const contacts = [...getStoredContacts()];
+  const added: ContactRecord[] = [];
+  let reassigned = 0;
+
+  leads.forEach((lead, idx) => {
+    const email = (lead.email || '').trim();
+    const existingIdx = contacts.findIndex(
+      (c) =>
+        (!!lead.id && c.id === lead.id) ||
+        (!!email &&
+          !!c.email &&
+          c.email.trim().toLowerCase() === email.toLowerCase() &&
+          (c.tenantId || '').trim().toLowerCase() === tenantKey)
+    );
+    const footprint: LeadFootprintItem = {
+      id: `fp_import_${now.getTime()}_${idx}`,
+      timestamp,
+      isoDate: now.toISOString(),
+      type: 'status',
+      title: `Imported via ${opts.source}`,
+      summary: `Imported via ${opts.source} by ${opts.actorName || 'System'} and assigned to ${rep}.`,
+      repName: opts.actorName || 'System',
+    };
+    if (existingIdx !== -1) {
+      const cur = contacts[existingIdx];
+      if (!isSameRep(cur.assignedRep, rep)) reassigned++;
+      contacts[existingIdx] = {
+        ...cur,
+        assignedRep: rep,
+        footprint: [footprint, ...(cur.footprint || [])],
+      };
+      return;
+    }
+    const record: ContactRecord = {
+      id: lead.id || `contact_import_${now.getTime()}_${idx}_${Math.random().toString(36).substring(2, 5)}`,
+      name: lead.name.trim() || 'Prospect',
+      company: lead.company || '',
+      title: lead.title || '',
+      department: lead.department || '',
+      email,
+      phone: lead.phone || '',
+      headcount: lead.headcount || '',
+      website: lead.website || '',
+      linkedinUrl: lead.linkedinUrl || '',
+      industry: lead.industry,
+      location: lead.location,
+      assignedRep: rep,
+      tenantId: opts.tenantId,
+      folderId: opts.folderId,
+      folderName: opts.folderName,
+      status: 'New Lead',
+      cadenceDay: lead.cadenceDay || 1,
+      touchNumber: 0,
+      leadNotes: lead.leadNotes || '',
+      footprint: [footprint],
+    };
+    added.push(record);
+  });
+
+  saveStoredContacts([...added, ...contacts]);
+  if (reassigned > 0) syncFolderRepCounts([...added, ...contacts]);
+  return { added, reassigned };
 }
 
 /** Sample deal value the demo workspace assumes for leads without one. */

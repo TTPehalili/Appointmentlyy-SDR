@@ -49,6 +49,7 @@ import {
   exportContactsToCsv,
   canUserExportCsv,
   subscribeToContacts,
+  isContactAssignedTo,
 } from '@/lib/leadStore';
 import {
   TenantQuotaState,
@@ -775,19 +776,19 @@ export default function IcpListBuilderHub() {
         isSuperAdmin;
       if (!sameTenant) return false;
       if (role === 'Rep') {
-        return f.distributedReps.some(
-          (r) => r.repName.toLowerCase() === repName.toLowerCase()
+        return f.distributedReps.some((r) =>
+          isContactAssignedTo({ assignedRep: r.repName }, { repName, email })
         );
       }
       return true;
     });
-  }, [folders, activeQuota.tenantCode, isSuperAdmin, role, repName]);
+  }, [folders, activeQuota.tenantCode, isSuperAdmin, role, repName, email]);
 
   const getFolderContacts = (folderId: string): ContactRecord[] => {
     return contacts.filter((c) => {
       if (c.folderId !== folderId) return false;
       if (role === 'Rep') {
-        return c.assignedRep?.toLowerCase() === repName.toLowerCase();
+        return isContactAssignedTo(c, { repName, email });
       }
       return true;
     });

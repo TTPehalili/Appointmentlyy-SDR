@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import {
   PhoneCall,
   PhoneOff,
@@ -30,7 +30,8 @@ import {
   RotateCcw,
   FileText,
   UploadCloud,
-  Lightbulb
+  Lightbulb,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, buttonClasses } from '@/components/ui';
@@ -45,7 +46,11 @@ import ViewFullCadenceModal from '@/components/cockpit/ViewFullCadenceModal';
 import DailyActivityReportModal from '@/components/cockpit/DailyActivityReportModal';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 import { logCadenceActivity, getDailyActivitySummary, subscribeToActivities } from '@/lib/activityStore';
-import { getStoredDispositions, subscribeToDispositions, CallDisposition } from '@/lib/dispositionStore';
+import { getDispositionsSnapshot, getServerDispositionsSnapshot, subscribeToDispositions, type CallDisposition } from '@/lib/dispositionStore';
+import { getOutcomeRole, getQuickOutcomeForRole, resolveOutcomeStage } from '@/lib/dispositionPipeline';
+import { recordCallOutcome, getPipelineStagesSnapshot, getServerPipelineStagesSnapshot, subscribeToPipelineStages } from '@/lib/leadStore';
+import { getOutcomeCodes } from '@/lib/telephony/settings';
+import MoreOutcomesMenu from '@/components/cockpit/MoreOutcomesMenu';
 import { useSession, isRoleAdmin } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
@@ -55,6 +60,8 @@ import { type PracticeSetup, buildPracticeLead, getPracticePersona } from '@/lib
 import { SPARRING_PERSONAS, getPersonaVoiceByCountry } from '@/lib/personas';
 import { getPresetRebuttals } from '@/lib/dialerRebuttals';
 import { useTelephony } from '@/lib/telephony/useTelephony';
+import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
+import type { AssistantCallContext } from '@/lib/coldEmailAssistant';
 import {
   CallTelemetryState,
   INITIAL_TELEMETRY_STATE,
@@ -150,6 +157,7 @@ const OUTCOME_OPTIONS = [
   { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
   { label: 'Not interested', value: 'Not Interested / Quarantine', activeClass: 'bg-danger-bg text-danger-fg border-danger-fg/40', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
 ];
+const QUICK_OUTCOME_VALUES = OUTCOME_OPTIONS.map(o => o.value);
 
 /**
  * The Dialer. With `practice` set (from /practice/session) it becomes a training call in any
@@ -210,7 +218,9 @@ export default function BorisCallingCockpit({
   // Active Lead Object
   const activeLead = practiceLead ?? (leadsQueue[currentLeadIndex] || (isDemo ? DEMO_CADENCE_LEADS[0] : EMPTY_LEAD));
   const hasNoLeads = !practiceMode && !isDemo && leadsQueue.length === 0;
-  const nextLeadCandidate = leadsQueue[(currentLeadIndex + 1) % leadsQueue.length];
+  // Empty queue (a new workspace, or before stored leads load): no next lead to point at.
+  const nextLeadCandidate: { name?: string } | null =
+    leadsQueue.length > 0 ? leadsQueue[(currentLeadIndex + 1) % leadsQueue.length] ?? null : null;
 
   // Active Contact with live footprint & direct notes
   const activeContact = useMemo(() => {
@@ -282,6 +292,13 @@ export default function BorisCallingCockpit({
   const [quickEmailBody, setQuickEmailBody] = useState<string>('');
   const [isSendingQuickEmail, setIsSendingQuickEmail] = useState<boolean>(false);
   const [quickEmailSuccess, setQuickEmailSuccess] = useState<string | null>(null);
+  // AI writing assistant inside the follow-up dialog (resets every time the dialog opens).
+  const [quickEmailSession, setQuickEmailSession] = useState<number>(0);
+  const [quickEmailAiStart, setQuickEmailAiStart] = useState<AssistantAutoStart | null>(null);
+  const [quickEmailFramework, setQuickEmailFramework] = useState<string>('auto');
+  const [quickEmailCallContext, setQuickEmailCallContext] = useState<AssistantCallContext | undefined>(undefined);
+  // Transcript of the last simulated (AI prospect) call, for the follow-up assistant.
+  const followUpTurnsRef = useRef<ProspectTurn[]>([]);
 
   // The workspace's booking link (Admin > AI providers). Empty until a client workspace sets one.
   const [tenantCalendarLink, setTenantCalendarLink] = useState<string>(readTenantCalendarLink);
@@ -509,7 +526,8 @@ export default function BorisCallingCockpit({
 
   // Sync Active Lead when Queue Index Changes
   const selectLeadAtIndex = (index: number) => {
-    if (index < 0 || index >= leadsQueue.length) return;
+    // NaN (modulo of an empty queue) or out of range: nothing to select.
+    if (!Number.isInteger(index) || index < 0 || index >= leadsQueue.length || !leadsQueue[index]) return;
     setCurrentLeadIndex(index);
     const lead = leadsQueue[index];
     setCustomerName(lead.name);
@@ -821,10 +839,20 @@ export default function BorisCallingCockpit({
     }
   };
 
+  // Call outcomes configured in Admin › Call outcomes (active ones go under "More outcomes"),
+  // and the Pipeline stages each outcome moves the lead to.
+  const storedDispositions = useSyncExternalStore(subscribeToDispositions, getDispositionsSnapshot, getServerDispositionsSnapshot);
+  const activeDispositions = useMemo(() => storedDispositions.filter(d => d.isActive), [storedDispositions]);
+  const pipelineStages = useSyncExternalStore(subscribeToPipelineStages, getPipelineStagesSnapshot, getServerPipelineStagesSnapshot);
+  // The Pipeline stage the last logged outcome moved the lead to (shown next to "Logged: ...").
+  const [loggedStage, setLoggedStage] = useState<{ disposition: string; label: string | null } | null>(null);
+  // A configured callback-type outcome picked from "More outcomes" waits here for the scheduler.
+  const [pendingCallbackOutcome, setPendingCallbackOutcome] = useState<CallDisposition | null>(null);
+
   // Handle Call Outcome / Disposition Selection
   const handleSelectDisposition = (
     dispName: string,
-    opts?: { suppressToast?: boolean; skipTelephony?: boolean }
+    opts?: { suppressToast?: boolean; skipTelephony?: boolean; outcome?: CallDisposition | null }
   ): string | undefined => {
     if (!dispName) return;
     if (practiceMode) {
@@ -834,10 +862,15 @@ export default function BorisCallingCockpit({
       endPracticeCall(dispName);
       return;
     }
+    const outcomeDef = opts?.outcome ?? { name: dispName };
     setDisposition(dispName);
     setIsCallingActive(false);
     if (viaVicidial && !opts?.skipTelephony) {
-      void telephony.setOutcome(dispName).then((r) => {
+      // VICIdial codes are mapped per quick button; other outcomes use the nearest quick button's code.
+      const telephonyName = getOutcomeCodes()[dispName]
+        ? dispName
+        : (getQuickOutcomeForRole(getOutcomeRole(outcomeDef)) ?? dispName);
+      void telephony.setOutcome(telephonyName).then((r) => {
         if (!r.ok) showTelephonyNotice(r.message);
       });
     }
@@ -845,13 +878,32 @@ export default function BorisCallingCockpit({
     const updatedNotes = buildNotes({ disp: dispName });
     setNotesDraft(updatedNotes);
 
+    // Move the lead to the outcome's Pipeline stage (and give an unowned lead to this rep).
+    const stage = resolveOutcomeStage(outcomeDef, pipelineStages);
+    setLoggedStage({ disposition: dispName, label: stage?.label ?? null });
     const targetId = activeLead.id || directEmail;
-    const updated = recordContactTouch(targetId, {
-      type: 'call',
+    const updated = recordCallOutcome({
+      contactIdOrEmail: targetId,
+      disposition: dispName,
+      stageStatus: stage?.statusValue ?? null,
       title: `Call Note • ${dispName}`,
       summary: updatedNotes,
       repName,
-      disposition: dispName
+      tenantId: orgTenantCode,
+      lead: {
+        id: activeLead.id || undefined,
+        name: customerName || activeLead.name,
+        company: partnerName || activeLead.company,
+        title: title || activeLead.title,
+        department: activeLead.department,
+        email: directEmail || activeLead.email,
+        phone: phone || activeLead.phone,
+        headcount: headcount || activeLead.headcount,
+        website: leadWebsite,
+        linkedinUrl: leadLinkedinUrl,
+        cadenceDay: activeLead.cadenceDay,
+        touchNumber: activeLead.touchNumber
+      }
     });
 
     if (updated) {
@@ -876,7 +928,7 @@ export default function BorisCallingCockpit({
       });
       setCompletedActivityCount(prev => prev + 1);
       if (!opts?.suppressToast) {
-        setActivityToast(`✓ Call logged: ${dispName} • Footprint & CRM Synced`);
+        setActivityToast(`✓ Call logged: ${dispName}${stage ? ` • Pipeline: ${stage.label}` : ''} • Footprint & CRM Synced`);
         setTimeout(() => setActivityToast(null), 3500);
       }
       return activity.id;
@@ -903,8 +955,15 @@ export default function BorisCallingCockpit({
 
   const handleConfirmCallback = (input: ScheduleCallbackInput) => {
     const targetId = activeLead.id || directEmail;
-    // Same disposition path as every other outcome (footprint, activity log, CRM notes)
-    const activityId = handleSelectDisposition(CALLBACK_DISPOSITION, { suppressToast: true, skipTelephony: true });
+    // Same disposition path as every other outcome (footprint, activity log, CRM notes).
+    // A callback outcome picked from "More outcomes" is logged under its own name.
+    const callbackOutcome = pendingCallbackOutcome;
+    setPendingCallbackOutcome(null);
+    const activityId = handleSelectDisposition(callbackOutcome?.name || CALLBACK_DISPOSITION, {
+      suppressToast: true,
+      skipTelephony: true,
+      outcome: callbackOutcome
+    });
     if (viaVicidial) {
       // The callback time goes to VICIdial too, so its own callback list matches ours.
       void telephony
@@ -962,16 +1021,44 @@ export default function BorisCallingCockpit({
     setTimeout(() => setCopiedKey(null), 1800);
   };
 
+  // Short neutral follow-up (no AI needed).
+  const handleQuickEmailTemplate = () => {
+    const firstName = customerName.split(' ')[0] || 'there';
+    setQuickEmailSubject('following up');
+    setQuickEmailBody(
+      `Hi ${firstName},\n\nThanks for your time on the call just now. As discussed, here is a quick note to confirm the next step.\n\n${tenantCalendarLink ? `If it helps, you can pick a time here: ${tenantCalendarLink}` : 'Does that still work on your side?'}\n\nBest,\n${repName.split(' ')[0] || repName}`
+    );
+  };
+
+  // What the follow-up assistant knows from this call.
+  const buildFollowUpContext = (): AssistantCallContext => {
+    const step = scriptSteps.find((s) => s.step === currentStep) || scriptSteps[currentStep - 1];
+    const callbackWhen = lastCallback && lastCallback.status === 'open' ? new Date(lastCallback.dueAt).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) : '';
+    const turns = followUpTurnsRef.current.slice(-12);
+    return {
+      outcome: disposition || '',
+      agreedTime: bookingSlot || callbackWhen,
+      scriptStep: step ? `${step.name}: ${step.goal}` : '',
+      objection: demoCallObjection?.label || activeRebuttal?.shortLabel || '',
+      notes: [dispositionNotes, customRepNotes, leadNoteInput, activeContact?.leadNotes].map((s) => (typeof s === 'string' ? s : '').trim()).filter(Boolean).join(' | '),
+      transcript: turns.map((x) => `${x.role === 'rep' ? 'Rep' : 'Prospect'}: ${x.content}`).join('\n'),
+    };
+  };
+
   // Open Quick Follow-up Email Modal
   const handleOpenQuickEmail = () => {
-    const firstName = customerName.split(' ')[0] || 'there';
-    setQuickEmailSubject(`quick follow up from our call / ${partnerName}`);
-    setQuickEmailBody(
-      isDemo
-        ? `Hi ${firstName},\n\nGreat speaking with you just now. As discussed, here is the executive overview on cutting rep ramp time to 72 hours with <150ms live call assistance.\n\nHere is the link to lock in the 15-minute screen share: ${tenantCalendarLink}\n\nBest,\n${repName}`
-        : `Hi ${firstName},\n\nThanks for taking my call just now. As promised, here's a quick follow-up${sessionTenant ? ` from ${sessionTenant}` : ''}.\n\n${tenantCalendarLink ? `You can pick a time that suits you here: ${tenantCalendarLink}` : 'Let me know a time that works for a short follow-up call.'}\n\nBest,\n${repName}`
-    );
+    // Opens with the AI assistant already asking what to send (the short template stays one click away).
+    const session = quickEmailSession + 1;
+    setQuickEmailSubject('');
+    setQuickEmailBody('');
     setQuickEmailSuccess(null);
+    setQuickEmailCallContext(buildFollowUpContext());
+    setQuickEmailAiStart({
+      key: `followup-${session}`,
+      idea: 'Post-call follow-up: acknowledge the call, give the next steps, and end with an anti-sales CTA.',
+      label: 'Help me write the follow-up for this call.',
+    });
+    setQuickEmailSession(session);
     setIsQuickEmailOpen(true);
   };
 
@@ -1402,6 +1489,7 @@ export default function BorisCallingCockpit({
                   <IconButton
                     label="Previous lead"
                     variant="secondary"
+                    disabled={leadsQueue.length === 0}
                     onClick={() => selectLeadAtIndex((currentLeadIndex - 1 + leadsQueue.length) % leadsQueue.length)}
                   >
                     <ChevronLeft />
@@ -1409,7 +1497,8 @@ export default function BorisCallingCockpit({
                   <Button
                     variant="primary"
                     onClick={handleProceedToNextLead}
-                    title={`Next lead: ${nextLeadCandidate.name}`}
+                    disabled={!nextLeadCandidate}
+                    title={nextLeadCandidate ? `Next lead: ${nextLeadCandidate.name || 'Unnamed lead'}` : 'No more leads in your queue'}
                   >
                     <span>Next</span>
                     <ChevronRight />
@@ -1430,7 +1519,7 @@ export default function BorisCallingCockpit({
                   voiceSettings={prospectPersona.voiceSettings as Record<string, unknown> | undefined}
                   prospectName={activeLead?.name || prospectPersona.name}
                   difficulty={practiceMode ? practice?.difficulty : undefined}
-                  onTurnsChange={practiceMode ? (t) => { practiceTurnsRef.current = t; } : undefined}
+                  onTurnsChange={(t) => { followUpTurnsRef.current = t; if (practiceMode) practiceTurnsRef.current = t; }}
                   scriptStep={currentStep}
                   objection={demoCallObjection}
                   scriptContext={{
@@ -1456,7 +1545,14 @@ export default function BorisCallingCockpit({
                     <button
                       key={item.value}
                       type="button"
-                      onClick={() => opensScheduler ? setIsCallbackDialogOpen(true) : handleSelectDisposition(item.value)}
+                      onClick={() => {
+                        if (opensScheduler) {
+                          setPendingCallbackOutcome(null);
+                          setIsCallbackDialogOpen(true);
+                        } else {
+                          handleSelectDisposition(item.value);
+                        }
+                      }}
                       aria-pressed={isSelected}
                       aria-haspopup={opensScheduler ? 'dialog' : undefined}
                       className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${isSelected ? item.activeClass : item.idleClass
@@ -1467,12 +1563,33 @@ export default function BorisCallingCockpit({
                     </button>
                   );
                 })}
+
+                {/* Every other active outcome from Admin › Call outcomes, with the stage it moves the lead to */}
+                <MoreOutcomesMenu
+                  outcomes={activeDispositions}
+                  stages={pipelineStages}
+                  selected={disposition}
+                  quickValues={QUICK_OUTCOME_VALUES}
+                  onPick={(d, schedulesCallback) => {
+                    if (schedulesCallback && !practiceMode) {
+                      setPendingCallbackOutcome(d);
+                      setIsCallbackDialogOpen(true);
+                    } else {
+                      handleSelectDisposition(d.name, { outcome: d });
+                    }
+                  }}
+                />
               </div>
 
               {disposition && (
                 <span className="flex items-center gap-1.5 text-small text-success-fg">
                   <CheckCircle2 className="size-4 text-success-fg" />
-                  <span>{practiceMode ? `Outcome: ${disposition} (practice, not logged)` : `Logged: ${disposition}`}</span>
+                  <span>
+                    {practiceMode ? `Outcome: ${disposition} (practice, not logged)` : `Logged: ${disposition}`}
+                    {!practiceMode && loggedStage?.disposition === disposition && loggedStage.label && (
+                      <span className="text-fg-secondary"> · Pipeline: {loggedStage.label}</span>
+                    )}
+                  </span>
                 </span>
               )}
             </div>
@@ -2205,7 +2322,7 @@ export default function BorisCallingCockpit({
         open={isQuickEmailOpen}
         onClose={() => setIsQuickEmailOpen(false)}
         title={`Send a follow-up to ${customerName}`}
-        size="md"
+        size="xl"
         dismissible={!isSendingQuickEmail}
         bare
       >
@@ -2221,6 +2338,40 @@ export default function BorisCallingCockpit({
             </div>
 
             <div className="space-y-4 p-5">
+              {/* AI follow-up assistant: open on arrival, asks what to send and why, then writes subject and message */}
+              <section aria-labelledby="followup-ai-title" className="overflow-hidden rounded-md border border-line bg-surface">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
+                  <h4 id="followup-ai-title" className="flex items-center gap-1.5 text-body-strong text-fg">
+                    <Sparkles className="size-4 text-fg-secondary" aria-hidden />
+                    <span>Write it with AI</span>
+                  </h4>
+                  {!quickEmailBody.trim() && (
+                    <Button variant="ghost" size="sm" onClick={handleQuickEmailTemplate}>
+                      Use a short template instead
+                    </Button>
+                  )}
+                </div>
+                <ColdEmailAssistant
+                  key={quickEmailSession}
+                  hideHeading
+                  purpose="followup"
+                  callContext={quickEmailCallContext}
+                  recipient={{ name: customerName, company: partnerName, title }}
+                  sender={{ name: repName, company: sessionTenant || '' }}
+                  draft={{ subject: quickEmailSubject, body: quickEmailBody }}
+                  onApply={(subject, body) => {
+                    setQuickEmailSubject(subject);
+                    setQuickEmailBody(body);
+                  }}
+                  frameworkId={quickEmailFramework}
+                  onFrameworkChange={setQuickEmailFramework}
+                  autoStart={quickEmailAiStart}
+                  enableLinkedInMirror={false}
+                  placeholder='Anything to add? e.g. "they asked for pricing", "keep it short"'
+                  logClassName="max-h-[340px]"
+                />
+              </section>
+
               <div>
                 <label className="mb-1.5 block text-caption text-fg-secondary">
                   Recipient email (confirmed on call)
@@ -2281,7 +2432,7 @@ export default function BorisCallingCockpit({
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={isSendingQuickEmail || !!quickEmailSuccess}
+                  disabled={isSendingQuickEmail || !!quickEmailSuccess || !quickEmailBody.trim()}
                   onClick={handleSendQuickEmail}
                   icon={quickEmailSuccess ? <Check /> : <Send />}
                 >

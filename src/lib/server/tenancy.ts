@@ -84,6 +84,23 @@ export interface ResolvedIdentity {
 }
 
 /**
+ * The name to show and sign with. Uses the first real name given; anything that looks like an email
+ * is skipped, and with no name at all it is derived from the email ("emil.halili@x.com" -> "Emil Halili").
+ */
+export function displayNameFor(email: string, ...candidates: (string | null | undefined)[]): string {
+  const rawLocal = (email.split('@')[0] || '').toLowerCase();
+  for (const c of candidates) {
+    const v = (c || '').trim();
+    // Skip emails and the bare start of the email ("emil"), which some sign-in links pass as the name.
+    if (v && !v.includes('@') && v.toLowerCase() !== rawLocal) return v;
+  }
+  const local = (email.split('@')[0] || '').replace(/\+.*$/, '');
+  const words = local.split(/[._-]+/).map((w) => w.replace(/\d+/g, '')).filter(Boolean);
+  if (!words.length) return email;
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
+
+/**
  * Who this email is inside `tenantCode`, checked against storage right now. Returns null if they
  * have no live membership there (removed, never invited, or the workspace is suspended).
  */
@@ -99,7 +116,7 @@ export async function resolveIdentity(email: string, tenantCode: string, fallbac
     const own = (await store.listMembers({ tenantCode: PLATFORM_TENANT_CODE, email }))[0] ?? null;
     return {
       email,
-      name: own?.name || fallbackName || email,
+      name: displayNameFor(email, own?.name, fallbackName),
       role: 'Super Admin',
       tenant: target,
       isPlatformAdmin: true,
@@ -110,7 +127,7 @@ export async function resolveIdentity(email: string, tenantCode: string, fallbac
   if (!tenant || tenant.status !== 'active') return null;
   const member = (await store.listMembers({ tenantCode, email })).find((m) => m.status !== 'removed') ?? null;
   if (!member) return null;
-  return { email, name: member.name || fallbackName || email, role: member.role, tenant, isPlatformAdmin: false, member };
+  return { email, name: displayNameFor(email, member.name, fallbackName), role: member.role, tenant, isPlatformAdmin: false, member };
 }
 
 /** Workspaces this email can use: every tenant for platform staff, otherwise live memberships. */

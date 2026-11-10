@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   RotateCcw,
   UserPlus,
+  Clock,
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
@@ -60,7 +61,18 @@ import {
   exportContactsToCsv,
   canUserExportCsv,
   subscribeToContacts,
+  getRepIdentityKeys,
+  isContactAssignedTo,
+  isSameRep,
 } from '@/lib/leadStore';
+import { resolveStageForStatus } from '@/lib/dispositionPipeline';
+import {
+  type CallbackTask,
+  formatCallbackDue,
+  getCallbackDueState,
+} from '@/lib/callbackStore';
+import { useCallbackTasks } from '@/components/cockpit/CallbackTasks';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { stageDotClass, stagePaletteLabel } from '@/lib/stageColors';
 import {
   normalizeTenantKey,
@@ -100,78 +112,73 @@ function setPipelineView(next: PipelineView) {
 }
 
 /**
- * Resolve which configured Kanban stage column a contact belongs to.
- * Matches exact statusValue or label first, then intelligent keyword fallback,
- * and finally defaults to the first column.
+ * Resolve which configured Kanban stage column a contact belongs to: exact statusValue or label
+ * first, then the status's meaning (booked, callback, voicemail, attempted, disqualified, e.g. a
+ * legacy "DNC: Hostile Opt-Out" status lands in Disqualified), and finally the first column.
  */
-function resolveStageForContact(
-  rawStatus: string | undefined,
-  stages: PipelineStageConfig[]
-): string {
-  if (!stages || stages.length === 0) return 'New Lead';
-  const s = (rawStatus || '').trim();
-  const sLower = s.toLowerCase();
+const resolveStageForContact = resolveStageForStatus;
 
-  // 1. Exact match on statusValue or label
-  const exact = stages.find(
-    (col) =>
-      col.statusValue.toLowerCase() === sLower ||
-      col.label.toLowerCase() === sLower
+/** Owner filter value for "leads assigned to me". */
+const MY_LEADS = '__me__';
+
+/** The next open callback per lead (keyed by contact id and by lower-case email). */
+function indexOpenCallbacks(tasks: CallbackTask[]): Map<string, CallbackTask> {
+  const map = new Map<string, CallbackTask>();
+  tasks
+    .filter((t) => t.status === 'open')
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+    .forEach((t) => {
+      const keys = [t.contactId, (t.email || '').toLowerCase(), (t.contactId || '').toLowerCase()].filter(Boolean);
+      keys.forEach((k) => {
+        if (!map.has(k)) map.set(k, t);
+      });
+    });
+  return map;
+}
+
+const CALLBACK_DUE_TONE = {
+  overdue: 'text-danger-fg',
+  today: 'text-warning-fg',
+  upcoming: 'text-fg-secondary',
+} as const;
+
+/** Under a lead: its open callback's due time, and the last outcome logged in the Dialer. */
+function LeadOutcomeLine({
+  callback,
+  lastDisposition,
+  stageLabel,
+}: {
+  callback: CallbackTask | null;
+  lastDisposition?: string;
+  stageLabel: string;
+}) {
+  const showOutcome =
+    !!lastDisposition && lastDisposition.trim().toLowerCase() !== stageLabel.trim().toLowerCase();
+  if (!callback && !showOutcome) return null;
+  const dueState = callback ? getCallbackDueState(callback.dueAt) : null;
+  return (
+    <div className="space-y-0.5 text-caption">
+      {callback && dueState && (
+        <div className={`flex items-center gap-1 ${CALLBACK_DUE_TONE[dueState]}`}>
+          <Clock className="size-3 shrink-0" aria-hidden />
+          <span className="truncate">
+            {dueState === 'overdue' ? 'Callback overdue: ' : 'Callback '}
+            {formatCallbackDue(callback.dueAt)}
+          </span>
+        </div>
+      )}
+      {showOutcome && (
+        <div className="truncate text-fg-tertiary" title={lastDisposition}>
+          Last outcome: {lastDisposition}
+        </div>
+      )}
+    </div>
   );
-  if (exact) return exact.statusValue;
-
-  // 2. Semantic fallback for standard statuses if the user renamed labels
-  if (sLower.includes('book') || sLower.includes('meeting')) {
-    const found = stages.find(
-      (col) =>
-        col.id === 'col_booked' ||
-        col.label.toLowerCase().includes('book') ||
-        col.label.toLowerCase().includes('meeting') ||
-        col.dealProbability >= 0.9
-    );
-    if (found) return found.statusValue;
-  }
-  if (sLower.includes('call back') || sLower.includes('callback')) {
-    const found = stages.find(
-      (col) =>
-        col.id === 'col_callback' ||
-        col.label.toLowerCase().includes('call') ||
-        col.label.toLowerCase().includes('follow')
-    );
-    if (found) return found.statusValue;
-  }
-  if (sLower.includes('voicemail') || sLower.includes('vm')) {
-    const found = stages.find(
-      (col) =>
-        col.id === 'col_voicemail' ||
-        col.label.toLowerCase().includes('voicemail')
-    );
-    if (found) return found.statusValue;
-  }
-  if (sLower.includes('cadence') || sLower.includes('working')) {
-    const found = stages.find(
-      (col) =>
-        col.id === 'col_cadence' ||
-        col.label.toLowerCase().includes('cadence') ||
-        col.label.toLowerCase().includes('working')
-    );
-    if (found) return found.statusValue;
-  }
-  if (sLower.includes('disqual') || sLower.includes('not interested')) {
-    const found = stages.find(
-      (col) =>
-        col.id === 'col_disqualified' ||
-        col.label.toLowerCase().includes('disqual') ||
-        col.label.toLowerCase().includes('nurture')
-    );
-    if (found) return found.statusValue;
-  }
-
-  return stages[0].statusValue;
 }
 
 export default function PipelineKanbanHub() {
   const { session, role, canAccessIcp, tenantName, repName } = useSession();
+  const isDemo = useDemoWorkspace();
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canReassign = canUserReassignLeads(role);
@@ -192,6 +199,7 @@ export default function PipelineKanbanHub() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string>('ALL');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('ALL');
+  const [selectedStageFilterRaw, setSelectedStageFilter] = useState<string>('ALL');
 
   // Inline Column Header Editing State
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
@@ -240,31 +248,58 @@ export default function PipelineKanbanHub() {
     [session.tenantCode, tenantName]
   );
 
+  // The signed-in person, however their leads were assigned (display name or email, any case).
+  const myIdentityKeys = useMemo(
+    () => getRepIdentityKeys({ repName, email: session.email }),
+    [repName, session.email]
+  );
+  const isMyLead = useCallback(
+    (c: ContactRecord) =>
+      isContactAssignedTo(c, myIdentityKeys) ||
+      (!!c.lastDispositionBy && isContactAssignedTo({ assignedRep: c.lastDispositionBy }, myIdentityKeys)),
+    [myIdentityKeys]
+  );
+
   // Role & Tenant-scoped leads (Reps strictly only see leads assigned to them)
   const scopedContacts = useMemo(() => {
     return contacts.filter((c) => {
+      // The demo workspace's sample leads carry fictional tenant codes (APEX-GLOBAL, ...), but all
+      // of them belong to the demo workspace, so its Reps and Managers see them too.
       const sameTenant =
         isSuperAdmin ||
+        isDemo ||
         !c.tenantId ||
         normalizeTenantKey(c.tenantId) === activeTenantCode;
       if (!sameTenant) return false;
 
+      // Reps: leads assigned to them, plus leads whose last Dialer outcome they logged.
       if (role === 'Rep') {
-        return (c.assignedRep || '').toLowerCase() === repName.toLowerCase();
+        return isMyLead(c);
       }
       return true;
     });
-  }, [contacts, isSuperAdmin, activeTenantCode, role, repName]);
+  }, [contacts, isSuperAdmin, isDemo, activeTenantCode, role, isMyLead]);
 
-  // Available Reps for Filter & Reassignment Roster
+  // Available Reps for Filter & Reassignment Roster (one entry per person, any spelling case)
   const availableReps = useMemo(() => {
     const quota = getTenantQuota(activeTenantCode, tenantName);
-    const set = new Set<string>(quota.repsRoster || []);
-    scopedContacts.forEach((c) => {
-      if (c.assignedRep) set.add(c.assignedRep);
-    });
-    return Array.from(set);
+    const out: string[] = [];
+    const add = (name?: string) => {
+      const clean = (name || '').trim();
+      if (clean && !out.some((r) => isSameRep(r, clean))) out.push(clean);
+    };
+    (quota.repsRoster || []).forEach(add);
+    scopedContacts.forEach((c) => add(c.assignedRep));
+    return out;
   }, [scopedContacts, activeTenantCode, tenantName]);
+
+  // Open callbacks in this workspace, for the due time on Callback cards
+  const callbackTasks = useCallbackTasks(activeTenantCode);
+  const openCallbackIndex = useMemo(() => indexOpenCallbacks(callbackTasks), [callbackTasks]);
+  const getOpenCallback = (lead: ContactRecord): CallbackTask | null =>
+    openCallbackIndex.get(lead.id) ||
+    (lead.email ? openCallbackIndex.get(lead.email.toLowerCase()) : undefined) ||
+    null;
 
   // Filtered Contacts
   const filteredContacts = useMemo(() => {
@@ -272,7 +307,9 @@ export default function PipelineKanbanHub() {
       if (selectedFolderId !== 'ALL' && c.folderId !== selectedFolderId) {
         return false;
       }
-      if (selectedRepFilter !== 'ALL' && c.assignedRep !== selectedRepFilter) {
+      if (selectedRepFilter === MY_LEADS) {
+        if (!isMyLead(c)) return false;
+      } else if (selectedRepFilter !== 'ALL' && !isSameRep(c.assignedRep, selectedRepFilter)) {
         return false;
       }
       if (searchQuery.trim()) {
@@ -288,7 +325,20 @@ export default function PipelineKanbanHub() {
       }
       return true;
     });
-  }, [scopedContacts, selectedFolderId, selectedRepFilter, searchQuery]);
+  }, [scopedContacts, selectedFolderId, selectedRepFilter, searchQuery, isMyLead]);
+
+  // Stage filter: the board shows just that column, the table just its rows.
+  const selectedStageFilter =
+    selectedStageFilterRaw === 'ALL' || stages.some((s) => s.statusValue === selectedStageFilterRaw)
+      ? selectedStageFilterRaw
+      : 'ALL';
+  const visibleStages = useMemo(
+    () =>
+      selectedStageFilter === 'ALL'
+        ? stages
+        : stages.filter((s) => s.statusValue === selectedStageFilter),
+    [stages, selectedStageFilter]
+  );
 
   // Group contacts by Kanban stage
   const contactsByStage = useMemo(() => {
@@ -638,6 +688,7 @@ export default function PipelineKanbanHub() {
                   className={filterSelectClass}
                 >
                   <option value="ALL">All owners</option>
+                  <option value={MY_LEADS}>My leads</option>
                   {availableReps.map((rep) => (
                     <option key={rep} value={rep}>
                       {rep}
@@ -645,6 +696,21 @@ export default function PipelineKanbanHub() {
                   ))}
                 </select>
               )}
+
+              {/* Stage filter: e.g. just Callbacks or just Disqualified */}
+              <select
+                value={selectedStageFilter}
+                onChange={(e) => setSelectedStageFilter(e.target.value)}
+                aria-label="Stage"
+                className={filterSelectClass}
+              >
+                <option value="ALL">All stages</option>
+                {stages.map((s) => (
+                  <option key={s.id} value={s.statusValue}>
+                    {s.label} ({(contactsByStage[s.statusValue] || []).length})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Pipeline summary strip (plain stats) */}
@@ -693,7 +759,7 @@ export default function PipelineKanbanHub() {
           {view === 'board' ? (
           <div className="flex-1 min-h-0 overflow-x-auto pb-2">
             <div className="flex gap-3 h-full min-w-max">
-              {stages.map((col) => {
+              {visibleStages.map((col) => {
                 const cards = contactsByStage[col.statusValue] || [];
                 const colPage = columnPageMap[col.id] || 1;
                 const totalColPages = Math.max(
@@ -992,6 +1058,13 @@ export default function PipelineKanbanHub() {
                                   </span>
                                 )}
                               </div>
+
+                              {/* Open callback due time + last Dialer outcome */}
+                              <LeadOutcomeLine
+                                callback={getOpenCallback(lead)}
+                                lastDisposition={lead.lastDisposition}
+                                stageLabel={col.label}
+                              />
                             </div>
                           );
                         })
@@ -1074,7 +1147,7 @@ export default function PipelineKanbanHub() {
                 </tr>
               </thead>
               <tbody>
-                {filteredContacts.length === 0 ? (
+                {visibleStages.every((col) => (contactsByStage[col.statusValue] || []).length === 0) ? (
                   <tr className="border-t border-line">
                     <td colSpan={7} className="py-12">
                       <EmptyState
@@ -1085,7 +1158,7 @@ export default function PipelineKanbanHub() {
                     </td>
                   </tr>
                 ) : (
-                  stages.flatMap((col) =>
+                  visibleStages.flatMap((col) =>
                     (contactsByStage[col.statusValue] || []).map((lead) => (
                       <tr
                         key={lead.id}
@@ -1114,6 +1187,11 @@ export default function PipelineKanbanHub() {
                             />
                             {col.label}
                           </span>
+                          <LeadOutcomeLine
+                            callback={getOpenCallback(lead)}
+                            lastDisposition={lead.lastDisposition}
+                            stageLabel={col.label}
+                          />
                         </td>
                         <td className="py-1.5 px-3 whitespace-nowrap text-fg-secondary">
                           {lead.assignedRep || 'Unassigned'}

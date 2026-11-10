@@ -26,6 +26,9 @@ import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { apiJson } from '@/lib/authClient';
 import { Lead, CadencePackage } from '@/types';
 import { CadenceGenerator } from '@/lib/cadenceGenerator';
+import { importLeadsIntoContacts } from '@/lib/leadStore';
+import { getStoredSession } from '@/lib/session';
+import { normalizeTenantKey } from '@/lib/icpQuotaStore';
 
 function CampaignLeadsContent() {
   const params = useParams();
@@ -104,6 +107,7 @@ function CampaignLeadsContent() {
     };
   }, [isDemo]);
   const [isUploading, setIsUploading] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [selectedCadence, setSelectedCadence] = useState<CadencePackage | null>(null);
   const [isGeneratingCadence, setIsGeneratingCadence] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -131,6 +135,27 @@ function CampaignLeadsContent() {
       const data = await res.json();
       if (res.ok && data.success && data.leads) {
         setLeads(prev => [...data.leads, ...prev]);
+        // Add the batch to Contacts owned by the chosen rep, so it shows in their Pipeline and Dialer.
+        const session = getStoredSession();
+        const owner = selectedRep || session.repName;
+        importLeadsIntoContacts(
+          (data.leads as Lead[]).map((l) => ({
+            name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.email || 'Prospect',
+            company: l.company,
+            title: l.title,
+            email: l.email,
+            phone: l.phone,
+            website: String(l.custom_variables?.website ?? ''),
+            linkedinUrl: String(l.custom_variables?.linkedin_url ?? ''),
+          })),
+          {
+            assignedRep: owner,
+            tenantId: normalizeTenantKey(session.tenantCode || session.tenantName),
+            actorName: session.repName,
+            source: `campaign "${campaignId}" CSV import`,
+          }
+        );
+        setImportNotice(`Imported ${data.leads.length} leads and assigned them to ${owner || 'Unassigned'}. They're in ${owner ? `${owner}'s` : 'the'} Pipeline now.`);
       }
     } catch (err) {
       console.error('Error importing CSV:', err);
@@ -178,6 +203,21 @@ function CampaignLeadsContent() {
       />
 
       <div className="flex flex-col gap-4">
+        {importNotice && (
+          <div role="status" className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2 text-small text-fg">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden />
+              {importNotice}
+            </span>
+            <span className="flex items-center gap-1">
+              <Link href="/pipeline" className={buttonClasses('ghost', 'sm')}>Open Pipeline</Link>
+              <IconButton label="Dismiss" size="sm" variant="ghost" onClick={() => setImportNotice(null)}>
+                <X className="h-4 w-4" />
+              </IconButton>
+            </span>
+          </div>
+        )}
+
         {/* Filter bar: search + batch assignment */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="w-full sm:max-w-md">

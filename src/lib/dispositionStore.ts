@@ -22,6 +22,12 @@ export interface CallDisposition {
   isActive: boolean;
   color: string;
   updatedAt: string;
+  /**
+   * Pipeline stage (PipelineStageConfig.id) a lead moves to when a rep picks this outcome.
+   * Unset: a default from the outcome's automation, category and name (getDispositionStageId in
+   * dispositionPipeline.ts). 'keep' leaves the lead in its current stage.
+   */
+  pipelineStageId?: string;
 }
 
 export const DISPOSITIONS_STORAGE_KEY = 'appointmentlyy_call_dispositions_v1';
@@ -196,6 +202,32 @@ export function getStoredDispositions(): CallDisposition[] {
     console.error('Failed to parse stored dispositions:', err);
   }
 
+  return INITIAL_DEFAULT_DISPOSITIONS;
+}
+
+let snapshotRaw: string | null | undefined;
+let snapshotList: CallDisposition[] = INITIAL_DEFAULT_DISPOSITIONS;
+
+/**
+ * Read-only, referentially stable view of the stored dispositions for useSyncExternalStore
+ * (pair with subscribeToDispositions). Never writes to storage.
+ */
+export function getDispositionsSnapshot(): CallDisposition[] {
+  if (typeof window === 'undefined') return INITIAL_DEFAULT_DISPOSITIONS;
+  try {
+    const raw = localStorage.getItem(DISPOSITIONS_STORAGE_KEY);
+    if (raw === snapshotRaw) return snapshotList;
+    snapshotRaw = raw;
+    const parsed = raw ? JSON.parse(raw) : null;
+    snapshotList = Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEFAULT_DISPOSITIONS;
+  } catch {
+    snapshotList = INITIAL_DEFAULT_DISPOSITIONS;
+  }
+  return snapshotList;
+}
+
+/** Server snapshot for useSyncExternalStore. */
+export function getServerDispositionsSnapshot(): CallDisposition[] {
   return INITIAL_DEFAULT_DISPOSITIONS;
 }
 

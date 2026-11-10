@@ -48,8 +48,7 @@ import {
   getStoredContacts, 
   getStoredFolders,
   getStoredPipelineStages,
-  saveStoredContacts, 
-  addContactNote, 
+  addContactNote,
   updateContactPipelineStage,
   getContactDealValue,
   updateContactDealValue,
@@ -57,7 +56,8 @@ import {
   bulkReassignContactsToReps,
   exportContactsToCsv, 
   canUserExportCsv,
-  subscribeToContacts 
+  subscribeToContacts,
+  isContactAssignedTo
 } from '@/lib/leadStore';
 import {
   normalizeTenantKey,
@@ -245,11 +245,9 @@ export default function GlobalContactsManager() {
   const baseContactsBeforeStatus = useMemo(() => {
     return contacts.filter((contact) => {
       // 1. Strict Rep-level isolation: Reps ONLY see leads explicitly distributed/assigned to them
+      // (matched by display name or email, case-insensitive, like the Pipeline)
       if (role === 'Rep') {
-        if (
-          !contact.assignedRep ||
-          contact.assignedRep.toLowerCase() !== repName.toLowerCase()
-        ) {
+        if (!isContactAssignedTo(contact, { repName, email: session.email })) {
           return false;
         }
       }
@@ -306,6 +304,7 @@ export default function GlobalContactsManager() {
     adminClearance,
     role,
     repName,
+    session.email,
   ]);
 
   // All Available Status Options (Combines configured Pipeline Kanban stages + any status present on contacts)
@@ -1353,39 +1352,10 @@ export default function GlobalContactsManager() {
         <UploadLeadsCsvModal
           isOpen={isCsvModalOpen}
           onClose={() => setIsCsvModalOpen(false)}
-          onLeadsImported={(newLeads) => {
-            // Merge into global contacts
-            const merged = [...newLeads.map((l, i) => ({
-              id: l.id || `lead_import_${Date.now()}_${i}`,
-              name: l.name,
-              company: l.company,
-              title: l.title,
-              department: l.department || 'Outbound Operations',
-              email: l.email,
-              phone: l.phone,
-              headcount: l.headcount || '50+ seats',
-              website: l.website || '',
-              linkedinUrl: l.linkedinUrl || '',
-              assignedRep: repName,
-              tenantId: 'APEX',
-              status: 'New Lead',
-              cadenceDay: 1,
-              touchNumber: 1,
-              leadNotes: `Imported via CSV on ${new Date().toLocaleDateString()}`,
-              footprint: [
-                {
-                  id: `fp_init_${Date.now()}_${i}`,
-                  timestamp: `${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-                  isoDate: new Date().toISOString(),
-                  type: 'status' as const,
-                  title: 'Lead Imported via CSV',
-                  summary: 'Enrolled into tenant pipeline.',
-                  repName
-                }
-              ]
-            })), ...contacts];
-            saveStoredContacts(merged);
-            setContacts(merged);
+          onLeadsImported={() => {
+            // The modal already saved the leads to Contacts (this workspace, owned by the importer),
+            // so they're in the Pipeline too; just show them here.
+            setContacts(getStoredContacts());
           }}
         />
       )}

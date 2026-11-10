@@ -13,6 +13,10 @@ import {
   ThreadFollowUpDraft
 } from '@/lib/linkedinStudio';
 import { CadenceLeadRecord } from '@/lib/cadenceMaster';
+import { getServerSession } from '@/lib/server/session';
+import { isDemoSession } from '@/lib/demoMode';
+import { sanitizeColdEmail } from '@/lib/coldEmailStudio';
+import { campaignBrief, type AssistantCampaign } from '@/lib/coldEmailAssistant';
 
 interface LinkedInStudioPayload {
   action: 'generate_series' | 'generate_viral_comment' | 'generate_thread_reply';
@@ -28,6 +32,115 @@ interface LinkedInStudioPayload {
   // For generate_thread_reply
   myPreviousComment?: string;
   authorReplyText?: string;
+  /** Shared Outreach campaign message: posts and cold emails mirror it. */
+  campaign?: Partial<AssistantCampaign>;
+}
+
+const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max).trim() : '');
+
+function readCampaign(raw: unknown): AssistantCampaign {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return { angle: clip(o.angle, 400), pain: clip(o.pain, 400), proof: clip(o.proof, 400), offer: clip(o.offer, 400) };
+}
+
+/** Keeps line breaks (LinkedIn posts are short lines), strips em dashes and emojis. */
+function cleanPostText(v: unknown): string {
+  return sanitizeColdEmail(typeof v === 'string' ? v : '').cleanText;
+}
+
+const NO_AI = { error: 'The writing model is unavailable right now. Try again in a moment.' };
+
+/*
+ * Client workspaces: the prompts below are written around the rep's own angle and campaign
+ * message. The demo workspace keeps the platform owner's BPO point of view further down.
+ */
+function clientIdentity(sender: { name: string; company: string }) {
+  return `${sender.name || 'a B2B professional'}${sender.company ? ` at ${sender.company}` : ''}`;
+}
+
+function clientViralPrompt(post: string, campaign: AssistantCampaign, sender: { name: string; company: string }) {
+  return `You help ${clientIdentity(sender)} comment on LinkedIn posts in a way that builds genuine authority with their buyers.
+
+THE POST:
+---
+<<${post.trim().slice(0, 1500)}>>
+---
+
+THE REP'S CAMPAIGN MESSAGE (their point of view; stay consistent with it, but never pitch):
+${campaignBrief(campaign)}
+
+Write 4 comment drafts the rep can post themselves.
+RULES: no em dashes, no emojis, 18 to 42 words each, sound like a thoughtful peer with real experience, never pitch a product, never invent statistics, customers or results.
+Angles, in this order:
+1. "Counter-Perspective": respectfully challenge one assumption in the post.
+2. "Consultative Question": a sharp question that makes the author want to reply.
+3. "Frontline BPO Operator": a short practical observation from doing the work (use that exact angle label).
+4. "Punchy 20-Word": under 25 words, cuts through the noise.
+
+Return strictly a JSON array of objects with keys "angle", "comment", "intent". No markdown.`;
+}
+
+function clientThreadPrompt(post: string, mine: string, reply: string, campaign: AssistantCampaign, sender: { name: string; company: string }) {
+  return `You help ${clientIdentity(sender)} continue a public LinkedIn comment thread and build a real relationship.
+
+- Original post: <<${post.trim().slice(0, 600)}>>
+- The rep's previous comment: <<${mine.trim().slice(0, 400)}>>
+- The author or prospect replied: <<${reply.trim().slice(0, 500)}>>
+
+The rep's point of view (stay consistent, never pitch):
+${campaignBrief(campaign)}
+
+Write 3 follow-up replies. RULES: no em dashes, no emojis, 18 to 38 words each, peer tone, no pitching, no invented statistics.
+Stages, in this order: "Deepen Dialogue" (validate and add a specific perspective), "Nuanced Counter" (explore a trade-off or ask how they handle it), "Relationship Bridge to DM" (warm, natural invitation to connect).
+
+Return strictly a JSON array of objects with keys "stage", "reply", "strategicGoal". No markdown.`;
+}
+
+function clientSeriesPrompt(
+  idea: string,
+  campaign: AssistantCampaign,
+  summary: CsvIntelligenceSummary,
+  framework: (typeof LINKEDIN_FRAMEWORKS)[number],
+  sender: { name: string; company: string },
+) {
+  const data = summary.totalLeads > 0
+    ? `- ${summary.totalLeads} target accounts uploaded. Common pain points: ${summary.topPainPoints.join(', ')}. Tools: ${summary.topTechStacks.join(', ')}. Incumbents: ${summary.topCompetitors.join(', ')}.`
+    : '- No prospect data uploaded.';
+  return `You are a LinkedIn ghostwriter for ${clientIdentity(sender)}. Write a 3-post weekly series (Tuesday, Thursday, Friday) for their buyers.
+
+THE REP'S ANGLE / IDEA (the anchor of the whole series):
+---
+${idea || '(not given: build the series on the campaign message)'}
+---
+
+CAMPAIGN MESSAGE (the rep's cold emails mirror these posts, so use the same angle, pain, proof, offer and terminology):
+${campaignBrief(campaign)}
+
+PROSPECT DATA:
+${data}
+
+FRAMEWORK: ${framework.name} [${framework.tag}] (structure only: its examples mention BPOs and outbound floors; ignore those specifics and write for the rep's own audience)
+- ${framework.description}
+- Hook: ${framework.hookPhilosophy}
+- Body: ${framework.bodyPhilosophy}
+- CTA: ${framework.ctaPhilosophy}
+
+EPISODES: 1 = the problem or insight, 2 = the practical how, 3 = an open question or dilemma that invites debate.
+
+RULES:
+- Posts, not pitches: share an insight, a lesson or a short story. Soft CTA question that invites comments. Never "DM me", links or "book a call".
+- NEVER invent statistics, percentages, durations, customers, results or prices. Use numbers only if they appear above, exactly as given, written as digits.
+- Hook: 1 or 2 short lines. Body: under 90 words in short lines with blank lines between. No em dashes, no emojis.
+- 3 to 5 relevant hashtags.
+- injectedComments: 3 thoughtful comments (18 to 38 words) the author posts under their own post to keep the discussion going. Bold opinions are fine; no selling.
+- imagePrompt: a clean editorial graphic card on a dark background about the post's idea.
+- visualCard.metric: only a number that appears in the facts above, otherwise an empty string.
+
+Return strictly this JSON (no markdown):
+{"seriesTitle": "...", "seriesHookRecap": "...", "targetBottleneckSummary": "...", "targetAudience": "...",
+ "posts": [{"episodeNumber": 1, "dayLabel": "Tuesday • Episode 1", "title": "...", "hook": "...", "body": "...", "cta": "...", "hashtags": ["#..."], "imagePrompt": "...",
+   "visualCard": {"type": "metric_callout", "headline": "...", "subheadline": "...", "metric": "", "metricLabel": "", "tag": "EPISODE 01"},
+   "injectedComments": ["...", "...", "..."]}]}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +148,11 @@ export async function POST(req: NextRequest) {
     const payload: LinkedInStudioPayload = await req.json();
     const { action = 'generate_series' } = payload;
     const googleApiKey = process.env.GOOGLE_API_KEY;
+    const session = await getServerSession(req);
+    // The demo workspace keeps the platform owner's BPO point of view and sample fallbacks.
+    const demo = isDemoSession(session);
+    const campaign = readCampaign(payload.campaign);
+    const sender = { name: session?.name || '', company: session?.identity.tenant.name || '' };
 
     // ACTION 1: VIRAL POST ENGAGEMENT COMMENT GENERATION
     if (action === 'generate_viral_comment') {
@@ -47,6 +165,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      if (!googleApiKey && !demo) return NextResponse.json(NO_AI, { status: 503 });
       if (!googleApiKey) {
         const fallbackComments = getDeterministicViralComments(viralPostText).map(c => ({
           ...c,
@@ -58,7 +177,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const prompt = `You are an elite B2B Business Development Manager (BDM) and Outbound Sales Leader for an enterprise BPO with 17 years of frontline experience.
+      const prompt = !demo ? clientViralPrompt(viralPostText, campaign, sender) : `You are an elite B2B Business Development Manager (BDM) and Outbound Sales Leader for an enterprise BPO with 17 years of frontline experience.
 You know the real battlefield of BPO operations: predatory brokers pocketing 60% margin cuts on cheap pay-per-performance campaigns while BPOs carry 100% of the OPEX burden, loss of operational control, and the paramount importance of taking internal client acquisition back to all BPOs.
 
 A prospect, buyer, or industry influencer posted the following viral post on LinkedIn:
@@ -145,7 +264,8 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
         }
       }
 
-      // If all Gemini calls fail, use deterministic fallback
+      // If all Gemini calls fail, use deterministic fallback (demo workspace only)
+      if (!demo) return NextResponse.json(NO_AI, { status: 503 });
       const fallback = getDeterministicViralComments(viralPostText).map(c => ({
         ...c,
         comment: sanitizeTextForLinkedIn(c.comment)
@@ -171,6 +291,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
         );
       }
 
+      if (!googleApiKey && !demo) return NextResponse.json(NO_AI, { status: 503 });
       if (!googleApiKey) {
         const fallback = getDeterministicThreadFollowUps(authorReplyText).map(r => ({
           ...r,
@@ -182,7 +303,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
         });
       }
 
-      const threadPrompt = `You are an elite B2B Business Development Manager (BDM) on LinkedIn engaging in a high-value public comment thread.
+      const threadPrompt = !demo ? clientThreadPrompt(viralPostText, myPreviousComment, authorReplyText, campaign, sender) : `You are an elite B2B Business Development Manager (BDM) on LinkedIn engaging in a high-value public comment thread.
 CONTEXT OF THE THREAD:
 - Original Viral Post: """${viralPostText.trim().slice(0, 600)}"""
 - Your Previous Comment: """${myPreviousComment.trim().slice(0, 400)}"""
@@ -268,6 +389,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
         }
       }
 
+      if (!demo) return NextResponse.json(NO_AI, { status: 503 });
       const fallback = getDeterministicThreadFollowUps(authorReplyText).map(r => ({
         ...r,
         reply: sanitizeTextForLinkedIn(r.reply)
@@ -293,6 +415,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
 
     const userRawIdea = (customTopicInstruction || '').trim();
 
+    if (!googleApiKey && !demo) return NextResponse.json(NO_AI, { status: 503 });
     if (!googleApiKey) {
       const fallbackSeries = getDeterministicLinkedInSeries(summary, frameworkId, presetId);
       return NextResponse.json({
@@ -302,7 +425,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
       });
     }
 
-    const seriesPrompt = `You are a world-class B2B LinkedIn Thought Leadership strategist and 17-year veteran BDM specializing in BPO Operations, Outbound Client Acquisition, and Enterprise Appointment Setting.
+    const seriesPrompt = !demo ? clientSeriesPrompt(userRawIdea, campaign, summary, framework, sender) : `You are a world-class B2B LinkedIn Thought Leadership strategist and 17-year veteran BDM specializing in BPO Operations, Outbound Client Acquisition, and Enterprise Appointment Setting.
 You are designing a high-retention, 3-Post Sequential LinkedIn Series for a BPO Business Development Manager (BDM), Founder, or Head of Floor Operations.
 
 =============================================================================
@@ -355,6 +478,8 @@ DATASET & CONTINUITY CONTEXT:
 - Dominant Tech Stacks: ${summary.topTechStacks.join(', ')}
 - Incumbent Competitors: ${summary.topCompetitors.join(', ')}
 - Series Theme: ${preset.theme}
+- Campaign message (the rep's cold emails mirror these posts: keep the same angle, pain, proof, offer and terminology; never invent numbers):
+${campaignBrief(campaign)}
 - Continuity Hook Connecting to Last Drop: "${preset.recapHook}"
 
 =============================================================================
@@ -500,6 +625,32 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
                 alternativeImagePrompt = 'A cinematic 35mm editorial photograph of a predatory corporate lead broker depicted as a devil in disguise: Arrogant, manipulative man in an expensive dark charcoal suit with a crimson silk pocket square, leaning back in a leather armchair in a shadowy penthouse boardroom with contracts marked 60% margin fees.';
               }
 
+              if (!demo) {
+                return {
+                  id: `post-ep${idx + 1}-${Date.now()}`,
+                  episodeNumber: p.episodeNumber || (idx + 1),
+                  dayLabel: p.dayLabel || (idx === 0 ? 'Tuesday • Episode 1' : idx === 1 ? 'Thursday • Episode 2' : 'Friday • Episode 3'),
+                  title: cleanPostText(p.title) || `Episode ${idx + 1}`,
+                  hook: cleanPostText(p.hook),
+                  body: cleanPostText(p.body),
+                  cta: cleanPostText(p.cta),
+                  wordCount,
+                  estimatedReadSeconds: Math.ceil((wordCount / 200) * 60),
+                  hashtags: Array.isArray(p.hashtags) ? p.hashtags.slice(0, 5) : [],
+                  imagePrompt: p.imagePrompt || '',
+                  realisticPhotoPrompt: p.realisticPhotoPrompt || '',
+                  visualCard: {
+                    type: p.visualCard?.type || 'metric_callout',
+                    headline: p.visualCard?.headline || p.title || `Episode ${idx + 1}`,
+                    subheadline: p.visualCard?.subheadline || '',
+                    metric: p.visualCard?.metric || '',
+                    metricLabel: p.visualCard?.metricLabel || '',
+                    tag: p.visualCard?.tag || `EPISODE 0${idx + 1}`
+                  },
+                  injectedComments: cleanComments
+                };
+              }
+
               return {
                 id: `post-ep${idx + 1}-${Date.now()}`,
                 episodeNumber: p.episodeNumber || (idx + 1),
@@ -533,7 +684,13 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
               };
             });
 
-            const seriesResult: LinkedInSeries = {
+            const seriesResult: LinkedInSeries = !demo ? {
+              seriesTitle: parsed.seriesTitle || 'Your 3-post series',
+              seriesHookRecap: parsed.seriesHookRecap || '',
+              targetBottleneckSummary: parsed.targetBottleneckSummary || '',
+              targetAudience: parsed.targetAudience || '',
+              posts: sanitizedPosts
+            } : {
               seriesTitle: parsed.seriesTitle || 'The Autonomous BPO Outbound Series: Part 1-3',
               seriesHookRecap: parsed.seriesHookRecap || preset.recapHook,
               targetBottleneckSummary: parsed.targetBottleneckSummary || `Targeting ${summary.topPainPoints[0]} across ${summary.dominantHeadcount} floors`,
@@ -553,7 +710,8 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
       }
     }
 
-    // Fallback if all attempts fail
+    // Fallback if all attempts fail (sample series in the demo workspace only)
+    if (!demo) return NextResponse.json(NO_AI, { status: 503 });
     const fallbackSeries = getDeterministicLinkedInSeries(summary, frameworkId, presetId);
     return NextResponse.json({
       source: 'deterministic_fallback',

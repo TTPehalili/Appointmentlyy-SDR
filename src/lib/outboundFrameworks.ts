@@ -425,6 +425,40 @@ function withPlaceholders<T>(value: T): T {
   return walk(value) as T;
 }
 
+export interface FrameworkFillValues {
+  firstName?: string;
+  fullName?: string;
+  company?: string;
+  title?: string;
+  senderName?: string;
+  senderCompany?: string;
+}
+
+/**
+ * Turn a framework's text (written around the demo prospect, with {{placeholders}}) into text
+ * about the real recipient and sender. Values that aren't known stay as a readable marker so a
+ * model never fills them with invented facts.
+ */
+export function fillFrameworkText(text: string, v: FrameworkFillValues): string {
+  const or = (value: string | undefined, marker: string) => (value && value.trim() ? value.trim() : marker);
+  const first = or(v.firstName || v.fullName?.split(/\s+/)[0], '[first name]');
+  const tokens: Record<string, string> = {
+    first_name: first,
+    name: or(v.fullName, first),
+    company: or(v.company, '[their company]'),
+    title: or(v.title, '[their role]'),
+    sender_name: or(v.senderName, '[your name]'),
+    sender_company: or(v.senderCompany, '[your company]'),
+  };
+  return PLACEHOLDER_SWAPS.reduce((t, [re, to]) => t.replace(re, to), text)
+    .replace(/\[Your name\]/g, tokens.sender_name)
+    .replace(/\[Your company\]/g, tokens.sender_company)
+    .replace(/\[Prospect name\]/g, tokens.name)
+    .replace(/\[First name\]/g, tokens.first_name)
+    .replace(/\[Company\]|\[company\]/g, tokens.company)
+    .replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_, key: string) => tokens[key.toLowerCase()] ?? `[${key.replace(/_/g, ' ')}: not provided]`);
+}
+
 /** Default frameworks for the current workspace (sample prospect only in the demo workspace). */
 export function getDefaultOutboundFrameworks(): OutboundFramework[] {
   return isDemoWorkspace() ? DEFAULT_OUTBOUND_FRAMEWORKS : withPlaceholders(DEFAULT_OUTBOUND_FRAMEWORKS);

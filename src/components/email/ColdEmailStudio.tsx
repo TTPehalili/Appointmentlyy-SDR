@@ -2,19 +2,19 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { 
-  Sparkles, 
-  Copy, 
-  Check, 
-  Send, 
-  RotateCw, 
-  Inbox, 
-  Loader2, 
-  AlignLeft, 
-  ChevronDown, 
-  ChevronUp, 
-  PlusCircle, 
-  ShieldCheck, 
+import { useSearchParams } from 'next/navigation';
+import {
+  Sparkles,
+  Copy,
+  Check,
+  Send,
+  Inbox,
+  Loader2,
+  AlignLeft,
+  ChevronDown,
+  ChevronUp,
+  PlusCircle,
+  ShieldCheck,
   AlertTriangle,
   Clock,
   Calendar,
@@ -34,27 +34,27 @@ import {
   Input,
   PageHeader,
   SegmentedControl,
-  Select,
   Textarea,
   buttonClasses
 } from '@/components/ui';
 import { saveEmailToStore, getConversationThreadKey } from '@/lib/emailStore';
-import { 
-  COLD_EMAIL_FRAMEWORKS, 
-  COLD_EMAIL_IDEA_PRESETS, 
+import {
   MANUAL_COLD_EMAIL_GUIDANCE,
-  formatEmailToParagraphs, 
-  getDeterministicColdEmail, 
-  sanitizeColdEmail 
+  formatEmailToParagraphs,
+  sanitizeColdEmail
 } from '@/lib/coldEmailStudio';
+import { ASSISTANT_WORD_LIMIT, AUTO_FRAMEWORK_ID, enforceWordLimit, replaceClosingLine } from '@/lib/coldEmailAssistant';
+import { describeCampaign, getCampaignMessage, postText, saveCampaignMessage, type CampaignMessage } from '@/lib/campaignMessage';
+import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
+import CampaignMessageCard from '@/components/outreach/CampaignMessageCard';
 import { useSession } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 
 // B2B spam trigger words list
 const COMMON_SPAM_WORDS = [
-  'guarantee', 'guaranteed', '100% free', 'risk-free', 'buy now', 
-  'cheap', 'discount', 'act now', 'limited time', 'winner', 'cash bonus', 
+  'guarantee', 'guaranteed', '100% free', 'risk-free', 'buy now',
+  'cheap', 'discount', 'act now', 'limited time', 'winner', 'cash bonus',
   'miracle', 'no obligation', 'congratulations', 'pure profit', 'earn extra cash'
 ];
 
@@ -65,12 +65,16 @@ export default function ColdEmailStudio() {
   const [demoAtMount] = useState<boolean>(() => isDemoWorkspace());
 
   // Dynamic verified sender from session
-  const senderDisplayName = session?.repName || 'Emil Halili';
-  const senderEmailRaw = session?.email || 'emil@appointmentlyy.com';
-  const verifiedSenderEmail = senderEmailRaw.toLowerCase().endsWith('@appointmentlyy.com')
+  // Demo workspace sends from the platform's verified domain. Client workspaces show the rep's own
+  // name and address (their sending is paused until their email is connected in Admin › Integrations).
+  const senderDisplayName = session?.repName || (isDemo ? 'Emil Halili' : 'You');
+  const senderEmailRaw = session?.email || (isDemo ? 'emil@appointmentlyy.com' : '');
+  const verifiedSenderEmail = !isDemo
     ? senderEmailRaw
-    : 'emil@appointmentlyy.com';
-  const senderFrom = `${senderDisplayName} <${verifiedSenderEmail}>`;
+    : senderEmailRaw.toLowerCase().endsWith('@appointmentlyy.com')
+      ? senderEmailRaw
+      : 'emil@appointmentlyy.com';
+  const senderFrom = verifiedSenderEmail ? `${senderDisplayName} <${verifiedSenderEmail}>` : senderDisplayName;
 
   // Recipient / Prospect Free-Hand Inputs
   const [prospectEmail, setProspectEmailState] = useState<string>(() => {
@@ -128,13 +132,36 @@ export default function ColdEmailStudio() {
     `Hi Emil,\n\nFollowing up after our call. Saw Callview AI is scaling outbound seats. Typically when BPO leaders scale outbound, the hidden leak is not lead volume, it is callers getting chopped on price by commodity competitors.\n\nTraditional coaching fails when reps freeze in the first 20 seconds. We feed consultative rebuttals in 150 milliseconds live on the dial.\n\nOpen to a 2-minute video showing how we insulate margins, or totally off base?`
   );
 
-  // AI Framework & Angle State (Optional Assistant)
-  const [selectedFrameworkId, setSelectedFrameworkId] = useState<string>('braun-poke-the-bear');
-  const [userIdea, setUserIdea] = useState<string>(() => !isDemoWorkspace() ? '' :
-    'Following up after our call. Saw you are scaling outbound reps—wanted to share how we feed consultative rebuttals in 150ms live on the dial without burning shared lead lists.'
-  );
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
+  // Writing assistant: framework (shared with the campaign message) and what it starts with.
+  const [selectedFrameworkId, setSelectedFrameworkIdState] = useState<string>(() => getCampaignMessage().frameworkId || AUTO_FRAMEWORK_ID);
+  const setSelectedFrameworkId = (id: string) => {
+    setSelectedFrameworkIdState(id);
+    saveCampaignMessage({ frameworkId: id });
+  };
+  // ?campaign=1 (from the LinkedIn tab) starts from the campaign message; ?mirror=linkedin mirrors the last post.
+  // useSearchParams (not window.location): on client navigation the URL updates after this renders.
+  const searchParams = useSearchParams();
+  const [assistantStart, setAssistantStart] = useState<AssistantAutoStart | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = searchParams;
+    const c = getCampaignMessage();
+    if (params.get('mirror') === 'linkedin' && c.lastPost) {
+      return {
+        key: `mirror-${c.lastPost.at}`,
+        stage: 'draft',
+        idea: 'Mirror my LinkedIn post as a cold email: same angle, pain and offer.',
+        sourcePost: postText(c.lastPost),
+        label: 'Mirror my LinkedIn post as a cold email.',
+      };
+    }
+    if (params.get('campaign') === '1' && describeCampaign(c)) {
+      return { key: `campaign-${Date.now()}`, idea: `Write a cold email from our campaign message.\n${describeCampaign(c)}`, label: 'Use the campaign message.' };
+    }
+    return null;
+  });
+  const startFromCampaign = (c: CampaignMessage) => {
+    setAssistantStart({ key: `campaign-${Date.now()}`, idea: `Write a cold email from our campaign message.\n${describeCampaign(c)}`, label: 'Use the campaign message.' });
+  };
 
   // Send & UI State
   const [isSendingDirectEmail, setIsSendingDirectEmail] = useState<boolean>(false);
@@ -173,62 +200,6 @@ export default function ColdEmailStudio() {
     setDirectSendStatus(null);
   };
 
-  // Synthesize / Generate Draft using AI with Fallback
-  const handleGenerateDraft = async () => {
-    setIsGenerating(true);
-    setSendButtonState('idle');
-    try {
-      const res = await fetch('/api/ai/cold-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frameworkId: selectedFrameworkId,
-          userIdea: userIdea.trim(),
-          prospect: {
-            name: prospectName || 'Prospect',
-            company: prospectCompany || 'Target Company',
-            title: prospectTitle || 'Decision Maker'
-          }
-        })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.draft) {
-          const formatted = formatEmailToParagraphs(data.draft.body).join('\n\n');
-          setEditableBody(formatted);
-          if (data.draft.subjectLines && data.draft.subjectLines.length > 0) {
-            setSubjectText(data.draft.subjectLines[0].text);
-            setSubjectSuggestions(data.draft.subjectLines.map((s: any) => s.text));
-          }
-          return;
-        }
-      }
-
-      // High-quality deterministic fallback
-      const fallback = getDeterministicColdEmail(selectedFrameworkId, userIdea, {
-        name: prospectName || 'Prospect',
-        company: prospectCompany || 'Target Company',
-        title: prospectTitle || 'Decision Maker'
-      });
-      setEditableBody(formatEmailToParagraphs(fallback.body).join('\n\n'));
-      if (fallback.subjectLines.length > 0) {
-        setSubjectText(fallback.subjectLines[0].text);
-        setSubjectSuggestions(fallback.subjectLines.map(s => s.text));
-      }
-    } catch (e) {
-      console.warn('AI generation fallback engaged:', e);
-      const fallback = getDeterministicColdEmail(selectedFrameworkId, userIdea, {
-        name: prospectName || 'Prospect',
-        company: prospectCompany || 'Target Company',
-        title: prospectTitle || 'Decision Maker'
-      });
-      setEditableBody(formatEmailToParagraphs(fallback.body).join('\n\n'));
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   // Workshop Tool 1: Auto-Format Paragraphs
   const handleAutoFormat = () => {
     const { cleanText } = sanitizeColdEmail(editableBody);
@@ -255,10 +226,8 @@ export default function ColdEmailStudio() {
       .replace(/In case you were not already aware[.,]?\s*/gi, '')
       .trim();
 
-    const paragraphs = formatEmailToParagraphs(text);
-    if (paragraphs.length > 3) {
-      text = [paragraphs[0], paragraphs[1], paragraphs[paragraphs.length - 1]].join('\n\n');
-    }
+    // Keeps the greeting, the closing question and the signature; drops middle sentences.
+    text = enforceWordLimit(formatEmailToParagraphs(text).join('\n\n'), 66).body;
     setEditableBody(text);
     setCopiedKey('shortened');
     setTimeout(() => setCopiedKey(null), 2000);
@@ -353,7 +322,6 @@ export default function ColdEmailStudio() {
   // Word count & quality calculations
   const wordCount = editableBody.trim().split(/\s+/).filter(Boolean).length;
   const subjectWordCount = subjectText.trim().split(/\s+/).filter(Boolean).length;
-  const activeFramework = COLD_EMAIL_FRAMEWORKS.find(f => f.id === selectedFrameworkId) || COLD_EMAIL_FRAMEWORKS[0];
 
   // Spam Word Scanner
   const detectedSpamTriggers = useMemo(() => {
@@ -510,8 +478,11 @@ export default function ColdEmailStudio() {
         )}
       </div>
 
-      {/* 3. Split editor: composer (left) and checks + AI angles (right rail) */}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      {/* Shared campaign message (mirrored by the LinkedIn tab) */}
+      <CampaignMessageCard current="email" onUse={startFromCampaign} />
+
+      {/* 3. Split editor: composer (left) and checks + writing assistant (right rail) */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
 
         {/* Composer */}
         <div className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-xs">
@@ -686,15 +657,7 @@ export default function ColdEmailStudio() {
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => {
-                        const sentences = editableBody.trim().split(/(?<=[.?!])\s+/);
-                        if (sentences.length > 1) {
-                          sentences[sentences.length - 1] = cta.text;
-                          setEditableBody(sentences.join('\n\n'));
-                        } else {
-                          setEditableBody(`${editableBody.trim()}\n\n${cta.text}`);
-                        }
-                      }}
+                      onClick={() => setEditableBody(replaceClosingLine(editableBody, cta.text))}
                       className="focus-ring cursor-pointer rounded-md border border-line bg-surface p-2.5 text-left transition-colors hover:bg-subtle"
                     >
                       <div className="text-small font-medium text-fg">{cta.label}</div>
@@ -837,6 +800,8 @@ export default function ColdEmailStudio() {
               <li className="flex items-start gap-2.5 px-4 py-3">
                 {wordCountInRange ? (
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" />
+                ) : wordCount >= ASSISTANT_WORD_LIMIT ? (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-fg" />
                 ) : wordCount > 75 ? (
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg" />
                 ) : (
@@ -845,7 +810,13 @@ export default function ColdEmailStudio() {
                 <div className="min-w-0">
                   <div className="text-body text-fg"><span className="tabular-nums">{wordCount}</span> words</div>
                   <div className="text-small text-fg-tertiary">
-                    {wordCountInRange ? 'In the 40 to 75 word sweet spot' : wordCount > 75 ? 'Trim the copy to 75 words or fewer' : 'Aim for 40 to 75 words'}
+                    {wordCountInRange
+                      ? 'In the 40 to 75 word sweet spot'
+                      : wordCount >= ASSISTANT_WORD_LIMIT
+                        ? `Over the hard limit: keep it under ${ASSISTANT_WORD_LIMIT} words`
+                        : wordCount > 75
+                          ? 'Trim the copy to 75 words or fewer'
+                          : 'Aim for 40 to 75 words'}
                   </div>
                 </div>
               </li>
@@ -893,66 +864,23 @@ export default function ColdEmailStudio() {
             </ul>
           </div>
 
-          {/* AI angles & frameworks (optional assistant) */}
+          {/* Writing assistant (asks, plans, then drafts from a framework) */}
           <div className="rounded-lg border border-line bg-surface shadow-xs">
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <h2 className="text-h3 text-fg">AI angles</h2>
-                <p className="mt-0.5 text-small text-fg-secondary">Draft from a proven framework.</p>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowAiAssistant(!showAiAssistant)}
-                aria-expanded={showAiAssistant}
-              >
-                <Sparkles />
-                <span>{showAiAssistant ? 'Close' : 'Open'}</span>
-              </Button>
-            </div>
-
-            {showAiAssistant && (
-              <div className="space-y-3 border-t border-line px-4 py-4 animate-in fade-in">
-                <p className="text-small text-fg-tertiary">
-                  Josh Braun 4T, Chris Voss, Allred 50-word
-                </p>
-
-                <label className="block space-y-1.5">
-                  <span className="block text-small font-medium text-fg">Framework</span>
-                  <Select
-                    value={selectedFrameworkId}
-                    onChange={(e) => setSelectedFrameworkId(e.target.value)}
-                  >
-                    {COLD_EMAIL_FRAMEWORKS.map(f => (
-                      <option key={f.id} value={f.id}>
-                        {f.name} ({f.category})
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-
-                <label className="block space-y-1.5">
-                  <span className="block text-small font-medium text-fg">Angle or post-call focus</span>
-                  <Input
-                    type="text"
-                    value={userIdea}
-                    onChange={(e) => setUserIdea(e.target.value)}
-                    placeholder="e.g. Following up after our call regarding sub-150ms live objection sparring..."
-                  />
-                </label>
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleGenerateDraft}
-                  disabled={isGenerating}
-                  className="w-full"
-                >
-                  {isGenerating ? <RotateCw className="animate-spin" /> : <Sparkles />}
-                  <span>Generate draft</span>
-                </Button>
-              </div>
-            )}
+            <ColdEmailAssistant
+              recipient={{ name: prospectName, company: prospectCompany, title: prospectTitle }}
+              sender={{ name: session?.repName || '', company: session?.tenantName || '' }}
+              draft={{ subject: subjectText, body: editableBody }}
+              onApply={(subject, body) => {
+                setSubjectText(subject);
+                setEditableBody(body);
+                setSendButtonState('idle');
+                setDirectSendStatus(null);
+                if (subject && !subjectSuggestions.includes(subject)) setSubjectSuggestions((prev) => [subject, ...prev].slice(0, 6));
+              }}
+              frameworkId={selectedFrameworkId}
+              onFrameworkChange={setSelectedFrameworkId}
+              autoStart={assistantStart}
+            />
           </div>
 
         </aside>

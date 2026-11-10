@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { Plus, Pencil, Trash2, CheckCircle2, Sparkles, HelpCircle, RefreshCw, X } from 'lucide-react';
 import {
@@ -33,6 +33,27 @@ import {
   subscribeToDispositions,
   INITIAL_DEFAULT_DISPOSITIONS
 } from '@/lib/dispositionStore';
+import {
+  getPipelineStagesSnapshot,
+  getServerPipelineStagesSnapshot,
+  subscribeToPipelineStages,
+} from '@/lib/leadStore';
+import {
+  KEEP_STAGE,
+  getDefaultDispositionStageId,
+  resolveOutcomeStage,
+} from '@/lib/dispositionPipeline';
+import { stageDotClass } from '@/lib/stageColors';
+
+/** The Dialer's quick outcome buttons (their stage follows the same defaults). */
+const QUICK_OUTCOMES = [
+  { label: 'Booked', name: 'Meeting Booked' },
+  { label: 'Callback', name: 'Call Back Later' },
+  { label: 'Voicemail', name: 'Left Voicemail' },
+  { label: 'No answer', name: 'No Answer / Gatekeeper' },
+  { label: 'Referral', name: 'Referral / Update Contact' },
+  { label: 'Not interested', name: 'Not Interested / Quarantine' },
+];
 
 // Sample campaign names are for the demo workspace; real workspaces start with the global scope.
 const DEMO_CAMPAIGNS = [
@@ -78,7 +99,43 @@ export default function CallDispositionManager() {
   const [formRequiresNote, setFormRequiresNote] = useState(true);
   const [formIsActive, setFormIsActive] = useState(true);
   const [formColor, setFormColor] = useState('#10B981');
+  // '' = automatic (default from automation, category and name)
+  const [formStageId, setFormStageId] = useState<string>('');
   const [customCampaignInput, setCustomCampaignInput] = useState('');
+
+  // Pipeline stages (Pipeline › Edit stages) each outcome can move a lead to
+  const pipelineStages = useSyncExternalStore(
+    subscribeToPipelineStages,
+    getPipelineStagesSnapshot,
+    getServerPipelineStagesSnapshot
+  );
+
+  /** Where an outcome sends the lead, as shown to admins. */
+  const describeStage = (outcome: Pick<CallDisposition, 'name'> & Partial<CallDisposition>) => {
+    const stage = resolveOutcomeStage(outcome, pipelineStages);
+    return stage
+      ? { label: stage.label, dot: stageDotClass(stage.dotColor) }
+      : { label: 'Keep current stage', dot: 'bg-fg-disabled' };
+  };
+
+  /** "Auto: Meeting Booked": the default the outcome gets when no stage is chosen. */
+  const automaticStageLabel = (outcome: Pick<CallDisposition, 'name'> & Partial<CallDisposition>) => {
+    const auto = getDefaultDispositionStageId(outcome);
+    const label = auto === KEEP_STAGE ? 'Keep current stage' : describeStage({ ...outcome, pipelineStageId: undefined }).label;
+    return `Auto: ${label}`;
+  };
+
+  const stageOptions = (outcome: Pick<CallDisposition, 'name'> & Partial<CallDisposition>) => (
+    <>
+      <option value="">{automaticStageLabel(outcome)}</option>
+      {pipelineStages.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.label}
+        </option>
+      ))}
+      <option value={KEEP_STAGE}>Keep current stage</option>
+    </>
+  );
   const [showCustomCampaignField, setShowCustomCampaignField] = useState(false);
 
   // Delete Confirmation State
@@ -128,6 +185,7 @@ export default function CallDispositionManager() {
     setFormRequiresNote(true);
     setFormIsActive(true);
     setFormColor('#10B981');
+    setFormStageId('');
     setShowCustomCampaignField(false);
     setCustomCampaignInput('');
     setIsModalOpen(true);
@@ -146,6 +204,7 @@ export default function CallDispositionManager() {
     setFormRequiresNote(disp.requiresNote);
     setFormIsActive(disp.isActive);
     setFormColor(disp.color || '#10B981');
+    setFormStageId(disp.pipelineStageId || '');
     setShowCustomCampaignField(false);
     setCustomCampaignInput('');
     setIsModalOpen(true);
@@ -181,6 +240,7 @@ export default function CallDispositionManager() {
         requiresNote: formRequiresNote,
         isActive: formIsActive,
         color: formColor,
+        pipelineStageId: formStageId || undefined,
         updatedAt: 'Just now'
       };
       const updated = addStoredDisposition(newDisp);
@@ -204,6 +264,7 @@ export default function CallDispositionManager() {
         requiresNote: formRequiresNote,
         isActive: formIsActive,
         color: formColor,
+        pipelineStageId: formStageId || undefined,
         updatedAt: 'Just now'
       };
       const updated = updateStoredDisposition(updatedDisp);
@@ -244,6 +305,25 @@ export default function CallDispositionManager() {
       }).catch(() => {});
     }
     showFeedback(`Reassigned disposition to ${newCampaign}`);
+  };
+
+  // Quick Inline Pipeline Stage Switch ('' = automatic default)
+  const handleQuickStageChange = (id: string, nextStageId: string) => {
+    const target = dispositions.find(d => d.id === id);
+    if (!target) return;
+    const updatedTarget: CallDisposition = {
+      ...target,
+      pipelineStageId: nextStageId || undefined,
+      updatedAt: 'Just now'
+    };
+    const updated = updateStoredDisposition(updatedTarget);
+    setDispositions(updated);
+    fetch('/api/dispositions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ disposition: updatedTarget })
+    }).catch(() => {});
+    showFeedback(`"${target.name}" now moves leads to: ${describeStage(updatedTarget).label}`);
   };
 
   // Clean Slate Preset Reset
@@ -399,6 +479,7 @@ export default function CallDispositionManager() {
                 <th className="px-4 py-2.5 font-medium">Campaign</th>
                 <th className="px-4 py-2.5 font-medium">Category</th>
                 <th className="px-4 py-2.5 font-medium">Automation</th>
+                <th className="px-4 py-2.5 font-medium">Pipeline stage</th>
                 <th className="px-4 py-2.5 font-medium">Script cue</th>
                 <th className="px-4 py-2.5 text-center font-medium">Note</th>
                 <th className="px-4 py-2.5 text-right font-medium">Actions</th>
@@ -407,7 +488,7 @@ export default function CallDispositionManager() {
             <tbody>
               {filteredDispositions.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <EmptyState
                       icon={<HelpCircle />}
                       title="No call outcomes match your filters"
@@ -474,6 +555,29 @@ export default function CallDispositionManager() {
                         {actionBadge.label}
                       </td>
 
+                      {/* Pipeline Stage the lead moves to */}
+                      <td className="px-4 py-3">
+                        <div className="flex w-60 items-center gap-2">
+                          <span
+                            aria-hidden
+                            className={`size-2 shrink-0 rounded-full ${describeStage(disp).dot}`}
+                          />
+                          <Select
+                            aria-label={`Pipeline stage for ${disp.name}`}
+                            value={
+                              disp.pipelineStageId === KEEP_STAGE ||
+                              pipelineStages.some((s) => s.id === disp.pipelineStageId)
+                                ? (disp.pipelineStageId as string)
+                                : ''
+                            }
+                            onChange={(e) => handleQuickStageChange(disp.id, e.target.value)}
+                            className="h-8 text-small"
+                          >
+                            {stageOptions(disp)}
+                          </Select>
+                        </div>
+                      </td>
+
                       {/* Boris Prompt Cue */}
                       <td className="min-w-64 max-w-sm px-4 py-3">
                         {disp.rebuttalScriptPrompt ? (
@@ -524,6 +628,27 @@ export default function CallDispositionManager() {
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Quick buttons: the Dialer's one-click outcomes and the stage each one moves a lead to */}
+      <Card className="p-4">
+        <h3 className="text-body-strong text-fg">Dialer quick buttons</h3>
+        <p className="mt-0.5 text-small text-fg-secondary">
+          Reps see these as one-click buttons. Every active outcome above is under &quot;More outcomes&quot; in the Dialer.
+        </p>
+        <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-small">
+          {QUICK_OUTCOMES.map((q) => {
+            const stage = describeStage({ name: q.name });
+            return (
+              <li key={q.name} className="flex items-center gap-1.5 text-fg-secondary">
+                <span className="text-body-strong text-fg">{q.label}</span>
+                <span aria-hidden>→</span>
+                <span aria-hidden className={`size-2 rounded-full ${stage.dot}`} />
+                <span>{stage.label}</span>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
 
       {/* MODAL: ADD / EDIT CALL DISPOSITION */}
@@ -652,6 +777,28 @@ export default function CallDispositionManager() {
                   </Select>
                 </Field>
               </div>
+
+              {/* Pipeline Stage */}
+              <Field
+                label="Pipeline stage"
+                hint="Where the lead moves on the rep's Pipeline when this outcome is picked in the Dialer."
+              >
+                <Select
+                  value={
+                    formStageId === KEEP_STAGE || pipelineStages.some((s) => s.id === formStageId)
+                      ? formStageId
+                      : ''
+                  }
+                  onChange={(e) => setFormStageId(e.target.value)}
+                >
+                  {stageOptions({
+                    name: formName,
+                    code: formCode,
+                    category: formCategory,
+                    actionTrigger: formActionTrigger,
+                  })}
+                </Select>
+              </Field>
 
               {/* Boris AI Rebuttal Cue */}
               <Field label="Script cue for Boris (optional)">

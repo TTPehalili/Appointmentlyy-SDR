@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Sparkles,
   Copy,
@@ -19,12 +20,16 @@ import {
   ChevronUp,
   ThumbsUp,
   Repeat2,
-  MoreHorizontal
+  MoreHorizontal,
+  Mail,
+  X
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
   Button,
+  EmptyState,
   IconButton,
+  InlineError,
   PageHeader,
   SearchInput,
   Select,
@@ -52,6 +57,15 @@ import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { useSession } from '@/lib/session';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
+import CampaignMessageCard from '@/components/outreach/CampaignMessageCard';
+import {
+  describeCampaign,
+  getCampaignMessage,
+  postText,
+  saveCampaignMessage,
+  useCampaignMessage,
+  type CampaignMessage
+} from '@/lib/campaignMessage';
 
 export default function LinkedInCreatorStudio() {
   const [activeTab, setActiveTab] = useState<'series' | 'viral' | 'dossier'>('series');
@@ -63,7 +77,14 @@ export default function LinkedInCreatorStudio() {
   const authorHeadline = isDemo
     ? 'CEO & Founder at Appointmentlyy | AI Outbound & BPO Systems'
     : tenantName;
-  const authorInitials = authorName.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase();
+  const authorInitials = authorName.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase() || 'Y';
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const campaign = useCampaignMessage();
+  const campaignPayload = { angle: campaign.angle, pain: campaign.pain, proof: campaign.proof, offer: campaign.offer };
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [hideMirroredPost, setHideMirroredPost] = useState(false);
+  const ideaBoxRef = useRef<HTMLTextAreaElement>(null);
 
   // Leads & CSV Intelligence State
   const [leads, setLeads] = useState<CadenceLeadRecord[]>(() => (isDemoWorkspace() ? DEMO_CADENCE_LEADS : []));
@@ -74,12 +95,19 @@ export default function LinkedInCreatorStudio() {
   // Series Generation State
   const [selectedFrameworkId, setSelectedFrameworkId] = useState<string>('contrarian-truth');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('broker-margin-continuity');
-  const [customTopic, setCustomTopic] = useState<string>(
-    'Brokers take up to a 60% cut on cheap pay-per-performance campaigns while the BPO carries 100% of the OPEX burden. They take over operations without risking any capital. It is time to take internal acquisition back to all BPOs.'
-  );
+  const [customTopic, setCustomTopic] = useState<string>(() => {
+    if (typeof window !== 'undefined' && searchParams.get('campaign') === '1') {
+      const fromCampaign = describeCampaign(getCampaignMessage());
+      if (fromCampaign) return fromCampaign;
+    }
+    return isDemoWorkspace()
+      ? 'Brokers take up to a 60% cut on cheap pay-per-performance campaigns while the BPO carries 100% of the OPEX burden. They take over operations without risking any capital. It is time to take internal acquisition back to all BPOs.'
+      : '';
+  });
   const [isGeneratingSeries, setIsGeneratingSeries] = useState(false);
-  const [seriesData, setSeriesData] = useState<LinkedInSeries>(() => 
-    getDeterministicLinkedInSeries(summarizeCsvLeads(isDemoWorkspace() ? DEMO_CADENCE_LEADS : []), 'contrarian-truth', 'broker-margin-continuity')
+  // The sample series is the platform owner's: client workspaces start empty until they write one.
+  const [seriesData, setSeriesData] = useState<LinkedInSeries | null>(() =>
+    isDemoWorkspace() ? getDeterministicLinkedInSeries(summarizeCsvLeads(DEMO_CADENCE_LEADS), 'contrarian-truth', 'broker-margin-continuity') : null
   );
 
   // Active Episode Focus State (0 = Ep 1 Tuesday, 1 = Ep 2 Thursday, 2 = Ep 3 Friday)
@@ -96,25 +124,25 @@ export default function LinkedInCreatorStudio() {
   const activeFramework = LINKEDIN_FRAMEWORKS.find(f => f.id === selectedFrameworkId) || LINKEDIN_FRAMEWORKS[0];
 
   // Viral Post Comment State
-  const [viralPostInput, setViralPostInput] = useState<string>(
+  const [viralPostInput, setViralPostInput] = useState<string>(() => !isDemoWorkspace() ? '' :
     `Unpopular opinion: Cold outreach is dying. Buyers are overwhelmed with automated AI sequences and template spam. If your BDRs are still sending 100 emails and dials a day, you are burning your brand reputation for a 0.2% reply rate. In 2025, inbound content and peer referrals are the only channels that convert enterprise deals.`
   );
   const [selectedAngle, setSelectedAngle] = useState<string>('All');
   const [isGeneratingComments, setIsGeneratingComments] = useState(false);
-  const [viralComments, setViralComments] = useState<ViralCommentDraft[]>(() => 
-    getDeterministicViralComments(viralPostInput)
+  const [viralComments, setViralComments] = useState<ViralCommentDraft[]>(() =>
+    isDemoWorkspace() ? getDeterministicViralComments(viralPostInput) : []
   );
 
   // Thread Conversation Accelerator State
-  const [authorReplyInput, setAuthorReplyInput] = useState<string>(
+  const [authorReplyInput, setAuthorReplyInput] = useState<string>(() => !isDemoWorkspace() ? '' :
     'Fair point, but in our experience enterprise buyers ignore cold outreach completely unless they already recognize the brand.'
   );
-  const [previousCommentInput, setPreviousCommentInput] = useState<string>(
+  const [previousCommentInput, setPreviousCommentInput] = useState<string>(() => !isDemoWorkspace() ? '' :
     'Interesting take, but in BPO operations we usually see the opposite. Activity numbers mean nothing if the list has already been fatigued by three other agencies. List exclusivity beats call volume every time.'
   );
   const [isGeneratingThreadReplies, setIsGeneratingThreadReplies] = useState(false);
-  const [threadReplies, setThreadReplies] = useState<ThreadFollowUpDraft[]>(() => 
-    getDeterministicThreadFollowUps('Fair point, but in our experience enterprise buyers ignore cold outreach completely unless they already recognize the brand.')
+  const [threadReplies, setThreadReplies] = useState<ThreadFollowUpDraft[]>(() =>
+    isDemoWorkspace() ? getDeterministicThreadFollowUps('Fair point, but in our experience enterprise buyers ignore cold outreach completely unless they already recognize the brand.') : []
   );
 
   // Copy Feedback State
@@ -188,6 +216,7 @@ export default function LinkedInCreatorStudio() {
   // Update post field directly
   const handleUpdatePostField = (postId: string, field: 'hook' | 'body' | 'cta' | 'hashtags' | 'injectedComments', value: any) => {
     setSeriesData(prev => {
+      if (!prev) return prev;
       const updatedPosts = prev.posts.map(p => {
         if (p.id === postId) {
           const updated = { ...p, [field]: value };
@@ -206,9 +235,10 @@ export default function LinkedInCreatorStudio() {
   // Sanitize post (remove em dashes and emojis)
   const handleCleanPost = (postId: string) => {
     setSeriesData(prev => {
+      if (!prev) return prev;
       const updatedPosts = prev.posts.map(p => {
         if (p.id === postId) {
-          const cleanHook = sanitizeTextForLinkedIn(p.hook);
+          const cleanHook= sanitizeTextForLinkedIn(p.hook);
           const cleanBody = sanitizeTextForLinkedIn(p.body);
           const cleanCta = sanitizeTextForLinkedIn(p.cta);
           const cleanComments = (p.injectedComments || []).map(c => sanitizeTextForLinkedIn(c));
@@ -236,6 +266,7 @@ export default function LinkedInCreatorStudio() {
       setSelectedPresetId(presetOverride);
     }
     setIsGeneratingSeries(true);
+    setAiError(null);
     try {
       const res = await fetch('/api/ai/linkedin-studio', {
         method: 'POST',
@@ -246,24 +277,32 @@ export default function LinkedInCreatorStudio() {
           csvSummary,
           frameworkId: selectedFrameworkId,
           presetId: presetIdToUse,
-          customTopicInstruction: customTopic
+          customTopicInstruction: customTopic,
+          campaign: campaignPayload
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.series) {
-          setSeriesData(data.series);
-          setActiveEpisodeIdx(0);
-          return;
-        }
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.series) {
+        setSeriesData(data.series);
+        setActiveEpisodeIdx(0);
+        if (!campaign.angle.trim() && customTopic.trim()) saveCampaignMessage({ angle: customTopic.trim().slice(0, 300) });
+        return;
       }
-      const fallback = getDeterministicLinkedInSeries(csvSummary, selectedFrameworkId, presetIdToUse);
+      if (!isDemo) {
+        setAiError(data?.error || 'Could not write the series. Try again in a moment.');
+        return;
+      }
+      const fallback= getDeterministicLinkedInSeries(csvSummary, selectedFrameworkId, presetIdToUse);
       setSeriesData(fallback);
       setActiveEpisodeIdx(0);
     } catch (err) {
       console.error('Error generating series:', err);
-      const fallback = getDeterministicLinkedInSeries(csvSummary, selectedFrameworkId, presetIdToUse);
+      if (!isDemo) {
+        setAiError('Could not reach the writing model. Check your connection and try again.');
+        return;
+      }
+      const fallback= getDeterministicLinkedInSeries(csvSummary, selectedFrameworkId, presetIdToUse);
       setSeriesData(fallback);
       setActiveEpisodeIdx(0);
     } finally {
@@ -274,6 +313,7 @@ export default function LinkedInCreatorStudio() {
   // Generate Viral Post Comments via Gemini
   const handleGenerateViralComments = async () => {
     if (!viralPostInput.trim()) return;
+    setAiError(null);
     setIsGeneratingComments(true);
     try {
       const res = await fetch('/api/ai/linkedin-studio', {
@@ -282,21 +322,23 @@ export default function LinkedInCreatorStudio() {
         body: JSON.stringify({
           action: 'generate_viral_comment',
           viralPostText: viralPostInput,
-          commentAngle: selectedAngle
+          commentAngle: selectedAngle,
+          campaign: campaignPayload
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.commentDrafts)) {
-          setViralComments(data.commentDrafts);
-        }
-      } else {
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.commentDrafts)) {
+        setViralComments(data.commentDrafts);
+      } else if (isDemo) {
         setViralComments(getDeterministicViralComments(viralPostInput));
+      } else {
+        setAiError(data?.error || 'Could not draft comments. Try again in a moment.');
       }
     } catch (err) {
       console.error('Error generating viral comments:', err);
-      setViralComments(getDeterministicViralComments(viralPostInput));
+      if (isDemo) setViralComments(getDeterministicViralComments(viralPostInput));
+      else setAiError('Could not reach the writing model. Check your connection and try again.');
     } finally {
       setIsGeneratingComments(false);
     }
@@ -305,6 +347,7 @@ export default function LinkedInCreatorStudio() {
   // Generate Thread Follow-Ups via Gemini
   const handleGenerateThreadReplies = async () => {
     if (!authorReplyInput.trim()) return;
+    setAiError(null);
     setIsGeneratingThreadReplies(true);
     try {
       const res = await fetch('/api/ai/linkedin-studio', {
@@ -314,29 +357,51 @@ export default function LinkedInCreatorStudio() {
           action: 'generate_thread_reply',
           viralPostText: viralPostInput,
           myPreviousComment: previousCommentInput,
-          authorReplyText: authorReplyInput
+          authorReplyText: authorReplyInput,
+          campaign: campaignPayload
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.threadFollowUps)) {
-          setThreadReplies(data.threadFollowUps);
-        }
-      } else {
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.threadFollowUps)) {
+        setThreadReplies(data.threadFollowUps);
+      } else if (isDemo) {
         setThreadReplies(getDeterministicThreadFollowUps(authorReplyInput));
+      } else {
+        setAiError(data?.error || 'Could not draft follow-ups. Try again in a moment.');
       }
     } catch (err) {
       console.error('Error generating thread replies:', err);
-      setThreadReplies(getDeterministicThreadFollowUps(authorReplyInput));
+      if (isDemo) setThreadReplies(getDeterministicThreadFollowUps(authorReplyInput));
+      else setAiError('Could not reach the writing model. Check your connection and try again.');
     } finally {
       setIsGeneratingThreadReplies(false);
     }
   };
 
   // Active post in the LinkedIn feed
-  const activePost: LinkedInPost = seriesData.posts[activeEpisodeIdx] || seriesData.posts[0];
-  const fullPostText = `${activePost.hook}\n\n${activePost.body}\n\n${activePost.cta}\n\n${activePost.hashtags.join(' ')}`;
+  const posts = seriesData?.posts ?? [];
+  const activePost: LinkedInPost | undefined = posts[activeEpisodeIdx] || posts[0];
+  const fullPostText = activePost ? `${activePost.hook}\n\n${activePost.body}\n\n${activePost.cta}\n\n${activePost.hashtags.join(' ')}` : '';
+
+  // Campaign message -> the idea box of this tab.
+  const useCampaignHere = (c: CampaignMessage) => {
+    setCustomTopic(describeCampaign(c));
+    setActiveTab('series');
+    setTimeout(() => ideaBoxRef.current?.focus(), 0);
+  };
+
+  // LinkedIn -> email: hand the active post to the cold email assistant.
+  const mirrorAsColdEmail = () => {
+    if (!activePost) return;
+    saveCampaignMessage({
+      lastPost: { hook: activePost.hook, body: activePost.body, cta: activePost.cta, hashtags: activePost.hashtags, source: 'linkedin', at: new Date().toISOString() },
+    });
+    router.push('/outreach/email?mirror=linkedin');
+  };
+
+  // Email -> LinkedIn: the post the cold email assistant wrote to mirror the latest email.
+  const mirroredPost = campaign.lastPost && campaign.lastPost.source === 'email' && !hideMirroredPost ? campaign.lastPost : null;
 
   // Filtered CSV leads for Dossier view
   const filteredLeads = leads.filter(l => {
@@ -366,7 +431,7 @@ export default function LinkedInCreatorStudio() {
           >
             <Upload />
             <span className="hidden sm:inline">Upload CSV</span>
-            <span className="text-fg-secondary">{csvSummary.dominantHeadcount}</span>
+            <span className="tabular-nums text-fg-secondary" suppressHydrationWarning>{leads.length} leads</span>
           </Button>
         }
         tabs={
@@ -383,6 +448,11 @@ export default function LinkedInCreatorStudio() {
         }
       />
 
+      <div className="mb-6 space-y-3">
+        <CampaignMessageCard current="linkedin" onUse={useCampaignHere} />
+        {aiError && <InlineError message={aiError} />}
+      </div>
+
       {/* ========================================================================= */}
       {/* TAB 1: POST SERIES (editor left, series and episode planner right)       */}
       {/* ========================================================================= */}
@@ -392,12 +462,56 @@ export default function LinkedInCreatorStudio() {
           {/* Post editor and preview (8 cols) */}
           <div className="space-y-4 lg:col-span-8">
 
+            {/* Post written by the cold email assistant to mirror the latest email */}
+            {mirroredPost && (
+              <div className="space-y-3 rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="flex items-center gap-1.5 text-h3 text-fg">
+                      <Mail className="h-4 w-4 text-fg-secondary" aria-hidden />
+                      <span>Mirrored from your cold email</span>
+                    </h2>
+                    <p className="mt-0.5 text-small text-fg-secondary">Same angle, pain and offer as the email, written as a post.</p>
+                  </div>
+                  <IconButton label="Hide mirrored post" size="sm" onClick={() => setHideMirroredPost(true)}>
+                    <X />
+                  </IconButton>
+                </div>
+                <p className="whitespace-pre-wrap rounded-md border border-line bg-subtle p-3 text-body leading-relaxed text-fg">{postText(mirroredPost)}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-small tabular-nums text-fg-tertiary">
+                    {`${mirroredPost.hook} ${mirroredPost.body} ${mirroredPost.cta}`.trim().split(/\s+/).filter(Boolean).length} words
+                  </span>
+                  <Button variant="brand" size="sm" onClick={() => copyToClipboard(postText(mirroredPost), 'copy-mirrored')}>
+                    {copiedKey === 'copy-mirrored' ? <Check /> : <Copy />}
+                    <span>{copiedKey === 'copy-mirrored' ? 'Copied' : 'Copy for LinkedIn'}</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {!activePost ? (
+              <div className="rounded-lg border border-line bg-surface shadow-xs">
+                <EmptyState
+                  icon={<LinkedinIcon className="h-8 w-8" />}
+                  title="No posts yet"
+                  description="Set your angle (or use the campaign message) and write a 3-post series. Posts mirror your cold emails, so prospects hear one story."
+                  action={
+                    <Button variant="primary" onClick={() => (customTopic.trim() ? handleGenerateSeries() : ideaBoxRef.current?.focus())} disabled={isGeneratingSeries}>
+                      {isGeneratingSeries ? <RotateCw className="animate-spin" /> : <Sparkles />}
+                      <span>{customTopic.trim() ? 'Write 3-post series' : 'Add your angle'}</span>
+                    </Button>
+                  }
+                />
+              </div>
+            ) : (<>
+
             {/* Episode switcher and post actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-small text-fg-secondary">Episode</span>
                 <div className="inline-flex rounded-md border border-line bg-subtle p-0.5">
-                  {seriesData.posts.map((p, idx) => {
+                  {posts.map((p, idx) => {
                     const isSelected = activeEpisodeIdx === idx;
                     return (
                       <button
@@ -419,7 +533,17 @@ export default function LinkedInCreatorStudio() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={mirrorAsColdEmail}
+                  title="Write a matching cold email from this post (opens the Cold email tab)"
+                >
+                  <Mail />
+                  <span>Mirror as cold email</span>
+                </Button>
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -708,11 +832,13 @@ export default function LinkedInCreatorStudio() {
               )}
 
             </div>
+            </>)}
           </div>
 
           {/* Series and episode planner (4 cols) */}
           <aside className="space-y-4 lg:col-span-4">
 
+            {isDemo && (<>
             {/* Series summary */}
             <div className="rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
               <div className="flex items-center justify-between gap-2">
@@ -783,6 +909,7 @@ export default function LinkedInCreatorStudio() {
                 </Button>
               )}
             </div>
+            </>)}
 
             {/* Framework & idea box */}
             <div className="space-y-4 rounded-lg border border-line bg-surface p-4 text-left shadow-xs">
@@ -806,6 +933,7 @@ export default function LinkedInCreatorStudio() {
                 </label>
                 <Textarea
                   id="linkedin-idea-box"
+                  ref={ideaBoxRef}
                   rows={3}
                   value={customTopic}
                   onChange={(e) => setCustomTopic(e.target.value)}
@@ -813,7 +941,7 @@ export default function LinkedInCreatorStudio() {
                   className="resize-none text-small leading-relaxed"
                 />
 
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                {isDemo && <div className="flex flex-wrap gap-1.5 pt-1">
                   {LINKEDIN_IDEA_PRESETS.slice(0, 3).map((preset) => (
                     <button
                       key={preset.id}
@@ -828,13 +956,13 @@ export default function LinkedInCreatorStudio() {
                       {preset.label}
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
 
               <Button
                 variant="primary"
                 onClick={() => handleGenerateSeries()}
-                disabled={isGeneratingSeries}
+                disabled={isGeneratingSeries || (!isDemo && !customTopic.trim() && !describeCampaign(campaign))}
                 className="w-full"
               >
                 {isGeneratingSeries ? (
@@ -1077,15 +1205,15 @@ export default function LinkedInCreatorStudio() {
             </div>
             <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
               <span className="text-caption text-fg-tertiary">Main segment</span>
-              <div className="mt-1 text-body-strong text-fg">{csvSummary.dominantHeadcount}</div>
+              <div className="mt-1 text-body-strong text-fg">{csvSummary.totalLeads > 0 ? csvSummary.dominantHeadcount : '—'}</div>
             </div>
             <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
               <span className="text-caption text-fg-tertiary">Top pain point</span>
-              <div className="mt-1 line-clamp-1 text-body-strong text-fg">{csvSummary.topPainPoints[0]}</div>
+              <div className="mt-1 line-clamp-1 text-body-strong text-fg">{csvSummary.totalLeads > 0 ? csvSummary.topPainPoints[0] : '—'}</div>
             </div>
             <div className="rounded-lg border border-line bg-surface p-4 shadow-xs">
               <span className="text-caption text-fg-tertiary">Main competitor</span>
-              <div className="mt-1 text-body-strong text-fg">{csvSummary.topCompetitors[0]}</div>
+              <div className="mt-1 text-body-strong text-fg">{csvSummary.totalLeads > 0 ? csvSummary.topCompetitors[0] : '—'}</div>
             </div>
           </div>
 

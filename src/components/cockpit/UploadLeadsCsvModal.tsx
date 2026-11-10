@@ -15,6 +15,9 @@ import {
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { CadenceLeadRecord } from '@/lib/cadenceMaster';
 import { Button, IconButton, Dialog } from '@/components/ui';
+import { importLeadsIntoContacts } from '@/lib/leadStore';
+import { getStoredSession } from '@/lib/session';
+import { normalizeTenantKey } from '@/lib/icpQuotaStore';
 
 interface UploadLeadsCsvModalProps {
   isOpen: boolean;
@@ -165,6 +168,32 @@ export default function UploadLeadsCsvModal({
           campaignId: 'enterprise-outbound'
         })
       }).catch(err => console.warn('[CSV Modal] Supabase background sync notice:', err));
+
+      // Save the leads to Contacts, owned by the rep who imported them, so they show in their
+      // Pipeline (New Lead) and calls on them update it.
+      const session = getStoredSession();
+      importLeadsIntoContacts(
+        mappedLeads.map((l) => ({
+          id: l.id,
+          name: l.name,
+          company: l.company,
+          title: l.title,
+          department: l.department,
+          email: l.email,
+          phone: l.phone,
+          headcount: l.headcount,
+          website: l.website,
+          linkedinUrl: l.linkedinUrl,
+          cadenceDay: l.cadenceDay,
+          leadNotes: l.buyingSignals?.length ? l.buyingSignals.join('\n') : '',
+        })),
+        {
+          assignedRep: session.repName,
+          tenantId: normalizeTenantKey(session.tenantCode || session.tenantName),
+          actorName: session.repName,
+          source: `Dialer CSV import (${file.name})`,
+        }
+      );
 
       setSuccessCount(mappedLeads.length);
       setTimeout(() => {
