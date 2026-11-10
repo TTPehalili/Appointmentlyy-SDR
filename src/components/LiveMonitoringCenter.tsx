@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { 
   Radio, 
@@ -117,6 +117,40 @@ export default function LiveMonitoringCenter() {
   useEffect(() => {
     currentTurnIndexRef.current = currentTurnIndex;
   }, [currentTurnIndex]);
+
+  // Stop listening when the rep leaves the Live Floor. With cacheComponents, Next.js keeps the page
+  // mounted but hidden (React <Activity>) instead of unmounting it, and the audio element and turn
+  // timers live outside React, so without this the conversation keeps playing on other pages.
+  // A layout-effect cleanup runs synchronously when the page is hidden (and on real unmount).
+  useLayoutEffect(() => {
+    const audioRef = audioElementRef;
+    const timerRef = pendingTimerRef;
+    return () => {
+      // Clearing these makes in-flight playTurn calls (awaiting audio fetches) bail out.
+      activeSessionRef.current = null;
+      isPlayingRef.current = false;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      const audio = audioRef.current;
+      if (audio) {
+        audio.onended = null;
+        audio.onerror = null;
+        try {
+          audio.pause();
+          audio.removeAttribute('src');
+          audio.load();
+        } catch {}
+        audioRef.current = null;
+      }
+      // Come back to a disconnected panel rather than one that shows "playing" with no sound.
+      setActiveListeningSession(null);
+      setCurrentTurnIndex(null);
+      setIsAudioPlaying(false);
+      setIsLoadingAudio(false);
+    };
+  }, []);
 
   // Volume & mute reactivity
   useEffect(() => {
