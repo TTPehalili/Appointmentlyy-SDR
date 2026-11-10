@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Inbox,
   Send,
@@ -16,7 +16,13 @@ import {
   CalendarDays,
   DollarSign,
   MessageSquareReply,
-  X
+  X,
+  ChevronDown,
+  Loader2,
+  PenLine,
+  Scissors,
+  Wand2,
+  Undo2
 } from 'lucide-react';
 import {
   Avatar,
@@ -25,6 +31,7 @@ import {
   Dialog,
   EmptyState,
   IconButton,
+  Menu,
   PageHeader,
   SearchInput,
   SegmentedControl,
@@ -43,6 +50,17 @@ import {
 } from '@/lib/emailStore';
 import { useSession } from '@/lib/session';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import type { InboxReplyAction, InboxReplyMove, InboxReplyTone } from '@/lib/inboxReply';
+
+type CopilotRun = { action: InboxReplyAction; tone?: InboxReplyTone };
+
+const COPILOT_TONES: { tone: InboxReplyTone; label: string }[] = [
+  { tone: 'friendly', label: 'Friendly' },
+  { tone: 'direct', label: 'Direct' },
+  { tone: 'formal', label: 'Formal' },
+];
+
+const copilotKey = (run: CopilotRun) => (run.action === 'rewrite' ? `rewrite:${run.tone ?? 'friendly'}` : run.action);
 
 export default function UnifiedEmailInbox() {
   const { session } = useSession();
@@ -65,6 +83,17 @@ export default function UnifiedEmailInbox() {
   const [isSendingReply, setIsSendingReply] = useState<boolean>(false);
   const [sendSuccessKey, setSendSuccessKey] = useState<string | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
+
+  // Copilot (AI reply assistant). Results go into the composer for review; nothing is sent.
+  // Undo / notes / errors are tagged with their thread so they don't leak into another conversation.
+  const [copilotBusy, setCopilotBusy] = useState<string | null>(null);
+  const [copilotError, setCopilotError] = useState<{ threadId: string; message: string; run: CopilotRun } | null>(null);
+  const [copilotUndo, setCopilotUndo] = useState<{ threadId: string; text: string } | null>(null);
+  const [copilotNote, setCopilotNote] = useState<{ threadId: string; move?: InboxReplyMove; fallback?: boolean } | null>(null);
+  const selectedThreadRef = useRef(selectedThreadId);
+  useEffect(() => {
+    selectedThreadRef.current = selectedThreadId;
+  }, [selectedThreadId]);
 
   const [showConfirmDeleteThread, setShowConfirmDeleteThread] = useState<boolean>(false);
   const [showConfirmClearAll, setShowConfirmClearAll] = useState<boolean>(false);
@@ -221,6 +250,8 @@ export default function UnifiedEmailInbox() {
           const updated = saveEmailToStore(data.email);
           setEmails(updated);
           setReplyText('');
+          setCopilotUndo(null);
+          setCopilotNote(null);
           setSendSuccessKey('reply_sent');
           setTimeout(() => setSendSuccessKey(null), 4000);
           return;
@@ -322,22 +353,75 @@ export default function UnifiedEmailInbox() {
     }
   };
 
-  // AI Quick Reply Presets
-  const handleApplyAiReplyPreset = (presetType: 'demo' | 'objection' | 'pricing') => {
-    const signOff = `Best,\n${senderDisplayName}`;
-    if (presetType === 'demo') {
-      setReplyText(
-        `Hi ${activeThreadLead.leadName.split(' ')[0]},\n\nGlad this resonated. I just uploaded the 2-minute unscripted rebuttal video here: https://appointmentlyy.com/demo/sparring-150ms\n\nWould Thursday 2:00 PM or 3:30 PM EST work best for a quick 15-minute screen share with you and your floor QA lead? I'll show live objection telemetry on your exact campaign.\n\n${signOff}`
-      );
-    } else if (presetType === 'pricing') {
-      setReplyText(
-        `Hi ${activeThreadLead.leadName.split(' ')[0]},\n\nFor a 50-seat floor on Salesforce and Twilio, we run on a direct per-seat model ($85/seat/month) that pays for itself on day 3 when reps stop burning accounts.\n\nAre you free for 10 minutes Wednesday morning to look at the exact ROI calculator for your seat count?\n\n${signOff}`
-      );
-    } else {
-      setReplyText(
-        `Hi ${activeThreadLead.leadName.split(' ')[0]},\n\nFair question on sounding robotic—that is why traditional static scripts fail. Our system is an agile situational teleprompter that detects the prospect's exact objection in 150ms and displays consultative reframes, so reps sound like peer partners rather than script readers.\n\nWorth a 10-minute look, or are you guys set for this quarter?\n\n${signOff}`
-      );
+  // Copilot: ask the AI for a reply built from this conversation and put it in the composer.
+  const runCopilot = async (run: CopilotRun) => {
+    if (copilotBusy || !activeThreadLead) return;
+    const needsDraft = run.action === 'shorten' || run.action === 'rewrite';
+    if (needsDraft && !replyText.trim()) return;
+
+    const threadAtStart = selectedThreadId;
+    const textBefore = replyText;
+    setCopilotBusy(copilotKey(run));
+    setCopilotError(null);
+    try {
+      const res = await fetch('/api/ai/inbox-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: run.action,
+          tone: run.tone,
+          thread: activeThreadMessages.map((m) => ({
+            direction: m.direction,
+            from: m.from,
+            to: m.to,
+            subject: m.subject,
+            body: m.body,
+            timestamp: m.timestamp,
+          })),
+          draft: needsDraft ? replyText : undefined,
+          prospect: {
+            name: activeThreadLead.leadName,
+            company: activeThreadLead.leadCompany,
+            title: activeThreadLead.leadTitle,
+          },
+          // Real session identity only (the server falls back to the signed-in user), never a demo default.
+          sender: { name: session?.repName || undefined, company: session?.tenantName || undefined },
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data.reply !== 'string' || !data.reply.trim()) {
+        throw new Error(data.error || 'Copilot could not write a reply right now.');
+      }
+      // The user moved to another conversation while we waited: don't drop this reply into it.
+      if (selectedThreadRef.current !== threadAtStart) return;
+      setCopilotUndo({ threadId: threadAtStart, text: textBefore });
+      setReplyText(data.reply);
+      setCopilotNote({ threadId: threadAtStart, move: data.move, fallback: data.fallback === true });
+    } catch (e) {
+      if (selectedThreadRef.current !== threadAtStart) return;
+      const timedOut = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      setCopilotError({
+        threadId: threadAtStart,
+        message: timedOut
+          ? 'Copilot took too long to answer. Try again.'
+          : e instanceof TypeError
+            ? 'Copilot could not be reached. Check your connection and try again.'
+            : e instanceof Error
+              ? e.message
+              : 'Copilot could not write a reply right now.',
+        run,
+      });
+    } finally {
+      setCopilotBusy(null);
     }
+  };
+
+  const handleCopilotUndo = () => {
+    if (!copilotUndo) return;
+    setReplyText(copilotUndo.text);
+    setCopilotUndo(null);
+    setCopilotNote(null);
   };
 
   const formatTimeAgo = (isoString: string) => {
@@ -636,43 +720,116 @@ export default function UnifiedEmailInbox() {
 
               {/* Reply composer */}
               <div className="shrink-0 space-y-2 border-t border-line px-5 py-3">
-                {/* Copilot chips */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 flex items-center gap-1 text-small text-fg-secondary">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>Copilot</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyAiReplyPreset('demo')}
-                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
-                  >
-                    <CalendarDays className="h-3.5 w-3.5 text-fg-secondary" />
-                    Book demo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyAiReplyPreset('pricing')}
-                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
-                  >
-                    <DollarSign className="h-3.5 w-3.5 text-fg-secondary" />
-                    Pricing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyAiReplyPreset('objection')}
-                    className="focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle"
-                  >
-                    <MessageSquareReply className="h-3.5 w-3.5 text-fg-secondary" />
-                    Handle objection
-                  </button>
-                </div>
+                {/* Copilot: AI reply assistant that reads this thread. Output lands in the composer. */}
+                {(() => {
+                  const hasDraft = !!replyText.trim();
+                  const anyBusy = !!copilotBusy;
+                  const menuBusy = copilotBusy === 'draft' || copilotBusy === 'shorten' || !!copilotBusy?.startsWith('rewrite');
+                  const chipClass =
+                    'focus-ring inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-small text-fg transition-colors hover:bg-subtle disabled:pointer-events-none disabled:opacity-50';
+                  const chips: { action: InboxReplyAction; label: string; icon: React.ReactNode }[] = [
+                    { action: 'book_demo', label: 'Book demo', icon: <CalendarDays className="h-3.5 w-3.5 text-fg-secondary" /> },
+                    { action: 'pricing', label: 'Pricing', icon: <DollarSign className="h-3.5 w-3.5 text-fg-secondary" /> },
+                    { action: 'handle_objection', label: 'Handle objection', icon: <MessageSquareReply className="h-3.5 w-3.5 text-fg-secondary" /> },
+                  ];
+                  const undo = copilotUndo?.threadId === selectedThreadId ? copilotUndo : null;
+                  const note = copilotNote?.threadId === selectedThreadId ? copilotNote : null;
+                  const error = copilotError?.threadId === selectedThreadId ? copilotError : null;
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Menu
+                          label="Copilot"
+                          align="start"
+                          trigger={(props) => (
+                            <Button
+                              {...props}
+                              variant="secondary"
+                              size="sm"
+                              className="mr-1 h-7 px-2.5"
+                              loading={menuBusy}
+                              disabled={anyBusy || isSendingReply}
+                              icon={<Sparkles />}
+                              title="AI reply assistant: reads this conversation and writes into the composer"
+                            >
+                              <span>{menuBusy ? 'Writing...' : 'Copilot'}</span>
+                              <ChevronDown className="-mr-0.5 opacity-60" aria-hidden />
+                            </Button>
+                          )}
+                          items={[
+                            { label: 'Draft reply', icon: <PenLine />, onSelect: () => runCopilot({ action: 'draft' }) },
+                            { label: 'Shorten', icon: <Scissors />, disabled: !hasDraft, onSelect: () => runCopilot({ action: 'shorten' }) },
+                            'divider',
+                            ...COPILOT_TONES.map(({ tone, label }) => ({
+                              label: `Rewrite: ${label}`,
+                              icon: <Wand2 />,
+                              disabled: !hasDraft,
+                              onSelect: () => runCopilot({ action: 'rewrite', tone }),
+                            })),
+                          ]}
+                        />
+                        {chips.map((chip) => {
+                          const busy = copilotBusy === chip.action;
+                          return (
+                            <button
+                              key={chip.action}
+                              type="button"
+                              onClick={() => runCopilot({ action: chip.action })}
+                              disabled={anyBusy || isSendingReply}
+                              aria-busy={busy || undefined}
+                              className={chipClass}
+                            >
+                              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-fg-secondary" aria-hidden /> : chip.icon}
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+
+                        {(undo || note) && (
+                          <div className="ml-auto flex items-center gap-2">
+                            {note && (note.fallback || note.move) && (
+                              <span className="text-caption text-fg-tertiary">
+                                {note.fallback
+                                  ? 'AI unavailable: basic template, review before sending'
+                                  : note.move === 'discover'
+                                    ? 'Asking a question'
+                                    : 'Suggesting a call'}
+                              </span>
+                            )}
+                            {undo && (
+                              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleCopilotUndo} disabled={anyBusy} icon={<Undo2 />}>
+                                Undo
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {error && (
+                        <div role="alert" className="flex items-center gap-2 text-small text-danger-fg">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 truncate">{error.message}</span>
+                          <button
+                            type="button"
+                            onClick={() => runCopilot(error.run)}
+                            disabled={anyBusy}
+                            className="focus-ring shrink-0 rounded-sm font-medium underline underline-offset-2"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <Textarea
-                  rows={3}
+                  rows={replyText.split('\n').length > 3 ? 7 : 3}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Write a reply, or pick a Copilot suggestion above"
+                  readOnly={!!copilotBusy}
+                  aria-busy={!!copilotBusy || undefined}
+                  placeholder="Write a reply, or let Copilot draft one from this conversation"
                   className="min-h-0 resize-none font-sans leading-relaxed"
                 />
 

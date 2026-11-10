@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { blockUnconnectedSending } from '@/lib/server/sendingPolicy';
 import { getResendApiKey } from '@/lib/resendConfig';
 
 export async function POST(req: NextRequest) {
+  // Safety switch: client workspaces can't send until their own mailbox is connected.
+  const blocked = await blockUnconnectedSending(req);
+  if (blocked) return blocked;
   try {
     const payload = await req.json();
     const { lead_id, to, from, subject, body, cadence_day, touch_number } = payload;
