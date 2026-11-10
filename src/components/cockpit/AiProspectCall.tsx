@@ -228,7 +228,7 @@ export function AiProspectCall({
     let cancelled = false;
     (async () => {
       busyRef.current = true;
-      const greeting = `Hello, ${firstName} speaking.`;
+      const greeting = 'Hello?';
       const src = await tts(greeting);
       if (cancelled) return;
       pushTurn({ role: 'prospect', content: greeting });

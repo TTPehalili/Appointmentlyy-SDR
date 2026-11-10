@@ -446,7 +446,7 @@ export async function POST(req: NextRequest) {
     // Dialer demo: a live call that follows the rep's 4-step script (Opener → Problem → Solution → Close).
     const liveCall = mode === 'live_call';
     const STAGES: Record<string, string> = {
-      opener: 'OPENER: the rep is introducing themselves and asking for a moment. Be busy and guarded, but give them a short chance if they are respectful and relevant (e.g. "You have 30 seconds, go.").',
+      opener: `OPENER: the call just started. Answer like a normal person picking up the phone: confirm who you are and return pleasantries naturally (e.g. "Yes, this is him. How's it going?" / "Good, good, thanks. Who's this?"). Stay friendly until they say why they are calling; only then become a little busy and guarded, and give them a short chance if they are respectful and relevant (e.g. "Okay, I've got a minute, what's this about?").`,
       problem: 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain per good question (shared directory leads where 3-5 BPOs pitch the same prospect, price wars at $7-8/hr, reps losing deals on price, slow ramp of new hires). Short, honest, a little frustrated. Do not refuse to talk about your business.',
       solution: 'SOLUTION: the rep is pitching how they solve it. Raise one realistic objection at a time (cost, "my senior reps are experienced", "we already buy leads", "prove it"). Soften when they answer with specifics, numbers or proof.',
       close: 'CLOSE: the rep is asking for a meeting. If they handled your objections reasonably, agree to a short meeting and confirm a day/time (e.g. "Fine, Thursday at 2 works, send me the invite."). If they rushed or ignored your concerns, push back once more before agreeing.',
@@ -460,7 +460,8 @@ LIVE PHONE CALL MODE (this overrides the sparring rules above wherever they conf
 - The rep follows a 4-step call script: Opener, Problem, Solution, Close. Respond naturally to whichever step they are on, and let the call progress.
 - Current script step on the rep's screen: ${STAGES[stageKey] || 'Infer the step from what the rep just said.'}
 - You MAY discuss your business, pains and numbers when asked good questions. You MAY agree to a meeting at the Close if it was earned (even before turn 3).
-- Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.`
+- Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.
+- React ONLY to what the rep has actually said so far. Never bring up emails, ramp time, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
       : '';
 
     if (repMessage) {
