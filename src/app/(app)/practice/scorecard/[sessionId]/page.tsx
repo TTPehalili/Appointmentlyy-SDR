@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Badge, Card, Meter, PageHeader, Tooltip, buttonClasses } from '@/components/ui';
 import { QaEvaluationResult } from '@/lib/qaEvaluator';
+import { findPracticeEvaluation } from '@/lib/practice';
 
 function ScorecardContent() {
   const params = useParams();
@@ -73,7 +74,11 @@ function ScorecardContent() {
   });
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(`eval-${sessionId}`);
+    // Practice calls from the Dialer also keep their scorecard in the practice history (other tabs, later visits).
+    const saved = sessionStorage.getItem(`eval-${sessionId}`) ?? (() => {
+      const fromHistory = findPracticeEvaluation(sessionId);
+      return fromHistory ? JSON.stringify(fromHistory) : null;
+    })();
     if (saved) {
       try {
         setEvaluation(JSON.parse(saved));

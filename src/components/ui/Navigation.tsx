@@ -125,6 +125,8 @@ export interface MenuItem {
   onSelect: () => void;
   danger?: boolean;
   shortcut?: string;
+  /** Shown but not selectable (skipped by arrow keys). */
+  disabled?: boolean;
 }
 
 /** The `⋯` overflow menu used for progressive disclosure everywhere. */
@@ -176,7 +178,7 @@ export function Menu({
     document.addEventListener('mousedown', onDown);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onResize);
-    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus());
     return () => {
       document.removeEventListener('mousedown', onDown);
       window.removeEventListener('scroll', onScroll, true);
@@ -185,7 +187,7 @@ export function Menu({
   }, [open]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const els = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    const els = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
     const i = els.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -234,6 +236,7 @@ export function Menu({
                 type="button"
                 role="menuitem"
                 tabIndex={-1}
+                disabled={it.disabled}
                 onClick={() => {
                   setOpen(false);
                   it.onSelect();
@@ -241,6 +244,7 @@ export function Menu({
                 className={cn(
                   'flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-body outline-none',
                   'hover:bg-subtle focus:bg-subtle [&_svg]:size-4',
+                  'disabled:pointer-events-none disabled:opacity-50',
                   it.danger ? 'text-danger-fg' : 'text-fg',
                 )}
               >

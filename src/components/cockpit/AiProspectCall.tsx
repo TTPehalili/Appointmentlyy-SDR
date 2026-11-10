@@ -11,7 +11,7 @@ import { Button } from '@/components/ui';
  * voiced by ElevenLabs. Everything stops when the component unmounts (hang up / outcome).
  */
 
-interface Turn {
+export interface Turn {
   role: 'rep' | 'prospect';
   content: string;
 }
@@ -19,6 +19,9 @@ interface Turn {
 type Status = 'connecting' | 'prospect' | 'listening' | 'thinking' | 'paused';
 
 const STAGE_NAMES = ['opener', 'problem', 'solution', 'close'];
+
+/** How long the rep must be silent before their turn is sent to the prospect. */
+const SILENCE_MS = 2000;
 
 type Recognition = {
   lang: string;
@@ -45,6 +48,8 @@ export function AiProspectCall({
   scriptStep,
   scriptContext,
   objection,
+  difficulty,
+  onTurnsChange,
 }: {
   personaId: string;
   voiceId: string;
@@ -57,6 +62,10 @@ export function AiProspectCall({
   scriptContext?: { goal: string; text: string; tip: string };
   /** Objection the rep chose before dialing: the prospect's main objection for this call. */
   objection?: { label: string; line: string } | null;
+  /** Practice mode: how hard the buyer is to win (friendly | realistic | tough). Omitted on normal calls. */
+  difficulty?: string;
+  /** Practice mode: receives the transcript after every turn (for the end-of-call summary). */
+  onTurnsChange?: (turns: Turn[]) => void;
 }) {
   const firstName = prospectName.split(' ')[0] || 'there';
   const [turns, setTurns] = React.useState<Turn[]>([]);
@@ -77,6 +86,11 @@ export function AiProspectCall({
   const stepRef = React.useRef(scriptStep);
   const scriptRef = React.useRef(scriptContext);
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  // What the rep has said so far in this turn (survives the browser restarting recognition).
+  const pendingSpeech = React.useRef('');
+  // Lines typed while the customer was speaking; sent as soon as they finish.
+  const queuedLines = React.useRef<string[]>([]);
+  const silenceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     stepRef.current = scriptStep;
@@ -89,12 +103,20 @@ export function AiProspectCall({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [turns, interim]);
 
+  const onTurnsRef = React.useRef(onTurnsChange);
+  React.useEffect(() => {
+    onTurnsRef.current = onTurnsChange;
+  }, [onTurnsChange]);
+
   const pushTurn = React.useCallback((t: Turn) => {
     turnsRef.current = [...turnsRef.current, t];
     setTurns(turnsRef.current);
+    onTurnsRef.current?.(turnsRef.current);
   }, []);
 
   const stopListening = React.useCallback(() => {
+    clearTimeout(silenceTimer.current ?? undefined);
+    silenceTimer.current = null;
     const r = recRef.current;
     recRef.current = null;
     if (r) {
@@ -153,24 +175,47 @@ export function AiProspectCall({
     const rec = new Ctor();
     rec.lang = 'en-US';
     rec.interimResults = true;
-    rec.continuous = false;
-    let finalText = '';
+    // Keep listening through short pauses; the rep's turn ends only after ~2s of silence, so they
+    // can finish full sentences (and the whole script line) before the prospect answers.
+    rec.continuous = true;
+    let liveText = '';
+    let finished = false;
+    const finish = () => {
+      if (!alive.current || finished) return;
+      finished = true;
+      clearTimeout(silenceTimer.current ?? undefined);
+      silenceTimer.current = null;
+      const said = `${pendingSpeech.current} ${liveText}`.replace(/\s+/g, ' ').trim();
+      pendingSpeech.current = '';
+      if (recRef.current === rec) recRef.current = null;
+      rec.onend = null;
+      rec.onresult = null;
+      try {
+        rec.stop();
+      } catch {}
+      if (said) respondRef.current(said);
+      else setTimeout(() => alive.current && listenRef.current(), 250);
+    };
     rec.onresult = (e) => {
       let live = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) finalText += r[0].transcript;
+        if (r.isFinal) pendingSpeech.current = `${pendingSpeech.current} ${r[0].transcript}`;
         else live += r[0].transcript;
       }
-      setInterim(live || finalText);
+      liveText = live;
+      setInterim(`${pendingSpeech.current} ${live}`.replace(/\s+/g, ' ').trim());
+      clearTimeout(silenceTimer.current ?? undefined);
+      silenceTimer.current = setTimeout(finish, SILENCE_MS);
     };
     rec.onerror = () => {};
     rec.onend = () => {
+      // The browser can end a session on its own (long silence, network): keep what was said and
+      // carry on listening; the silence timer decides when the turn is over.
       if (!alive.current || recRef.current !== rec) return;
       recRef.current = null;
-      const said = finalText.trim();
-      if (said) respondRef.current(said);
-      else setTimeout(() => alive.current && listenRef.current(), 250); // silence: keep listening
+      if (silenceTimer.current) return; // a pause is already being timed: finish() will send it
+      setTimeout(() => alive.current && listenRef.current(), 250);
     };
     recRef.current = rec;
     setStatus('listening');
@@ -184,9 +229,15 @@ export function AiProspectCall({
 
   const respond = React.useCallback(
     async (text: string) => {
-      if (!alive.current || busyRef.current || !text.trim()) return;
+      if (!alive.current || !text.trim()) return;
+      // Typed while the customer is talking/thinking: queue it and send when they finish.
+      if (busyRef.current) {
+        queuedLines.current = [...queuedLines.current, text.trim()];
+        return;
+      }
       busyRef.current = true;
       stopListening();
+      pendingSpeech.current = '';
       pushTurn({ role: 'rep', content: text.trim() });
       setStatus('thinking');
       let reply = '';
@@ -204,6 +255,7 @@ export function AiProspectCall({
             scriptStepTip: scriptRef.current?.tip || '',
             objectionLabel: objection?.label || '',
             objectionLine: objection?.line || '',
+            ...(difficulty ? { difficulty } : {}),
             transcript: turnsRef.current.map((t) => ({ role: t.role, content: t.content })),
             repMessage: text.trim(),
             objectives: [],
@@ -225,9 +277,13 @@ export function AiProspectCall({
       if (!audio) audio = await tts(reply);
       await play(audio);
       busyRef.current = false;
-      if (alive.current) listen();
+      if (!alive.current) return;
+      const queued = queuedLines.current.join(' ');
+      queuedLines.current = [];
+      if (queued) respondRef.current(queued);
+      else listen();
     },
-    [personaId, objection, pushTurn, stopListening, tts, play, listen],
+    [personaId, objection, difficulty, pushTurn, stopListening, tts, play, listen],
   );
 
   React.useEffect(() => {
@@ -248,7 +304,11 @@ export function AiProspectCall({
       setStatus('prospect');
       await play(src);
       busyRef.current = false;
-      if (!cancelled) listen();
+      if (cancelled) return;
+      const queued = queuedLines.current.join(' ');
+      queuedLines.current = [];
+      if (queued) respondRef.current(queued);
+      else listen();
     })();
     return () => {
       cancelled = true;

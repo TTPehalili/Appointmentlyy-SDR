@@ -442,7 +442,7 @@ export async function POST(req: NextRequest) {
     const rateLimitResponse = applyRateLimit(req, { maxRequests: 120, windowMs: 60000 });
     if (rateLimitResponse) return rateLimitResponse;
 
-    const { personaId, transcript = [], repMessage = '', objectives = [], country = 'USA', mode = '', scriptStage = '', scriptStepGoal = '', scriptStepText = '', scriptStepTip = '', objectionLabel = '', objectionLine = '' } = await req.json();
+    const { personaId, transcript = [], repMessage = '', objectives = [], country = 'USA', mode = '', scriptStage = '', scriptStepGoal = '', scriptStepText = '', scriptStepTip = '', objectionLabel = '', objectionLine = '', difficulty = '' } = await req.json();
     // Script context sent by the Dialer (plain text only; backticks/dollar signs stripped for the prompt).
     const cleanScript = (v: unknown) => String(v || '').replace(/[`$]/g, '').slice(0, 900);
     const stepGoal = cleanScript(scriptStepGoal);
@@ -453,9 +453,22 @@ export async function POST(req: NextRequest) {
     const isBrushOff = /email|busy|number/i.test(objLabel);
     // Dialer demo: a live call that follows the rep's 4-step script (Opener → Problem → Solution → Close).
     const liveCall = mode === 'live_call';
+    const persona = SPARRING_PERSONAS.find(p => p.id === personaId) || SPARRING_PERSONAS[0];
+    // The BPO buyers keep their BPO-specific pains; other practice personas use their own scenario.
+    const bpoBuyer = persona.id === 'demo-dialer-julian' || persona.id === 'bpo-directory-buyer';
+    // Practice mode only: how hard the buyer is to win. Absent on normal Dialer calls (no change).
+    const DIFFICULTY_LINES: Record<string, string> = {
+      friendly: 'DIFFICULTY FOR THIS PRACTICE CALL: friendly. Be open and warm. Raise your objection once, mildly, and accept any reasonable answer; agree to a meeting at the Close if asked politely.',
+      realistic: 'DIFFICULTY FOR THIS PRACTICE CALL: realistic. Behave like a typical busy prospect: push back once or twice and soften when the rep handles it well.',
+      tough: 'DIFFICULTY FOR THIS PRACTICE CALL: tough. Be more resistant and impatient than usual: press your objection at least twice, challenge vague or generic answers, and only agree to a meeting if the rep acknowledges your concern, answers with specifics and asks for a clear next step.',
+    };
+    const difficultyText = DIFFICULTY_LINES[String(difficulty || '').toLowerCase()];
+    const difficultyLine = difficultyText ? `- ${difficultyText}\n` : '';
     const STAGES: Record<string, string> = {
       opener: `OPENER: the call just started. Answer like a normal person picking up the phone: confirm who you are and return pleasantries naturally (e.g. "Yes, this is him. How's it going?" / "Good, good, thanks. Who's this?"). Stay friendly until they say why they are calling; only then become a little busy and guarded, and give them a short chance if they are respectful and relevant (e.g. "Okay, I've got a minute, what's this about?").`,
-      problem: 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain per good question (shared directory leads where 3-5 BPOs pitch the same prospect, price wars at $7-8/hr, reps losing deals on price, slow ramp of new hires). Short, honest, a little frustrated. Do not refuse to talk about your business.',
+      problem: bpoBuyer
+        ? 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain per good question (shared directory leads where 3-5 BPOs pitch the same prospect, price wars at $7-8/hr, reps losing deals on price, slow ramp of new hires). Short, honest, a little frustrated. Do not refuse to talk about your business.'
+        : 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain from your situation per good question. Short, honest, a little frustrated. Do not refuse to talk about your business.',
       solution: 'SOLUTION: the rep is pitching how they solve it. Raise one realistic objection at a time (cost, "my senior reps are experienced", "we already buy leads", "prove it"). Soften when they answer with specifics, numbers or proof.',
       close: 'CLOSE: the rep is asking for a meeting. If they handled your objections reasonably, agree to a short meeting and confirm a day/time (e.g. "Fine, Thursday at 2 works, send me the invite."). If they rushed or ignored your concerns, push back once more before agreeing.',
     };
@@ -465,12 +478,12 @@ export async function POST(req: NextRequest) {
 
 LIVE PHONE CALL MODE (this overrides the sparring rules above wherever they conflict):
 - This is a realistic sales call, not a stress test. Behave like a real, busy but reasonable prospect who can be won over.
-- The rep follows a 4-step call script: Opener, Problem, Solution, Close. Respond naturally to whichever step they are on, and let the call progress.
+${difficultyLine}- The rep follows a 4-step call script: Opener, Problem, Solution, Close. Respond naturally to whichever step they are on, and let the call progress.
 - Current script step on the rep's screen: ${STAGES[stageKey] || 'Infer the step from what the rep just said.'}
 - You MAY discuss your business, pains and numbers when asked good questions. You MAY agree to a meeting at the Close if it was earned (even before turn 3).
 - Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.
 ${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line they are reading (roughly): ${stepText}. Coaching note for the rep: ${stepTip}.
-- Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, vent honestly about your lead quality and price pressure; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : 'your signature "no budget" objection'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
+- Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, ${bpoBuyer ? 'vent honestly about your lead quality and price pressure' : 'share an honest pain from your situation'}; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : bpoBuyer ? 'your signature "no budget" objection' : 'your core pushback'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
 ` : ''}${objLabel ? `- YOUR MAIN OBJECTION ON THIS CALL (the rep chose to practise it): "${objLine}" (${objLabel}). It replaces your usual "no budget" objection${/budget/i.test(objLabel) ? '' : ': on this call do NOT mention budget, finance freezes or spend approvals at all; when they pitch at the Solution step, push back with this objection (or a natural variation of it) instead'}. Raise it ${isBrushOff ? 'early, at the Opener, as soon as they say why they are calling' : 'at the natural moment, usually right after they pitch at the Solution step'}, in your own words and with real emotion. Keep pressing it until the rep handles it well (acknowledges you, answers with substance, proposes a sensible next step); then soften and let the call move on.
 ` : ''}- React ONLY to what the rep has actually said so far. Never bring up emails, ramp time, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
       : '';
@@ -482,7 +495,6 @@ ${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line
       }
     }
 
-    const persona = SPARRING_PERSONAS.find(p => p.id === personaId) || SPARRING_PERSONAS[0];
     const voiceConfig = getPersonaVoiceByCountry(persona, (country as SparringCountry) || 'USA');
     const googleApiKey = process.env.GOOGLE_API_KEY;
     const elevenApiKey = (process.env.ELEVENLABS_API_KEY || '').trim();

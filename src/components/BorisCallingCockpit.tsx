@@ -49,8 +49,11 @@ import { getStoredDispositions, subscribeToDispositions, CallDisposition } from 
 import { useSession, isRoleAdmin } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
-import { AiProspectCall } from '@/components/cockpit/AiProspectCall';
-import { SPARRING_PERSONAS } from '@/lib/personas';
+import { AiProspectCall, type Turn as ProspectTurn } from '@/components/cockpit/AiProspectCall';
+import { PracticeBanner, PracticeSummaryDialog, type PracticeSummaryData } from '@/components/cockpit/PracticeCall';
+import { type PracticeSetup, buildPracticeLead, getPracticePersona } from '@/lib/practice';
+import { SPARRING_PERSONAS, getPersonaVoiceByCountry } from '@/lib/personas';
+import { getPresetRebuttals } from '@/lib/dialerRebuttals';
 import { useTelephony } from '@/lib/telephony/useTelephony';
 import {
   CallTelemetryState,
@@ -82,145 +85,6 @@ import {
   getOrgRepRoster,
   useCallbackTasks
 } from '@/components/cockpit/CallbackTasks';
-
-interface ARMRebuttal {
-  id: string;
-  shortLabel: string;
-  category: string;
-  trigger: string;
-  acknowledge: string;
-  respond: string;
-  move: string;
-  fullSpoken: string;
-}
-
-// The platform owner's own pitch: demo workspace only.
-const DEMO_PRESET_REBUTTALS: ARMRebuttal[] = [
-  {
-    id: 'OBJ_SEND_EMAIL',
-    shortLabel: 'Send Email / Busy',
-    category: 'Brush-Off',
-    trigger: 'Just send me an email / I am busy right now',
-    acknowledge: '100% fair, {{first_name}}. I know I caught you in the middle of your day and want to protect your inbox.',
-    respond: 'The reason I am calling instead of just blasting another email is that most BPO leaders tell us their inboxes are buried under 50 generic pitches a day. I sent you a quick 4-line note yesterday titled "quick question on {{company}} ramp time" regarding the rookie lead burn.',
-    move: 'I can resend that right now, but do you have 20 seconds just to tell me: are your new reps already ramping in 72 hours without burning paid leads, or is that a bottleneck on your floor?',
-    fullSpoken: '100% fair, {{first_name}}. I know I caught you in the middle of your day and want to protect your inbox. The reason I am calling instead of just blasting another email is that most BPO leaders tell us their inboxes are buried under 50 generic pitches a day. I sent you a quick 4-line note yesterday titled "quick question on {{company}} ramp time" regarding the rookie lead burn. I can resend that right now, but do you have 20 seconds just to tell me: are your new reps already ramping in 72 hours without burning paid leads, or is that a bottleneck on your floor?'
-  },
-  {
-    id: 'OBJ_HAVE_TEAM',
-    shortLabel: 'Have Internal Team',
-    category: 'Internal Team',
-    trigger: 'We already have an internal SDR team / agency',
-    acknowledge: 'That makes total sense, {{first_name}}—most established BPOs at your scale already have experienced callers on the floor.',
-    respond: 'We are definitely not here to replace your reps or pitch another agency. Our entire system sits directly inside your existing floor: feeding live objection rebuttals in 150 milliseconds and pre-sparring reps on simulated hostile buyer calls before they touch live leads.',
-    move: 'Our clients use it to protect their current team from burning expensive lists. Would it hurt to see a 2-minute screen share with Emil to see how it works alongside your current dialer?',
-    fullSpoken: 'That makes total sense, {{first_name}}—most established BPOs at your scale already have experienced callers on the floor. We are definitely not here to replace your reps or pitch another agency. Our entire system sits directly inside your existing floor: feeding live objection rebuttals in 150 milliseconds and pre-sparring reps on simulated hostile buyer calls before they touch live leads. Our clients use it to protect their current team from burning expensive lists. Would it hurt to see a 2-minute screen share with Emil to see how it works alongside your current dialer?'
-  },
-  {
-    id: 'OBJ_PRICING',
-    shortLabel: 'How Much / Price?',
-    category: 'Pricing',
-    trigger: 'How much does this cost? Just tell me the price.',
-    acknowledge: 'I completely respect that, {{first_name}}—you need to know if the unit economics make sense before spending a single minute on this.',
-    respond: 'Because we customize the AI sparring engine and objection cues to your exact outbound campaign scripts and seat count at {{company}}, there isn\'t a generic off-the-shelf sticker price. Everything is calibrated so the system pays for itself by saving just 2 burned deals per rep.',
-    move: 'Emil can pull up your exact floor numbers in 10 minutes and show you the exact breakdown. Does Thursday at 2:00 PM work for a quick look?',
-    fullSpoken: 'I completely respect that, {{first_name}}—you need to know if the unit economics make sense before spending a single minute on this. Because we customize the AI sparring engine and objection cues to your exact outbound campaign scripts and seat count at {{company}}, there isn\'t a generic off-the-shelf sticker price. Everything is calibrated so the system pays for itself by saving just 2 burned deals per rep. Emil can pull up your exact floor numbers in 10 minutes and show you the exact breakdown. Does Thursday at 2:00 PM work for a quick look?'
-  },
-  {
-    id: 'OBJ_NO_BUDGET',
-    shortLabel: 'No Budget',
-    category: 'Budget',
-    trigger: 'We don\'t have budget for new software right now',
-    acknowledge: 'I hear you loud and clear. Running a competitive BPO means keeping margins tight and eliminating software bloat.',
-    respond: 'This is not an extra software line item; it actually replaces the dollars you are already burning when junior reps fumble shared leads or get cut down on price in the first 30 seconds.',
-    move: 'Let\'s take money completely off the table. Take 15 minutes with Emil—if the math doesn\'t prove an immediate 3x return on your lead spend, we shake hands and walk away. How does Tuesday morning look?',
-    fullSpoken: 'I hear you loud and clear. Running a competitive BPO means keeping margins tight and eliminating software bloat. This is not an extra software line item; it actually replaces the dollars you are already burning when junior reps fumble shared leads or get cut down on price in the first 30 seconds. Let\'s take money completely off the table. Take 15 minutes with Emil—if the math doesn\'t prove an immediate 3x return on your lead spend, we shake hands and walk away. How does Tuesday morning look?'
-  },
-  {
-    id: 'OBJ_SHARED_LEADS_OA',
-    shortLabel: 'Use Lead Brokers',
-    category: 'Lead Vendors',
-    trigger: 'We already buy our leads from Outsource Accelerator / brokers',
-    acknowledge: 'That makes total sense—they do a solid job driving inbound list volume.',
-    respond: 'The hidden catch is that you are paying full price for leads that are co-brokered to 3 to 5 rival BPOs at the exact same hour. If your reps hesitate or sound like commodity telemarketers, those leads are dead on arrival.',
-    move: 'We pre-train reps to win the direct contract before competitors even get past the gatekeeper. Give Emil 15 minutes to show you the live difference. How is Thursday afternoon?',
-    fullSpoken: 'That makes total sense—they do a solid job driving inbound list volume. The hidden catch is that you are paying full price for leads that are co-brokered to 3 to 5 rival BPOs at the exact same hour. If your reps hesitate or sound like commodity telemarketers, those leads are dead on arrival. We pre-train reps to win the direct contract before competitors even get past the gatekeeper. Give Emil 15 minutes to show you the live difference. How is Thursday afternoon?'
-  },
-  {
-    id: 'OBJ_HOW_DID_YOU_GET_NUMBER',
-    shortLabel: 'Got My Number?',
-    category: 'Compliance',
-    trigger: 'How did you get my direct phone number?',
-    acknowledge: 'Completely fair question, {{first_name}}—I would wonder the same thing if someone reached my desk direct.',
-    respond: 'We track leadership profiles across high-growth BPOs using verified B2B intelligence engines like Apollo and LinkedIn Sales Navigator to reach heads of outbound operations directly.',
-    move: 'I reached out specifically because of your team\'s recent expansion at {{company}}. Since I have you for 20 seconds, was cutting rep onboarding time even on your radar this quarter?',
-    fullSpoken: 'Completely fair question, {{first_name}}—I would wonder the same thing if someone reached my desk direct. We track leadership profiles across high-growth BPOs using verified B2B intelligence engines like Apollo and LinkedIn Sales Navigator to reach heads of outbound operations directly. I reached out specifically because of your team\'s recent expansion at {{company}}. Since I have you for 20 seconds, was cutting rep onboarding time even on your radar this quarter?'
-  }
-];
-
-
-const armRebuttal = (r: Omit<ARMRebuttal, 'fullSpoken'>): ARMRebuttal => ({
-  ...r,
-  fullSpoken: `${r.acknowledge} ${r.respond} ${r.move}`,
-});
-
-/** Neutral starter rebuttals for client workspaces ({{my_company}} is the workspace name). */
-const NEUTRAL_PRESET_REBUTTALS: ARMRebuttal[] = [
-  armRebuttal({
-    id: 'OBJ_SEND_EMAIL',
-    shortLabel: 'Send Email / Busy',
-    category: 'Brush-Off',
-    trigger: 'Just send me an email / I am busy right now',
-    acknowledge: 'Happy to, {{first_name}}. I know I caught you in the middle of your day.',
-    respond: 'So I send you something useful instead of another generic email, can I ask one quick question about how {{company}} handles this today?',
-    move: "If it isn't relevant, I'll say thanks and let you go. Fair enough?",
-  }),
-  armRebuttal({
-    id: 'OBJ_HAVE_TEAM',
-    shortLabel: 'Already Covered',
-    category: 'Incumbent',
-    trigger: 'We already have a team / provider for this',
-    acknowledge: 'That makes sense, {{first_name}}. Most teams like yours already have something in place.',
-    respond: 'We usually work alongside what you already have, and the teams we help often just wanted better results in one specific area.',
-    move: "Would it hurt to compare notes for 15 minutes and see if there's anything worth improving?",
-  }),
-  armRebuttal({
-    id: 'OBJ_PRICING',
-    shortLabel: 'How Much / Price?',
-    category: 'Pricing',
-    trigger: 'How much does this cost? Just tell me the price.',
-    acknowledge: 'Completely fair, {{first_name}}. You need to know the numbers make sense before you spend any time on this.',
-    respond: "Pricing depends on what {{company}} actually needs, so I don't want to quote you something that doesn't fit.",
-    move: 'Can we set up a short call where we look at your situation and give you a real number? How does later this week look?',
-  }),
-  armRebuttal({
-    id: 'OBJ_NO_BUDGET',
-    shortLabel: 'No Budget',
-    category: 'Budget',
-    trigger: "We don't have budget for this right now",
-    acknowledge: 'I hear you. Budgets are tight and every spend has to earn its place.',
-    respond: "Most of the people we work with didn't have a budget line for this either until they saw what it could save or bring in.",
-    move: "Let's leave money aside for now: would a 15-minute look at whether it's worth it be useful?",
-  }),
-  armRebuttal({
-    id: 'OBJ_NOT_INTERESTED',
-    shortLabel: 'Not Interested',
-    category: 'Brush-Off',
-    trigger: "I'm not interested",
-    acknowledge: "Totally fair, {{first_name}}. You didn't expect my call.",
-    respond: "Before I go, is that because this isn't a priority at {{company}} right now, or because you've already solved it?",
-    move: "If it's timing, when would be a better moment to check back in?",
-  }),
-  armRebuttal({
-    id: 'OBJ_HOW_DID_YOU_GET_NUMBER',
-    shortLabel: 'Got My Number?',
-    category: 'Compliance',
-    trigger: 'How did you get my direct phone number?',
-    acknowledge: "Fair question, {{first_name}}. I'd ask the same thing.",
-    respond: 'We use business contact data providers to reach the people who lead this area at companies like {{company}}.',
-    move: 'Since I have you for a moment, is this something on your radar this quarter?',
-  }),
-];
 
 /** Placeholder lead while a client workspace has no leads yet (the screen shows an empty state). */
 const EMPTY_LEAD = {
@@ -274,11 +138,42 @@ const DEMO_PROSPECT_PERSONA =
   SPARRING_PERSONAS.find((p) => p.id === 'bpo-directory-buyer') ??
   SPARRING_PERSONAS[0];
 
-export default function BorisCallingCockpit() {
+/** Wall-clock time for practice call ids and durations (only called from event handlers). */
+const nowMs = () => Date.now();
+
+/** Call outcomes on the 1-click disposition bar (also offered in the practice summary). */
+const OUTCOME_OPTIONS = [
+  { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-success-bg text-success-fg border-success-500/50', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-warning-bg text-warning-fg border-warning-400', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'No answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Not interested', value: 'Not Interested / Quarantine', activeClass: 'bg-danger-bg text-danger-fg border-danger-fg/40', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+];
+
+/**
+ * The Dialer. With `practice` set (from /practice/session) it becomes a training call in any
+ * workspace: an AI buyer built from the chosen persona answers, the workspace's own script and
+ * objection chips are used, and nothing is written to contacts, activity, callbacks, CRM or telephony.
+ */
+export default function BorisCallingCockpit({
+  practice = null,
+  embedded = false,
+}: {
+  practice?: PracticeSetup | null;
+  /** Rendered inside another page (the Practice tab): no full-height shell or scroll area of its own. */
+  embedded?: boolean;
+} = {}) {
   const { session, role, isAdmin, tenantName: sessionTenant, repName: sessionRep } = useSession();
   const isDemo = useDemoWorkspace();
+  const practicePersona = practice ? getPracticePersona(practice.personaId) : null;
+  const practiceMode = Boolean(practice && practicePersona);
+  const practiceLead = useMemo(() => (practicePersona ? buildPracticeLead(practicePersona) : null), [practicePersona]);
+  // Who answers a simulated call: the practice persona, else the demo workspace's Julian Vance.
+  const prospectPersona = practicePersona ?? DEMO_PROSPECT_PERSONA;
+  const simulatedCall = isDemo || practiceMode;
   const repName = sessionRep || '';
-  const PRESET_REBUTTALS = isDemo ? DEMO_PRESET_REBUTTALS : NEUTRAL_PRESET_REBUTTALS;
+  const PRESET_REBUTTALS = getPresetRebuttals(isDemo);
   const adminClearance = isRoleAdmin(role);
 
   // Tab State for Right Column: 'notes' | 'footprint' | 'callbacks'
@@ -313,15 +208,16 @@ export default function BorisCallingCockpit() {
   const [currentLeadIndex, setCurrentLeadIndex] = useState<number>(0);
 
   // Active Lead Object
-  const activeLead = leadsQueue[currentLeadIndex] || (isDemo ? DEMO_CADENCE_LEADS[0] : EMPTY_LEAD);
-  const hasNoLeads = !isDemo && leadsQueue.length === 0;
+  const activeLead = practiceLead ?? (leadsQueue[currentLeadIndex] || (isDemo ? DEMO_CADENCE_LEADS[0] : EMPTY_LEAD));
+  const hasNoLeads = !practiceMode && !isDemo && leadsQueue.length === 0;
   const nextLeadCandidate = leadsQueue[(currentLeadIndex + 1) % leadsQueue.length];
 
   // Active Contact with live footprint & direct notes
   const activeContact = useMemo(() => {
+    if (practiceLead) return activeLead;
     const contacts = getStoredContacts();
     return contacts.find(c => c.id === activeLead.id || c.email?.toLowerCase() === (activeLead.email || '').toLowerCase()) || (activeLead as any);
-  }, [activeLead, leadsQueue, leadNoteSavedToast]);
+  }, [activeLead, leadsQueue, leadNoteSavedToast, practiceLead]);
 
   // Lead Fields
   const [customerName, setCustomerName] = useState<string>(activeLead.name);
@@ -345,6 +241,13 @@ export default function BorisCallingCockpit() {
   useEffect(() => () => {
     if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
   }, []);
+  // Practice mode: transcript, script steps reached and the end-of-call summary.
+  const practiceTurnsRef = useRef<ProspectTurn[]>([]);
+  const practiceCallStartRef = useRef<number>(0);
+  const practiceObjectionIdRef = useRef<string | null>(practice?.objectionId ?? null);
+  const [practiceStepsReached, setPracticeStepsReached] = useState<number[]>([]);
+  const [practiceSummary, setPracticeSummary] = useState<PracticeSummaryData | null>(null);
+  const [practiceSummaryOpen, setPracticeSummaryOpen] = useState<boolean>(false);
   const [disposition, setDisposition] = useState<string | null>(null);
   const [dispositionNotes, setDispositionNotes] = useState<string>('');
   const [activityToast, setActivityToast] = useState<string | null>(null);
@@ -352,7 +255,7 @@ export default function BorisCallingCockpit() {
   // Real calls through the rep's VICIdial agent session when it's set up (Admin › Phone system +
   // Settings); otherwise the original tel: link. Call state then comes from VICIdial, not a local timer.
   const telephony = useTelephony();
-  const viaVicidial = telephony.mode === 'vicidial';
+  const viaVicidial = !practiceMode && telephony.mode === 'vicidial';
   const callActive = viaVicidial ? telephony.agentState === 'in_call' : isCallingActive;
   const showTelephonyNotice = (message: string) => {
     setActivityToast(`VICIdial: ${message}`);
@@ -362,7 +265,8 @@ export default function BorisCallingCockpit() {
 
   // Script & Objections State
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [selectedRebuttalId, setSelectedRebuttalId] = useState<string | null>(null);
+  // Practice: the objection chosen on the Practice page starts preselected (the rep can change it before dialing).
+  const [selectedRebuttalId, setSelectedRebuttalId] = useState<string | null>(practice?.objectionId ?? null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null);
 
@@ -399,30 +303,30 @@ export default function BorisCallingCockpit() {
     {
       step: 1,
       name: '1. Opener',
-      goal: 'Get permission & reference yesterday\'s email to immediately eliminate cold call resistance.',
-      spokenText: `"Hi {{first_name}}, this is {{rep_name}} with Appointmentlyy. I know I'm catching you unannounced. Do you have 30 seconds? I sent you a quick email yesterday titled 'quick question on {{company}} ramp time' about new reps learning on paid client leads. Did that cross your screen?"`,
-      deliveryTip: 'Calm, confident, unhurried peer-to-peer tone. Do not apologize for calling.'
+      goal: 'Earn 30 seconds and tie the call to yesterday\'s email.',
+      spokenText: `"Hi {{first_name}}, it's {{rep_name}} from Appointmentlyy, I emailed you yesterday about new reps burning paid leads. Got 30 seconds for the short version?"`,
+      deliveryTip: 'Slow, calm, peer tone. Never apologize for calling.'
     },
     {
       step: 2,
       name: '2. Problem',
-      goal: 'Expose the commodity broker trap: 3-5 rival BPOs pitching the exact same lead list.',
-      spokenText: `"Most BPO operations leaders we speak with tell us their biggest leak is buying shared leads from Outsource Accelerator or brokers, only to find out 3 to 5 rival BPOs got the identical list 10 minutes earlier. Junior reps stumble in the first 20 seconds and get chopped down on price. Are your callers dealing with that same price pressure right now?"`,
-      deliveryTip: 'Stop talking immediately after the question. Let the prospect vent about their lead quality.'
+      goal: 'Surface the shared-lead, price-pressure pain in one question.',
+      spokenText: `"Quick question: when your juniors call shared leads that three other BPOs got the same day, how often do they lose on price?"`,
+      deliveryTip: 'Ask, then stop talking. Let them vent.'
     },
     {
       step: 3,
       name: '3. Solution',
-      goal: 'Position private enriched lists + 150ms live objection sparring.',
-      spokenText: `"That's exactly why we built Appointmentlyy. Instead of letting reps practice on live, expensive client leads, we feed real-time consultative rebuttals in 150 milliseconds live on the dial, and spar them against hostile AI buyer personas before Day 1. It cuts ramp time from 4 weeks down to 72 hours."`,
-      deliveryTip: 'Keep it focused on floor economics and rep confidence—not technical jargon.'
+      goal: 'One line of value: reps ready in 72 hours, live help.',
+      spokenText: `"That's what we fix: new reps practice on AI buyers and are call-ready in 72 hours, with live objection help on the call. How are you ramping new hires now?"`,
+      deliveryTip: 'Talk floor economics and rep confidence, not features.'
     },
     {
       step: 4,
       name: '4. Close',
-      goal: 'Lock a 15-20 min executive screen share with Founder Emil.',
-      spokenText: `"{{first_name}}, I want to show you how our BPO client acquisition engine works in a 15-minute screen share with Emil, our founder. No generic pitch deck, just live numbers on your floor scale and how BPOs are eliminating the rookie lead tax. How does Thursday at 2:00 PM look, or does Friday morning work better?"`,
-      deliveryTip: 'Offer a binary time choice (Thursday 2pm vs Friday morning) to make scheduling effortless.'
+      goal: 'Book 15 minutes with founder Emil.',
+      spokenText: `"{{first_name}}, let's get you 15 minutes with Emil, our founder, to run this on your floor numbers. Which works better, Thursday at 2 PM or Friday morning?"`,
+      deliveryTip: 'Give two times, then stay quiet.'
     }
   ];
 
@@ -534,8 +438,9 @@ export default function BorisCallingCockpit() {
     setTenantCalendarLink(readTenantCalendarLink());
   }, [isDemo]);
 
-  // 1. Load Stored Leads on Mount
+  // 1. Load Stored Leads on Mount (practice calls use the persona lead instead)
   useEffect(() => {
+    if (practiceMode) return;
     try {
       const storedLeads = localStorage.getItem('sdr_active_csv_leads');
       if (storedLeads) {
@@ -574,7 +479,7 @@ export default function BorisCallingCockpit() {
     } catch (e) {
       console.warn('Could not load stored leads in Calling Floor:', e);
     }
-  }, []);
+  }, [practiceMode]);
 
   // 2. Track Activities Count
   useEffect(() => {
@@ -830,9 +735,79 @@ export default function BorisCallingCockpit() {
     return PRESET_REBUTTALS.find(r => r.id === selectedRebuttalId) || null;
   }, [selectedRebuttalId, PRESET_REBUTTALS]);
 
+  // Simulated call (demo workspace and practice): ringing, then the AI prospect picks up.
+  const startSimulatedCall = (rebuttal: typeof activeRebuttal = activeRebuttal) => {
+    setDemoCallObjection(rebuttal ? { label: rebuttal.shortLabel, line: interpolate(rebuttal.trigger) } : null);
+    setDemoCallPhase('ringing');
+    setIsCallingActive(true);
+    if (practiceMode) {
+      // Fresh practice call: the drilled objection stays in the banner; the teleprompter starts at the opener.
+      practiceObjectionIdRef.current = rebuttal?.id ?? null;
+      practiceTurnsRef.current = [];
+      setPracticeSummary(null);
+      setPracticeSummaryOpen(false);
+      setDisposition(null);
+      setSelectedRebuttalId(null);
+      setCurrentStep(1);
+      setPracticeStepsReached([1]);
+    }
+    if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
+    demoRingTimer.current = setTimeout(() => {
+      setDemoCallPhase('connected');
+      setCallTimerSeconds(0);
+      practiceCallStartRef.current = Date.now();
+    }, 3500);
+  };
+
+  // Practice: hang up or pick an outcome. A call that connected opens the summary.
+  const endPracticeCall = (outcome: string | null) => {
+    if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
+    const connected = isCallingActive && demoCallPhase === 'connected';
+    setIsCallingActive(false);
+    if (connected) {
+      setPracticeSummary({
+        id: `practice-${nowMs()}`,
+        turns: [...practiceTurnsRef.current],
+        objectionLabel: demoCallObjection?.label ?? null,
+        stepsReached: practiceStepsReached,
+        durationSec: Math.max(0, Math.round((nowMs() - practiceCallStartRef.current) / 1000)),
+        outcome,
+      });
+      setPracticeSummaryOpen(true);
+    } else if (practiceSummary && outcome) {
+      setPracticeSummary({ ...practiceSummary, outcome });
+      setPracticeSummaryOpen(true);
+    }
+  };
+
+  const handlePracticeOutcome = (value: string) => {
+    setDisposition(value);
+    setNotesDraft(buildNotes({ disp: value }));
+    setPracticeSummary(prev => (prev ? { ...prev, outcome: value } : prev));
+  };
+
+  const handlePracticeTryAgain = () => {
+    handleResetTelemetry();
+    startSimulatedCall(PRESET_REBUTTALS.find(r => r.id === practiceObjectionIdRef.current) ?? null);
+  };
+
+  // Move the teleprompter to a script step (practice calls remember which steps were reached).
+  const goToStep = (step: number) => {
+    setSelectedRebuttalId(null);
+    setCurrentStep(step);
+    if (practiceMode && isCallingActive && demoCallPhase === 'connected') {
+      setPracticeStepsReached(prev => (prev.includes(step) ? prev : [...prev, step]));
+    }
+  };
+
   // Save Direct Note on Lead Record (For Non-CRM Customers)
   const handleSaveLeadNote = () => {
     if (!leadNoteInput.trim()) return;
+    if (practiceMode) {
+      setActivityToast('Practice call: notes stay on this screen and are not saved to any contact.');
+      setTimeout(() => setActivityToast(null), 3500);
+      return;
+    }
     const targetId = activeLead.id || directEmail;
     const updated = addContactNote(targetId, leadNoteInput.trim(), repName);
     setLeadNoteInput('');
@@ -852,6 +827,13 @@ export default function BorisCallingCockpit() {
     opts?: { suppressToast?: boolean; skipTelephony?: boolean }
   ): string | undefined => {
     if (!dispName) return;
+    if (practiceMode) {
+      // Training only: no contact touch, activity log, callback, CRM or telephony write.
+      setDisposition(dispName);
+      setNotesDraft(buildNotes({ disp: dispName }));
+      endPracticeCall(dispName);
+      return;
+    }
     setDisposition(dispName);
     setIsCallingActive(false);
     if (viaVicidial && !opts?.skipTelephony) {
@@ -1047,18 +1029,38 @@ export default function BorisCallingCockpit() {
 
 
 
+  // Embedded (Practice page tab): no page shell or own scroll area; the host page provides them.
+  const CanvasTag = embedded ? 'div' : 'main';
+
   return (
-    <div className="flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg">
+    <div className={embedded ? 'w-full font-sans antialiased text-fg' : 'flex h-full min-h-0 flex-1 w-full overflow-hidden bg-app font-sans antialiased text-fg'}>
 
 
       {/* 2. MAIN APP SHELL */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className={embedded ? 'flex min-w-0 flex-col' : 'flex-1 flex flex-col min-w-0 overflow-hidden'}>
 
 
         {/* Scrollable Canvas */}
-        <main className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <CanvasTag className={embedded ? 'space-y-4' : 'flex-1 overflow-y-auto px-6 py-5 space-y-4'}>
 
           {/* TOP FLOOR HEADER & UTILITY BAR */}
+          {practiceMode && practicePersona && practice ? (
+            <>
+              {!embedded && (
+                <PageHeader
+                  title="Practice call"
+                  description="Your real Dialer, script and objections, with an AI buyer on the line."
+                  className="pb-2"
+                />
+              )}
+              <PracticeBanner
+                embedded={embedded}
+                persona={practicePersona}
+                objectionLabel={(isCallingActive || practiceSummary ? demoCallObjection?.label : activeRebuttal?.shortLabel) ?? null}
+                difficulty={practice.difficulty}
+              />
+            </>
+          ) : (
           <PageHeader
             title="Calling floor"
             description={hasNoLeads ? 'No leads in your queue yet' : `Current account: ${partnerName}`}
@@ -1097,6 +1099,7 @@ export default function BorisCallingCockpit() {
               </>
             }
           />
+          )}
 
           {/* ACTIVITY BANNER NOTIFICATION */}
           {activityToast && (
@@ -1193,9 +1196,13 @@ export default function BorisCallingCockpit() {
                       <span className="text-small tabular-nums text-fg-secondary">
                         {headcount}
                       </span>
+                      {practiceMode ? (
+                        <Badge tone="warning">Practice lead</Badge>
+                      ) : (
                       <span className="text-small tabular-nums text-fg-tertiary">
                         {currentLeadIndex + 1} of {leadsQueue.length}
                       </span>
+                      )}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-3 text-small text-fg-secondary">
                       <span className="truncate">
@@ -1256,7 +1263,7 @@ export default function BorisCallingCockpit() {
                         {phone || 'No phone'}
                       </span>
                     </button>
-                  ) : isDemo ? (
+                  ) : simulatedCall ? (
                     <button
                       type="button"
                       disabled={isCallingActive}
@@ -1265,14 +1272,7 @@ export default function BorisCallingCockpit() {
                           alert('No phone number entered for this prospect.');
                           return;
                         }
-                        setDemoCallObjection(activeRebuttal ? { label: activeRebuttal.shortLabel, line: interpolate(activeRebuttal.trigger) } : null);
-                        setDemoCallPhase('ringing');
-                        setIsCallingActive(true);
-                        if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
-                        demoRingTimer.current = setTimeout(() => {
-                          setDemoCallPhase('connected');
-                          setCallTimerSeconds(0);
-                        }, 3500);
+                        startSimulatedCall();
                       }}
                       className={`focus-ring relative inline-flex h-10 cursor-pointer items-center gap-2 rounded-md px-3.5 text-body font-medium transition-colors duration-300 disabled:cursor-default ${
                         isCallingActive
@@ -1333,6 +1333,10 @@ export default function BorisCallingCockpit() {
                       variant="danger"
                       className="size-10"
                       onClick={async () => {
+                        if (practiceMode) {
+                          endPracticeCall(null);
+                          return;
+                        }
                         if (viaVicidial) {
                           const r = await telephony.hangup();
                           if (!r.ok) showTelephonyNotice(r.message);
@@ -1366,6 +1370,7 @@ export default function BorisCallingCockpit() {
                   )}
                 </div>
 
+                {!practiceMode && (<>
                 <div className="flex h-9 items-center gap-1 rounded-md border border-line-strong bg-surface pr-1 focus-within:border-brand-600">
                   <div className="relative flex items-center">
                     <Mail className="ml-2.5 mr-2 size-4 shrink-0 text-fg-tertiary" />
@@ -1410,19 +1415,22 @@ export default function BorisCallingCockpit() {
                     <ChevronRight />
                   </Button>
                 </div>
+                </>)}
               </div>
 
             </div>
 
             {/* DEMO WORKSPACE: an AI prospect answers the simulated call and talks through the script */}
-            {isDemo && isCallingActive && demoCallPhase === 'connected' && (
+            {simulatedCall && isCallingActive && demoCallPhase === 'connected' && (
               <div className="pb-3">
                 <AiProspectCall
                   key={activeLead?.id || 'lead'}
-                  personaId={DEMO_PROSPECT_PERSONA.id}
-                  voiceId={DEMO_PROSPECT_PERSONA.voiceId}
-                  voiceSettings={DEMO_PROSPECT_PERSONA.voiceSettings as Record<string, unknown> | undefined}
-                  prospectName={activeLead?.name || DEMO_PROSPECT_PERSONA.name}
+                  personaId={prospectPersona.id}
+                  voiceId={practiceMode ? getPersonaVoiceByCountry(prospectPersona, 'USA').voiceId : prospectPersona.voiceId}
+                  voiceSettings={prospectPersona.voiceSettings as Record<string, unknown> | undefined}
+                  prospectName={activeLead?.name || prospectPersona.name}
+                  difficulty={practiceMode ? practice?.difficulty : undefined}
+                  onTurnsChange={practiceMode ? (t) => { practiceTurnsRef.current = t; } : undefined}
                   scriptStep={currentStep}
                   objection={demoCallObjection}
                   scriptContext={{
@@ -1440,22 +1448,17 @@ export default function BorisCallingCockpit() {
                 <span className="mr-1 text-caption text-fg-tertiary">
                   Outcome
                 </span>
-                {[
-                  { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-success-bg text-success-fg border-success-500/50', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                  { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-warning-bg text-warning-fg border-warning-400', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                  { label: 'No answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                  { label: 'Not interested', value: 'Not Interested / Quarantine', activeClass: 'bg-danger-bg text-danger-fg border-danger-fg/40', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-                ].map((item) => {
+                {OUTCOME_OPTIONS.map((item) => {
                   const isSelected = disposition === item.value;
+                  // Practice: Callback is just an outcome (no scheduler, no callback task).
+                  const opensScheduler = item.value === CALLBACK_DISPOSITION && !practiceMode;
                   return (
                     <button
                       key={item.value}
                       type="button"
-                      onClick={() => item.value === CALLBACK_DISPOSITION ? setIsCallbackDialogOpen(true) : handleSelectDisposition(item.value)}
+                      onClick={() => opensScheduler ? setIsCallbackDialogOpen(true) : handleSelectDisposition(item.value)}
                       aria-pressed={isSelected}
-                      aria-haspopup={item.value === CALLBACK_DISPOSITION ? 'dialog' : undefined}
+                      aria-haspopup={opensScheduler ? 'dialog' : undefined}
                       className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${isSelected ? item.activeClass : item.idleClass
                         }`}
                     >
@@ -1469,7 +1472,7 @@ export default function BorisCallingCockpit() {
               {disposition && (
                 <span className="flex items-center gap-1.5 text-small text-success-fg">
                   <CheckCircle2 className="size-4 text-success-fg" />
-                  <span>Logged: {disposition}</span>
+                  <span>{practiceMode ? `Outcome: ${disposition} (practice, not logged)` : `Logged: ${disposition}`}</span>
                 </span>
               )}
             </div>
@@ -1493,10 +1496,7 @@ export default function BorisCallingCockpit() {
                       <button
                         key={st.step}
                         type="button"
-                        onClick={() => {
-                          setSelectedRebuttalId(null);
-                          setCurrentStep(st.step);
-                        }}
+                        onClick={() => goToStep(st.step)}
                         aria-pressed={isStepActive}
                         className={`focus-ring inline-flex h-8 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${isStepActive
                             ? 'bg-surface text-fg shadow-xs'
@@ -1866,10 +1866,7 @@ export default function BorisCallingCockpit() {
                   <button
                     type="button"
                     disabled={currentStep === 1}
-                    onClick={() => {
-                      setSelectedRebuttalId(null);
-                      setCurrentStep(prev => Math.max(1, prev - 1));
-                    }}
+                    onClick={() => goToStep(Math.max(1, currentStep - 1))}
                     className={buttonClasses('ghost', 'sm', 'cursor-pointer disabled:opacity-40')}
                   >
                     <ChevronLeft />
@@ -1879,10 +1876,7 @@ export default function BorisCallingCockpit() {
                   {currentStep < scriptSteps.length ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedRebuttalId(null);
-                        setCurrentStep(prev => Math.min(scriptSteps.length, prev + 1));
-                      }}
+                      onClick={() => goToStep(Math.min(scriptSteps.length, currentStep + 1))}
                       className={buttonClasses('primary', 'sm', 'cursor-pointer')}
                     >
                       <span>Next step</span>
@@ -1906,7 +1900,8 @@ export default function BorisCallingCockpit() {
             {/* RIGHT: NOTES & HISTORICAL FOOTPRINT (5 cols) */}
             <div className="lg:col-span-5 space-y-3">
 
-              {/* Tab Navigation Segmented Control */}
+              {/* Tab Navigation Segmented Control (practice: notes only, nothing from real contacts) */}
+              {!practiceMode && (
               <div className="flex items-center rounded-md border border-line bg-subtle p-0.5">
                 <button
                   type="button"
@@ -1957,9 +1952,10 @@ export default function BorisCallingCockpit() {
                   )}
                 </button>
               </div>
+              )}
 
               {/* TAB 3: CALLBACK TASKS (assigned to me, scheduled by me, team for admins) */}
-              {activeRightTab === 'callbacks' && (
+              {activeRightTab === 'callbacks' && !practiceMode && (
                 <CallbacksPanel
                   tasks={callbackTasks}
                   roster={callbackRoster}
@@ -2067,7 +2063,7 @@ export default function BorisCallingCockpit() {
               )}
 
               {/* TAB 2: HISTORICAL COMMUNICATION FOOTPRINT */}
-              {activeRightTab === 'footprint' && (
+              {activeRightTab === 'footprint' && !practiceMode && (
                 <div className="space-y-3 rounded-lg border border-line bg-surface p-4 shadow-xs animate-in fade-in duration-150">
                   <div className="flex items-center justify-between border-b border-line pb-3">
                     <div className="flex items-center gap-2">
@@ -2183,8 +2179,24 @@ export default function BorisCallingCockpit() {
           </div>
 
           </>)}
-        </main>
+        </CanvasTag>
       </div>
+
+      {practiceMode && practicePersona && practice && practiceSummary && (
+        <PracticeSummaryDialog
+          key={practiceSummary.id}
+          open={practiceSummaryOpen}
+          onClose={() => setPracticeSummaryOpen(false)}
+          summary={practiceSummary}
+          persona={practicePersona}
+          difficulty={practice.difficulty}
+          scriptSteps={scriptSteps.map(s => ({ step: s.step, name: s.name }))}
+          outcomes={OUTCOME_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+          onOutcomeChange={handlePracticeOutcome}
+          onTryAgain={handlePracticeTryAgain}
+          embedded={embedded}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* QUICK FOLLOW-UP EMAIL COMPOSER MODAL                                      */}
