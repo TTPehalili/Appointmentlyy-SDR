@@ -49,6 +49,8 @@ import { getStoredDispositions, subscribeToDispositions, CallDisposition } from 
 import { useSession, isRoleAdmin } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { AiProspectCall } from '@/components/cockpit/AiProspectCall';
+import { SPARRING_PERSONAS } from '@/lib/personas';
 import { useTelephony } from '@/lib/telephony/useTelephony';
 import {
   CallTelemetryState,
@@ -264,6 +266,13 @@ const AGENT_STATE_LABEL: Record<string, string> = {
   logged_out: 'Not logged in',
   unknown: 'Connecting',
 };
+
+
+/** The AI buyer who answers demo calls (the Julian Vance BPO director persona). */
+const DEMO_PROSPECT_PERSONA =
+  SPARRING_PERSONAS.find((p) => p.id === 'demo-dialer-julian') ??
+  SPARRING_PERSONAS.find((p) => p.id === 'bpo-directory-buyer') ??
+  SPARRING_PERSONAS[0];
 
 export default function BorisCallingCockpit() {
   const { session, role, isAdmin, tenantName: sessionTenant, repName: sessionRep } = useSession();
@@ -1401,6 +1410,20 @@ export default function BorisCallingCockpit() {
               </div>
 
             </div>
+
+            {/* DEMO WORKSPACE: an AI prospect answers the simulated call and talks through the script */}
+            {isDemo && isCallingActive && demoCallPhase === 'connected' && (
+              <div className="pb-3">
+                <AiProspectCall
+                  key={activeLead?.id || 'lead'}
+                  personaId={DEMO_PROSPECT_PERSONA.id}
+                  voiceId={DEMO_PROSPECT_PERSONA.voiceId}
+                  voiceSettings={DEMO_PROSPECT_PERSONA.voiceSettings as Record<string, unknown> | undefined}
+                  prospectName={activeLead?.name || DEMO_PROSPECT_PERSONA.name}
+                  scriptStep={currentStep}
+                />
+              </div>
+            )}
 
             {/* 1-CLICK CALL DISPOSITION BAR */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
