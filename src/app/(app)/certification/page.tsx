@@ -122,7 +122,7 @@ export default function CertificationGatePage() {
                     <dd className="text-fg tabular-nums">{maxAttempts} per quarter</dd>
                   </div>
                   <div className="flex items-center justify-between py-2 last:pb-0">
-                    <dt className="text-fg-secondary">Speech to text</dt>
+                    <dt className="text-fg-secondary">AI buyer voice</dt>
                     <dd className="text-fg">ElevenLabs</dd>
                   </div>
                 </dl>

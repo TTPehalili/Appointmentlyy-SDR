@@ -1,14 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import { Mic, MicOff, Send, Volume2 } from 'lucide-react';
+import { AlertCircle, Mic, MicOff, RotateCcw, Send, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
+import { ELEVENLABS_MODELS, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
 
 /**
- * Demo workspace only: when a simulated call connects, an AI prospect "answers" and talks like a
- * real buyer. The rep speaks (browser speech recognition, Chrome) or types; the AI replies in
- * character through /api/sparring/chat (live_call mode, aware of the current script step) and is
- * voiced by ElevenLabs. Everything stops when the component unmounts (hang up / outcome).
+ * Simulated calls (demo workspace, and Practice in every workspace): when the call connects, an AI
+ * prospect "answers" and talks like a real buyer. The rep speaks (browser speech recognition,
+ * Chrome) or types; the AI replies in character through /api/sparring/chat (live_call mode, aware
+ * of the current script step) and is voiced by ElevenLabs only. If ElevenLabs can't voice a line,
+ * the line still shows as text with a "Voice unavailable, retry" notice: there is no browser or
+ * other TTS fallback. Everything stops when the component unmounts (hang up / outcome).
  */
 
 export interface Turn {
@@ -34,6 +38,15 @@ type Recognition = {
   stop: () => void;
   abort: () => void;
 };
+
+/** A line ElevenLabs couldn't voice, kept so the rep can retry it. */
+interface VoiceIssue {
+  text: string;
+  code: string | null;
+  message: string;
+}
+
+type TtsResult = { src: string } | { src: null; code: string | null; message: string };
 
 function toAudioSrc(audio: unknown): string | null {
   if (typeof audio !== 'string' || !audio) return null;
@@ -73,6 +86,8 @@ export function AiProspectCall({
   const [interim, setInterim] = React.useState('');
   const [micOn, setMicOn] = React.useState(true);
   const [typed, setTyped] = React.useState('');
+  const [voiceIssue, setVoiceIssue] = React.useState<VoiceIssue | null>(null);
+  const [retryingVoice, setRetryingVoice] = React.useState(false);
   const [speechSupported] = React.useState(
     () => typeof window !== 'undefined' && Boolean((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition),
   );
@@ -141,22 +156,38 @@ export function AiProspectCall({
     });
   }, []);
 
+  // ElevenLabs only. Returns the audio, or why ElevenLabs couldn't voice the line.
   const tts = React.useCallback(
-    async (text: string): Promise<string | null> => {
+    async (text: string): Promise<TtsResult> => {
       try {
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voiceId, voiceSettings, modelId: 'eleven_turbo_v2_5' }),
+          body: JSON.stringify({ text, voiceId, voiceSettings, modelId: ELEVENLABS_MODELS.realtime }),
         });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return toAudioSrc(data.audio ?? data.audioUrl);
+        const data = await res.json().catch(() => ({}));
+        const src = res.ok ? toAudioSrc(data.audio ?? data.audioUrl) : null;
+        if (src) return { src };
+        const code = typeof data.code === 'string' ? data.code : null;
+        return { src: null, code, message: typeof data.error === 'string' && data.error ? data.error : voiceErrorMessage(code) };
       } catch {
-        return null;
+        return { src: null, code: 'network', message: voiceErrorMessage('network') };
       }
     },
     [voiceId, voiceSettings],
+  );
+
+  /** Plays an ElevenLabs line, or flags it as "voice unavailable" (the text is already on screen). */
+  const speak = React.useCallback(
+    async (text: string, result: TtsResult) => {
+      if (result.src !== null) {
+        setVoiceIssue(null);
+        await play(result.src);
+      } else if (alive.current) {
+        setVoiceIssue({ text, code: result.code, message: result.message });
+      }
+    },
+    [play],
   );
 
   // Declared before use via a ref so listen() and respond() can call each other.
@@ -242,6 +273,7 @@ export function AiProspectCall({
       setStatus('thinking');
       let reply = '';
       let audio: string | null = null;
+      let serverVoiceError: { code?: string; message?: string } | null = null;
       try {
         const res = await fetch('/api/sparring/chat', {
           method: 'POST',
@@ -266,6 +298,7 @@ export function AiProspectCall({
           const data = await res.json();
           reply = String(data.reply || '').replace(/^["“]|["”]$/g, '');
           audio = toAudioSrc(data.audioUrl);
+          serverVoiceError = data.voiceError && typeof data.voiceError === 'object' ? data.voiceError : null;
         }
       } catch {
         // fall through to a neutral reply
@@ -274,8 +307,13 @@ export function AiProspectCall({
       if (!reply) reply = 'Sorry, you cut out for a second there. Can you say that again?';
       pushTurn({ role: 'prospect', content: reply });
       setStatus('prospect');
-      if (!audio) audio = await tts(reply);
-      await play(audio);
+      let voiced: TtsResult;
+      if (audio) voiced = { src: audio };
+      else if (serverVoiceError && !isRetryableVoiceError(serverVoiceError.code)) {
+        // Missing key, rejected key or quota: asking again right away can't help.
+        voiced = { src: null, code: serverVoiceError.code ?? null, message: serverVoiceError.message || voiceErrorMessage(serverVoiceError.code) };
+      } else voiced = await tts(reply);
+      await speak(reply, voiced);
       busyRef.current = false;
       if (!alive.current) return;
       const queued = queuedLines.current.join(' ');
@@ -283,7 +321,7 @@ export function AiProspectCall({
       if (queued) respondRef.current(queued);
       else listen();
     },
-    [personaId, objection, difficulty, pushTurn, stopListening, tts, play, listen],
+    [personaId, objection, difficulty, pushTurn, stopListening, tts, speak, listen],
   );
 
   React.useEffect(() => {
@@ -298,11 +336,11 @@ export function AiProspectCall({
     (async () => {
       busyRef.current = true;
       const greeting = 'Hello?';
-      const src = await tts(greeting);
+      const voiced = await tts(greeting);
       if (cancelled) return;
       pushTurn({ role: 'prospect', content: greeting });
       setStatus('prospect');
-      await play(src);
+      await speak(greeting, voiced);
       busyRef.current = false;
       if (cancelled) return;
       const queued = queuedLines.current.join(' ');
@@ -327,6 +365,26 @@ export function AiProspectCall({
     // Runs once per connected call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** "Retry voice": asks ElevenLabs again for the line that failed and plays it. */
+  const retryVoice = async () => {
+    const issue = voiceIssue;
+    if (!issue || busyRef.current || retryingVoice) return;
+    busyRef.current = true;
+    setRetryingVoice(true);
+    stopListening();
+    setStatus('prospect');
+    const voiced = await tts(issue.text);
+    if (!alive.current) return;
+    setRetryingVoice(false);
+    await speak(issue.text, voiced);
+    busyRef.current = false;
+    if (!alive.current) return;
+    const queued = queuedLines.current.join(' ');
+    queuedLines.current = [];
+    if (queued) respondRef.current(queued);
+    else listen();
+  };
 
   const toggleMic = () => {
     const next = !micOn;
@@ -372,6 +430,7 @@ export function AiProspectCall({
             {status === 'prospect' ? <Volume2 className="size-4 text-success-fg" aria-hidden /> : null}
             {statusText[status]}
           </span>
+          <ElevenLabsAttribution label="Voice:" detail={elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} className="hidden sm:inline-flex" />
           {speechSupported && (
             <Button
               size="sm"
@@ -384,6 +443,22 @@ export function AiProspectCall({
           )}
         </div>
       </div>
+
+      {voiceIssue && (
+        <div role="status" className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning-400 bg-warning-bg px-2.5 py-1.5 text-small text-warning-fg">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <AlertCircle className="size-4 shrink-0" aria-hidden />
+            <span>
+              <span className="font-medium">Voice unavailable.</span> {voiceIssue.message} {firstName}&apos;s line is shown as text.
+            </span>
+          </span>
+          {isRetryableVoiceError(voiceIssue.code) && (
+            <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} onClick={() => void retryVoice()} loading={retryingVoice} disabled={retryingVoice}>
+              Retry voice
+            </Button>
+          )}
+        </div>
+      )}
 
       <div ref={listRef} className="max-h-48 space-y-1.5 overflow-y-auto rounded-md bg-surface p-2.5 text-small">
         {turns.map((t, i) => (

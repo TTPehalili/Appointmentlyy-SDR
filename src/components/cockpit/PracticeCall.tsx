@@ -13,6 +13,7 @@ import {
   savePracticeHistory,
 } from '@/lib/practice';
 import type { Turn } from '@/components/cockpit/AiProspectCall';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
 
 /**
  * Practice mode pieces for the Dialer: the banner that marks the screen as training, and the
@@ -64,6 +65,7 @@ export function PracticeBanner({
         <span className="text-small text-warning-fg">
           Difficulty: <span className="font-medium">{difficultyLabel(difficulty)}</span>
         </span>
+        <ElevenLabsAttribution label="Customer voice:" inheritColor className="text-small text-warning-fg" />
       </div>
       <div className="flex items-center gap-3">
         <span className="hidden text-small text-warning-fg xl:inline">Nothing is saved to contacts, activity or CRM.</span>

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
+import { synthesizeWithElevenLabs } from '@/lib/server/elevenlabsTts';
 
+/**
+ * ElevenLabs text-to-speech for the browser (Practice, the Dialer's AI customer, Live floor).
+ * 200: { audio: data URL, voiceId, model, engine: 'elevenlabs' }
+ * Error: { error, code, engine: 'elevenlabs' } so the UI can show "Voice unavailable, retry".
+ */
 export async function POST(req: NextRequest) {
   try {
     // 1. Enforce rate limiting (120 requests/minute per client IP)
@@ -12,94 +18,19 @@ export async function POST(req: NextRequest) {
     // 2. Validate payload size to prevent quota drainage
     const validation = validateTextPayload(text, 1200);
     if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+      return NextResponse.json({ error: validation.error, code: 'bad_request', engine: 'elevenlabs' }, { status: 400 });
     }
 
-    const apiKey = (process.env.ELEVENLABS_API_KEY || '').trim();
-
-    // Default to Eric (conversational executive male) if voiceId not provided
-    const targetVoiceId = voiceId || 'cjVigY5qzO86Huf0OWal';
-
-    const preferredModel = modelId || 'eleven_flash_v2_5';
-
-    const candidateModels = [
-      {
-        id: preferredModel,
-        settings: {
-          stability: voiceSettings?.stability ?? 0.50,
-          similarity_boost: voiceSettings?.similarity_boost ?? 0.75,
-          style: voiceSettings?.style ?? 0.08,
-          use_speaker_boost: true
-        }
-      },
-      ...(preferredModel !== 'eleven_turbo_v2_5' ? [{
-        id: 'eleven_turbo_v2_5',
-        settings: {
-          stability: voiceSettings?.stability ?? 0.48,
-          similarity_boost: voiceSettings?.similarity_boost ?? 0.75,
-          style: voiceSettings?.style ?? 0.08,
-          use_speaker_boost: true
-        }
-      }] : []),
-      {
-        id: 'eleven_multilingual_v2',
-        settings: {
-          stability: voiceSettings?.stability ?? 0.50,
-          similarity_boost: voiceSettings?.similarity_boost ?? 0.75,
-          style: voiceSettings?.style ?? 0.10,
-          use_speaker_boost: true
-        }
-      }
-    ];
-
-    let lastError = '';
-
-    for (const candidate of candidateModels) {
-      try {
-        const response = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${targetVoiceId}?optimize_streaming_latency=4`,
-          {
-            method: 'POST',
-            headers: {
-              'xi-api-key': apiKey,
-              'Content-Type': 'application/json',
-              Accept: 'audio/mpeg'
-            },
-            body: JSON.stringify({
-              text,
-              model_id: candidate.id,
-              voice_settings: candidate.settings
-            })
-          }
-        );
-
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer();
-          const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-          return NextResponse.json({
-            audio: `data:audio/mpeg;base64,${base64Audio}`,
-            voiceId: targetVoiceId,
-            model: candidate.id
-          });
-        } else {
-          lastError = await response.text();
-          console.warn(`[ElevenLabs TTS] Model ${candidate.id} failed (${response.status}):`, lastError);
-        }
-      } catch (err: any) {
-        lastError = err?.message || String(err);
-        console.warn(`[ElevenLabs TTS] Synthesis attempt error:`, err);
-      }
+    const result = await synthesizeWithElevenLabs({ text, voiceId, voiceSettings, modelId });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error, code: result.code, engine: 'elevenlabs' }, { status: result.status });
     }
-
-    return NextResponse.json(
-      { error: `ElevenLabs TTS failed: ${lastError}` },
-      { status: 502 }
-    );
-  } catch (error: any) {
+    return NextResponse.json({ audio: result.audio, voiceId: result.voiceId, model: result.model, engine: 'elevenlabs' });
+  } catch (error) {
     console.error('[ElevenLabs TTS Route] Fatal error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Internal server error during speech synthesis' },
-      { status: 500 }
+      { error: 'Speech synthesis failed. Retry in a moment.', code: 'upstream', engine: 'elevenlabs' },
+      { status: 500 },
     );
   }
 }

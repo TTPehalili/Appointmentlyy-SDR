@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import https from 'https';
 import { DEMO_INITIAL_DEMO_ACTIVITIES } from '@/lib/activityStore';
-import { isDemoSession } from '@/lib/demoMode';
-import { getServerSession } from '@/lib/server/session';
+import { DEMO_LOGIN, isDemoSession } from '@/lib/demoMode';
+import { getServerSession, type ServerSession } from '@/lib/server/session';
+import { getTenantStore } from '@/lib/server/tenantStore';
+import { ROLE_RANK, parseRole, type Role } from '@/lib/roles';
+import { detectCopilotIntent, reportMetrics, sanitizeReportData, type ReportData } from '@/lib/copilotReport';
+import { raceGemini } from '@/lib/server/gemini';
+import {
+  coachingReply,
+  objectionStatsReply,
+  personalSummaryReply,
+  repChatReply,
+  reportEmailReply,
+  writingReply,
+  type CopilotReply,
+  type Turn,
+} from '@/lib/server/copilotAnswers';
 import { INITIAL_DEFAULT_DISPOSITIONS } from '@/lib/dispositionStore';
 import { SPARRING_PERSONAS } from '@/lib/personas';
 import { CADENCE_TOUCHES, DEMO_CADENCE_LEADS } from '@/lib/cadenceMaster';
@@ -224,6 +237,24 @@ function snapshotHasData(s?: LiveSnapshot | null): boolean {
   return Boolean(s?.totals && (s.totals.contacts > 0 || s.totals.folders > 0));
 }
 
+/** The team's logged activity for the asked period, as prompt context (all numbers precomputed). */
+function renderActivity(d: ReportData | null): string {
+  if (!d) return '';
+  if (d.totals.activities === 0)
+    return `\n[ACTIVITY LOG - ${d.periodLabel} (${d.rangeLabel})]\nNo calls, emails or LinkedIn touches logged in this period (${d.allTimeActivities} logged in total).\n`;
+  return `\n[ACTIVITY LOG - ${d.periodLabel} (${d.rangeLabel}); authoritative for calls, connects, meetings, callbacks and rep activity]
+${reportMetrics(d).map((m) => `- ${m.label}: ${m.value}`).join('\n')}
+Per rep: ${d.reps.map((r) => `${r.name} (${r.dials} dials, ${r.connectRate ?? 'n/a'}% connect, ${r.meetings} meetings, ${r.callbacks} callbacks)`).join('; ') || 'none'}
+Top objections: ${d.objections.map((o) => `${o.label} (${o.count})`).join(', ') || 'none recorded'}
+`;
+}
+
+function activityAnswer(d: ReportData): string {
+  if (d.totals.activities === 0) return '';
+  const rows = reportMetrics(d).map((m) => `| ${m.label} | ${m.value} |`).join('\n');
+  return `\n\n**Logged activity: ${d.periodLabel} (${d.rangeLabel})**\n\n| Metric | Value |\n| :--- | :--- |\n${rows}`;
+}
+
 function snapshotAnswer(s: LiveSnapshot): string {
   const t = s.totals!;
   const folderLines = (s.folders || [])
@@ -267,28 +298,20 @@ This workspace doesn't have any contacts, calls or activity yet, so there's noth
 
 Import or add leads in **Contacts** or **Lead Finder**, then start calling from the **Dialer**. Your numbers will show up here as your team works.`;
 
-async function answerForWorkspace(question: string, snapshot: LiveSnapshot | null, apiKey?: string) {
-  const hasData = snapshotHasData(snapshot);
+async function answerForWorkspace(question: string, snapshot: LiveSnapshot | null, apiKey?: string, activity: ReportData | null = null) {
+  const hasActivity = Boolean(activity && activity.allTimeActivities > 0);
+  const hasData = snapshotHasData(snapshot) || hasActivity;
   if (apiKey && hasData) {
     const prompt = `You are the operations assistant for a sales team's workspace${snapshot?.tenantName ? ` (${snapshot.tenantName})` : ''}.
 Answer ONLY from the workspace data below. It is the complete set of data you have. If the question needs data that isn't there (for example call outcomes, connect rates, bookings over time or rep activity), say plainly that there's no data for that yet. Never invent numbers, people, companies or benchmarks.
 Format with clean Markdown (short headings, bullets, small tables).
 
 WORKSPACE DATA:
-${renderSnapshot(snapshot)}
+${renderSnapshot(snapshot)}${renderActivity(activity)}
 
 USER QUESTION:
 ${question}`;
-    const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'];
-    const winner = await new Promise<{ model: string; text: string } | null>((resolve) => {
-      let pending = models.length;
-      models.forEach((model) => {
-        callGemini(model, apiKey, prompt).then((text) => {
-          if (text && text.trim()) resolve({ model, text: text.trim() });
-          else if (--pending === 0) resolve(null);
-        });
-      });
-    });
+    const winner = await raceGemini(apiKey, prompt, { timeoutMs: 15000 });
     if (winner) {
       return NextResponse.json({
         answer: winner.text,
@@ -298,100 +321,140 @@ ${question}`;
       });
     }
   }
+  const answer = !hasData
+    ? NO_DATA_ANSWER
+    : snapshotHasData(snapshot)
+    ? snapshotAnswer(snapshot!) + (activity ? activityAnswer(activity) : '')
+    : `### Workspace activity${activityAnswer(activity!) || `\n\nNo activity was logged ${activity!.periodLabel.toLowerCase()} (${activity!.rangeLabel}).`}`;
   return NextResponse.json({
-    answer: hasData ? snapshotAnswer(snapshot!) : NO_DATA_ANSWER,
+    answer,
     category: hasData ? 'workspace_snapshot' : 'no_data',
     timestamp: new Date().toISOString(),
   });
 }
 
-function callGemini(model: string, apiKey: string, prompt: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    try {
-      const payload = JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 4096
-        }
-      });
+const MAX_BODY_CHARS = 200_000;
+/** Questions about the workspace's own data (answered from it, honestly, even when it's empty). */
+const DATA_QUESTION =
+  /\b(how many|pipeline|deals?|leads?|contacts?|lists?|folders?|stages?|meetings?|book(ed|ings?)?|calls?|dials?|connects?|reps?|team|floor|stats?|numbers?|perform\w*|reports?|activity|activities|today|yesterday|week|month|quota|callbacks?|stalling|top)\b/i;
+const clipText = (v: unknown, max = 120) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 
-      const req = https.request(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload),
-            'x-goog-api-key': apiKey
-          },
-          family: 4,
-          timeout: 18000
-        },
-        (res) => {
-          let rawData = '';
-          res.on('data', (chunk) => {
-            rawData += chunk;
-          });
-          res.on('end', () => {
-            try {
-              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                const parsed = JSON.parse(rawData);
-                const text = (parsed.candidates?.[0]?.content?.parts || [])
-                  .map((p: { text?: string }) => p.text || '')
-                  .join('');
-                resolve(text || null);
-              } else {
-                console.warn(`[Gemini ${model}] Status:`, res.statusCode, rawData.substring(0, 120));
-                resolve(null);
-              }
-            } catch {
-              resolve(null);
-            }
-          });
-        }
-      );
+/**
+ * The role to answer as. The browser sends the role it shows (it follows a Super Admin's "View as"
+ * preview), which may only NARROW the signed-in user's real role, never widen it.
+ */
+function effectiveRole(session: ServerSession | null, asked: unknown): Role {
+  const real: Role = session ? (session.isPlatformAdmin ? 'Super Admin' : session.role) : DEMO_LOGIN ? 'Super Admin' : 'Rep';
+  const want = parseRole(asked);
+  return want && ROLE_RANK[want] <= ROLE_RANK[real] ? want : real;
+}
 
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(null);
-      });
-
-      req.on('error', (err) => {
-        console.warn(`[Gemini ${model}] Request error:`, err.message);
-        resolve(null);
-      });
-
-      req.write(payload);
-      req.end();
-    } catch {
-      resolve(null);
-    }
+function cleanHistory(v: unknown): Turn[] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(-6).flatMap((t) => {
+    const from = (t as Turn)?.from === 'ai' ? 'ai' : (t as Turn)?.from === 'user' ? 'user' : null;
+    const text = typeof (t as Turn)?.text === 'string' ? (t as Turn).text.slice(0, 700) : '';
+    return from && text ? [{ from, text } as Turn] : [];
   });
+}
+
+/** Active members of the signed-in user's own workspace (from the session, never the request). */
+async function activeMemberCount(session: ServerSession | null): Promise<number | undefined> {
+  if (!session) return undefined;
+  try {
+    const members = await getTenantStore().listMembers({ tenantCode: session.tenantCode });
+    const n = members.filter((m) => m.status === 'active').length;
+    return n > 0 ? n : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, context } = await req.json();
-
-    if (!question || typeof question !== 'string') {
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_CHARS) {
+      return NextResponse.json({ error: 'That request is too large. Try a shorter question.' }, { status: 413 });
+    }
+    let body: { question?: unknown; context?: unknown };
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
+    }
+    const question = typeof body.question === 'string' ? body.question.trim().slice(0, 2000) : '';
+    if (!question) {
       return NextResponse.json({ error: 'Question is required' }, { status: 400 });
     }
+    const context = (body.context && typeof body.context === 'object' ? body.context : {}) as Record<string, unknown>;
 
-    const snapshot: LiveSnapshot | null = context?.snapshot || null;
+    const session = await getServerSession(req);
+    if (!session && !DEMO_LOGIN) {
+      return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+    }
     // Sample benchmarks, reps and call notes are for the platform owner's demo workspace only.
-    if (!isDemoSession(await getServerSession(req))) {
-      return answerForWorkspace(question, snapshot, process.env.GOOGLE_API_KEY);
+    const isDemo = isDemoSession(session);
+    const role = effectiveRole(session, context.role);
+    const canSeeTeam = ROLE_RANK[role] >= ROLE_RANK.Supervisor;
+    const snapshot = (context.snapshot && typeof context.snapshot === 'object' ? context.snapshot : null) as LiveSnapshot | null;
+    const tenantName = session?.identity.tenant.name || clipText(snapshot?.tenantName) || 'your workspace';
+    const senderName = session?.name || clipText(context.repName, 80) || 'Your name';
+    const history = cleanHistory(context.history);
+    const apiKey = process.env.GOOGLE_API_KEY;
+
+    // Metrics the browser computed (copilotReport). Sample data is only accepted for the demo workspace,
+    // and team figures only for Supervisor and above.
+    const reportIn = (context.report && typeof context.report === 'object' ? context.report : null) as { team?: unknown; personal?: unknown } | null;
+    const accept = (d: ReportData | null) => (d && (d.source !== 'demo_sample' || isDemo) ? d : null);
+    const team = canSeeTeam ? accept(sanitizeReportData(reportIn?.team)) : null;
+    const mine = accept(sanitizeReportData(reportIn?.personal));
+    const personal = mine && mine.scope === 'rep' ? mine : null;
+
+    const reply = (r: CopilotReply) => NextResponse.json({ ...r, role, timestamp: new Date().toISOString() });
+    const intent = detectCopilotIntent(question);
+
+    if (reportIn && (intent === 'report' || intent === 'coaching' || intent === 'objection_stats' || intent === 'personal')) {
+      if (!canSeeTeam || intent === 'personal') {
+        if (intent === 'objection_stats' && personal) {
+          return reply(objectionStatsReply(personal, { isDemo, tenantName, scopeLabel: ' you heard' }));
+        }
+        return reply(personalSummaryReply(personal, { askedForTeam: !canSeeTeam && intent !== 'personal' }));
+      }
+      if (!team) {
+        return reply({
+          answer: "I couldn't read this period's activity, so I can't build the report right now. Open **Reports** and then ask again.",
+          category: 'no_data',
+        });
+      }
+      if (intent === 'report') {
+        const activeMembers = isDemo ? undefined : await activeMemberCount(session);
+        return reply(await reportEmailReply(team, { tenantName, senderName, activeMembers, apiKey }));
+      }
+      if (intent === 'coaching') return reply(coachingReply(team));
+      return reply(objectionStatsReply(team, { isDemo, tenantName, scopeLabel: '' }));
+    }
+
+    if (intent === 'objection_help' || intent === 'email' || intent === 'linkedin') {
+      return reply(await writingReply(intent, question, { isDemo, tenantName, senderName, history, apiKey }));
+    }
+
+    // Reps get a coach that only knows their own numbers.
+    if (role === 'Rep') {
+      const extraContext = snapshotHasData(snapshot) ? `MY LEADS (real workspace data):${renderSnapshot(snapshot)}` : '';
+      return reply(await repChatReply(question, { isDemo, tenantName, senderName, history, apiKey, personal, extraContext }));
+    }
+
+    if (!isDemo) {
+      // Writing / coaching questions don't need workspace data; data questions are answered from it.
+      if (!DATA_QUESTION.test(question)) {
+        return reply(await repChatReply(question, { isDemo, tenantName, senderName, history, apiKey, personal: null, audience: 'lead' }));
+      }
+      return answerForWorkspace(question, snapshot, apiKey, team);
     }
 
     const qLower = question.toLowerCase();
-    const systemContext = compileLiveSystemContext(snapshot);
-    const googleApiKey = process.env.GOOGLE_API_KEY;
+    const systemContext = compileLiveSystemContext(snapshot) + renderActivity(team);
+    const googleApiKey = apiKey;
 
     // --- TIER 1: LIVE AI INFERENCE (Gemini Flash Model) ---
     if (googleApiKey) {
@@ -411,22 +474,10 @@ OUTPUT GUIDELINES:
 3. If asked about performance, stats, drivers, objections, or reps, include root-cause telemetry and actionable operational recommendations.
 4. Keep the tone sharp, executive, and operationally rigorous.`;
 
-      const candidateModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'];
       const fullPrompt = `${systemPrompt}\n\nUSER QUESTION:\n${question}`;
 
       // Race all candidate models in parallel; the first non-empty answer wins (keeps demo latency low)
-      const winner = await new Promise<{ model: string; text: string } | null>((resolve) => {
-        let pending = candidateModels.length;
-        candidateModels.forEach((model) => {
-          callGemini(model, googleApiKey, fullPrompt).then((text) => {
-            if (text && text.trim().length > 0) {
-              resolve({ model, text: text.trim() });
-            } else if (--pending === 0) {
-              resolve(null);
-            }
-          });
-        });
-      });
+      const winner = await raceGemini(googleApiKey, fullPrompt, { timeoutMs: 15000 });
 
       if (winner) {
         return NextResponse.json({
@@ -706,11 +757,8 @@ Here are the highest-converting objection responses actively configured in your 
       category: 'general_inquiry',
       timestamp: new Date().toISOString()
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[AI ASSISTANT API ERROR]', error);
-    return NextResponse.json(
-      { error: error.message || 'Error processing AI assistant inquiry' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Copilot hit a problem answering that. Please try again.' }, { status: 500 });
   }
 }

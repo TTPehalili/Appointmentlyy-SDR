@@ -17,10 +17,13 @@ import {
   RotateCcw,
   SkipForward,
   Loader2,
-  MessageSquareText
+  MessageSquareText,
+  AlertCircle
 } from 'lucide-react';
 import { Button, EmptyState, Input, PageHeader, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
+import { ELEVENLABS_MODELS, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
 import { useSession } from '@/lib/session';
 import { PERSONA_VOICE_MAP, SparringCountry } from '@/lib/personas';
 import {
@@ -92,6 +95,8 @@ export default function LiveMonitoringCenter() {
   const [currentTurnIndex, setCurrentTurnIndex] = useState<number | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  // ElevenLabs couldn't voice a turn: playback stops there with "Voice unavailable, retry".
+  const [voiceIssue, setVoiceIssue] = useState<{ turnIndex: number; code: string | null; message: string } | null>(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [volume, setVolume] = useState(85);
   
@@ -550,12 +555,15 @@ export default function LiveMonitoringCenter() {
     return `${mins}:${secs}`;
   };
 
-  // Pre-fetch a turn's ElevenLabs audio into memory cache
+  // Pre-fetch a turn's ElevenLabs audio into memory cache. ElevenLabs is the only voice engine:
+  // on failure this returns the reason, and the panel shows "Voice unavailable, retry".
+  const voiceErrorsRef = useRef<Map<string, { code: string | null; message: string }>>(new Map());
   const fetchAudioBlob = useCallback(async (turn: DialogueTurn): Promise<string | null> => {
     const cacheKey = `${turn.id}_${turn.voiceId}`;
     if (audioCacheRef.current.has(cacheKey)) {
       return audioCacheRef.current.get(cacheKey)!;
     }
+    voiceErrorsRef.current.set(cacheKey, { code: 'network', message: voiceErrorMessage('network') });
 
     try {
       const res = await fetch('/api/tts', {
@@ -564,7 +572,7 @@ export default function LiveMonitoringCenter() {
         body: JSON.stringify({
           text: turn.text,
           voiceId: turn.voiceId,
-          modelId: 'eleven_v4_turbo', // ElevenLabs V4 Turbo: ultra-low latency & native phone accent nuances
+          modelId: ELEVENLABS_MODELS.expressive, // Eleven v4 Turbo: expressive, natural phone accents; turns are pre-fetched
           voiceSettings: {
             stability: turn.role === 'rep' ? 0.52 : 0.45,
             similarity_boost: 0.75,
@@ -573,14 +581,11 @@ export default function LiveMonitoringCenter() {
         })
       });
 
-      if (!res.ok) {
-        console.warn(`[LiveMonitoring] TTS fetch failed with status ${res.status}`);
-        return null;
-      }
-
-      const data = await res.json();
-      if (!data.audio) {
-        console.warn('[LiveMonitoring] No audio data in response');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.audio) {
+        const code = typeof data.code === 'string' ? data.code : null;
+        voiceErrorsRef.current.set(cacheKey, { code, message: typeof data.error === 'string' && data.error ? data.error : voiceErrorMessage(code) });
+        console.warn(`[LiveMonitoring] ElevenLabs TTS failed (${res.status}, ${code ?? 'no code'})`);
         return null;
       }
 
@@ -595,6 +600,7 @@ export default function LiveMonitoringCenter() {
       const audioBlob = new Blob([bytes.buffer], { type: 'audio/mpeg' });
       const blobUrl = URL.createObjectURL(audioBlob);
       audioCacheRef.current.set(cacheKey, blobUrl);
+      voiceErrorsRef.current.delete(cacheKey);
       return blobUrl;
     } catch (err) {
       console.error('[LiveMonitoring] Failed to fetch turn audio:', err);
@@ -632,9 +638,16 @@ export default function LiveMonitoringCenter() {
     const audioUrl = await fetchAudioBlob(turn);
     setIsLoadingAudio(false);
 
-    if (!audioUrl || !activeSessionRef.current || activeSessionRef.current.id !== session.id) {
+    if (!activeSessionRef.current || activeSessionRef.current.id !== session.id) {
       return;
     }
+    if (!audioUrl) {
+      const err = voiceErrorsRef.current.get(`${turn.id}_${turn.voiceId}`);
+      setVoiceIssue({ turnIndex, code: err?.code ?? null, message: err?.message || voiceErrorMessage(err?.code) });
+      setIsAudioPlaying(false);
+      return;
+    }
+    setVoiceIssue(null);
 
     // Release any previous audio element before playing next turn
     if (audioElementRef.current) {
@@ -742,6 +755,7 @@ export default function LiveMonitoringCenter() {
     setCurrentTurnIndex(null);
     setIsAudioPlaying(false);
     setIsLoadingAudio(false);
+    setVoiceIssue(null);
   };
 
   // Pause / Resume audio
@@ -859,6 +873,7 @@ export default function LiveMonitoringCenter() {
         description={isDemo
           ? `Listen in on live practice calls and whisper coaching to ${selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino'} reps.`
           : 'Listen in on your reps\' live practice calls and whisper coaching.'}
+        meta={<ElevenLabsAttribution variant="pill" />}
         secondaryActions={
           <>
             <Link href="/practice" className={buttonClasses('secondary', 'md')}>
@@ -893,9 +908,7 @@ export default function LiveMonitoringCenter() {
           Buyer accent: <span className="text-fg">{selectedCustomerAccent === 'USA' ? 'USA' : selectedCustomerAccent === 'Australia' ? 'Australia' : 'UK'}</span>
         </span>
         <span aria-hidden className="text-fg-disabled">&middot;</span>
-        <Tooltip content="ElevenLabs V4 Turbo voice engine, under 100 ms latency">
-          <span className="cursor-default">Voice: ElevenLabs V4</span>
-        </Tooltip>
+        <ElevenLabsAttribution label="Voice:" detail={elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} className="text-small" />
       </div>
 
       {/* Search, filters and voice settings */}
@@ -1175,6 +1188,7 @@ export default function LiveMonitoringCenter() {
                   </span>
                   <span>{selectedRepAccent === 'arabic' ? 'Arabic SDR voice' : 'Filipino SDR voice'}</span>
                   <span>Buyer accent: {activeListeningSession.countryAccent}</span>
+                  <ElevenLabsAttribution label="Voice:" detail={elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} onDark className="text-small" />
 
                   {isLoadingAudio && (
                     <span className="inline-flex items-center gap-1.5 text-ink-50">
@@ -1293,6 +1307,30 @@ export default function LiveMonitoringCenter() {
               </button>
             </div>
           </div>
+
+          {voiceIssue && (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-warning-bg px-3 py-2 text-small text-warning-fg">
+              <span className="inline-flex items-center gap-1.5">
+                <AlertCircle className="size-4 shrink-0" aria-hidden />
+                <span>
+                  <span className="font-medium">Voice unavailable.</span> {voiceIssue.message} The transcript below is still live.
+                </span>
+              </span>
+              {isRetryableVoiceError(voiceIssue.code) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<RotateCcw aria-hidden />}
+                  onClick={() => {
+                    setIsAudioPlaying(true);
+                    playTurn(activeListeningSession, voiceIssue.turnIndex);
+                  }}
+                >
+                  Retry voice
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Transcript and whisper console */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

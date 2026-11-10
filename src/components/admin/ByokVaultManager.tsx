@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock, CheckCircle2, ShieldCheck, Eye, EyeOff, Check, Cpu, ArrowRight, Mail, Calendar, Mic, Info, X } from 'lucide-react';
+import { Lock, Unlock, CheckCircle2, ShieldCheck, Eye, EyeOff, Check, Cpu, ArrowRight, Mail, Calendar, Mic, Info, X, AudioLines } from 'lucide-react';
 import { Badge, Button, Card, ConfirmDialog, Dialog, Field, IconButton, Input, PageHeader, Select, Tooltip } from '@/components/ui';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { getStoredSession } from '@/lib/session';
+import { ELEVENLABS_MODELS, elevenLabsModelLabel } from '@/lib/elevenlabs/voiceEngine';
 
 interface TenantBYOKState {
   tenantId: string;
@@ -60,7 +61,7 @@ export default function ByokVaultManager() {
   const [testResults, setTestResults] = useState<{ [key: string]: { success: boolean; latency: string; model: string } }>(() => !isDemoWorkspace() ? ({} as { [key: string]: { success: boolean; latency: string; model: string } }) : {
     'resend': { success: true, latency: '88ms', model: 'Resend API Active' },
     'openai': { success: true, latency: '142ms', model: 'gpt-4o' },
-    'elevenlabs': { success: true, latency: '185ms', model: 'eleven_turbo_v2_5' }
+    'elevenlabs': { success: true, latency: '185ms', model: `${elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} (live calls) and ${elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} (Live floor)` }
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [requestUpgradeModal, setRequestUpgradeModal] = useState(false);
@@ -287,17 +288,23 @@ export default function ByokVaultManager() {
 
   const connectedBadge = (provider: string) =>
     testResults[provider] && (
-      <Badge tone="success">
-        <Check className="h-3 w-3" />
-        Connected ({testResults[provider].latency})
+      <Badge tone={testResults[provider].success ? 'success' : 'danger'}>
+        {testResults[provider].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+        {testResults[provider].success ? 'Connected' : 'Not connected'} ({testResults[provider].latency})
       </Badge>
     );
+
+  /** The validator's message under the key field (tier, quota, or why the key failed). */
+  const resultDetail = (provider: string) =>
+    testResults[provider]?.model ? (
+      <p className={`text-small ${testResults[provider].success ? 'text-fg-secondary' : 'text-danger-fg'}`}>{testResults[provider].model}</p>
+    ) : null;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="AI providers"
-        description="Bring your own keys for email, AI models and voice, isolated per workspace."
+        description="Bring your own keys for the ElevenLabs voice engine, email and writing models, isolated per workspace."
         meta={
           <div className="w-72">
             <Select
@@ -332,7 +339,7 @@ export default function ByokVaultManager() {
               is not active for {activeTenant.tenantName}
             </h3>
             <p className="text-body text-fg-secondary">
-              Bring your own API keys to use custom ElevenLabs voice clones, Claude 3.5 Sonnet and GPT-4o, and bypass platform token limits. Add this module to the next invoice or contact your platform administrator.
+              Bring your own ElevenLabs key for your own voice library and voice clones, plus your own Claude, GPT-4o and Gemini keys for writing, and bypass platform limits. Add this module to the next invoice or contact your platform administrator.
             </p>
           </div>
 
@@ -361,14 +368,14 @@ export default function ByokVaultManager() {
                 <Mic className="h-4 w-4 text-fg-secondary" />
                 Dedicated voice clones
               </span>
-              <p className="text-small text-fg-secondary">Deploy custom ElevenLabs voice IDs for proprietary BPO campaign accents.</p>
+              <p className="text-small text-fg-secondary">Deploy your own ElevenLabs voice IDs and clones for each BPO campaign and accent.</p>
             </div>
             <div className="space-y-1 rounded-md bg-subtle p-3.5">
               <span className="flex items-center gap-2 text-body-strong text-fg">
                 <Cpu className="h-4 w-4 text-fg-secondary" />
-                Direct model access
+                Direct text model access
               </span>
-              <p className="text-small text-fg-secondary">Direct Anthropic Claude 3.5 Sonnet and OpenAI GPT-4o routing with zero token markups.</p>
+              <p className="text-small text-fg-secondary">Direct Anthropic Claude and OpenAI GPT-4o routing for writing, with zero token markups.</p>
             </div>
             <div className="space-y-1 rounded-md bg-subtle p-3.5">
               <span className="flex items-center gap-2 text-body-strong text-fg">
@@ -409,7 +416,40 @@ export default function ByokVaultManager() {
 
             <div className="divide-y divide-line">
 
-              {/* 1. Resend Cold Email Delivery & Custom Domain (BYOK) */}
+              {/* 1. ElevenLabs: the platform's AI voice engine */}
+              <section className={settingsRow} aria-labelledby="byok-elevenlabs">
+                <div>
+                  <h3 id="byok-elevenlabs" className="flex flex-wrap items-center gap-2 text-h3 text-fg">
+                    <AudioLines className="h-4 w-4 text-fg-secondary" aria-hidden />
+                    ElevenLabs
+                    <Badge tone="brand">Voice engine</Badge>
+                  </h3>
+                  <p className="mt-1 text-small text-fg-secondary">
+                    AI voice engine (Practice, Live floor, AI customer calls).
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-body-strong text-fg">API key</span>
+                    {connectedBadge('elevenlabs')}
+                  </div>
+                  {renderKeyInput('elevenlabs', 'elevenlabsKey', 'sk_...', 'Testing...')}
+                  {resultDetail('elevenlabs')}
+                  <div className="flex items-start gap-2 rounded-md bg-subtle p-3 text-small text-fg-secondary">
+                    <Mic className="mt-0.5 h-4 w-4 shrink-0 text-fg-secondary" aria-hidden />
+                    <span>
+                      Every AI voice in this workspace is ElevenLabs{' '}
+                      <Tooltip content="Text to speech">
+                        <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">TTS</span>
+                      </Tooltip>
+                      : {elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} for live practice and AI customer calls, {elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} for Live floor listen-in.
+                      With your own key the workspace uses its own ElevenLabs voice library, voice clones and character quota.
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* 2. Resend Cold Email Delivery & Custom Domain (BYOK) */}
               <section className={settingsRow}>
                 <div>
                   <h3 className="flex items-center gap-2 text-h3 text-fg">
@@ -462,7 +502,7 @@ export default function ByokVaultManager() {
                 </div>
               </section>
 
-              {/* 2. Customer Production Calendar Booking Link (Calendly / Cal.com / HubSpot) */}
+              {/* 3. Customer Production Calendar Booking Link (Calendly / Cal.com / HubSpot) */}
               <section className={settingsRow}>
                 <div>
                   <h3 className="flex items-center gap-2 text-h3 text-fg">
@@ -494,11 +534,11 @@ export default function ByokVaultManager() {
                 </div>
               </section>
 
-              {/* 3. OpenAI Key */}
+              {/* 4. Text models (writing, scoring, research). None of them is used for voice. */}
               <section className={settingsRow}>
                 <div>
                   <h3 className="text-h3 text-fg">OpenAI</h3>
-                  <p className="mt-1 text-small text-fg-secondary">GPT-4o, auto-grading and embeddings.</p>
+                  <p className="mt-1 text-small text-fg-secondary">Text model: GPT-4o for writing, auto-grading and embeddings.</p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -506,14 +546,15 @@ export default function ByokVaultManager() {
                     {connectedBadge('openai')}
                   </div>
                   {renderKeyInput('openai', 'openaiKey', 'sk-proj-...', 'Testing...')}
+                  {resultDetail('openai')}
                 </div>
               </section>
 
-              {/* 2. Anthropic Claude Key */}
+              {/* 5. Anthropic Claude Key (text) */}
               <section className={settingsRow}>
                 <div>
                   <h3 className="text-h3 text-fg">Anthropic Claude</h3>
-                  <p className="mt-1 text-small text-fg-secondary">Claude 3.5 Sonnet coaching.</p>
+                  <p className="mt-1 text-small text-fg-secondary">Text model: Claude for coaching and writing.</p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -521,14 +562,15 @@ export default function ByokVaultManager() {
                     {connectedBadge('claude')}
                   </div>
                   {renderKeyInput('claude', 'claudeKey', 'sk-ant-api03-...', 'Testing...')}
+                  {resultDetail('claude')}
                 </div>
               </section>
 
-              {/* 3. Google Gemini Key */}
+              {/* 6. Google Gemini Key (text) */}
               <section className={settingsRow}>
                 <div>
                   <h3 className="text-h3 text-fg">Google Gemini</h3>
-                  <p className="mt-1 text-small text-fg-secondary">Gemini 1.5 Pro multimodal diagnostics.</p>
+                  <p className="mt-1 text-small text-fg-secondary">Text model: Gemini for AI buyer replies, research and writing.</p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -536,27 +578,7 @@ export default function ByokVaultManager() {
                     {connectedBadge('gemini')}
                   </div>
                   {renderKeyInput('gemini', 'geminiKey', 'AIzaSy...', 'Testing...')}
-                </div>
-              </section>
-
-              {/* 4. ElevenLabs Key */}
-              <section className={settingsRow}>
-                <div>
-                  <h3 className="text-h3 text-fg">ElevenLabs</h3>
-                  <p className="mt-1 text-small text-fg-secondary">
-                    Custom voice clones and Turbo v2.5{' '}
-                    <Tooltip content="Text to speech">
-                      <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">TTS</span>
-                    </Tooltip>
-                    .
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-body-strong text-fg">API key</span>
-                    {connectedBadge('elevenlabs')}
-                  </div>
-                  {renderKeyInput('elevenlabs', 'elevenlabsKey', 'xi-...', 'Testing...')}
+                  {resultDetail('gemini')}
                 </div>
               </section>
 
@@ -564,7 +586,7 @@ export default function ByokVaultManager() {
               <section className={settingsRow}>
                 <div>
                   <h3 className="text-h3 text-fg">Fallback</h3>
-                  <p className="mt-1 text-small text-fg-secondary">What happens when a workspace key runs out of quota or is rate limited (429).</p>
+                  <p className="mt-1 text-small text-fg-secondary">What happens when a workspace key runs out of quota or is rate limited (429). Voices stay on ElevenLabs either way: the pool is the platform&apos;s own ElevenLabs account.</p>
                 </div>
                 <div>
                   <Select

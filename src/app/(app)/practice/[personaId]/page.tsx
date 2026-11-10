@@ -22,12 +22,24 @@ import {
   Copy,
   CornerDownLeft,
   Info,
-  Lightbulb
+  Lightbulb,
+  RotateCcw
 } from 'lucide-react';
 import { Badge, Button, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
 import { SPARRING_PERSONAS, ScriptAssist, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
 import { RepAccentKey, getRepVoice, RepVoiceProfile } from '@/lib/repVoices';
 import { DialogueTurn } from '@/lib/qaEvaluator';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
+import { ELEVENLABS_MODELS, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
+
+/** A buyer line ElevenLabs couldn't voice: shown as text with "Voice unavailable, retry". */
+interface VoiceIssue {
+  text: string;
+  voiceId: string;
+  code: string | null;
+  message: string;
+}
+type ServerVoiceError = { code?: string; message?: string } | null | undefined;
 
 // 1-frame silent WAV to unlock browser audio without triggering empty-src error
 const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
@@ -128,6 +140,8 @@ function SparringRoomContent() {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
   const [liveTranscriptPreview, setLiveTranscriptPreview] = useState('');
+  const [voiceIssue, setVoiceIssue] = useState<VoiceIssue | null>(null);
+  const [retryingVoice, setRetryingVoice] = useState(false);
 
   const [transcript, setTranscript] = useState<(DialogueTurn & { audioUrl?: string })[]>([]);
   const [objectives, setObjectives] = useState(
@@ -360,8 +374,11 @@ function SparringRoomContent() {
     }
   }, []);
 
-  // Client-side synthesis fallback: directly calls ElevenLabs TTS API if server didn't pre-synthesize audio
+  // Voices a line with ElevenLabs (/api/tts) when the server didn't already. ElevenLabs is the only
+  // voice: on failure the line stays as text and the call shows "Voice unavailable, retry".
   const synthesizeVoiceIfNeeded = useCallback(async (text: string, personaVoiceId: string): Promise<string | null> => {
+    let code: string | null = 'network';
+    let message = voiceErrorMessage('network');
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -369,18 +386,36 @@ function SparringRoomContent() {
         body: JSON.stringify({
           text,
           voiceId: personaVoiceId,
-          voiceSettings: persona.voiceSettings
+          voiceSettings: persona.voiceSettings,
+          modelId: ELEVENLABS_MODELS.realtime
         })
       });
-      if (res.ok) {
-        const data = await res.json();
-        return data.audio || null;
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.audio) {
+        setVoiceIssue(null);
+        return data.audio;
       }
+      code = typeof data.code === 'string' ? data.code : null;
+      message = typeof data.error === 'string' && data.error ? data.error : voiceErrorMessage(code);
     } catch (e) {
-      console.warn('Client TTS fetch note:', e);
+      console.warn('ElevenLabs TTS request failed:', e);
     }
+    setVoiceIssue({ text, voiceId: personaVoiceId, code, message });
     return null;
   }, [persona.voiceSettings]);
+
+  /** Audio for a buyer line: the server's ElevenLabs audio, else one /api/tts attempt (unless retrying can't help). */
+  const resolveVoice = async (text: string, personaVoiceId: string, serverAudio?: string | null, serverError?: ServerVoiceError): Promise<string | null> => {
+    if (serverAudio) {
+      setVoiceIssue(null);
+      return serverAudio;
+    }
+    if (serverError && !isRetryableVoiceError(serverError.code)) {
+      setVoiceIssue({ text, voiceId: personaVoiceId, code: serverError.code ?? null, message: serverError.message || voiceErrorMessage(serverError.code) });
+      return null;
+    }
+    return synthesizeVoiceIfNeeded(text, personaVoiceId);
+  };
 
   // Rock-solid audio playback engine using native audio Blobs (NO robotic fallback)
   const playVoiceAudio = useCallback(async (audioUrl: string, textFallback: string, turnIndex?: number): Promise<void> => {
@@ -393,11 +428,6 @@ function SparringRoomContent() {
     lastTextRef.current = textFallback;
     setIsPlayingAudio(true);
     if (turnIndex !== undefined) setActiveAudioTurn(turnIndex);
-
-    // Cancel any existing SpeechSynthesis so robotic voices NEVER fire
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel(); } catch {}
-    }
 
     try {
       let playableUrl = audioUrl;
@@ -484,6 +514,21 @@ function SparringRoomContent() {
     } catch {}
   };
 
+  // "Retry voice": ask ElevenLabs again for the line that failed, attach it to that turn and play it.
+  const retryVoice = async () => {
+    const issue = voiceIssue;
+    if (!issue || retryingVoice) return;
+    setRetryingVoice(true);
+    const audio = await synthesizeVoiceIfNeeded(issue.text, issue.voiceId);
+    setRetryingVoice(false);
+    if (!audio) return;
+    const idx = transcript.map(t => t.role === 'prospect' && t.content === issue.text).lastIndexOf(true);
+    if (idx >= 0) {
+      setTranscript(prev => prev.map((t, i) => (i === idx && t.content === issue.text ? { ...t, audioUrl: audio } : t)));
+    }
+    await playVoiceAudio(audio, issue.text, idx >= 0 ? idx : undefined);
+  };
+
   // Start Call & Dial in
   const startCall = async () => {
     // 1. Prime DOM audio synchronously on direct user click gesture!
@@ -511,6 +556,7 @@ function SparringRoomContent() {
     }
 
     const voiceConfig = getPersonaVoiceByCountry(persona, selectedCountry);
+    setVoiceIssue(null);
     setCallConnecting(true);
     setCallActive(true);
     setCallDuration(0);
@@ -541,10 +587,7 @@ function SparringRoomContent() {
             }
           ]);
 
-          let audioToPlay = data.audioUrl;
-          if (!audioToPlay) {
-            audioToPlay = await synthesizeVoiceIfNeeded(data.greetingText, voiceConfig.voiceId);
-          }
+          const audioToPlay = await resolveVoice(data.greetingText, voiceConfig.voiceId, data.audioUrl, data.voiceError);
 
           if (audioToPlay) {
             await playVoiceAudio(audioToPlay, data.greetingText, 0);
@@ -663,10 +706,7 @@ function SparringRoomContent() {
           }
         ]);
 
-        let audioToPlay = audioUrl;
-        if (!audioToPlay) {
-          audioToPlay = await synthesizeVoiceIfNeeded(aiReply, voiceConfig.voiceId);
-        }
+        const audioToPlay = await resolveVoice(aiReply, voiceConfig.voiceId, audioUrl, data.voiceError);
 
         if (audioToPlay) {
           await playVoiceAudio(audioToPlay, aiReply, newTurnIndex);
@@ -707,6 +747,7 @@ function SparringRoomContent() {
   const endCallAndGrade = async () => {
     setIsFinishingCall(true);
     setCallActive(false);
+    setVoiceIssue(null);
     stopListening();
     if (audioSourceNodeRef.current) {
       try {
@@ -720,9 +761,6 @@ function SparringRoomContent() {
         audioElementRef.current.pause();
         audioElementRef.current.src = '';
       } catch {}
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel(); } catch {}
     }
     if (speechStreamRef.current) {
       try {
@@ -905,11 +943,12 @@ function SparringRoomContent() {
               {/* Permanent Blessed Audio Player */}
               <audio ref={audioElementRef} id="sparring-audio-player" preload="auto" playsInline className="hidden" />
 
-              <div className="flex items-center gap-2 absolute top-4 right-4">
-                <span className="inline-flex items-center gap-1.5 text-caption text-ink-400">
+              <div className="flex items-center gap-3 absolute top-4 right-4">
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-caption text-ink-400">
                   <Headphones className="size-3.5" aria-hidden />
                   <span>Hands-free voice</span>
                 </span>
+                <ElevenLabsAttribution label="Voice by" onDark />
               </div>
 
               {/* Autoplay block prompt if browser blocked audio */}
@@ -928,6 +967,21 @@ function SparringRoomContent() {
                 <div className="mb-4 px-3 py-2 rounded-md bg-danger-bg text-danger-fg text-small flex items-center gap-2">
                   <AlertCircle className="size-4" aria-hidden />
                   <span>Microphone blocked in browser. Click the lock icon in your URL bar to allow mic.</span>
+                </div>
+              )}
+
+              {/* ElevenLabs couldn't voice the last buyer line: say so, keep the text, offer a retry */}
+              {voiceIssue && callActive && (
+                <div role="status" className="mb-4 px-3 py-2 rounded-md bg-warning-bg text-warning-fg text-small flex flex-wrap items-center justify-center gap-2 max-w-lg">
+                  <AlertCircle className="size-4 shrink-0" aria-hidden />
+                  <span>
+                    <span className="font-medium">Voice unavailable.</span> {voiceIssue.message} The reply is shown as text below.
+                  </span>
+                  {isRetryableVoiceError(voiceIssue.code) && (
+                    <Button size="sm" variant="secondary" onClick={() => void retryVoice()} loading={retryingVoice} disabled={retryingVoice} icon={<RotateCcw aria-hidden />}>
+                      Retry voice
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -1045,9 +1099,6 @@ function SparringRoomContent() {
                         }
                         if (audioElementRef.current) {
                           try { audioElementRef.current.pause(); } catch {}
-                        }
-                        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                          try { window.speechSynthesis.cancel(); } catch {}
                         }
                         setIsPlayingAudio(false);
                       }
@@ -1385,7 +1436,7 @@ function SparringRoomContent() {
               <div className="text-right min-w-0">
                 <span className="text-caption text-fg-tertiary block">Voice model</span>
                 <span className="text-small text-fg-secondary">
-                  {selectedCountry} ElevenLabs Turbo v2.5
+                  ElevenLabs {elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)}
                 </span>
               </div>
             </div>

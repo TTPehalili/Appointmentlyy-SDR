@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { SPARRING_PERSONAS, SparringCountry, getPersonaVoiceByCountry } from '@/lib/personas';
 import { RepAccentKey } from '@/lib/repVoices';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
 import { Badge, PageHeader, SegmentedControl, Select, buttonClasses, type Tone } from '@/components/ui';
 
 const DIFFICULTY_TONE: Record<string, Tone> = {
@@ -64,6 +65,7 @@ export default function SparringArena({ tabs }: { tabs?: React.ReactNode }) {
             title="Sparring Arena"
             count={SPARRING_PERSONAS.length}
             description="Practice cold calls with an AI buyer, then get a scorecard on how you handled the objection."
+            meta={<ElevenLabsAttribution variant="pill" />}
             secondaryActions={
               <>
                 <Link href="/certification" className={buttonClasses('secondary', 'md')}>

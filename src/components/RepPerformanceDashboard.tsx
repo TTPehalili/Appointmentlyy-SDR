@@ -168,7 +168,8 @@ function activityLogFromRecords(activities: CadenceActivityRecord[], tenant: str
 }
 
 // Sample rep performance for the demo workspace only (see useDemoWorkspace).
-const MASTER_PERFORMANCE_DATA: Record<TimePeriod, RepMetric[]> = {
+// Exported for the Copilot's demo team report, so it cites the same sample numbers as this page.
+export const MASTER_PERFORMANCE_DATA: Record<TimePeriod, RepMetric[]> = {
   daily: [
     // Apex Global BPO
     {

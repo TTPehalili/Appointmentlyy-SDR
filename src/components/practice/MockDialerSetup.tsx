@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Award, Check } from 'lucide-react';
 import BorisCallingCockpit from '@/components/BorisCallingCockpit';
+import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
 import { Badge, PageHeader, SegmentedControl, Select, buttonClasses } from '@/components/ui';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { getPresetRebuttals } from '@/lib/dialerRebuttals';
@@ -69,6 +70,7 @@ export default function MockDialerSetup({ tabs }: { tabs?: React.ReactNode }) {
             className="pb-0"
             title="Mock dialer"
             description="Practise inside the real Dialer: same screen, script and buttons, against an AI customer who raises the objection you choose."
+            meta={<ElevenLabsAttribution variant="pill" />}
             secondaryActions={
               <Link href="/certification" className={buttonClasses('secondary', 'md')}>
                 <Award aria-hidden />

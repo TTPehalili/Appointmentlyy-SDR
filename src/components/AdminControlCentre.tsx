@@ -1286,7 +1286,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
             <div>
               <PageHeader
                 title="Call QA reviews"
-                description="Scored call recordings, transcribed with ElevenLabs speech-to-text."
+                description="Scored calls with transcripts and coaching notes."
               />
 
               <div className="space-y-3">

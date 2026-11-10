@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SPARRING_PERSONAS, SparringPersona, getPersonaVoiceByCountry, SparringCountry } from '@/lib/personas';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
+import { ELEVENLABS_MODELS } from '@/lib/elevenlabs/voiceEngine';
+import { synthesizeWithElevenLabs } from '@/lib/server/elevenlabsTts';
 
 function extractJson(text: string) {
   try {
@@ -497,7 +499,6 @@ ${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line
 
     const voiceConfig = getPersonaVoiceByCountry(persona, (country as SparringCountry) || 'USA');
     const googleApiKey = process.env.GOOGLE_API_KEY;
-    const elevenApiKey = (process.env.ELEVENLABS_API_KEY || '').trim();
 
     // Format transcript turns for the prompt
     const formattedHistory = transcript
@@ -639,52 +640,32 @@ Return STRICT JSON only:
       scriptAssist = deriveDynamicScriptAssist(persona, personaReply, sentiment);
     }
 
-    // 4. Synthesize Voice with ElevenLabs TTS using persona's conversational voice settings
+    // 4. Voice the reply with ElevenLabs (persona's conversational voice settings). On failure the
+    //    client shows "Voice unavailable, retry"; there is no other TTS provider or browser voice.
     let audioUrl: string | null = null;
-    if (elevenApiKey && personaReply) {
-      const candidateModels = ['eleven_turbo_v2_5', 'eleven_multilingual_v2'];
-      for (const modelId of candidateModels) {
-        try {
-          const ttsRes = await fetch(
-            `https://api.elevenlabs.io/v1/text-to-speech/${voiceConfig.voiceId}?optimize_streaming_latency=4`,
-            {
-              method: 'POST',
-              headers: {
-                'xi-api-key': elevenApiKey,
-                'Content-Type': 'application/json',
-                Accept: 'audio/mpeg'
-              },
-              body: JSON.stringify({
-                text: personaReply,
-                model_id: modelId,
-                voice_settings: persona.voiceSettings || {
-                  stability: 0.48,
-                  similarity_boost: 0.75,
-                  style: 0.08,
-                  use_speaker_boost: true
-                }
-              })
-            }
-          );
-
-          if (ttsRes.ok) {
-            const ab = await ttsRes.arrayBuffer();
-            const base64 = Buffer.from(ab).toString('base64');
-            audioUrl = `data:audio/mpeg;base64,${base64}`;
-            break;
-          } else {
-            const errTxt = await ttsRes.text();
-            console.warn(`[Sparring Chat TTS] Model ${modelId} failed status ${ttsRes.status}:`, errTxt);
-          }
-        } catch (voiceErr) {
-          console.warn(`[Sparring Chat TTS] Voice error:`, voiceErr);
-        }
+    let voiceModel: string | null = null;
+    let voiceError: { code: string; message: string } | null = null;
+    if (personaReply) {
+      const voice = await synthesizeWithElevenLabs({
+        text: personaReply,
+        // Live calls (demo Dialer / Mock dialer) use the persona's own voice, matching the "Hello?" pickup.
+        voiceId: liveCall && persona.voiceId ? persona.voiceId : voiceConfig.voiceId,
+        voiceSettings: persona.voiceSettings,
+        modelId: ELEVENLABS_MODELS.realtime,
+      });
+      if (voice.ok) {
+        audioUrl = voice.audio;
+        voiceModel = voice.model;
+      } else {
+        voiceError = { code: voice.code, message: voice.error };
       }
     }
 
     return NextResponse.json({
       reply: personaReply,
       audioUrl,
+      voiceModel,
+      voiceError,
       completedObjectiveIds: completedIds,
       sentiment,
       armObservation,

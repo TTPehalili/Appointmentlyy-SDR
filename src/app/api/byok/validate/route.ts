@@ -143,29 +143,50 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. ElevenLabs API Key Validation
+    // 4. ElevenLabs API Key Validation (the platform's voice engine). Calls ElevenLabs itself:
+    //    GET /v1/user for tier and character quota. A key scoped without "User: read" is checked
+    //    against GET /v1/models instead, so TTS-only keys still validate.
     if (provider === 'elevenlabs') {
       try {
-        const res = await fetch('https://api.elevenlabs.io/v1/user', {
-          headers: { 'xi-api-key': trimmedKey }
-        });
+        const headers = { 'xi-api-key': trimmedKey };
+        const res = await fetch('https://api.elevenlabs.io/v1/user', { headers });
         const latency = `${Date.now() - startTime}ms`;
         if (res.ok) {
           const userData = await res.json().catch(() => ({}));
-          const tier = userData.subscription?.tier || 'active';
+          const sub = userData.subscription || {};
+          const tier = sub.tier || 'active';
+          const used = Number(sub.character_count);
+          const limit = Number(sub.character_limit);
+          const quota = Number.isFinite(used) && Number.isFinite(limit) && limit > 0
+            ? ` ${Math.max(0, limit - used).toLocaleString('en-US')} of ${limit.toLocaleString('en-US')} characters left.`
+            : '';
           return NextResponse.json({
             success: true,
             latency,
             provider: 'elevenlabs',
-            message: `ElevenLabs Key verified (Tier: ${tier}).`
-          });
-        } else {
-          return NextResponse.json({
-            success: false,
-            latency,
-            error: 'Invalid ElevenLabs API Key.'
+            message: `ElevenLabs key verified (tier: ${tier}).${quota}`
           });
         }
+        const errBody = await res.json().catch(() => ({}));
+        const detailStatus = typeof errBody?.detail === 'object' ? errBody.detail?.status : '';
+        if (detailStatus === 'missing_permissions') {
+          const modelsRes = await fetch('https://api.elevenlabs.io/v1/models', { headers });
+          if (modelsRes.ok) {
+            return NextResponse.json({
+              success: true,
+              latency: `${Date.now() - startTime}ms`,
+              provider: 'elevenlabs',
+              message: 'ElevenLabs key verified. It is scoped without account access, so tier and quota are not shown.'
+            });
+          }
+        }
+        return NextResponse.json({
+          success: false,
+          latency,
+          error: detailStatus === 'quota_exceeded'
+            ? 'This ElevenLabs key is valid but its character quota is used up.'
+            : 'Invalid ElevenLabs API key. Copy it again from elevenlabs.io, Developers, API keys.'
+        });
       } catch (err: any) {
         return NextResponse.json({
           success: false,
@@ -174,13 +195,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback simulation for other providers
-    return NextResponse.json({
-      success: true,
-      latency: `${Date.now() - startTime}ms`,
-      provider,
-      message: `${provider.toUpperCase()} credentials validated.`
-    });
+    // 5. Google Gemini API Key Validation (text model)
+    if (provider === 'gemini') {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(trimmedKey)}`);
+        const latency = `${Date.now() - startTime}ms`;
+        if (res.ok) {
+          return NextResponse.json({
+            success: true,
+            latency,
+            provider: 'gemini',
+            message: 'Google Gemini API key verified.'
+          });
+        }
+        return NextResponse.json({
+          success: false,
+          latency,
+          error: 'Invalid Google Gemini API key. Check it in Google AI Studio.'
+        });
+      } catch (err) {
+        return NextResponse.json({
+          success: false,
+          error: `Network error connecting to Google Gemini: ${err instanceof Error ? err.message : String(err)}`
+        });
+      }
+    }
+
+    // Unknown provider: never report a key as valid without checking it.
+    return NextResponse.json(
+      { success: false, latency: `${Date.now() - startTime}ms`, error: `Unknown provider "${String(provider)}".` },
+      { status: 400 }
+    );
 
   } catch (err: any) {
     return NextResponse.json(

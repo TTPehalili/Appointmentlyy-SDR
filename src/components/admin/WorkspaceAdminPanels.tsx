@@ -225,7 +225,7 @@ export function WorkspaceLeadsEmpty() {
 export function WorkspaceQaEmpty() {
   return (
     <div>
-      <PageHeader title="Call QA reviews" description="Scored call recordings, transcribed with ElevenLabs speech-to-text." />
+      <PageHeader title="Call QA reviews" description="Scored calls with transcripts and coaching notes." />
       <div className="rounded-lg border border-line bg-surface shadow-xs">
         <EmptyState icon={<Headphones />} title="No call reviews yet" description="Reviewed calls and their scores will appear here." />
       </div>
