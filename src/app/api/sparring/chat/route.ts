@@ -442,7 +442,15 @@ export async function POST(req: NextRequest) {
     const rateLimitResponse = applyRateLimit(req, { maxRequests: 120, windowMs: 60000 });
     if (rateLimitResponse) return rateLimitResponse;
 
-    const { personaId, transcript = [], repMessage = '', objectives = [], country = 'USA', mode = '', scriptStage = '' } = await req.json();
+    const { personaId, transcript = [], repMessage = '', objectives = [], country = 'USA', mode = '', scriptStage = '', scriptStepGoal = '', scriptStepText = '', scriptStepTip = '', objectionLabel = '', objectionLine = '' } = await req.json();
+    // Script context sent by the Dialer (plain text only; backticks/dollar signs stripped for the prompt).
+    const cleanScript = (v: unknown) => String(v || '').replace(/[`$]/g, '').slice(0, 900);
+    const stepGoal = cleanScript(scriptStepGoal);
+    const stepText = cleanScript(scriptStepText);
+    const stepTip = cleanScript(scriptStepTip);
+    const objLabel = cleanScript(objectionLabel).slice(0, 80);
+    const objLine = cleanScript(objectionLine).slice(0, 300);
+    const isBrushOff = /email|busy|number/i.test(objLabel);
     // Dialer demo: a live call that follows the rep's 4-step script (Opener → Problem → Solution → Close).
     const liveCall = mode === 'live_call';
     const STAGES: Record<string, string> = {
@@ -461,7 +469,10 @@ LIVE PHONE CALL MODE (this overrides the sparring rules above wherever they conf
 - Current script step on the rep's screen: ${STAGES[stageKey] || 'Infer the step from what the rep just said.'}
 - You MAY discuss your business, pains and numbers when asked good questions. You MAY agree to a meeting at the Close if it was earned (even before turn 3).
 - Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.
-- React ONLY to what the rep has actually said so far. Never bring up emails, ramp time, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
+${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line they are reading (roughly): ${stepText}. Coaching note for the rep: ${stepTip}.
+- Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, vent honestly about your lead quality and price pressure; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : 'your signature "no budget" objection'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
+` : ''}${objLabel ? `- YOUR MAIN OBJECTION ON THIS CALL (the rep chose to practise it): "${objLine}" (${objLabel}). It replaces your usual "no budget" objection${/budget/i.test(objLabel) ? '' : ': on this call do NOT mention budget, finance freezes or spend approvals at all; when they pitch at the Solution step, push back with this objection (or a natural variation of it) instead'}. Raise it ${isBrushOff ? 'early, at the Opener, as soon as they say why they are calling' : 'at the natural moment, usually right after they pitch at the Solution step'}, in your own words and with real emotion. Keep pressing it until the rep handles it well (acknowledges you, answers with substance, proposes a sensible next step); then soften and let the call move on.
+` : ''}- React ONLY to what the rep has actually said so far. Never bring up emails, ramp time, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
       : '';
 
     if (repMessage) {

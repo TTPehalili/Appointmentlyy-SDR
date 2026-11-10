@@ -43,6 +43,8 @@ export function AiProspectCall({
   voiceSettings,
   prospectName,
   scriptStep,
+  scriptContext,
+  objection,
 }: {
   personaId: string;
   voiceId: string;
@@ -51,6 +53,10 @@ export function AiProspectCall({
   prospectName: string;
   /** 1-4: Opener, Problem, Solution, Close (the tab the rep has open). */
   scriptStep: number;
+  /** The rep's script for the open step, so the prospect reacts to the actual lines. */
+  scriptContext?: { goal: string; text: string; tip: string };
+  /** Objection the rep chose before dialing: the prospect's main objection for this call. */
+  objection?: { label: string; line: string } | null;
 }) {
   const firstName = prospectName.split(' ')[0] || 'there';
   const [turns, setTurns] = React.useState<Turn[]>([]);
@@ -69,11 +75,13 @@ export function AiProspectCall({
   const micOnRef = React.useRef(true);
   const busyRef = React.useRef(false);
   const stepRef = React.useRef(scriptStep);
+  const scriptRef = React.useRef(scriptContext);
   const listRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     stepRef.current = scriptStep;
-  }, [scriptStep]);
+    scriptRef.current = scriptContext;
+  }, [scriptStep, scriptContext]);
   React.useEffect(() => {
     micOnRef.current = micOn;
   }, [micOn]);
@@ -191,6 +199,11 @@ export function AiProspectCall({
             personaId,
             mode: 'live_call',
             scriptStage: STAGE_NAMES[Math.min(3, Math.max(0, stepRef.current - 1))],
+            scriptStepGoal: scriptRef.current?.goal || '',
+            scriptStepText: scriptRef.current?.text || '',
+            scriptStepTip: scriptRef.current?.tip || '',
+            objectionLabel: objection?.label || '',
+            objectionLine: objection?.line || '',
             transcript: turnsRef.current.map((t) => ({ role: t.role, content: t.content })),
             repMessage: text.trim(),
             objectives: [],
@@ -214,7 +227,7 @@ export function AiProspectCall({
       busyRef.current = false;
       if (alive.current) listen();
     },
-    [personaId, pushTurn, stopListening, tts, play, listen],
+    [personaId, objection, pushTurn, stopListening, tts, play, listen],
   );
 
   React.useEffect(() => {

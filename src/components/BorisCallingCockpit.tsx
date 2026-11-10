@@ -340,6 +340,8 @@ export default function BorisCallingCockpit() {
   // Demo workspace only: a simulated call (ringing → connected) so sales demos look like a live dial.
   const [demoCallPhase, setDemoCallPhase] = useState<'ringing' | 'connected'>('ringing');
   const demoRingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The objection chip selected when Call was pressed drives the AI prospect for that call.
+  const [demoCallObjection, setDemoCallObjection] = useState<{ label: string; line: string } | null>(null);
   useEffect(() => () => {
     if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
   }, []);
@@ -1263,6 +1265,7 @@ export default function BorisCallingCockpit() {
                           alert('No phone number entered for this prospect.');
                           return;
                         }
+                        setDemoCallObjection(activeRebuttal ? { label: activeRebuttal.shortLabel, line: interpolate(activeRebuttal.trigger) } : null);
                         setDemoCallPhase('ringing');
                         setIsCallingActive(true);
                         if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
@@ -1421,6 +1424,12 @@ export default function BorisCallingCockpit() {
                   voiceSettings={DEMO_PROSPECT_PERSONA.voiceSettings as Record<string, unknown> | undefined}
                   prospectName={activeLead?.name || DEMO_PROSPECT_PERSONA.name}
                   scriptStep={currentStep}
+                  objection={demoCallObjection}
+                  scriptContext={{
+                    goal: activeStepData?.goal || '',
+                    text: interpolate(activeStepData?.spokenText || ''),
+                    tip: activeStepData?.deliveryTip || '',
+                  }}
                 />
               </div>
             )}
