@@ -1,6 +1,6 @@
 'use client';
 
-import { DEMO_LOGIN, signOutOnServer } from '@/lib/authClient';
+import { DEMO_LOGIN, canViewAsRoles, setViewAsRole, signOutOnServer, useServerAuth } from '@/lib/authClient';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronsUpDown, KeyRound, LogOut, Mail, Settings } from 'lucide-react';
@@ -26,6 +26,9 @@ function avatarSrc(name: string) {
 export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const { repName, email, role, updateSession, logout } = useSession();
+  const server = useServerAuth();
+  // Staff demos: preview what each role sees (display only; the server keeps the real role).
+  const canViewAs = DEMO_LOGIN || canViewAsRoles(server.identity);
   const [open, setOpen] = React.useState(false);
   const [pwdOpen, setPwdOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -87,14 +90,15 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
           </div>
 
           {/* Role switching is a demo/testing aid only; real roles come from the server. */}
-          {DEMO_LOGIN && <p className="px-2 pb-0.5 pt-2 text-group text-fg-tertiary">View as role (testing)</p>}
-          {DEMO_LOGIN && TEST_ROLES.map((r) => (
+          {canViewAs && <p className="px-2 pb-0.5 pt-2 text-group text-fg-tertiary">View as</p>}
+          {canViewAs && TEST_ROLES.map((r) => (
             <button
               key={r}
               type="button"
               role="menuitemradio"
               aria-checked={role === r}
               onClick={() => {
+                if (!DEMO_LOGIN) setViewAsRole(r === 'Super Admin' ? null : r);
                 updateSession({ role: r });
                 setOpen(false);
               }}

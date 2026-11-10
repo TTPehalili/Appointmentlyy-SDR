@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { DEMO_LOGIN, refreshServerIdentity } from '@/lib/authClient';
+import { DEMO_LOGIN, canViewAsRoles, getViewAsRole, refreshServerIdentity, setViewAsRole } from '@/lib/authClient';
 import { clearStoredSession, getStoredSession, setStoredSession } from '@/lib/session';
 import { STORAGE_OWNER_KEY, claimTenantStorage, getStorageOwner } from '@/lib/tenantStorage';
 
@@ -46,6 +46,9 @@ export function SessionSync() {
       }
       const id = state.identity;
       const wiped = claimTenantStorage(id.email, id.tenantCode);
+      // Staff "view as" preview (display only) in their own workspace; cleared anywhere else.
+      if (!canViewAsRoles(id)) setViewAsRole(null);
+      const effectiveRole = (canViewAsRoles(id) && getViewAsRole()) || id.role;
       const nowOwner = getStorageOwner();
       const changedElsewhere = tabOwner !== null && nowOwner !== tabOwner;
       tabOwner = nowOwner;
@@ -54,14 +57,14 @@ export function SessionSync() {
         wiped ||
         !cur.isAuthenticated ||
         cur.email !== id.email ||
-        cur.role !== id.role ||
+        cur.role !== effectiveRole ||
         cur.tenantCode !== id.tenantCode ||
         cur.tenantName !== id.tenantName ||
         cur.repName !== id.repName
       ) {
         setStoredSession({
           email: id.email,
-          role: id.role,
+          role: effectiveRole,
           tenantCode: id.tenantCode,
           tenantName: id.tenantName,
           repName: id.repName,

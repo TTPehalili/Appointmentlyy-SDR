@@ -117,3 +117,36 @@ export async function apiJson<T = Record<string, unknown>>(
   const data = await res.json().catch(() => ({ success: false, error: 'Unexpected server reply.' }));
   return { ...data, success: Boolean(res.ok && data.success), status: res.status };
 }
+
+// ------------------------------------------------------------------ "View as role" (staff demos)
+
+const VIEW_AS_KEY = 'appy_view_as_role';
+const VIEW_AS_ROLES: Role[] = ['Admin', 'Manager', 'Supervisor', 'Rep'];
+
+/**
+ * Display-only role preview for Appointmentlyy staff in their own (demo) workspace. It changes what
+ * the UI shows; the server still uses the real role, so it can't grant or remove any access.
+ */
+export function getViewAsRole(): Role | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(VIEW_AS_KEY) as Role | null;
+    return v && VIEW_AS_ROLES.includes(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setViewAsRole(role: Role | null) {
+  try {
+    if (role && VIEW_AS_ROLES.includes(role)) localStorage.setItem(VIEW_AS_KEY, role);
+    else localStorage.removeItem(VIEW_AS_KEY);
+  } catch {
+    // storage unavailable: preview just won't persist
+  }
+}
+
+/** Staff signed in to the platform's own workspace may preview other roles. */
+export function canViewAsRoles(identity: ServerIdentity | null): boolean {
+  return Boolean(identity?.isPlatformAdmin && identity.tenantCode === 'APPOINTMENTLYY');
+}
