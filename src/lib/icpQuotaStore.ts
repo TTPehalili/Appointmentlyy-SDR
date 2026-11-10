@@ -1,4 +1,4 @@
-import { DEMO_LOGIN } from '@/lib/demoMode';
+import { isDemoWorkspace } from '@/lib/demoMode';
 /**
  * Appointmentlyy ICP Data Cloud — Multi-Tenant Quota & Invoice Ledger
  *
@@ -316,16 +316,17 @@ export function normalizeTenantKey(codeOrName?: string): string {
  * Read all tenant quota states
  */
 export function getAllTenantQuotas(): Record<string, TenantQuotaState> {
-  if (typeof window === 'undefined') return INITIAL_TENANT_QUOTAS;
+  if (typeof window === 'undefined') return initialTenantQuotas();
   try {
     const raw = localStorage.getItem(QUOTA_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(QUOTA_STORAGE_KEY, JSON.stringify(INITIAL_TENANT_QUOTAS));
-      return INITIAL_TENANT_QUOTAS;
+      const seed = initialTenantQuotas();
+      if (isDemoWorkspace()) localStorage.setItem(QUOTA_STORAGE_KEY, JSON.stringify(seed));
+      return seed;
     }
-    return { ...INITIAL_TENANT_QUOTAS, ...JSON.parse(raw) };
+    return { ...initialTenantQuotas(), ...JSON.parse(raw) };
   } catch {
-    return INITIAL_TENANT_QUOTAS;
+    return initialTenantQuotas();
   }
 }
 
@@ -368,7 +369,7 @@ export function getTenantQuota(tenantCode?: string, tenantName?: string): Tenant
     bonusTopUpBalance: 0,
     totalLifetimePulled: 0,
     weekResetDateIso: getNextMondayIso(),
-    repsRoster: DEMO_LOGIN ? ['Rep 1', 'Rep 2', 'Rep 3', 'Rep 4'] : [],
+    repsRoster: isDemoWorkspace() ? ['Rep 1', 'Rep 2', 'Rep 3', 'Rep 4'] : [],
     updatedAt: new Date().toISOString(),
   };
   all[key] = fresh;
@@ -502,17 +503,18 @@ export function updateTenantRepsRoster(tenantCode: string, reps: string[]): Tena
  * Read all stored system invoices
  */
 export function getStoredInvoices(): SystemInvoice[] {
-  if (typeof window === 'undefined') return INITIAL_SYSTEM_INVOICES;
+  if (typeof window === 'undefined') return initialSystemInvoices();
   try {
     const raw = localStorage.getItem(INVOICES_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(INITIAL_SYSTEM_INVOICES));
-      return INITIAL_SYSTEM_INVOICES;
+      const seed = initialSystemInvoices();
+      if (isDemoWorkspace()) localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(seed));
+      return seed;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_SYSTEM_INVOICES;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialSystemInvoices();
   } catch {
-    return INITIAL_SYSTEM_INVOICES;
+    return initialSystemInvoices();
   }
 }
 
@@ -618,5 +620,9 @@ export function subscribeToQuotaStore(callback: () => void): () => void {
 }
 
 // Sample data is for demo builds only: real workspaces start empty.
-export const INITIAL_TENANT_QUOTAS: Record<string, TenantQuotaState> = DEMO_LOGIN ? DEMO_INITIAL_TENANT_QUOTAS : {};
-export const INITIAL_SYSTEM_INVOICES: SystemInvoice[] = DEMO_LOGIN ? DEMO_INITIAL_SYSTEM_INVOICES : [];
+function initialTenantQuotas(): Record<string, TenantQuotaState> {
+  return isDemoWorkspace() ? DEMO_INITIAL_TENANT_QUOTAS : {};
+}
+function initialSystemInvoices(): SystemInvoice[] {
+  return isDemoWorkspace() ? DEMO_INITIAL_SYSTEM_INVOICES : [];
+}

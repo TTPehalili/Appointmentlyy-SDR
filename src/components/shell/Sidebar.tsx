@@ -21,6 +21,7 @@ function NavLink({ item, collapsed, active }: { item: NavItem; collapsed: boolea
       href={item.href}
       aria-current={active ? 'page' : undefined}
       title={collapsed ? item.label : undefined}
+      data-tour={item.id}
       className={cn(
         'focus-ring relative flex h-9 items-center gap-3 rounded-md text-body transition-colors duration-150',
         collapsed ? 'mx-auto w-10 justify-center' : 'px-2.5',
@@ -93,7 +94,7 @@ export function Sidebar() {
         {footer.map((item) => (
           <NavLink key={item.id} item={item} collapsed={collapsed} active={isNavItemActive(item, pathname)} />
         ))}
-        <div className="mt-1">
+        <div className="mt-1" data-tour="profile">
           <ProfileMenu collapsed={collapsed} />
         </div>
         {!collapsed && (

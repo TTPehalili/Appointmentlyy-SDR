@@ -5,12 +5,14 @@ import { ToastProvider } from '@/components/ui';
 import { ShellProvider, useShell } from './ShellContext';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { AnnouncementRibbon } from '@/components/announcements/AnnouncementRibbon';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { CopilotPanel } from './CopilotPanel';
 import { MobileTabBar } from './MobileTabBar';
 import { ShellCommandPalette } from './ShellCommandPalette';
 import { ThemeSync } from './ThemeSync';
 import { SessionSync } from './SessionSync';
+import { ProductTour } from '@/components/tour/ProductTour';
 import { cn } from '@/lib/cn';
 
 /**
@@ -39,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </React.Suspense>
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
+              <AnnouncementRibbon />
               <div className="flex min-h-0 flex-1">
                 <main id="main" tabIndex={-1} className="relative outline-none flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                   {children}
@@ -57,6 +60,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <ThemeSync />
         <React.Suspense fallback={null}>
           <SessionSync />
+        </React.Suspense>
+        <React.Suspense fallback={null}>
+          <ProductTour />
         </React.Suspense>
       </ToastProvider>
     </ShellProvider>

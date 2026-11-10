@@ -1,4 +1,4 @@
-import { DEMO_LOGIN } from '@/lib/demoMode';
+import { isDemoWorkspace } from '@/lib/demoMode';
 /**
  * Appointmentlyy SDR — Multi-Tenant Custom Domain & White-Label Store
  *
@@ -211,21 +211,19 @@ const DEMO_INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainConfi
 
 export function getAllCustomDomainConfigs(): Record<string, TenantCustomDomainConfig> {
   if (typeof window === 'undefined') {
-    return INITIAL_CUSTOM_DOMAIN_CONFIGS;
+    return initialCustomDomainConfigs();
   }
   try {
     const raw = localStorage.getItem(CUSTOM_DOMAINS_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(
-        CUSTOM_DOMAINS_STORAGE_KEY,
-        JSON.stringify(INITIAL_CUSTOM_DOMAIN_CONFIGS)
-      );
-      return INITIAL_CUSTOM_DOMAIN_CONFIGS;
+      const seed = initialCustomDomainConfigs();
+      if (isDemoWorkspace()) localStorage.setItem(CUSTOM_DOMAINS_STORAGE_KEY, JSON.stringify(seed));
+      return seed;
     }
     const parsed = JSON.parse(raw);
-    return { ...INITIAL_CUSTOM_DOMAIN_CONFIGS, ...parsed };
+    return { ...initialCustomDomainConfigs(), ...parsed };
   } catch {
-    return INITIAL_CUSTOM_DOMAIN_CONFIGS;
+    return initialCustomDomainConfigs();
   }
 }
 
@@ -402,4 +400,6 @@ export function subscribeToCustomDomains(
 }
 
 // Sample data is for demo builds only: real workspaces start empty.
-export const INITIAL_CUSTOM_DOMAIN_CONFIGS: Record<string, TenantCustomDomainConfig> = DEMO_LOGIN ? DEMO_INITIAL_CUSTOM_DOMAIN_CONFIGS : {};
+function initialCustomDomainConfigs(): Record<string, TenantCustomDomainConfig> {
+  return isDemoWorkspace() ? DEMO_INITIAL_CUSTOM_DOMAIN_CONFIGS : {};
+}

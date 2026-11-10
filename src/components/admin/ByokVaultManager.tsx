@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Unlock, CheckCircle2, ShieldCheck, Eye, EyeOff, Check, Cpu, ArrowRight, Mail, Calendar, Mic, Info, X } from 'lucide-react';
 import { Badge, Button, Card, ConfirmDialog, Dialog, Field, IconButton, Input, PageHeader, Select, Tooltip } from '@/components/ui';
+import { isDemoWorkspace } from '@/lib/demoMode';
+import { getStoredSession } from '@/lib/session';
 
 interface TenantBYOKState {
   tenantId: string;
@@ -19,11 +21,43 @@ interface TenantBYOKState {
   fallbackStrategy: 'system_pool' | 'pause_alert';
 }
 
+/** Real workspaces: one vault entry, for the workspace you're signed in to. */
+function currentWorkspaceVault(): TenantBYOKState {
+  const session = getStoredSession();
+  let savedLink = '';
+  try {
+    savedLink = (localStorage.getItem('tenant_calendar_link') || '').trim();
+  } catch {
+    // storage unavailable
+  }
+  // The platform owner's own booking link never carries over into a client workspace.
+  if (savedLink.includes('bpogtm') || savedLink.includes('emil-appointmentlyy') || savedLink.includes('your-team')) savedLink = '';
+  const id = session.tenantCode || 'current';
+  return {
+    tenantId: id,
+    tenantName: session.tenantName || 'This workspace',
+    isUnlocked: true,
+    resendKey: '',
+    resendDomain: '',
+    resendFromEmail: '',
+    calendarBookingLink: savedLink,
+    openaiKey: '',
+    claudeKey: '',
+    geminiKey: '',
+    elevenlabsKey: '',
+    fallbackStrategy: 'system_pool',
+  };
+}
+
 export default function ByokVaultManager() {
-  const [selectedTenantId, setSelectedTenantId] = useState<string>('ten_1');
+  // The four sample workspaces, "Active" test results and the owner's booking link are demo data.
+  const [isDemo] = useState<boolean>(() => isDemoWorkspace());
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(() =>
+    isDemoWorkspace() ? 'ten_1' : currentWorkspaceVault().tenantId
+  );
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<{ [key: string]: { success: boolean; latency: string; model: string } }>({
+  const [testResults, setTestResults] = useState<{ [key: string]: { success: boolean; latency: string; model: string } }>(() => !isDemoWorkspace() ? ({} as { [key: string]: { success: boolean; latency: string; model: string } }) : {
     'resend': { success: true, latency: '88ms', model: 'Resend API Active' },
     'openai': { success: true, latency: '142ms', model: 'gpt-4o' },
     'elevenlabs': { success: true, latency: '185ms', model: 'eleven_turbo_v2_5' }
@@ -35,13 +69,18 @@ export default function ByokVaultManager() {
   useEffect(() => {
     try {
       const savedLink = localStorage.getItem('tenant_calendar_link');
-      if (savedLink && savedLink.includes('emil-appointmentlyy')) {
+      if (isDemoWorkspace() && savedLink && savedLink.includes('emil-appointmentlyy')) {
         localStorage.setItem('tenant_calendar_link', 'https://calendly.com/bpogtm/30min');
       }
     } catch {}
   }, []);
 
-  const [tenantsBYOK, setTenantsBYOK] = useState<{ [id: string]: TenantBYOKState }>({
+  const [tenantsBYOK, setTenantsBYOK] = useState<{ [id: string]: TenantBYOKState }>(() => {
+    if (!isDemoWorkspace()) {
+      const own = currentWorkspaceVault();
+      return { [own.tenantId]: own };
+    }
+    return {
     'ten_1': {
       tenantId: 'ten_1',
       tenantName: 'Apex Global BPO',
@@ -98,9 +137,10 @@ export default function ByokVaultManager() {
       elevenlabsKey: '',
       fallbackStrategy: 'system_pool'
     }
+    };
   });
 
-  const activeTenant = tenantsBYOK[selectedTenantId] || tenantsBYOK['ten_1'];
+  const activeTenant = tenantsBYOK[selectedTenantId] || Object.values(tenantsBYOK)[0];
 
   const toggleShowKey = (provider: string) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
@@ -197,6 +237,10 @@ export default function ByokVaultManager() {
     if (activeTenant.calendarBookingLink) {
       try {
         localStorage.setItem('tenant_calendar_link', activeTenant.calendarBookingLink.trim());
+      } catch {}
+    } else if (!isDemo) {
+      try {
+        localStorage.removeItem('tenant_calendar_link');
       } catch {}
     }
     setSaveSuccess(true);
@@ -430,7 +474,7 @@ export default function ByokVaultManager() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-body-strong text-fg">Calendar URL</span>
-                    <Badge tone="success">Active</Badge>
+                    {(isDemo || activeTenant.calendarBookingLink.trim()) && <Badge tone="success">Active</Badge>}
                   </div>
                   <Input
                     mono
@@ -441,9 +485,11 @@ export default function ByokVaultManager() {
                   />
                   <div className="flex flex-col justify-between gap-1 text-small text-fg-secondary sm:flex-row sm:items-center">
                     <span>Used in the dialer script, follow-up email composer and booking dialog.</span>
-                    <span className="shrink-0 text-fg-tertiary">
-                      Fallback: <span className="font-mono">https://calendly.com/bpogtm/30min</span>
-                    </span>
+                    {isDemo && (
+                      <span className="shrink-0 text-fg-tertiary">
+                        Fallback: <span className="font-mono">https://calendly.com/bpogtm/30min</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </section>

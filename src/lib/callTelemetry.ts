@@ -1,3 +1,5 @@
+import { isDemoWorkspace } from '@/lib/demoMode';
+
 export interface CallTelemetryState {
   roleVerified: boolean;
   roleTitleStatus: string;
@@ -22,7 +24,7 @@ export const INITIAL_TELEMETRY_STATE: CallTelemetryState = {
   sharedLeadComment: '',
   problemFixDiscussed: false,
   primaryService: 'Customer Support',
-  painPointIdentified: 'Competing against 3-5 BPOs on identical shared lists ($8/hr margin crush)',
+  painPointIdentified: '',
   screenSharePitched: false,
   screenShareSlot: '',
   zeroPrepConfirmed: false,
@@ -60,6 +62,43 @@ export function synthesizeCrmNotes({
   customRepNotes
 }: NoteSynthesizerParams): string {
   const ts = timestamp || 'LIVE CALL IN PROGRESS (Active Session)';
+
+  // The broker / founder-demo talk track below is the platform owner's own pitch: only the demo
+  // workspace uses it. Client workspaces get a neutral call log built from the lead's fields.
+  if (!isDemoWorkspace()) {
+    const outcome = disposition
+      ? disposition.toUpperCase()
+      : telemetry.screenShareSlot
+      ? 'MEETING BOOKED'
+      : 'IN PROGRESS';
+    const roleLine = telemetry.roleVerified
+      ? (telemetry.roleTitleStatus || 'Verified in role')
+      : 'Pending verification';
+    const meetingLine = telemetry.screenShareSlot
+      ? `Booked: ${telemetry.screenShareSlot}`
+      : telemetry.screenSharePitched
+      ? 'Meeting proposed'
+      : 'Not booked yet';
+    let neutral = `=== CALL LOG ===
+PROSPECT: ${contactName || '-'}${companyName ? ` | ${companyName}` : ''}
+ROLE: ${title || '-'}${headcount ? ` (${headcount})` : ''}
+PHONE: ${phone || '-'}
+CADENCE TOUCH: Day ${cadenceDay} (${stepName})
+TIMESTAMP: ${ts}
+
+1. ROLE VERIFICATION:
+- Status: ${roleLine}
+
+2. MEETING:
+- Status: ${meetingLine}
+- Direct mobile: ${telemetry.directMobileCaptured || phone || 'Not provided'}
+
+OUTCOME / DISPOSITION: ${outcome}`;
+    if (customRepNotes && customRepNotes.trim()) {
+      neutral += `\n\nREP NOTES:\n${customRepNotes.trim()}`;
+    }
+    return neutral;
+  }
 
   const roleStatusText = telemetry.roleVerified
     ? (telemetry.roleTitleStatus || '✓ Verified active in role')

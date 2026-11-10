@@ -47,6 +47,8 @@ import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 import { logCadenceActivity, getDailyActivitySummary, subscribeToActivities } from '@/lib/activityStore';
 import { getStoredDispositions, subscribeToDispositions, CallDisposition } from '@/lib/dispositionStore';
 import { useSession, isRoleAdmin } from '@/lib/session';
+import { isDemoWorkspace } from '@/lib/demoMode';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { useTelephony } from '@/lib/telephony/useTelephony';
 import {
   CallTelemetryState,
@@ -90,7 +92,8 @@ interface ARMRebuttal {
   fullSpoken: string;
 }
 
-const PRESET_REBUTTALS: ARMRebuttal[] = [
+// The platform owner's own pitch: demo workspace only.
+const DEMO_PRESET_REBUTTALS: ARMRebuttal[] = [
   {
     id: 'OBJ_SEND_EMAIL',
     shortLabel: 'Send Email / Busy',
@@ -154,6 +157,105 @@ const PRESET_REBUTTALS: ARMRebuttal[] = [
 ];
 
 
+const armRebuttal = (r: Omit<ARMRebuttal, 'fullSpoken'>): ARMRebuttal => ({
+  ...r,
+  fullSpoken: `${r.acknowledge} ${r.respond} ${r.move}`,
+});
+
+/** Neutral starter rebuttals for client workspaces ({{my_company}} is the workspace name). */
+const NEUTRAL_PRESET_REBUTTALS: ARMRebuttal[] = [
+  armRebuttal({
+    id: 'OBJ_SEND_EMAIL',
+    shortLabel: 'Send Email / Busy',
+    category: 'Brush-Off',
+    trigger: 'Just send me an email / I am busy right now',
+    acknowledge: 'Happy to, {{first_name}}. I know I caught you in the middle of your day.',
+    respond: 'So I send you something useful instead of another generic email, can I ask one quick question about how {{company}} handles this today?',
+    move: "If it isn't relevant, I'll say thanks and let you go. Fair enough?",
+  }),
+  armRebuttal({
+    id: 'OBJ_HAVE_TEAM',
+    shortLabel: 'Already Covered',
+    category: 'Incumbent',
+    trigger: 'We already have a team / provider for this',
+    acknowledge: 'That makes sense, {{first_name}}. Most teams like yours already have something in place.',
+    respond: 'We usually work alongside what you already have, and the teams we help often just wanted better results in one specific area.',
+    move: "Would it hurt to compare notes for 15 minutes and see if there's anything worth improving?",
+  }),
+  armRebuttal({
+    id: 'OBJ_PRICING',
+    shortLabel: 'How Much / Price?',
+    category: 'Pricing',
+    trigger: 'How much does this cost? Just tell me the price.',
+    acknowledge: 'Completely fair, {{first_name}}. You need to know the numbers make sense before you spend any time on this.',
+    respond: "Pricing depends on what {{company}} actually needs, so I don't want to quote you something that doesn't fit.",
+    move: 'Can we set up a short call where we look at your situation and give you a real number? How does later this week look?',
+  }),
+  armRebuttal({
+    id: 'OBJ_NO_BUDGET',
+    shortLabel: 'No Budget',
+    category: 'Budget',
+    trigger: "We don't have budget for this right now",
+    acknowledge: 'I hear you. Budgets are tight and every spend has to earn its place.',
+    respond: "Most of the people we work with didn't have a budget line for this either until they saw what it could save or bring in.",
+    move: "Let's leave money aside for now: would a 15-minute look at whether it's worth it be useful?",
+  }),
+  armRebuttal({
+    id: 'OBJ_NOT_INTERESTED',
+    shortLabel: 'Not Interested',
+    category: 'Brush-Off',
+    trigger: "I'm not interested",
+    acknowledge: "Totally fair, {{first_name}}. You didn't expect my call.",
+    respond: "Before I go, is that because this isn't a priority at {{company}} right now, or because you've already solved it?",
+    move: "If it's timing, when would be a better moment to check back in?",
+  }),
+  armRebuttal({
+    id: 'OBJ_HOW_DID_YOU_GET_NUMBER',
+    shortLabel: 'Got My Number?',
+    category: 'Compliance',
+    trigger: 'How did you get my direct phone number?',
+    acknowledge: "Fair question, {{first_name}}. I'd ask the same thing.",
+    respond: 'We use business contact data providers to reach the people who lead this area at companies like {{company}}.',
+    move: 'Since I have you for a moment, is this something on your radar this quarter?',
+  }),
+];
+
+/** Placeholder lead while a client workspace has no leads yet (the screen shows an empty state). */
+const EMPTY_LEAD = {
+  id: '',
+  name: '',
+  company: '',
+  title: '',
+  phone: '',
+  email: '',
+  headcount: '',
+  website: '',
+  linkedinUrl: '',
+  cadenceDay: 1,
+};
+
+const DEMO_CALENDAR_LINK = 'https://calendly.com/bpogtm/30min';
+
+/** The saved booking link for this workspace. Only the demo workspace falls back to the owner's own. */
+function readTenantCalendarLink(): string {
+  const demo = isDemoWorkspace();
+  const fallback = demo ? DEMO_CALENDAR_LINK : '';
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const saved = (localStorage.getItem('tenant_calendar_link') || '').trim();
+    if (!saved) return fallback;
+    if (saved.includes('emil-appointmentlyy') || saved.includes('your-team')) {
+      if (demo) localStorage.setItem('tenant_calendar_link', fallback);
+      return fallback;
+    }
+    // The owner's own link never belongs to a client workspace.
+    if (!demo && saved.includes('bpogtm')) return '';
+    return saved;
+  } catch {
+    return fallback;
+  }
+}
+
 const AGENT_STATE_LABEL: Record<string, string> = {
   ready: 'Ready',
   paused: 'Paused',
@@ -165,7 +267,9 @@ const AGENT_STATE_LABEL: Record<string, string> = {
 
 export default function BorisCallingCockpit() {
   const { session, role, isAdmin, tenantName: sessionTenant, repName: sessionRep } = useSession();
-  const repName = sessionRep || 'Emil Halili';
+  const isDemo = useDemoWorkspace();
+  const repName = sessionRep || '';
+  const PRESET_REBUTTALS = isDemo ? DEMO_PRESET_REBUTTALS : NEUTRAL_PRESET_REBUTTALS;
   const adminClearance = isRoleAdmin(role);
 
   // Tab State for Right Column: 'notes' | 'footprint' | 'callbacks'
@@ -195,12 +299,13 @@ export default function BorisCallingCockpit() {
       const stored = getStoredContacts();
       if (stored && stored.length > 0) return stored;
     }
-    return DEMO_CADENCE_LEADS;
+    return isDemoWorkspace() ? DEMO_CADENCE_LEADS : [];
   });
   const [currentLeadIndex, setCurrentLeadIndex] = useState<number>(0);
 
   // Active Lead Object
-  const activeLead = leadsQueue[currentLeadIndex] || DEMO_CADENCE_LEADS[0];
+  const activeLead = leadsQueue[currentLeadIndex] || (isDemo ? DEMO_CADENCE_LEADS[0] : EMPTY_LEAD);
+  const hasNoLeads = !isDemo && leadsQueue.length === 0;
   const nextLeadCandidate = leadsQueue[(currentLeadIndex + 1) % leadsQueue.length];
 
   // Active Contact with live footprint & direct notes
@@ -223,6 +328,12 @@ export default function BorisCallingCockpit() {
   // Calling & Disposition State
   const [isCallingActive, setIsCallingActive] = useState<boolean>(false);
   const [callTimerSeconds, setCallTimerSeconds] = useState<number>(0);
+  // Demo workspace only: a simulated call (ringing → connected) so sales demos look like a live dial.
+  const [demoCallPhase, setDemoCallPhase] = useState<'ringing' | 'connected'>('ringing');
+  const demoRingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
+  }, []);
   const [disposition, setDisposition] = useState<string | null>(null);
   const [dispositionNotes, setDispositionNotes] = useState<string>('');
   const [activityToast, setActivityToast] = useState<string | null>(null);
@@ -257,21 +368,8 @@ export default function BorisCallingCockpit() {
   const [isSendingQuickEmail, setIsSendingQuickEmail] = useState<boolean>(false);
   const [quickEmailSuccess, setQuickEmailSuccess] = useState<string | null>(null);
 
-  // Tenant Custom Production Calendar Link (Canonical: https://calendly.com/bpogtm/30min)
-  const [tenantCalendarLink, setTenantCalendarLink] = useState<string>(() => {
-    const globalDefault = 'https://calendly.com/bpogtm/30min';
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('tenant_calendar_link');
-      if (saved && saved.trim()) {
-        if (saved.includes('emil-appointmentlyy') || saved.includes('your-team')) {
-          localStorage.setItem('tenant_calendar_link', globalDefault);
-          return globalDefault;
-        }
-        return saved.trim();
-      }
-    }
-    return globalDefault;
-  });
+  // The workspace's booking link (Admin > AI providers). Empty until a client workspace sets one.
+  const [tenantCalendarLink, setTenantCalendarLink] = useState<string>(readTenantCalendarLink);
 
   // Telemetry & Customer Qualification State
   const [telemetry, setTelemetry] = useState<CallTelemetryState>(INITIAL_TELEMETRY_STATE);
@@ -285,7 +383,8 @@ export default function BorisCallingCockpit() {
   const [customRepNotes, setCustomRepNotes] = useState<string>('');
 
   // Spoken Steps Definitions (Dynamically hydrated from synthesized playbook or system default)
-  const DEFAULT_SCRIPT_STEPS = [
+  // The demo script is the platform owner's own pitch; client workspaces get a neutral starter.
+  const DEMO_SCRIPT_STEPS = [
     {
       step: 1,
       name: '1. Opener',
@@ -316,7 +415,41 @@ export default function BorisCallingCockpit() {
     }
   ];
 
-  const [scriptSteps, setScriptSteps] = useState(DEFAULT_SCRIPT_STEPS);
+  const NEUTRAL_SCRIPT_STEPS = [
+    {
+      step: 1,
+      name: '1. Opener',
+      goal: 'Introduce yourself and get permission to continue.',
+      spokenText: `"Hi {{first_name}}, this is {{rep_name}} with {{my_company}}. I know I'm catching you out of the blue. Do you have 30 seconds for me to explain why I'm calling?"`,
+      deliveryTip: 'Calm, confident, unhurried tone. Do not apologize for calling.'
+    },
+    {
+      step: 2,
+      name: '2. Problem',
+      goal: 'Name the problem your offer solves and ask if it applies.',
+      spokenText: `"We talk to a lot of people in roles like yours, and many tell us [the main problem you solve]. Is that something you're seeing at {{company}} right now?"`,
+      deliveryTip: 'Stop talking after the question and let the prospect answer.'
+    },
+    {
+      step: 3,
+      name: '3. Solution',
+      goal: 'Explain in one or two sentences how you help.',
+      spokenText: `"That's where {{my_company}} comes in. [One sentence on what you do and the result your customers get.]"`,
+      deliveryTip: 'Keep it short and focused on their outcome, not your features.'
+    },
+    {
+      step: 4,
+      name: '4. Close',
+      goal: 'Book a short follow-up meeting.',
+      spokenText: `"{{first_name}}, would it make sense to set up a short call to see if this is a fit for {{company}}? Does later this week work, or is next week better?"`,
+      deliveryTip: 'Offer two time options to make scheduling easy.'
+    }
+  ];
+  const DEFAULT_SCRIPT_STEPS = isDemo ? DEMO_SCRIPT_STEPS : NEUTRAL_SCRIPT_STEPS;
+
+  // A playbook saved for this workspace wins; otherwise the default for this workspace.
+  const [savedScriptSteps, setScriptSteps] = useState<typeof DEMO_SCRIPT_STEPS | null>(null);
+  const scriptSteps = savedScriptSteps ?? DEFAULT_SCRIPT_STEPS;
 
   useEffect(() => {
     const loadTenantScripts = () => {
@@ -372,12 +505,12 @@ export default function BorisCallingCockpit() {
   };
 
   const [notesDraft, setNotesDraft] = useState<string>(() => synthesizeCrmNotes({
-    contactName: 'Julian Vance',
-    companyName: 'Apex Global BPO',
-    title: 'Director of Outbound Operations',
+    contactName: activeLead.name,
+    companyName: activeLead.company,
+    title: activeLead.title,
     department: 'Operations & BDM',
-    headcount: '250 Seats',
-    phone: '+63 917 555 0192',
+    headcount: activeLead.headcount,
+    phone: activeLead.phone,
     cadenceDay: 2,
     stepName: '1. The Opener',
     telemetry: INITIAL_TELEMETRY_STATE,
@@ -387,21 +520,8 @@ export default function BorisCallingCockpit() {
 
   // Sync tenant calendar link from storage
   useEffect(() => {
-    try {
-      const globalDefault = 'https://calendly.com/bpogtm/30min';
-      const savedLink = localStorage.getItem('tenant_calendar_link');
-      if (savedLink && savedLink.trim()) {
-        if (savedLink.includes('emil-appointmentlyy') || savedLink.includes('your-team')) {
-          localStorage.setItem('tenant_calendar_link', globalDefault);
-          setTenantCalendarLink(globalDefault);
-        } else {
-          setTenantCalendarLink(savedLink.trim());
-        }
-      } else {
-        setTenantCalendarLink(globalDefault);
-      }
-    } catch { }
-  }, []);
+    setTenantCalendarLink(readTenantCalendarLink());
+  }, [isDemo]);
 
   // 1. Load Stored Leads on Mount
   useEffect(() => {
@@ -684,7 +804,8 @@ export default function BorisCallingCockpit() {
     return text
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{full_name\}\}/gi, customerName || 'there')
-      .replace(/\{\{rep_name\}\}/gi, repName || 'Emil')
+      .replace(/\{\{rep_name\}\}/gi, repName)
+      .replace(/\{\{my_company\}\}/gi, sessionTenant || 'our team')
       .replace(/\{\{company\}\}/gi, partnerName || 'your team')
       .replace(/\{\{title\}\}/gi, title || 'Executive')
       .replace(/\{\{phone\}\}/gi, phone || '')
@@ -696,7 +817,7 @@ export default function BorisCallingCockpit() {
   const activeRebuttal = useMemo(() => {
     if (!selectedRebuttalId) return null;
     return PRESET_REBUTTALS.find(r => r.id === selectedRebuttalId) || null;
-  }, [selectedRebuttalId]);
+  }, [selectedRebuttalId, PRESET_REBUTTALS]);
 
   // Save Direct Note on Lead Record (For Non-CRM Customers)
   const handleSaveLeadNote = () => {
@@ -853,7 +974,9 @@ export default function BorisCallingCockpit() {
     const firstName = customerName.split(' ')[0] || 'there';
     setQuickEmailSubject(`quick follow up from our call / ${partnerName}`);
     setQuickEmailBody(
-      `Hi ${firstName},\n\nGreat speaking with you just now. As discussed, here is the executive overview on cutting rep ramp time to 72 hours with <150ms live call assistance.\n\nHere is the link to lock in the 15-minute screen share: ${tenantCalendarLink}\n\nBest,\n${repName}`
+      isDemo
+        ? `Hi ${firstName},\n\nGreat speaking with you just now. As discussed, here is the executive overview on cutting rep ramp time to 72 hours with <150ms live call assistance.\n\nHere is the link to lock in the 15-minute screen share: ${tenantCalendarLink}\n\nBest,\n${repName}`
+        : `Hi ${firstName},\n\nThanks for taking my call just now. As promised, here's a quick follow-up${sessionTenant ? ` from ${sessionTenant}` : ''}.\n\n${tenantCalendarLink ? `You can pick a time that suits you here: ${tenantCalendarLink}` : 'Let me know a time that works for a short follow-up call.'}\n\nBest,\n${repName}`
     );
     setQuickEmailSuccess(null);
     setIsQuickEmailOpen(true);
@@ -927,7 +1050,7 @@ export default function BorisCallingCockpit() {
           {/* TOP FLOOR HEADER & UTILITY BAR */}
           <PageHeader
             title="Calling floor"
-            description={`Current account: ${partnerName}`}
+            description={hasNoLeads ? 'No leads in your queue yet' : `Current account: ${partnerName}`}
             className="pb-2"
             secondaryActions={
               <>
@@ -1015,6 +1138,28 @@ export default function BorisCallingCockpit() {
             </div>
           )}
 
+          {hasNoLeads ? (
+            <div className="rounded-lg border border-line bg-surface shadow-xs">
+              <EmptyState
+                icon={<Users />}
+                title="No leads yet"
+                description="Import or add leads in Contacts or Lead Finder, then come back here to start calling."
+                action={
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <Link href="/contacts" className={buttonClasses('primary', 'sm')}>
+                      Go to Contacts
+                    </Link>
+                    <Link href="/lead-finder" className={buttonClasses('secondary', 'sm')}>
+                      Open Lead Finder
+                    </Link>
+                    <Button variant="ghost" size="sm" onClick={() => setIsCsvModalOpen(true)} icon={<UploadCloud />}>
+                      Import CSV
+                    </Button>
+                  </div>
+                }
+              />
+            </div>
+          ) : (<>
           {/* ========================================================================= */}
           {/* SECTION 1: UNIFIED LEAD HEADER, INLINE DIALER & 1-CLICK DISPOSITIONS      */}
           {/* ========================================================================= */}
@@ -1100,6 +1245,52 @@ export default function BorisCallingCockpit() {
                         {phone || 'No phone'}
                       </span>
                     </button>
+                  ) : isDemo ? (
+                    <button
+                      type="button"
+                      disabled={isCallingActive}
+                      onClick={() => {
+                        if (!phone) {
+                          alert('No phone number entered for this prospect.');
+                          return;
+                        }
+                        setDemoCallPhase('ringing');
+                        setIsCallingActive(true);
+                        if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
+                        demoRingTimer.current = setTimeout(() => {
+                          setDemoCallPhase('connected');
+                          setCallTimerSeconds(0);
+                        }, 3500);
+                      }}
+                      className={`focus-ring relative inline-flex h-10 cursor-pointer items-center gap-2 rounded-md px-3.5 text-body font-medium transition-colors duration-300 disabled:cursor-default ${
+                        isCallingActive
+                          ? 'bg-success-500 text-white'
+                          : 'bg-action-brand text-action-brand-fg hover:bg-action-brand-hover'
+                      }`}
+                    >
+                      {isCallingActive && demoCallPhase === 'ringing' && (
+                        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-success-500 motion-safe:animate-ping" />
+                      )}
+                      {isCallingActive ? (
+                        demoCallPhase === 'ringing' ? (
+                          <PhoneCall className="size-4 shrink-0 motion-safe:animate-pulse-soft" />
+                        ) : (
+                          <span className="size-2 shrink-0 rounded-full bg-white motion-safe:animate-pulse-soft" aria-hidden />
+                        )
+                      ) : (
+                        <PhoneCall className="size-4 shrink-0" />
+                      )}
+                      <span className="tabular-nums" aria-live="polite">
+                        {!isCallingActive
+                          ? 'Call'
+                          : demoCallPhase === 'ringing'
+                            ? 'Ringing…'
+                            : `Connected ${String(Math.floor(callTimerSeconds / 60)).padStart(2, '0')}:${String(callTimerSeconds % 60).padStart(2, '0')}`}
+                      </span>
+                      <span className={`border-l pl-2 font-mono text-small ${isCallingActive ? 'border-white/30' : 'border-action-brand-fg/30'}`}>
+                        {phone || 'No phone'}
+                      </span>
+                    </button>
                   ) : (
                   <a
                     href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
@@ -1134,6 +1325,7 @@ export default function BorisCallingCockpit() {
                           const r = await telephony.hangup();
                           if (!r.ok) showTelephonyNotice(r.message);
                         }
+                        if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
                         setIsCallingActive(false);
                       }}
                     >
@@ -1522,7 +1714,7 @@ export default function BorisCallingCockpit() {
                   </div>
                 )}
 
-                {currentStep === 2 && (
+                {currentStep === 2 && isDemo && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
                       Quick qualify: lead source
@@ -1958,6 +2150,7 @@ export default function BorisCallingCockpit() {
 
           </div>
 
+          </>)}
         </main>
       </div>
 
@@ -2075,7 +2268,7 @@ export default function BorisCallingCockpit() {
       <Dialog
         open={showCalendlyModal}
         onClose={() => setShowCalendlyModal(false)}
-        title={`Book a screen share with ${customerName} (${partnerName})`}
+        title={customerName ? `Book a screen share with ${customerName} (${partnerName})` : 'Booking calendar'}
         size="lg"
         className="overflow-hidden"
         bare
@@ -2086,7 +2279,7 @@ export default function BorisCallingCockpit() {
                 Book a screen share with {customerName} ({partnerName})
               </h3>
               <div className="flex items-center gap-1">
-                <a
+                {tenantCalendarLink && <a
                   href={`${tenantCalendarLink}?name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(directEmail)}&a1=${encodeURIComponent(partnerName)}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -2095,20 +2288,33 @@ export default function BorisCallingCockpit() {
                 >
                   <span>Open in new tab</span>
                   <ExternalLink />
-                </a>
+                </a>}
                 <IconButton label="Close" size="sm" onClick={() => setShowCalendlyModal(false)}>
                   <X />
                 </IconButton>
               </div>
             </div>
             <div className="flex-1 bg-surface">
-              <iframe
-                src={`${tenantCalendarLink}?name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(directEmail)}&a1=${encodeURIComponent(partnerName)}`}
-                width="100%"
-                height="100%"
-                frameBorder="0"
-                title="Customer Booking Calendar"
-              />
+              {tenantCalendarLink ? (
+                <iframe
+                  src={`${tenantCalendarLink}?name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(directEmail)}&a1=${encodeURIComponent(partnerName)}`}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  title="Customer Booking Calendar"
+                />
+              ) : (
+                <EmptyState
+                  icon={<Calendar />}
+                  title="Add your booking link"
+                  description="Set your team's scheduling link (for example Calendly) in Admin > AI providers, and it will open here."
+                  action={
+                    <Link href="/admin/ai-providers" className={buttonClasses('primary', 'sm')}>
+                      Set booking link
+                    </Link>
+                  }
+                />
+              )}
             </div>
           </div>
       </Dialog>

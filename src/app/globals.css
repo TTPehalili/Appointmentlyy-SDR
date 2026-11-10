@@ -347,6 +347,341 @@
   }
 }
 
+/*
+ * Sign-in backdrop (src/components/auth/AuthBackdrop.tsx).
+ * Plain global classes, all prefixed auth-bd- (this project compiles every .css file as global CSS).
+ * Colours come from the design tokens, so tenant brand colours (white-label) apply too.
+ *
+ * Layering: everything static (glow, grid, vignette) paints into the page's own layer. Everything
+ * that moves lives in two "lanes", clipped to the strips left and right of the card column and
+ * painted last. Moving layers under the card would make the browser composite the card as well,
+ * and Chrome on Windows then swaps ClearType for grayscale text. Keeping them out of the card
+ * column leaves the card, logo and footer rendering exactly as before.
+ * Motion is compositor-only: every animation changes transform and/or opacity, nothing else.
+ */
+
+.auth-bd {
+  /* Grid cell. Pulses are placed in cell units, so they always ride on a grid line. */
+  --cell: 48px;
+  /* Half the card column kept free of moving layers (max-w-md card = 224px, plus a margin). */
+  --ab-gap: 236px;
+  --ab-line: rgb(12 10 9 / 0.065);
+  --ab-line-lit: color-mix(in srgb, var(--brand-500) 22%, transparent);
+  --ab-node: color-mix(in srgb, var(--brand-500) 45%, transparent);
+  --ab-band: color-mix(in srgb, var(--brand-500) 4%, transparent);
+  --ab-pulse: var(--brand-500);
+  --ab-glow: color-mix(in srgb, var(--brand-500) 10%, transparent);
+  --ab-glow-soft: color-mix(in srgb, var(--brand-500) 6%, transparent);
+  --ab-vignette: var(--bg-app);
+  /* Shared fades: towards the edges, and calm behind the logo. */
+  --ab-fade-edges: radial-gradient(ellipse 78% 72% at 50% 50%, #000 30%, transparent 85%);
+  --ab-fade-top: linear-gradient(to bottom, transparent 40px, #000 150px);
+
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media screen {
+  [data-theme="dark"] .auth-bd {
+    --ab-line: rgb(250 250 249 / 0.06);
+    --ab-line-lit: color-mix(in srgb, var(--brand-500) 34%, transparent);
+    --ab-node: color-mix(in srgb, var(--brand-500) 55%, transparent);
+    --ab-band: color-mix(in srgb, var(--brand-500) 5%, transparent);
+    --ab-glow: color-mix(in srgb, var(--brand-500) 15%, transparent);
+    --ab-glow-soft: color-mix(in srgb, var(--brand-500) 8%, transparent);
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-bd {
+    --cell: 40px;
+  }
+}
+
+/* ---- static layers ---- */
+
+/* Soft brand glow behind the card (a radial gradient: filter: blur is costly on phones). */
+.auth-bd-glow-main {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(1200px, 180vw);
+  height: min(820px, 120vw);
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, var(--ab-glow), transparent);
+  transform: translate(-50%, -50%);
+}
+
+.auth-bd-field {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: var(--ab-fade-edges), var(--ab-fade-top);
+  -webkit-mask-composite: source-in;
+  mask-image: var(--ab-fade-edges), var(--ab-fade-top);
+  mask-composite: intersect;
+}
+
+/*
+ * 80 cells wide and centred, so vertical lines sit at 50% +/- n * cell
+ * (pulses use the same maths). Horizontal lines start at the top edge.
+ */
+.auth-bd-grid,
+.auth-bd-nodes,
+.auth-bd-scan-grid {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(var(--cell) * 80);
+  margin-left: calc(var(--cell) * -40);
+  background-size: var(--cell) var(--cell);
+}
+
+.auth-bd-grid {
+  bottom: 0;
+  background-image:
+    linear-gradient(to right, var(--ab-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ab-line) 1px, transparent 1px);
+}
+
+/* Small "node" dots where grid lines cross, every 4th cell. The dot is drawn 2px inside each
+   tile and the tiles are shifted back 2px, so it centres on the crossing. */
+.auth-bd-nodes {
+  bottom: 0;
+  background-image: radial-gradient(circle at 2.5px 2.5px, var(--ab-node) 1.25px, transparent 1.75px);
+  background-size: calc(var(--cell) * 4) calc(var(--cell) * 4);
+  background-position: -2px -2px;
+  opacity: 0.55;
+}
+
+.auth-bd-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 85% 80% at 50% 46%, transparent 55%, var(--ab-vignette) 100%);
+}
+
+/* ---- moving layers: two lanes beside the card column ---- */
+
+.auth-bd-lane {
+  position: absolute;
+  inset: 0;
+}
+
+.auth-bd-lane-l {
+  clip-path: inset(0 calc(50% + var(--ab-gap)) 0 0);
+  -webkit-mask-image: var(--ab-fade-edges), var(--ab-fade-top),
+    linear-gradient(to right, #000 calc(50% - var(--ab-gap) - 160px), transparent calc(50% - var(--ab-gap)));
+  -webkit-mask-composite: source-in;
+  mask-image: var(--ab-fade-edges), var(--ab-fade-top),
+    linear-gradient(to right, #000 calc(50% - var(--ab-gap) - 160px), transparent calc(50% - var(--ab-gap)));
+  mask-composite: intersect;
+}
+
+.auth-bd-lane-r {
+  clip-path: inset(0 0 0 calc(50% + var(--ab-gap)));
+  -webkit-mask-image: var(--ab-fade-edges), var(--ab-fade-top),
+    linear-gradient(to left, #000 calc(50% - var(--ab-gap) - 160px), transparent calc(50% - var(--ab-gap)));
+  -webkit-mask-composite: source-in;
+  mask-image: var(--ab-fade-edges), var(--ab-fade-top),
+    linear-gradient(to left, #000 calc(50% - var(--ab-gap) - 160px), transparent calc(50% - var(--ab-gap)));
+  mask-composite: intersect;
+}
+
+/*
+ * Phones (narrow + touch) render text in grayscale anyway, and the card fills their width, so one
+ * full-width lane carries the motion there. A narrow desktop window keeps the clipped lanes.
+ */
+.auth-bd-mobile-only {
+  display: none;
+}
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .auth-bd-lane-l {
+    clip-path: none;
+    -webkit-mask-image: var(--ab-fade-edges), var(--ab-fade-top);
+    mask-image: var(--ab-fade-edges), var(--ab-fade-top);
+  }
+  .auth-bd-lane-r,
+  .auth-bd-desktop-only {
+    display: none;
+  }
+  .auth-bd-mobile-only {
+    display: block;
+  }
+}
+
+/* Drifting side glows (inside the lanes, so the clip edge falls where the lane has faded out). */
+.auth-bd-glow-side {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, var(--ab-glow-soft), transparent);
+  will-change: transform;
+}
+
+.auth-bd-lane-l .auth-bd-glow-side {
+  left: -12%;
+  top: 6%;
+  width: min(760px, 120vw);
+  height: min(760px, 120vw);
+  animation: auth-bd-glow-drift 26s ease-in-out infinite alternate;
+}
+
+.auth-bd-lane-r .auth-bd-glow-side {
+  right: -14%;
+  bottom: 2%;
+  width: min(800px, 120vw);
+  height: min(800px, 120vw);
+  animation: auth-bd-glow-drift 30s ease-in-out -12s infinite alternate-reverse;
+}
+
+@keyframes auth-bd-glow-drift {
+  from { transform: translate(0, 0) scale(1); opacity: 0.8; }
+  to { transform: translate(6%, 9%) scale(1.12); opacity: 1; }
+}
+
+/* Scanning sweep: a band that travels down and lights the grid in brand colour. */
+.auth-bd-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 260px;
+  overflow: hidden;
+  background: linear-gradient(to bottom, transparent, var(--ab-band));
+  -webkit-mask-image: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.55) 75%, #000 98%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, rgb(0 0 0 / 0.55) 75%, #000 98%, transparent);
+  transform: translateY(-260px);
+  animation: auth-bd-scan-band 15s cubic-bezier(0.45, 0, 0.55, 1) 1.2s infinite;
+  will-change: transform;
+}
+
+/* The lit grid inside the band moves the opposite way, so its lines stay on the real grid. */
+.auth-bd-scan-grid {
+  height: calc(100vh + 600px);
+  min-height: 1400px;
+  background-image:
+    linear-gradient(to right, var(--ab-line-lit) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ab-line-lit) 1px, transparent 1px);
+  transform: translateY(260px);
+  animation: auth-bd-scan-grid 15s cubic-bezier(0.45, 0, 0.55, 1) 1.2s infinite;
+  will-change: transform;
+}
+
+/* Leading edge of the sweep. */
+.auth-bd-scan::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--ab-line-lit) 15%, var(--ab-line-lit) 85%, transparent);
+}
+
+@keyframes auth-bd-scan-band {
+  0% { transform: translateY(-260px); }
+  62%, 100% { transform: translateY(calc(100vh + 40px)); }
+}
+
+@keyframes auth-bd-scan-grid {
+  0% { transform: translateY(260px); }
+  62%, 100% { transform: translateY(calc(-100vh - 40px)); }
+}
+
+/* Signal pulses travelling along grid lines (a nod to calls and data on the wire). */
+.auth-bd-pulse-h,
+.auth-bd-pulse-v {
+  position: absolute;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.auth-bd-pulse-h {
+  left: 0;
+  top: calc(var(--cell) * var(--row));
+  width: 160px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--ab-pulse));
+  animation: auth-bd-pulse-x var(--dur) linear var(--delay) infinite;
+}
+
+.auth-bd-pulse-v {
+  top: 0;
+  left: calc(50% + var(--cell) * var(--col));
+  width: 1px;
+  height: 140px;
+  background: linear-gradient(to bottom, transparent, var(--ab-pulse));
+  animation: auth-bd-pulse-y var(--dur) linear var(--delay) infinite;
+}
+
+/* Right-to-left / bottom-to-top variants: flip the tail and run the animation backwards. */
+.auth-bd-pulse-h.auth-bd-reverse {
+  background: linear-gradient(to left, transparent, var(--ab-pulse));
+  animation-direction: reverse;
+}
+
+.auth-bd-pulse-v.auth-bd-reverse {
+  background: linear-gradient(to top, transparent, var(--ab-pulse));
+  animation-direction: reverse;
+}
+
+/* Bright head with a small glow. */
+.auth-bd-pulse-h::after,
+.auth-bd-pulse-v::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--ab-pulse);
+  box-shadow: 0 0 6px 1px var(--ab-pulse);
+}
+
+.auth-bd-pulse-h::after { right: -1px; top: -1px; }
+.auth-bd-pulse-v::after { bottom: -1px; left: -1px; }
+.auth-bd-pulse-h.auth-bd-reverse::after { right: auto; left: -1px; }
+.auth-bd-pulse-v.auth-bd-reverse::after { bottom: auto; top: -1px; }
+
+@keyframes auth-bd-pulse-x {
+  0% { transform: translateX(-180px); opacity: 0; }
+  4% { opacity: 0.9; }
+  46% { opacity: 0.9; }
+  50% { transform: translateX(100vw); opacity: 0; }
+  100% { transform: translateX(100vw); opacity: 0; }
+}
+
+@keyframes auth-bd-pulse-y {
+  0% { transform: translateY(-160px); opacity: 0; }
+  4% { opacity: 0.9; }
+  46% { opacity: 0.9; }
+  50% { transform: translateY(100vh); opacity: 0; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+/* ---- reduced motion: a still composition (glow, grid, nodes), no moving signals ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-bd *,
+  .auth-bd *::after {
+    animation: none !important;
+    will-change: auto !important;
+  }
+  .auth-bd-scan,
+  .auth-bd-pulse-h,
+  .auth-bd-pulse-v {
+    display: none;
+  }
+}
+
+@media print {
+  .auth-bd {
+    display: none;
+  }
+}
+
 /* Print utilities for official certificates */
 @media print {
   body {

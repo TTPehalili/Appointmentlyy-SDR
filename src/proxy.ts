@@ -80,7 +80,7 @@ async function authGate(request: NextRequest): Promise<NextResponse | null> {
  * Appointmentlyy SDR — Multi-Tenant Custom Domain Edge Router (Next.js 16 `proxy.ts`)
  *
  * Production Primary Host: app.appointmentlyy.com
- * Customer Custom Domains: e.g. app.customerwebsiteurl.com, app.apexglobalbpo.com
+ * Customer Custom Domains: e.g. app.customerwebsiteurl.com
  *
  * How it works:
  * 1. Reads the incoming `x-forwarded-host` or `host` header.
@@ -108,19 +108,6 @@ const KNOWN_CUSTOM_DOMAINS: Record<
   'app.appointmentlyy.com': {
     tenantCode: 'APPOINTMENTLYY',
     tenantName: 'Appointmentlyy',
-  },
-  'app.apexglobalbpo.com': {
-    tenantCode: 'APEX-GLOBAL',
-    tenantName: 'Apex Global BPO',
-    brandColor: '#0F766E',
-  },
-  'app.shorepartnersbpo.com': {
-    tenantCode: 'SHORE-PARTNERS',
-    tenantName: 'ShorePartners BPO',
-  },
-  'sdr.cloudstaffoutsourcing.com': {
-    tenantCode: 'CLOUD-STAFF',
-    tenantName: 'CloudStaff Outsourcing',
   },
 };
 

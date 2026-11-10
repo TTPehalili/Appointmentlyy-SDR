@@ -14,6 +14,7 @@ import {
   WISE_PAYMENT_LINK,
 } from '@/lib/icpQuotaStore';
 import MinimalistInvoiceCard from '@/components/icp/MinimalistInvoiceCard';
+import { isDemoWorkspace } from '@/lib/demoMode';
 
 export default function BillingInvoiceManager() {
   const [invoices, setInvoices] = useState<SystemInvoice[]>(() => getStoredInvoices());
@@ -30,10 +31,11 @@ export default function BillingInvoiceManager() {
       year: 'numeric',
     })
   );
-  const [tenantName, setTenantName] = useState('Apex Global BPO');
-  const [tenantCode, setTenantCode] = useState('APEX-GLOBAL');
-  const [clientContactName, setClientContactName] = useState('Julian Vance');
-  const [clientEmail, setClientEmail] = useState('julian@apexglobalbpo.com');
+  // The sample client is prefilled in the demo workspace only.
+  const [tenantName, setTenantName] = useState(() => (isDemoWorkspace() ? 'Apex Global BPO' : ''));
+  const [tenantCode, setTenantCode] = useState(() => (isDemoWorkspace() ? 'APEX-GLOBAL' : ''));
+  const [clientContactName, setClientContactName] = useState(() => (isDemoWorkspace() ? 'Julian Vance' : ''));
+  const [clientEmail, setClientEmail] = useState(() => (isDemoWorkspace() ? 'julian@apexglobalbpo.com' : ''));
   const [creditsToProvision, setCreditsToProvision] = useState<number>(8000);
   const [month2VolumePack, setMonth2VolumePack] = useState<{
     records: number;
@@ -387,7 +389,7 @@ export default function BillingInvoiceManager() {
                   type="text"
                   value={tenantName}
                   onChange={(e) => setTenantName(e.target.value)}
-                  placeholder="Apex Global BPO"
+                  placeholder="Client company name"
                 />
               </Field>
               <Field label="Workspace code">
@@ -396,7 +398,7 @@ export default function BillingInvoiceManager() {
                   type="text"
                   value={tenantCode}
                   onChange={(e) => setTenantCode(e.target.value.toUpperCase())}
-                  placeholder="APEX-GLOBAL"
+                  placeholder="CLIENT-CODE"
                 />
               </Field>
             </div>
@@ -407,7 +409,7 @@ export default function BillingInvoiceManager() {
                   type="text"
                   value={clientContactName}
                   onChange={(e) => setClientContactName(e.target.value)}
-                  placeholder="Julian Vance"
+                  placeholder="Billing contact name"
                 />
               </Field>
               <Field label="Email">
@@ -415,7 +417,7 @@ export default function BillingInvoiceManager() {
                   type="email"
                   value={clientEmail}
                   onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="julian@company.com"
+                  placeholder="billing@client.com"
                 />
               </Field>
             </div>

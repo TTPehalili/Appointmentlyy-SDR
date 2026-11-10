@@ -19,7 +19,9 @@ import {
   Loader2,
   MessageSquareText
 } from 'lucide-react';
-import { Button, Input, PageHeader, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
+import { Button, EmptyState, Input, PageHeader, Select, StatusDot, Tooltip, buttonClasses } from '@/components/ui';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { useSession } from '@/lib/session';
 import { PERSONA_VOICE_MAP, SparringCountry } from '@/lib/personas';
 import {
   REP_VOICE_REGISTRY,
@@ -72,6 +74,9 @@ export interface ActiveSparringSession {
 }
 
 export default function LiveMonitoringCenter() {
+  // The sample practice calls are for the platform owner's demo workspace only.
+  const isDemo = useDemoWorkspace();
+  const { tenantName } = useSession();
   const [searchQuery, setSearchQuery] = useState('');
   const [sentimentFilter, setSentimentFilter] = useState<'all' | 'Hostile' | 'Skeptical' | 'Neutral' | 'Engaged'>('all');
   const [tenantFilter, setTenantFilter] = useState('all');
@@ -832,8 +837,9 @@ export default function LiveMonitoringCenter() {
     playTurn(updatedSession, updatedTranscript.length - 1);
   };
 
-  // Filter sessions
-  const filteredSessions = sessions.filter(s => {
+  // Filter sessions (client workspaces have no sample calls: only real live calls would appear)
+  const visibleSessions = isDemo ? sessions : [];
+  const filteredSessions = visibleSessions.filter(s => {
     const matchQuery = s.repName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                        s.personaName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                        s.tenant.toLowerCase().includes(searchQuery.toLowerCase());
@@ -849,8 +855,10 @@ export default function LiveMonitoringCenter() {
       <PageHeader
         className="pb-0"
         title="Live floor"
-        count={sessions.length}
-        description={`Listen in on live practice calls and whisper coaching to ${selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino'} reps.`}
+        count={visibleSessions.length}
+        description={isDemo
+          ? `Listen in on live practice calls and whisper coaching to ${selectedRepAccent === 'arabic' ? 'Arabic accent' : 'Filipino'} reps.`
+          : 'Listen in on your reps\' live practice calls and whisper coaching.'}
         secondaryActions={
           <>
             <Link href="/practice" className={buttonClasses('secondary', 'md')}>
@@ -867,16 +875,20 @@ export default function LiveMonitoringCenter() {
 
       {/* Floor summary: one quiet stat line */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-small text-fg-secondary">
-        <StatusDot tone="success" live label={<span className="text-body-strong tabular-nums text-fg">{sessions.length} live</span>} />
+        <StatusDot tone={visibleSessions.length > 0 ? 'success' : 'neutral'} live={visibleSessions.length > 0} label={<span className="text-body-strong tabular-nums text-fg">{visibleSessions.length} live</span>} />
         <span aria-hidden className="text-fg-disabled">&middot;</span>
-        <StatusDot tone="danger" label={<span className="text-small text-fg-secondary tabular-nums">1 hostile</span>} />
-        <StatusDot tone="warning" label={<span className="text-small text-fg-secondary tabular-nums">2 skeptical</span>} />
-        <StatusDot tone="success" label={<span className="text-small text-fg-secondary tabular-nums">1 engaged</span>} />
-        <span aria-hidden className="text-fg-disabled">&middot;</span>
-        <span>
-          {selectedRepAccent === 'arabic' ? 'Arabic accent reps (Noor and Tariq)' : 'Filipino reps (Lovely and Paolo)'}
-        </span>
-        <span aria-hidden className="text-fg-disabled">&middot;</span>
+        {isDemo && (
+          <>
+            <StatusDot tone="danger" label={<span className="text-small text-fg-secondary tabular-nums">1 hostile</span>} />
+            <StatusDot tone="warning" label={<span className="text-small text-fg-secondary tabular-nums">2 skeptical</span>} />
+            <StatusDot tone="success" label={<span className="text-small text-fg-secondary tabular-nums">1 engaged</span>} />
+            <span aria-hidden className="text-fg-disabled">&middot;</span>
+            <span>
+              {selectedRepAccent === 'arabic' ? 'Arabic accent reps (Noor and Tariq)' : 'Filipino reps (Lovely and Paolo)'}
+            </span>
+            <span aria-hidden className="text-fg-disabled">&middot;</span>
+          </>
+        )}
         <span>
           Buyer accent: <span className="text-fg">{selectedCustomerAccent === 'USA' ? 'USA' : selectedCustomerAccent === 'Australia' ? 'Australia' : 'UK'}</span>
         </span>
@@ -919,10 +931,16 @@ export default function LiveMonitoringCenter() {
             aria-label="Client"
           >
             <option value="all">All clients</option>
-            <option value="Apex Global BPO (Manila)">Apex Global (Manila)</option>
-            <option value="Fintech Scaleups (Cebu)">Fintech Scaleups (Cebu)</option>
-            <option value="Horizon Solar Outbound Floor">Horizon Solar</option>
-            <option value="Outsource Accelerator Partner Hub">OA Partner Hub</option>
+            {isDemo ? (
+              <>
+                <option value="Apex Global BPO (Manila)">Apex Global (Manila)</option>
+                <option value="Fintech Scaleups (Cebu)">Fintech Scaleups (Cebu)</option>
+                <option value="Horizon Solar Outbound Floor">Horizon Solar</option>
+                <option value="Outsource Accelerator Partner Hub">OA Partner Hub</option>
+              </>
+            ) : (
+              tenantName && <option value={tenantName}>{tenantName}</option>
+            )}
           </Select>
         </div>
 
@@ -989,6 +1007,21 @@ export default function LiveMonitoringCenter() {
             Listen to hear {selectedRepAccent === 'arabic' ? 'an Arabic' : 'a Filipino'} rep with a {selectedCustomerAccent} buyer
           </span>
         </div>
+
+        {visibleSessions.length === 0 && (
+          <div className="rounded-lg border border-line bg-surface shadow-xs">
+            <EmptyState
+              icon={<Headphones />}
+              title="No live calls right now"
+              description="When your reps are on practice calls, they appear here so you can listen in and coach."
+              action={
+                <Link href="/practice" className={buttonClasses('secondary', 'sm')}>
+                  Open the Sparring Arena
+                </Link>
+              }
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredSessions.map((session) => {

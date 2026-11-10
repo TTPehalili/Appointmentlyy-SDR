@@ -32,6 +32,7 @@ import {
 import { Badge, Button, Dialog, IconButton, buttonClasses } from '@/components/ui';
 import { DEMO_LOGIN } from '@/lib/authClient';
 import { claimTenantStorage } from '@/lib/tenantStorage';
+import AuthBackdrop from '@/components/auth/AuthBackdrop';
 
 const KNOWN_TENANTS: Record<string, { name: string; code: string; defaultRep: string }> = {
   'appointmentlyy.com': { name: 'Appointmentlyy', code: 'APPOINTMENTLYY', defaultRep: 'Emil Halili' },
@@ -883,7 +884,8 @@ function RealLogin() {
     }`;
 
   return (
-    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+    <div className="relative isolate overflow-hidden min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <AuthBackdrop />
       <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
         <img src="/appointmentlyy-logo.png" alt="Appointmentlyy" className="h-8 w-auto object-contain" />
       </header>

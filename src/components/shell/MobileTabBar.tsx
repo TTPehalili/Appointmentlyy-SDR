@@ -35,6 +35,7 @@ export function MobileTabBar() {
               key={item.id}
               href={item.href}
               aria-current={active ? 'page' : undefined}
+              data-tour={item.id}
               className={cn(tab, active ? 'text-fg' : 'text-fg-tertiary')}
             >
               <Icon className={cn('size-5 stroke-[1.5]', active && 'text-brand-text')} aria-hidden />

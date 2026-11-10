@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import https from 'https';
-import { INITIAL_DEMO_ACTIVITIES } from '@/lib/activityStore';
+import { DEMO_INITIAL_DEMO_ACTIVITIES } from '@/lib/activityStore';
+import { isDemoSession } from '@/lib/demoMode';
+import { getServerSession } from '@/lib/server/session';
 import { INITIAL_DEFAULT_DISPOSITIONS } from '@/lib/dispositionStore';
 import { SPARRING_PERSONAS } from '@/lib/personas';
 import { CADENCE_TOUCHES, DEMO_CADENCE_LEADS } from '@/lib/cadenceMaster';
@@ -156,7 +158,7 @@ ${sample || '• none'}
  */
 function compileLiveSystemContext(snapshot?: LiveSnapshot | null): string {
   // 1. Recent Activities & Call Notes
-  const recentActivitySummaries = INITIAL_DEMO_ACTIVITIES.slice(0, 10).map((act) => 
+  const recentActivitySummaries = DEMO_INITIAL_DEMO_ACTIVITIES.slice(0, 10).map((act) => 
     `• [${act.timestamp}] Rep ${act.repName} reached ${act.prospectName} (${act.companyName}) via ${act.channel} (Day ${act.cadenceDay}, Touch #${act.touchNumber}). Disposition: "${act.disposition}". Note: "${act.notesSnippet}"`
   ).join('\n');
 
@@ -212,6 +214,95 @@ ${leadsSummary}
 5. Screen 5: The Dual Attendance Close (Lock 20-min strategy demo with Founder Emil).
 6. Screen 6: Desktop Screen-Share Gate (Verify prospect is in front of laptop and accepts calendar invite live on call; secures 88.9% show-up rate).
 `;
+}
+
+/**
+ * Client workspaces: answers come only from the real snapshot the browser sends. No sample
+ * benchmarks, reps, leads or call notes; with no data yet, the answer says so.
+ */
+function snapshotHasData(s?: LiveSnapshot | null): boolean {
+  return Boolean(s?.totals && (s.totals.contacts > 0 || s.totals.folders > 0));
+}
+
+function snapshotAnswer(s: LiveSnapshot): string {
+  const t = s.totals!;
+  const folderLines = (s.folders || [])
+    .map((f) => `| ${f.name} | ${f.totalLeads.toLocaleString()} | ${f.reps.map((r) => `${r.repName} (${r.leadCount})`).join(', ') || '-'} |`)
+    .join('\n');
+  const stageLines = (s.stages || [])
+    .filter((st) => st.count > 0)
+    .map((st) => `| ${st.label} | ${st.count.toLocaleString()} | ${usd(st.valueUsd)} |`)
+    .join('\n');
+  const repLines = (s.reps || [])
+    .map((r) => `| ${r.repName} | ${r.leads.toLocaleString()} | ${usd(r.valueUsd)} |`)
+    .join('\n');
+  return `### Workspace snapshot${s.tenantName ? `: ${s.tenantName}` : ''}
+
+You have **${t.folders} contact list${t.folders === 1 ? '' : 's'}** holding **${t.contacts.toLocaleString()} contacts**, **${usd(t.pipelineValueUsd)}** in pipeline value and **${t.bookedCount} meeting${t.bookedCount === 1 ? '' : 's'} booked**.
+
+**Contact lists**
+
+| List | Leads | Rep split |
+| :--- | :--- | :--- |
+${folderLines || '| _No lists yet_ | 0 | - |'}
+
+**Pipeline stages**
+
+| Stage | Leads | Deal value |
+| :--- | :--- | :--- |
+${stageLines || '| _No leads in any stage yet_ | 0 | - |'}
+
+**Leads per rep**
+
+| Rep | Leads | Pipeline value |
+| :--- | :--- | :--- |
+${repLines || '| _None_ | 0 | - |'}
+
+> Call, email and booking metrics appear here once your team starts logging activity.`;
+}
+
+const NO_DATA_ANSWER = `### No data yet
+
+This workspace doesn't have any contacts, calls or activity yet, so there's nothing to report.
+
+Import or add leads in **Contacts** or **Lead Finder**, then start calling from the **Dialer**. Your numbers will show up here as your team works.`;
+
+async function answerForWorkspace(question: string, snapshot: LiveSnapshot | null, apiKey?: string) {
+  const hasData = snapshotHasData(snapshot);
+  if (apiKey && hasData) {
+    const prompt = `You are the operations assistant for a sales team's workspace${snapshot?.tenantName ? ` (${snapshot.tenantName})` : ''}.
+Answer ONLY from the workspace data below. It is the complete set of data you have. If the question needs data that isn't there (for example call outcomes, connect rates, bookings over time or rep activity), say plainly that there's no data for that yet. Never invent numbers, people, companies or benchmarks.
+Format with clean Markdown (short headings, bullets, small tables).
+
+WORKSPACE DATA:
+${renderSnapshot(snapshot)}
+
+USER QUESTION:
+${question}`;
+    const models = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'];
+    const winner = await new Promise<{ model: string; text: string } | null>((resolve) => {
+      let pending = models.length;
+      models.forEach((model) => {
+        callGemini(model, apiKey, prompt).then((text) => {
+          if (text && text.trim()) resolve({ model, text: text.trim() });
+          else if (--pending === 0) resolve(null);
+        });
+      });
+    });
+    if (winner) {
+      return NextResponse.json({
+        answer: winner.text,
+        category: 'live_ai_intelligence',
+        source: `gemini_rag_${winner.model}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+  return NextResponse.json({
+    answer: hasData ? snapshotAnswer(snapshot!) : NO_DATA_ANSWER,
+    category: hasData ? 'workspace_snapshot' : 'no_data',
+    timestamp: new Date().toISOString(),
+  });
 }
 
 function callGemini(model: string, apiKey: string, prompt: string): Promise<string | null> {
@@ -292,8 +383,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Question is required' }, { status: 400 });
     }
 
-    const qLower = question.toLowerCase();
     const snapshot: LiveSnapshot | null = context?.snapshot || null;
+    // Sample benchmarks, reps and call notes are for the platform owner's demo workspace only.
+    if (!isDemoSession(await getServerSession(req))) {
+      return answerForWorkspace(question, snapshot, process.env.GOOGLE_API_KEY);
+    }
+
+    const qLower = question.toLowerCase();
     const systemContext = compileLiveSystemContext(snapshot);
     const googleApiKey = process.env.GOOGLE_API_KEY;
 

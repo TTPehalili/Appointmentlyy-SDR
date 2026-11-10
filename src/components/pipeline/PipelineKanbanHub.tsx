@@ -446,7 +446,7 @@ export default function PipelineKanbanHub() {
       );
     }
     if (canReassign) {
-      const currentRep = lead.assignedRep || 'Emil Halili';
+      const currentRep = lead.assignedRep || 'Unassigned';
       const otherReps = availableReps.filter((rep) => rep !== currentRep);
       if (otherReps.length > 0) {
         items.push('divider');
@@ -1581,13 +1581,14 @@ export default function PipelineKanbanHub() {
                   {canReassign ? (
                     <div className="space-y-2">
                       <select
-                        value={activeLead.assignedRep || 'Emil Halili'}
+                        value={activeLead.assignedRep || 'Unassigned'}
                         onChange={(e) =>
                           handleReassignLead(activeLead.id, e.target.value)
                         }
                         aria-label="Owner"
                         className={`${fieldClass} cursor-pointer`}
                       >
+                        {!activeLead.assignedRep && <option value="Unassigned" disabled>Unassigned</option>}
                         {availableReps.map((rep) => (
                           <option key={rep} value={rep}>
                             {rep}
@@ -1623,7 +1624,7 @@ export default function PipelineKanbanHub() {
                     </div>
                   ) : (
                     <div className="px-3 py-2 rounded-md bg-subtle border border-line flex items-center justify-between gap-2">
-                      <span className="text-body text-fg">{activeLead.assignedRep || 'Emil Halili'}</span>
+                      <span className="text-body text-fg">{activeLead.assignedRep || 'Unassigned'}</span>
                       <span className="text-caption text-fg-tertiary">
                         Ask a supervisor, manager or admin to reassign
                       </span>

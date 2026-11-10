@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { isDemoWorkspace } from '@/lib/demoMode';
 import { Plus, Pencil, Trash2, CheckCircle2, Sparkles, HelpCircle, RefreshCw, X } from 'lucide-react';
 import {
   Badge,
@@ -33,7 +34,8 @@ import {
   INITIAL_DEFAULT_DISPOSITIONS
 } from '@/lib/dispositionStore';
 
-const DEFAULT_CAMPAIGNS = [
+// Sample campaign names are for the demo workspace; real workspaces start with the global scope.
+const DEMO_CAMPAIGNS = [
   'All Campaigns (Global)',
   'Apex Global BPO',
   'Enterprise Outbound Q4',
@@ -43,7 +45,9 @@ const DEFAULT_CAMPAIGNS = [
 
 export default function CallDispositionManager() {
   const [dispositions, setDispositions] = useState<CallDisposition[]>(INITIAL_DEFAULT_DISPOSITIONS);
-  const [campaignList, setCampaignList] = useState<string[]>(DEFAULT_CAMPAIGNS);
+  const [campaignList, setCampaignList] = useState<string[]>(() =>
+    isDemoWorkspace() ? DEMO_CAMPAIGNS : ['All Campaigns (Global)']
+  );
 
   // Sync with persistent store on mount and react to updates
   useEffect(() => {
@@ -114,7 +118,9 @@ export default function CallDispositionManager() {
     setFormName('');
     setFormCode('');
     setFormCampaign(
-      selectedCampaignFilter === 'All Campaigns (Global)' ? 'Apex Global BPO' : selectedCampaignFilter
+      selectedCampaignFilter === 'All Campaigns (Global)'
+        ? isDemoWorkspace() ? 'Apex Global BPO' : 'All Campaigns (Global)'
+        : selectedCampaignFilter
     );
     setFormCategory('Positive');
     setFormActionTrigger('mark_booked');

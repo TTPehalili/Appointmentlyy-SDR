@@ -1,4 +1,4 @@
-import { DEMO_LOGIN } from '@/lib/demoMode';
+import { isDemoWorkspace } from '@/lib/demoMode';
 export interface CadenceActivityRecord {
   id: string;
   timestamp: string; // e.g. "10:45 AM"
@@ -35,7 +35,8 @@ export interface DailyActivitySummary {
 const STORAGE_KEY = 'appointmentlyy_sdr_activity_log_v1';
 const BROADCAST_CHANNEL_NAME = 'appointmentlyy_activity_sync';
 
-const DEMO_INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = [
+/** Sample activity for the demo workspace only (see isDemoWorkspace). */
+export const DEMO_INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = [
   {
     id: 'act_demo_1',
     timestamp: '10:42 AM',
@@ -91,20 +92,21 @@ const DEMO_INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = [
 
 export function getStoredActivities(): CadenceActivityRecord[] {
   if (typeof window === 'undefined') {
-    return INITIAL_DEMO_ACTIVITIES;
+    return initialDemoActivities();
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DEMO_ACTIVITIES));
-      return INITIAL_DEMO_ACTIVITIES;
+      const seed = initialDemoActivities();
+      if (isDemoWorkspace()) localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+      return seed;
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
       let changed = false;
       const migrated = parsed.map(a => {
-        if (a.repName === 'Alex Mercer') {
+        if (a.repName === 'Alex Mercer' && isDemoWorkspace()) {
           changed = true;
           return { ...a, repName: 'Emil Halili' };
         }
@@ -115,10 +117,10 @@ export function getStoredActivities(): CadenceActivityRecord[] {
       }
       return migrated;
     }
-    return INITIAL_DEMO_ACTIVITIES;
+    return initialDemoActivities();
   } catch (err) {
     console.warn('[ActivityStore] Failed to parse stored activities:', err);
-    return INITIAL_DEMO_ACTIVITIES;
+    return initialDemoActivities();
   }
 }
 
@@ -168,7 +170,7 @@ export function logCadenceActivity(
 
 export const INITIAL_DAILY_SUMMARY: DailyActivitySummary = {
   date: 'Today',
-  repName: 'Emil Halili',
+  repName: '',
   totalActivities: 0,
   callsMade: 0,
   emailsSent: 0,
@@ -220,7 +222,7 @@ export function getDailyActivitySummary(repName?: string): DailyActivitySummary 
 
   return {
     date: new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
-    repName: repName || 'Emil Halili',
+    repName: repName || '',
     totalActivities: todayActivities.length,
     callsMade,
     emailsSent,
@@ -267,4 +269,6 @@ export function subscribeToActivities(callback: (activities: CadenceActivityReco
 }
 
 // Sample data is for demo builds only: real workspaces start empty.
-export const INITIAL_DEMO_ACTIVITIES: CadenceActivityRecord[] = DEMO_LOGIN ? DEMO_INITIAL_DEMO_ACTIVITIES : [];
+function initialDemoActivities(): CadenceActivityRecord[] {
+  return isDemoWorkspace() ? DEMO_INITIAL_DEMO_ACTIVITIES : [];
+}

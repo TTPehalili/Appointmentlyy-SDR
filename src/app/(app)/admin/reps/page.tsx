@@ -15,7 +15,8 @@ import {
   Radio,
   FileCheck
 } from 'lucide-react';
-import { buttonClasses, PageHeader, SearchInput, StatusDot } from '@/components/ui';
+import { buttonClasses, EmptyState, PageHeader, SearchInput, StatusDot } from '@/components/ui';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 
 interface RepRecord {
   id: string;
@@ -30,8 +31,8 @@ interface RepRecord {
   status: 'Certified Floor Ready' | 'In Remediation' | 'In Training';
 }
 
-export default function AdminRepsPage() {
-  const [reps, setReps] = useState<RepRecord[]>([
+// Sample certification results for the demo workspace only.
+const DEMO_REPS: RepRecord[] = [
     {
       id: 'rep-1',
       name: 'Alex Mercer',
@@ -78,7 +79,11 @@ export default function AdminRepsPage() {
       certified: false,
       status: 'In Remediation'
     }
-  ]);
+];
+
+export default function AdminRepsPage() {
+  const isDemo = useDemoWorkspace();
+  const reps: RepRecord[] = isDemo ? DEMO_REPS : [];
 
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -107,6 +112,20 @@ export default function AdminRepsPage() {
         </div>
 
         {/* Rep table */}
+        {reps.length === 0 ? (
+          <div className="rounded-lg border border-line bg-surface shadow-xs">
+            <EmptyState
+              icon={<Award />}
+              title="No certification results yet"
+              description="When your reps complete practice trials and certification, their scores and certificates appear here."
+              action={
+                <Link href="/certification" className={buttonClasses('secondary', 'sm')}>
+                  Open certification
+                </Link>
+              }
+            />
+          </div>
+        ) : (
         <div className="rounded-lg border border-line bg-surface shadow-xs overflow-x-auto">
           <table className="w-full border-collapse text-left text-body tabular-nums">
             <thead>
@@ -168,6 +187,7 @@ export default function AdminRepsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

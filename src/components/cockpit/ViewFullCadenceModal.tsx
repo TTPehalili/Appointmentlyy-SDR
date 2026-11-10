@@ -37,9 +37,9 @@ export default function ViewFullCadenceModal({
   isOpen,
   onClose,
   currentDay = 2,
-  contactName = 'Julian Vance',
-  companyName = 'Apex Global BPO',
-  repName = 'Emil Halili'
+  contactName = '',
+  companyName = '',
+  repName = ''
 }: ViewFullCadenceModalProps) {
   const [filterChannel, setFilterChannel] = useState<'All' | 'Email' | 'Phone' | 'LinkedIn'>('All');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -48,7 +48,7 @@ export default function ViewFullCadenceModal({
     return text
       .replace(/\{\{first_name\}\}/g, contactName.split(' ')[0] || 'there')
       .replace(/\{\{company\}\}/g, companyName || 'your company')
-      .replace(/\{\{rep_name\}\}/g, repName || 'Emil Halili')
+      .replace(/\{\{rep_name\}\}/g, repName || '')
       .replace(/\{\{loom_link\}\}/g, 'https://loom.com/share/bpo-60seat-arm-demo');
   };
 

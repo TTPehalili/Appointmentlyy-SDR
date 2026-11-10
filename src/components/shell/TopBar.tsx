@@ -4,7 +4,8 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Bell, HelpCircle, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { IconButton, Kbd } from '@/components/ui';
+import { EmptyState, IconButton, Kbd } from '@/components/ui';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { useShell } from './ShellContext';
 
 /**
@@ -56,8 +57,8 @@ export function TopBar() {
   );
 }
 
-// DESIGN-NOTE: demo notifications carried over from the old header until a notifications feed exists.
-const NOTIFICATIONS = [
+// DESIGN-NOTE: sample notifications for the demo workspace only, until a notifications feed exists.
+const DEMO_NOTIFICATIONS = [
   { id: 'n1', title: 'Julian Vance (Apex Global)', body: 'Callback confirmed for Thursday 2:00 PM' },
   { id: 'n2', title: 'Leads loaded', body: 'Your queue was refreshed with 3 accounts' },
 ];
@@ -66,6 +67,8 @@ function Notifications() {
   const [open, setOpen] = React.useState(false);
   const [seen, setSeen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  const isDemo = useDemoWorkspace();
+  const notifications = isDemo ? DEMO_NOTIFICATIONS : [];
 
   React.useEffect(() => {
     if (!open) return;
@@ -81,7 +84,7 @@ function Notifications() {
     };
   }, [open]);
 
-  const unread = seen ? 0 : NOTIFICATIONS.length;
+  const unread = seen ? 0 : notifications.length;
 
   return (
     <div ref={ref} className="relative">
@@ -100,14 +103,23 @@ function Notifications() {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-80 animate-fade-in rounded-lg border border-line bg-surface shadow-md">
           <p className="border-b border-line px-4 py-3 text-h3 text-fg">Notifications</p>
-          <ul className="divide-y divide-line">
-            {NOTIFICATIONS.map((n) => (
-              <li key={n.id} className="px-4 py-3">
-                <p className="text-body-strong text-fg">{n.title}</p>
-                <p className="mt-0.5 text-small text-fg-secondary">{n.body}</p>
-              </li>
-            ))}
-          </ul>
+          {notifications.length === 0 ? (
+            <EmptyState
+              icon={<Bell />}
+              title="No notifications"
+              description="You're all caught up."
+              className="py-8"
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {notifications.map((n) => (
+                <li key={n.id} className="px-4 py-3">
+                  <p className="text-body-strong text-fg">{n.title}</p>
+                  <p className="mt-0.5 text-small text-fg-secondary">{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

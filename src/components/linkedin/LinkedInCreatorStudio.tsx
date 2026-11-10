@@ -48,14 +48,26 @@ import {
   ThreadFollowUpDraft 
 } from '@/lib/linkedinStudio';
 import { DEMO_CADENCE_LEADS, CadenceLeadRecord } from '@/lib/cadenceMaster';
+import { isDemoWorkspace } from '@/lib/demoMode';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { useSession } from '@/lib/session';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 
 export default function LinkedInCreatorStudio() {
   const [activeTab, setActiveTab] = useState<'series' | 'viral' | 'dossier'>('series');
 
+  // The sample leads and the author profile are the platform owner's: demo workspace only.
+  const isDemo = useDemoWorkspace();
+  const { repName, tenantName } = useSession();
+  const authorName = isDemo ? 'Emil Halili' : repName || 'You';
+  const authorHeadline = isDemo
+    ? 'CEO & Founder at Appointmentlyy | AI Outbound & BPO Systems'
+    : tenantName;
+  const authorInitials = authorName.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase();
+
   // Leads & CSV Intelligence State
-  const [leads, setLeads] = useState<CadenceLeadRecord[]>(DEMO_CADENCE_LEADS);
-  const [csvSummary, setCsvSummary] = useState<CsvIntelligenceSummary>(() => summarizeCsvLeads(DEMO_CADENCE_LEADS));
+  const [leads, setLeads] = useState<CadenceLeadRecord[]>(() => (isDemoWorkspace() ? DEMO_CADENCE_LEADS : []));
+  const [csvSummary, setCsvSummary] = useState<CsvIntelligenceSummary>(() => summarizeCsvLeads(isDemoWorkspace() ? DEMO_CADENCE_LEADS : []));
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvSearchTerm, setCsvSearchTerm] = useState('');
 
@@ -67,7 +79,7 @@ export default function LinkedInCreatorStudio() {
   );
   const [isGeneratingSeries, setIsGeneratingSeries] = useState(false);
   const [seriesData, setSeriesData] = useState<LinkedInSeries>(() => 
-    getDeterministicLinkedInSeries(summarizeCsvLeads(DEMO_CADENCE_LEADS), 'contrarian-truth', 'broker-margin-continuity')
+    getDeterministicLinkedInSeries(summarizeCsvLeads(isDemoWorkspace() ? DEMO_CADENCE_LEADS : []), 'contrarian-truth', 'broker-margin-continuity')
   );
 
   // Active Episode Focus State (0 = Ep 1 Tuesday, 1 = Ep 2 Thursday, 2 = Ep 3 Friday)
@@ -455,18 +467,24 @@ export default function LinkedInCreatorStudio() {
               {/* Author */}
               <div className="flex items-start justify-between px-5 pb-2 pt-4">
                 <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-line bg-subtle">
-                    <img
-                      src="/images/emil-halili.gif"
-                      alt="Emil Halili"
-                      className="h-full w-full object-cover"
-                    />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-subtle text-small font-medium text-fg-secondary">
+                    {isDemo ? (
+                      <img
+                        src="/images/emil-halili.gif"
+                        alt={authorName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span aria-hidden>{authorInitials}</span>
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-body-strong text-fg">Emil Halili</div>
-                    <p className="line-clamp-1 text-small text-fg-secondary">
-                      CEO &amp; Founder at Appointmentlyy | AI Outbound &amp; BPO Systems
-                    </p>
+                    <div className="text-body-strong text-fg">{authorName}</div>
+                    {authorHeadline && (
+                      <p className="line-clamp-1 text-small text-fg-secondary">
+                        {authorHeadline}
+                      </p>
+                    )}
                     <div className="mt-0.5 flex items-center gap-1.5 text-caption text-fg-tertiary">
                       <LinkedinIcon className="h-3 w-3 fill-current text-fg-tertiary" />
                       <span>Post preview, episode {activePost.episodeNumber}</span>
@@ -647,17 +665,21 @@ export default function LinkedInCreatorStudio() {
                   <div className="space-y-2.5 pt-1">
                     {activePost.injectedComments.map((comment, cIdx) => (
                       <div key={cIdx} className="flex items-start gap-2.5">
-                        <div className="mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded-full border border-line bg-subtle">
-                          <img
-                            src="/images/emil-halili.gif"
-                            alt="Emil Halili"
-                            className="h-full w-full object-cover"
-                          />
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-subtle text-caption font-medium text-fg-secondary">
+                          {isDemo ? (
+                            <img
+                              src="/images/emil-halili.gif"
+                              alt={authorName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span aria-hidden>{authorInitials}</span>
+                          )}
                         </div>
                         <div className="flex-1 space-y-1 rounded-lg border border-line bg-subtle p-3">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-small font-medium text-fg">Emil Halili</span>
+                              <span className="text-small font-medium text-fg">{authorName}</span>
                               <span className="text-caption text-fg-tertiary">Author</span>
                             </div>
                             <span className="text-caption text-fg-tertiary">

@@ -58,6 +58,8 @@ import JobRadarManager from './admin/JobRadarManager';
 import { TenantDirectory } from './admin/TenantDirectory';
 import { MembersManager } from './admin/MembersManager';
 import { DEMO_LOGIN } from '@/lib/demoMode';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { WorkspaceAuditLog, WorkspaceLeadsEmpty, WorkspaceQaEmpty, WorkspaceRepRoster } from './admin/WorkspaceAdminPanels';
 import {
   Badge,
   Button,
@@ -132,6 +134,8 @@ export type AdminControlSection = 'jobradar' | 'tenants' | 'dispositions' | 'byo
 
 export default function AdminControlCentre({ section }: { section: AdminControlSection }) {
   const { role, isAdmin, updateSession } = useSession();
+  // Sample roster, leads, QA reviews and audit events are for the demo workspace only.
+  const isDemo = useDemoWorkspace();
   // Which section to show is now chosen by the Admin / Platform Console sub-nav (redesign Phase 3).
   const activeTab = section;
 
@@ -1002,7 +1006,8 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
           )}
 
           {/* TAB 4: LEADS & CADENCE CRM (Integrated Directly Inside Super Admin) */}
-          {activeTab === 'leads' && (
+          {activeTab === 'leads' && !isDemo && <WorkspaceLeadsEmpty />}
+          {activeTab === 'leads' && isDemo && (
             <div>
               <PageHeader
                 title="Leads & cadences"
@@ -1221,7 +1226,8 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
           )}
 
           {/* TAB 5: SALES REPS (Floor Roster & Performance) */}
-          {activeTab === 'reps' && (
+          {activeTab === 'reps' && !isDemo && <WorkspaceRepRoster />}
+          {activeTab === 'reps' && isDemo && (
             <div>
               <PageHeader
                 title="Rep roster"
@@ -1275,7 +1281,8 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
           )}
 
           {/* TAB 6: REP FEEDBACK & AUDIO QA */}
-          {activeTab === 'feedback' && (
+          {activeTab === 'feedback' && !isDemo && <WorkspaceQaEmpty />}
+          {activeTab === 'feedback' && isDemo && (
             <div>
               <PageHeader
                 title="Call QA reviews"
@@ -1304,7 +1311,8 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
           )}
 
           {/* TAB 7: AUDIT LOG */}
-          {activeTab === 'audit' && (
+          {activeTab === 'audit' && !isDemo && <WorkspaceAuditLog />}
+          {activeTab === 'audit' && isDemo && (
             <div>
               <PageHeader
                 title="Audit log"

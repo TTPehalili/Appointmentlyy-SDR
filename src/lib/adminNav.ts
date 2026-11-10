@@ -67,7 +67,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: 'Account',
     items: [
       { id: 'domains', label: 'Branding & domains', href: '/admin/domains', permission: 'adminOrg', keywords: 'custom domains white-label dns' },
-      { id: 'billing', label: 'Billing', href: '/admin/billing', permission: 'adminOrg', keywords: 'billing invoicing invoices plan' },
+      { id: 'billing', label: 'Billing', href: '/admin/billing', permission: 'platform', keywords: 'billing invoicing invoices plan' },
       { id: 'support', label: 'Support', href: '/admin/support', permission: 'admin', keywords: 'support tickets help desk' },
       { id: 'audit', label: 'Audit log', href: '/admin/audit', permission: 'adminOrg', controlSection: 'audit', keywords: 'audit trail security events' },
     ],
@@ -83,6 +83,7 @@ export const PLATFORM_NAV: AdminNavGroup[] = [
       { id: 'support-desk', label: 'Support desk', href: '/platform/support', permission: 'platform', keywords: 'ticket triage admin desk' },
       { id: 'ops-intel', label: 'Operations intel', href: '/platform/ops-intel', permission: 'platform', keywords: 'executive assistant' },
       { id: 'job-signals', label: 'Job signals radar', href: '/platform/job-signals', permission: 'platform', keywords: 'job radar hiring signals' },
+      { id: 'announcements', label: 'Announcements', href: '/platform/announcements', permission: 'platform', keywords: 'announcements release notes updates maintenance ribbon banner' },
       { id: 'flags', label: 'Feature flags', href: '/platform/flags', permission: 'platform', keywords: 'flags rollout' },
     ],
   },

@@ -1,4 +1,5 @@
 import { CadenceLeadRecord, DEMO_CADENCE_LEADS } from './cadenceMaster';
+import { isDemoWorkspace } from './demoMode';
 
 export interface VisualCardConfig {
   type: 'metric_callout' | 'comparison_grid' | 'quote_teardown' | 'process_flow';
@@ -273,8 +274,9 @@ export function sanitizeTextForLinkedIn(text: string): string {
 /**
  * Summarizes the active CSV leads dataset to extract aggregate intelligence
  */
-export function summarizeCsvLeads(leads: CadenceLeadRecord[] = DEMO_CADENCE_LEADS): CsvIntelligenceSummary {
-  const dataset = leads && leads.length > 0 ? leads : DEMO_CADENCE_LEADS;
+export function summarizeCsvLeads(leads?: CadenceLeadRecord[]): CsvIntelligenceSummary {
+  // Sample leads stand in only in the demo workspace; client workspaces summarise their own (or none).
+  const dataset = leads && leads.length > 0 ? leads : isDemoWorkspace() ? DEMO_CADENCE_LEADS : [];
   const totalLeads = dataset.length;
 
   // Extract pain points
@@ -327,14 +329,16 @@ export function summarizeCsvLeads(leads: CadenceLeadRecord[] = DEMO_CADENCE_LEAD
 
   const dominantHeadcount = topHeadcounts[0] || '50-250 Seats';
 
-  const narrative = `Across ${totalLeads} active target accounts, the primary bottleneck is ${topPainPoints[0] || 'objection drop-offs and broker margin pressure'}. Most accounts operate on ${dominantHeadcount} floors utilizing ${topTechStacks[0] || 'Apollo and HubSpot'}, with incumbent friction centered around ${topCompetitors[0] || 'commodity outsourcers'}.`;
+  const narrative = totalLeads === 0
+    ? 'No leads uploaded yet. Upload a CSV of target accounts to see their common pain points, tools and competitors here.'
+    : `Across ${totalLeads} active target accounts, the primary bottleneck is ${topPainPoints[0] || 'objection drop-offs and broker margin pressure'}. Most accounts operate on ${dominantHeadcount} floors utilizing ${topTechStacks[0] || 'Apollo and HubSpot'}, with incumbent friction centered around ${topCompetitors[0] || 'commodity outsourcers'}.`;
 
   return {
     totalLeads,
     dominantHeadcount,
     topPainPoints: topPainPoints.length > 0 ? topPainPoints : ['Shared lead list fatigue', 'Junior rep objection stumbling', '35% broker margin skims'],
     topTechStacks: topTechStacks.length > 0 ? topTechStacks : ['Apollo.io & HubSpot', 'Salesforce & Outreach'],
-    topCompetitors: topCompetitors.length > 0 ? topCompetitors : ['Titan BPO Solutions', 'Apex Outsource Group'],
+    topCompetitors: topCompetitors.length > 0 ? topCompetitors : ['commodity outsourcers', 'in-house teams'],
     targetDepartments: Object.keys(deptCounts).slice(0, 3),
     summaryNarrative: narrative
   };
@@ -501,7 +505,7 @@ export function getDeterministicLinkedInSeries(
           dayLabel: 'Thursday • Episode 8',
           title: 'Dissecting the Permission Opener: Zero Pushiness',
           hook: `The worst way to open a cold call is asking "How are you doing today?"\nThe prospect knows you do not care, and their guard instantly shoots up.`,
-          body: `We tested 12 distinct opener styles across 100k dials.\n\nThe highest-converting opener was direct and disarming: "Julian, you were not expecting my call. Can I tell you why I reached out in 20 seconds, and you decide if we hang up?"\n\nRespecting prospect autonomy removes 90% of initial hostility.`,
+          body: `We tested 12 distinct opener styles across 100k dials.\n\nThe highest-converting opener was direct and disarming: "Jordan, you were not expecting my call. Can I tell you why I reached out in 20 seconds, and you decide if we hang up?"\n\nRespecting prospect autonomy removes 90% of initial hostility.`,
           cta: `What is your floor's current go-to opening line for cold outbound dials?`,
           wordCount: 67,
           estimatedReadSeconds: 18,

@@ -8,6 +8,7 @@ import { setStoredSession, UserRole } from '@/lib/session';
 import { claimTenantStorage } from '@/lib/tenantStorage';
 import { CreatePasswordForm } from '@/components/account/CreatePasswordForm';
 import { Badge, Button, buttonClasses } from '@/components/ui';
+import AuthBackdrop from '@/components/auth/AuthBackdrop';
 
 function VerifyLoginContent() {
   const router = useRouter();
@@ -89,7 +90,8 @@ function VerifyLoginContent() {
   }, [token, router]);
 
   return (
-    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+    <div className="relative isolate overflow-hidden min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <AuthBackdrop />
       <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
         <Link href="/login" className="focus-ring inline-flex items-center rounded-sm">
           <img

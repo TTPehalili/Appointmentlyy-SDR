@@ -2,13 +2,14 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { PanelLeft, Settings, Sparkles, Wrench } from 'lucide-react';
+import { Compass, PanelLeft, Settings, Sparkles, Wrench } from 'lucide-react';
 import { CommandPalette, type CommandItem } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { can } from '@/lib/permissions';
 import { ADMIN_NAV, PLATFORM_NAV } from '@/lib/adminNav';
 import { useShell } from './ShellContext';
 import { useVisibleNav } from './useVisibleNav';
+import { startTour } from '@/components/tour/tourStorage';
 
 const TOOL_SHORTCUTS = [
   { id: 'icp', navId: 'lead-finder', label: 'ICP List Builder', href: '/lead-finder', keywords: 'lead finder prospects' },
@@ -78,6 +79,14 @@ export function ShellCommandPalette() {
         icon: <Settings />,
         keywords: 'appearance theme dark mode light mode system preferences',
         onRun: () => router.push('/settings'),
+      },
+      {
+        id: 'act-tour',
+        group: 'Actions',
+        label: 'Take the product tour',
+        icon: <Compass />,
+        keywords: 'tour walkthrough guide onboarding intro help getting started',
+        onRun: startTour,
       },
     ];
     return [...pages, ...tools, ...actions, ...admin];

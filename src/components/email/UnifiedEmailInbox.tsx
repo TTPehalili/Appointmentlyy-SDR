@@ -42,9 +42,11 @@ import {
   extractCleanEmailAddress
 } from '@/lib/emailStore';
 import { useSession } from '@/lib/session';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 
 export default function UnifiedEmailInbox() {
   const { session } = useSession();
+  const isDemo = useDemoWorkspace();
   const [emails, setEmails] = useState<EmailMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -803,7 +805,8 @@ export default function UnifiedEmailInbox() {
               </IconButton>
             </div>
 
-            {/* Quick presets */}
+            {/* Quick presets (sample replies: demo workspace only) */}
+            {isDemo && (
             <div className="space-y-2">
               <span className="block text-small font-medium text-fg">
                 Add a sample reply in one click
@@ -835,18 +838,19 @@ export default function UnifiedEmailInbox() {
                 </button>
               </div>
             </div>
+            )}
 
             {/* Custom paste */}
-            <div className="space-y-1.5 border-t border-line pt-4">
+            <div className={isDemo ? 'space-y-1.5 border-t border-line pt-4' : 'space-y-1.5'}>
               <label htmlFor="ingest-reply-body" className="block text-small font-medium text-fg">
-                Or paste a reply (from Gmail or Callview AI)
+                {isDemo ? 'Or paste a reply (from Gmail or Callview AI)' : 'Paste the reply (from Gmail or your email client)'}
               </label>
               <Textarea
                 id="ingest-reply-body"
                 rows={3}
                 value={ingestBody}
                 onChange={(e) => setIngestBody(e.target.value)}
-                placeholder="Paste the reply body you sent from Callview AI email here..."
+                placeholder={isDemo ? 'Paste the reply body you sent from Callview AI email here...' : 'Paste the reply body here...'}
                 className="min-h-0 resize-none font-sans leading-relaxed"
               />
             </div>

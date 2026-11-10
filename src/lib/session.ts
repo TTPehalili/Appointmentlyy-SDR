@@ -311,7 +311,7 @@ export const DEFAULT_SESSION: SdrSession = DEMO_LOGIN ? DEMO_SESSION : SIGNED_OU
  * Format an email or string into a clean person name (e.g. julian.vance@company.com -> Julian Vance)
  */
 export function formatRepNameFromEmail(emailOrName: string): string {
-  if (!emailOrName) return 'Emil Halili';
+  if (!emailOrName) return '';
   if (!emailOrName.includes('@')) return emailOrName;
   if (emailOrName.toLowerCase() === 'emil@appointmentlyy.com') return 'Emil Halili';
 

@@ -927,13 +927,14 @@ export default function GlobalContactsManager() {
                             {canReassign ? (
                               <div className="relative inline-flex items-center">
                                 <select
-                                  value={c.assignedRep || 'Emil Halili'}
+                                  value={c.assignedRep || 'Unassigned'}
                                   onChange={(e) =>
                                     handleSingleReassign(c.id, e.target.value)
                                   }
                                   aria-label={`Owner for ${c.name}`}
                                   className="focus-ring h-8 appearance-none rounded-sm border border-transparent bg-transparent pl-2 pr-7 text-body text-fg-secondary cursor-pointer hover:border-line-strong hover:bg-surface hover:text-fg transition-colors"
                                 >
+                                  {!c.assignedRep && <option value="Unassigned" disabled>Unassigned</option>}
                                   {uniqueReps.map((r) => (
                                     <option key={r} value={r}>
                                       {r}
@@ -943,7 +944,7 @@ export default function GlobalContactsManager() {
                                 <ChevronDown aria-hidden className="pointer-events-none absolute right-2 size-3.5 text-fg-tertiary opacity-0 group-hover:opacity-100 transition-opacity" />
                               </div>
                             ) : (
-                              <span>{c.assignedRep || 'Emil Halili'}</span>
+                              <span>{c.assignedRep || 'Unassigned'}</span>
                             )}
                           </td>
 
@@ -1166,13 +1167,14 @@ export default function GlobalContactsManager() {
                       </span>
                       {canReassign ? (
                         <select
-                          value={selectedContact.assignedRep || 'Emil Halili'}
+                          value={selectedContact.assignedRep || 'Unassigned'}
                           onChange={(e) =>
                             handleSingleReassign(selectedContact.id, e.target.value)
                           }
                           aria-label="Owner"
                           className="focus-ring h-9 w-full rounded-sm border border-line-strong bg-surface px-2.5 text-body text-fg cursor-pointer"
                         >
+                          {!selectedContact.assignedRep && <option value="Unassigned" disabled>Unassigned</option>}
                           {uniqueReps.map((r) => (
                             <option key={r} value={r}>
                               {r}
@@ -1181,7 +1183,7 @@ export default function GlobalContactsManager() {
                         </select>
                       ) : (
                         <span className="text-body text-fg block py-1.5">
-                          {selectedContact.assignedRep || 'Emil Halili'}
+                          {selectedContact.assignedRep || 'Unassigned'}
                         </span>
                       )}
                     </div>
@@ -1238,7 +1240,7 @@ export default function GlobalContactsManager() {
                     rows={3}
                     value={newNoteInput}
                     onChange={(e) => setNewNoteInput(e.target.value)}
-                    placeholder="Type an operational note on this lead (e.g. 'Confirmed budget discussion with Julian for Q4')..."
+                    placeholder="Type an operational note on this lead (e.g. 'Confirmed budget discussion for Q4')..."
                     aria-label="New note"
                     className="focus-ring w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-body text-fg placeholder:text-fg-disabled"
                   />

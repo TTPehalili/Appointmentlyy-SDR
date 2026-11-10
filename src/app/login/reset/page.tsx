@@ -7,6 +7,7 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Button, buttonClasses } from '@/components/ui';
 import { setStoredSession } from '@/lib/session';
 import { claimTenantStorage } from '@/lib/tenantStorage';
+import AuthBackdrop from '@/components/auth/AuthBackdrop';
 
 /** Opened from the "reset your password" email: choose a new password, then go straight in. */
 function ResetPasswordContent() {
@@ -58,7 +59,8 @@ function ResetPasswordContent() {
     'focus-ring w-full h-10 rounded-sm border border-line-strong bg-surface pl-9 pr-10 text-body text-fg placeholder:text-fg-disabled focus:outline-none';
 
   return (
-    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+    <div className="relative isolate overflow-hidden min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <AuthBackdrop />
       <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
         <img src="/appointmentlyy-logo.png" alt="Appointmentlyy" className="h-8 w-auto object-contain" />
       </header>

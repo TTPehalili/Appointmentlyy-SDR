@@ -1,4 +1,4 @@
-import { DEMO_LOGIN } from '@/lib/demoMode';
+import { isDemoWorkspace } from '@/lib/demoMode';
 /**
  * Unified Email Store & Communications Engine
  * 
@@ -203,15 +203,17 @@ Marcus`,
 ];
 
 export function getStoredEmails(): EmailMessage[] {
-  if (typeof window === 'undefined') return INITIAL_SEED_EMAILS;
+  if (typeof window === 'undefined') return initialSeedEmails();
   try {
     const raw = localStorage.getItem('sdr_unified_inbox_emails');
-    if (raw === null) {
-      localStorage.setItem('sdr_unified_inbox_emails', JSON.stringify(INITIAL_SEED_EMAILS));
-      return INITIAL_SEED_EMAILS;
+    // Demo workspace: an empty inbox (e.g. saved by a build that didn't seed it) gets the samples.
+    if (raw === null || (raw.trim() === '[]' && isDemoWorkspace())) {
+      const seed = initialSeedEmails();
+      if (isDemoWorkspace()) localStorage.setItem('sdr_unified_inbox_emails', JSON.stringify(seed));
+      return seed;
     }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return INITIAL_SEED_EMAILS;
+    if (!Array.isArray(parsed)) return initialSeedEmails();
 
     let hasChanges = false;
     const migrated = parsed.map((m: EmailMessage) => {
@@ -277,12 +279,12 @@ export function getStoredEmails(): EmailMessage[] {
     return migrated;
   } catch (e) {
     console.warn('Could not read stored emails:', e);
-    return INITIAL_SEED_EMAILS;
+    return initialSeedEmails();
   }
 }
 
 export function saveEmailToStore(email: EmailMessage): EmailMessage[] {
-  if (typeof window === 'undefined') return [email, ...INITIAL_SEED_EMAILS];
+  if (typeof window === 'undefined') return [email, ...initialSeedEmails()];
   try {
     const canonicalThreadId = getConversationThreadKey(email);
     const enrichedEmail: EmailMessage = {
@@ -323,7 +325,7 @@ export function saveEmailToStore(email: EmailMessage): EmailMessage[] {
     return updated;
   } catch (e) {
     console.warn('Could not save email:', e);
-    return [email, ...INITIAL_SEED_EMAILS];
+    return [email, ...initialSeedEmails()];
   }
 }
 
@@ -365,15 +367,18 @@ export function clearAllEmails(): EmailMessage[] {
 }
 
 export function resetToInitialSeeds(): EmailMessage[] {
-  if (typeof window === 'undefined') return INITIAL_SEED_EMAILS;
+  if (typeof window === 'undefined') return initialSeedEmails();
   try {
-    localStorage.setItem('sdr_unified_inbox_emails', JSON.stringify(INITIAL_SEED_EMAILS));
-    return INITIAL_SEED_EMAILS;
+    const seed = initialSeedEmails();
+    if (isDemoWorkspace()) localStorage.setItem('sdr_unified_inbox_emails', JSON.stringify(seed));
+    return seed;
   } catch (e) {
     console.warn('Could not reset seeds:', e);
-    return INITIAL_SEED_EMAILS;
+    return initialSeedEmails();
   }
 }
 
 // Sample data is for demo builds only: real workspaces start empty.
-export const INITIAL_SEED_EMAILS: EmailMessage[] = DEMO_LOGIN ? DEMO_INITIAL_SEED_EMAILS : [];
+function initialSeedEmails(): EmailMessage[] {
+  return isDemoWorkspace() ? DEMO_INITIAL_SEED_EMAILS : [];
+}

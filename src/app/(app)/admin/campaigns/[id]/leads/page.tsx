@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -20,7 +20,10 @@ import {
   X,
   Share2
 } from 'lucide-react';
-import { Badge, Button, buttonClasses, Dialog, IconButton, PageHeader, SearchInput, Select, Skeleton } from '@/components/ui';
+import { Badge, Button, buttonClasses, Dialog, EmptyState, IconButton, PageHeader, SearchInput, Select, Skeleton } from '@/components/ui';
+import { isDemoWorkspace } from '@/lib/demoMode';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { apiJson } from '@/lib/authClient';
 import { Lead, CadencePackage } from '@/types';
 import { CadenceGenerator } from '@/lib/cadenceGenerator';
 
@@ -28,7 +31,9 @@ function CampaignLeadsContent() {
   const params = useParams();
   const campaignId = (params?.id as string) || 'enterprise-outbound';
 
-  const [leads, setLeads] = useState<Lead[]>([
+  // Sample leads and reps are for the demo workspace only; real workspaces start empty.
+  const isDemo = useDemoWorkspace();
+  const [leads, setLeads] = useState<Lead[]>(() => !isDemoWorkspace() ? [] : [
     {
       id: 'lead-1',
       campaign_id: campaignId,
@@ -83,7 +88,21 @@ function CampaignLeadsContent() {
   ]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRep, setSelectedRep] = useState('Alex Mercer');
+  const [selectedRep, setSelectedRep] = useState(() => (isDemoWorkspace() ? 'Alex Mercer' : ''));
+  const [workspaceReps, setWorkspaceReps] = useState<string[]>([]);
+  useEffect(() => {
+    if (isDemo) return;
+    let alive = true;
+    apiJson<{ members: { name: string; email: string; status: string }[] }>('/api/tenant/members').then((res) => {
+      if (!alive || !res.success) return;
+      const names = res.members.filter((m) => m.status === 'active').map((m) => m.name || m.email);
+      setWorkspaceReps(names);
+      setSelectedRep((cur) => cur || names[0] || '');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isDemo]);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedCadence, setSelectedCadence] = useState<CadencePackage | null>(null);
   const [isGeneratingCadence, setIsGeneratingCadence] = useState(false);
@@ -178,9 +197,19 @@ function CampaignLeadsContent() {
                 value={selectedRep}
                 onChange={(e) => setSelectedRep(e.target.value)}
               >
-                <option value="Alex Mercer">Alex Mercer (Certified)</option>
-                <option value="Sarah Jenkins">Sarah Jenkins (In Training)</option>
-                <option value="Luca Hayes">Luca Hayes (Super Admin)</option>
+                {isDemo ? (
+                  <>
+                    <option value="Alex Mercer">Alex Mercer (Certified)</option>
+                    <option value="Sarah Jenkins">Sarah Jenkins (In Training)</option>
+                    <option value="Luca Hayes">Luca Hayes (Super Admin)</option>
+                  </>
+                ) : workspaceReps.length === 0 ? (
+                  <option value="">No reps yet</option>
+                ) : (
+                  workspaceReps.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))
+                )}
               </Select>
             </div>
           </div>
@@ -253,6 +282,13 @@ function CampaignLeadsContent() {
                 ))}
               </tbody>
             </table>
+            {leads.length === 0 && (
+              <EmptyState
+                icon={<FileSpreadsheet />}
+                title="No leads in this campaign yet"
+                description="Import a lead CSV to add prospects, assign them to a rep and generate their cadences."
+              />
+            )}
           </div>
         </div>
 

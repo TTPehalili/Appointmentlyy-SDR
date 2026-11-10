@@ -66,6 +66,7 @@ import type { SanitizedIcpProspect } from '@/app/api/intelligence/icp/route';
 import QuotaTopUpModal from './QuotaTopUpModal';
 import { useIcpTargetTenant } from './LeadCreditsAdmin';
 import { Button, Badge, Dialog, Meter, PageHeader, buttonClasses } from '@/components/ui';
+import { isDemoWorkspace } from '@/lib/demoMode';
 
 const SENIORITY_OPTIONS = ['C-Suite', 'VP', 'Director', 'Owner', 'Partner', 'Manager'];
 
@@ -307,7 +308,8 @@ export default function IcpListBuilderHub() {
   const [activeWizardStep, setActiveWizardStep] = useState<1 | 2 | 3>(1);
 
   // Training Academy state
-  const [completedModules, setCompletedModules] = useState<string[]>(['mod_1']);
+  // The demo workspace shows the first module done; real workspaces start with none completed.
+  const [completedModules, setCompletedModules] = useState<string[]>(() => (isDemoWorkspace() ? ['mod_1'] : []));
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(0);
 
   // Contacts & Folders state
@@ -2261,7 +2263,7 @@ export default function IcpListBuilderHub() {
                                     <td className="py-3 px-5">
                                       {canBuildAndDistribute ? (
                                         <select
-                                          value={lead.assignedRep || 'Emil Halili'}
+                                          value={lead.assignedRep || 'Unassigned'}
                                           onChange={(e) => {
                                             reassignContactToRep(
                                               lead.id,
@@ -2277,7 +2279,7 @@ export default function IcpListBuilderHub() {
                                           {Array.from(
                                             new Set([
                                               ...(activeQuota.repsRoster || []),
-                                              lead.assignedRep || 'Emil Halili',
+                                              lead.assignedRep || 'Unassigned',
                                             ])
                                           ).map((r) => (
                                             <option key={r} value={r}>

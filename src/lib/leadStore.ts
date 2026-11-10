@@ -8,8 +8,7 @@
  */
 
 import { getStoredSession, normalizeUserRole, canUserReassignLeads } from './session';
-import liveBpo1000Raw from './liveBpo1000Data.json';
-import { DEMO_LOGIN } from '@/lib/demoMode';
+import { isDemoWorkspace } from '@/lib/demoMode';
 
 export interface LeadFootprintItem {
   id: string;
@@ -40,7 +39,7 @@ export interface ContactRecord {
   industry?: string;
   location?: string;
   status: string; // 'New Lead' | 'In Cadence' | 'Meeting Booked' | 'Call Back Later' | 'Left Voicemail' | 'Disqualified'
-  dealValue?: number; // Custom or estimated deal value in USD (defaults to $3,500 if not set)
+  dealValue?: number; // Deal value in USD (unset: the demo estimate in the demo workspace, else 0)
   cadenceDay: number;
   touchNumber: number;
   leadNotes: string; // Direct notes on the lead for non-CRM users
@@ -242,9 +241,9 @@ const DEMO_INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
   },
 ];
 
-// Default starter contacts with 1,000 real live-pulled Outsource Accelerator BPO & Virtual Assistant leaders
+// Demo starter contacts. The 1,000 live-pulled Outsource Accelerator BPO & Virtual Assistant
+// leaders are not bundled: staff-only /api/demo/contacts serves them to the demo workspace.
 const DEMO_INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
-  ...(liveBpo1000Raw as ContactRecord[]),
   {
     id: 'lead_fresh_d2',
     name: 'Julian Vance',
@@ -432,24 +431,57 @@ const DEMO_INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
  */
 export function getStoredContacts(): ContactRecord[] {
   if (typeof window === 'undefined') {
-    return INITIAL_DEFAULT_CONTACTS;
+    return initialDefaultContacts();
   }
 
   try {
     const raw = localStorage.getItem(CONTACTS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(INITIAL_DEFAULT_CONTACTS));
-      return INITIAL_DEFAULT_CONTACTS;
-    }
-    const parsed = JSON.parse(raw);
+    const parsed = raw ? JSON.parse(raw) : null;
     if (Array.isArray(parsed) && parsed.length > 0) {
       return parsed;
     }
-    return INITIAL_DEFAULT_CONTACTS;
+    const seed = initialDefaultContacts();
+    if (isDemoWorkspace()) {
+      localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(seed));
+      loadDemoBulkContacts();
+    }
+    return seed;
   } catch (err) {
     console.warn('[LeadStore] Failed to read contacts:', err);
-    return INITIAL_DEFAULT_CONTACTS;
+    return initialDefaultContacts();
   }
+}
+
+let demoBulkRequested = false;
+
+/**
+ * Demo workspace only: fetch the 1,000 sample contacts from the staff-only API (they're kept out
+ * of the client bundle), merge them into the store and broadcast the usual update event.
+ */
+function loadDemoBulkContacts(): void {
+  if (demoBulkRequested || typeof window === 'undefined') return;
+  demoBulkRequested = true;
+  fetch('/api/demo/contacts', { cache: 'no-store', credentials: 'same-origin' })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: { contacts?: ContactRecord[] } | null) => {
+      const bulk = Array.isArray(data?.contacts) ? data.contacts : [];
+      // The workspace may have changed while the request was in flight.
+      if (bulk.length === 0 || !isDemoWorkspace()) return;
+      let current: ContactRecord[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem(CONTACTS_STORAGE_KEY) || '[]');
+        if (Array.isArray(parsed)) current = parsed;
+      } catch {
+        // unreadable store: start from the bulk set
+      }
+      const known = new Set(current.map((c) => c.id));
+      // Fictional sample leads stay first (they're what demos open on); the bulk list follows.
+      saveStoredContacts([...current, ...bulk.filter((c) => !known.has(c.id))]);
+    })
+    .catch((err) => {
+      demoBulkRequested = false;
+      console.warn('[LeadStore] Could not load demo contacts:', err);
+    });
 }
 
 /**
@@ -477,18 +509,19 @@ export function saveStoredContacts(contacts: ContactRecord[]): void {
  */
 export function getStoredFolders(): IcpFolder[] {
   if (typeof window === 'undefined') {
-    return INITIAL_DEFAULT_FOLDERS;
+    return initialDefaultFolders();
   }
   try {
     const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(INITIAL_DEFAULT_FOLDERS));
-      return INITIAL_DEFAULT_FOLDERS;
+      const seed = initialDefaultFolders();
+      if (isDemoWorkspace()) localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(seed));
+      return seed;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DEFAULT_FOLDERS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialDefaultFolders();
   } catch {
-    return INITIAL_DEFAULT_FOLDERS;
+    return initialDefaultFolders();
   }
 }
 
@@ -1012,13 +1045,19 @@ export function updateContactPipelineStage(
   return updatedContact;
 }
 
-export const DEFAULT_LEAD_DEAL_VALUE_USD = 3500;
+/** Sample deal value the demo workspace assumes for leads without one. */
+const DEMO_LEAD_DEAL_VALUE_USD = 3500;
+
+/** Deal value used when a lead has none set: the demo estimate, or 0 in real workspaces. */
+export function getDefaultLeadDealValue(): number {
+  return isDemoWorkspace() ? DEMO_LEAD_DEAL_VALUE_USD : 0;
+}
 
 export function getContactDealValue(contact: ContactRecord): number {
   if (typeof contact.dealValue === 'number' && !isNaN(contact.dealValue)) {
     return Math.max(0, contact.dealValue);
   }
-  return DEFAULT_LEAD_DEAL_VALUE_USD;
+  return getDefaultLeadDealValue();
 }
 
 /**
@@ -1361,5 +1400,9 @@ export function subscribeToContacts(callback: (contacts: ContactRecord[]) => voi
 }
 
 // Sample data is for demo builds only: real workspaces start empty.
-export const INITIAL_DEFAULT_FOLDERS: IcpFolder[] = DEMO_LOGIN ? DEMO_INITIAL_DEFAULT_FOLDERS : [];
-export const INITIAL_DEFAULT_CONTACTS: ContactRecord[] = DEMO_LOGIN ? DEMO_INITIAL_DEFAULT_CONTACTS : [];
+function initialDefaultFolders(): IcpFolder[] {
+  return isDemoWorkspace() ? DEMO_INITIAL_DEFAULT_FOLDERS : [];
+}
+function initialDefaultContacts(): ContactRecord[] {
+  return isDemoWorkspace() ? DEMO_INITIAL_DEFAULT_CONTACTS : [];
+}

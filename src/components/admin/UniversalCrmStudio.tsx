@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { AlertTriangle, Building2, CheckCircle2, RefreshCw, Check, ShieldCheck, Unplug } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, ConfirmDialog, PageHeader, Tabs, Tooltip } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, PageHeader, Tabs, Tooltip } from '@/components/ui';
+import { isDemoWorkspace } from '@/lib/demoMode';
 
 interface FieldMapping {
   id: string;
@@ -30,7 +31,9 @@ export default function UniversalCrmStudio() {
   const [savedMappings, setSavedMappings] = useState(false);
   const [pendingDisconnect, setPendingDisconnect] = useState<CrmConnector | null>(null);
 
-  const [connectors, setConnectors] = useState<CrmConnector[]>([
+  // Connected CRMs, record counts and the sync log are sample data for the demo workspace only.
+  const [connectors, setConnectors] = useState<CrmConnector[]>(() => {
+    const all: CrmConnector[] = [
     {
       id: 'ghl',
       name: 'GoHighLevel (GHL)',
@@ -69,7 +72,10 @@ export default function UniversalCrmStudio() {
       syncFrequency: 'REST API v3',
       recordsSynced: 0
     }
-  ]);
+    ];
+    if (isDemoWorkspace()) return all;
+    return all.map((c) => ({ ...c, isConnected: false, locationId: undefined, recordsSynced: 0 }));
+  });
 
   const [mappings, setMappings] = useState<FieldMapping[]>([
     {
@@ -116,7 +122,7 @@ export default function UniversalCrmStudio() {
     }
   ]);
 
-  const [syncLogs, setSyncLogs] = useState([
+  const [syncLogs, setSyncLogs] = useState<{ id: string; time: string; crm: string; event: string; rep: string; status: string; error: string | null }[]>(() => !isDemoWorkspace() ? [] : [
     { id: '1', time: '1 min ago', crm: 'GoHighLevel', event: 'contact.sparring_score.updated', rep: 'Alex Mercer', status: '200 OK', error: null },
     { id: '2', time: '4 mins ago', crm: 'HubSpot', event: 'deal.pipeline_stage.updated', rep: 'Jordan Smith', status: '200 OK', error: null },
     { id: '3', time: '12 mins ago', crm: 'GoHighLevel', event: 'contact.tag.added ("BORIS_CERTIFIED")', rep: 'Elena Rostova', status: '200 OK', error: null },
@@ -301,7 +307,7 @@ export default function UniversalCrmStudio() {
             <Button
               variant="primary"
               onClick={handleRetryDlq}
-              disabled={retryingDlq}
+              disabled={retryingDlq || !syncLogs.some((l) => l.error)}
               icon={<RefreshCw className={retryingDlq ? 'animate-spin' : ''} />}
             >
               {retryingDlq ? 'Retrying...' : 'Retry failed events'}
@@ -315,6 +321,17 @@ export default function UniversalCrmStudio() {
             </div>
           )}
 
+          {syncLogs.length === 0 && (
+            <Card>
+              <EmptyState
+                icon={<RefreshCw />}
+                title="No sync events yet"
+                description="Once a CRM is connected, every delivery to it is logged here."
+              />
+            </Card>
+          )}
+
+          {syncLogs.length > 0 && (
           <Card className="divide-y divide-line overflow-hidden text-small">
             {syncLogs.map((log) => (
               <div key={log.id} className="flex flex-col justify-between gap-3 p-4 transition-colors hover:bg-subtle sm:flex-row sm:items-center">
@@ -341,6 +358,7 @@ export default function UniversalCrmStudio() {
               </div>
             ))}
           </Card>
+          )}
         </div>
       )}
 

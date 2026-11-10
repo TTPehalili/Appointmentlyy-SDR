@@ -107,7 +107,7 @@ Strict rules: Under 60 words total. Lowercase subject line under 4 words. ZERO e
   {
     id: 'radical-transparency',
     name: 'Radical Transparency / Meta-Proof',
-    authorOrStyle: 'Emil (Appointmentlyy BDM)',
+    authorOrStyle: 'Appointmentlyy BDM playbook',
     category: 'Pattern Interrupt & Proof',
     description: 'Directly reveals that you are using Appointmentlyy right now to acquire them. Proves product capability through the interaction itself.',
     targetWordCount: 65,
@@ -409,11 +409,11 @@ export function suggestSubjectLinesFromIdea(
   idea: string,
   targetProspect?: { name?: string; company?: string; title?: string }
 ): { label: string; text: string; angle: string }[] {
-  const shortCompany = (targetProspect?.company || 'Apex')
+  const shortCompany = (targetProspect?.company || '')
     .replace(/BPO|Solutions|Inc|LLC|Corp|Group|Services/gi, '')
     .trim()
     .split(/\s+/)[0]
-    .toLowerCase() || 'apex';
+    .toLowerCase() || 'team';
 
   const lowerIdea = (idea || '').toLowerCase().trim();
 
@@ -484,17 +484,17 @@ export function getDeterministicColdEmail(
   userIdea?: string,
   targetProspect?: { name?: string; company?: string; title?: string }
 ): ColdEmailGeneratedDraft {
-  const name = targetProspect?.name?.split(' ')[0] || 'Julian';
-  const company = targetProspect?.company || 'Apex BPO';
-  const shortCompany = (company || 'Apex')
+  const name = targetProspect?.name?.split(' ')[0] || 'there';
+  const company = targetProspect?.company || 'your team';
+  const shortCompany = (targetProspect?.company || '')
     .replace(/BPO|Solutions|Inc|LLC|Corp|Group|Services/gi, '')
     .trim()
     .split(/\s+/)[0]
-    .toLowerCase() || 'apex';
+    .toLowerCase() || 'team';
   const idea = userIdea || 'I want to reach out to an operations leader whose SDRs are burning client leads because reps freeze on competitor price objections.';
 
   if (frameworkId === 'radical-transparency') {
-    const rawBody = `Julian, can I be transparent for 10 seconds? The reason this email felt different from the last five vendor pitches in your inbox is because I am using Appointmentlyy right now.
+    const rawBody = `${name}, can I be transparent for 10 seconds? The reason this email felt different from the last five vendor pitches in your inbox is because I am using Appointmentlyy right now.
 
 Our system helped me research ${company} and synthesize this message in 150 milliseconds.
 
@@ -512,7 +512,7 @@ If this earned 10 seconds of your attention, would you be open to a 2-minute loo
       selectedSubjectIndex: 0,
       body: cleanText,
       structuralBreakdown: {
-        triggerOrHook: 'Julian, can I be transparent for 10 seconds?',
+        triggerOrHook: `${name}, can I be transparent for 10 seconds?`,
         tensionOrObservation: 'The reason this email felt different is because I am using Appointmentlyy right now to craft it.',
         truthOrValue: `Our system researched ${company} and synthesized this message in 150 milliseconds.`,
         ctaSentence: 'If this earned 10 seconds of your attention, would you be open to a 2-minute look?'

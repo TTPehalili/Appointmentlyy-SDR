@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { CreatePasswordForm } from '@/components/account/CreatePasswordForm';
 import { refreshServerIdentity, type ServerIdentity } from '@/lib/authClient';
+import AuthBackdrop from '@/components/auth/AuthBackdrop';
 
 /**
  * Required step for anyone signed in without a password (the app sends them here). Not signed in →
@@ -38,7 +39,8 @@ export default function SetPasswordPage() {
   }, [router, home]);
 
   return (
-    <div className="min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+    <div className="relative isolate overflow-hidden min-h-screen bg-app text-fg flex flex-col justify-between font-sans px-4">
+      <AuthBackdrop />
       <header className="w-full max-w-md mx-auto pt-10 pb-3 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/appointmentlyy-logo.png" alt="Appointmentlyy" className="h-8 w-auto object-contain" />

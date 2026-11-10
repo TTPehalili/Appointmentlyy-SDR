@@ -1,11 +1,12 @@
 'use client';
 
-import { Monitor, Moon, Sun } from 'lucide-react';
-import { PageHeader, SegmentedControl, SettingsSection } from '@/components/ui';
+import { Compass, Monitor, Moon, Sun } from 'lucide-react';
+import { Button, PageHeader, SegmentedControl, SettingsSection } from '@/components/ui';
 import { useColorMode, type ColorMode } from '@/lib/colorMode';
 import { AgentLinkSettings } from '@/components/telephony/AgentLinkSettings';
 import { PasswordSettings } from '@/components/account/PasswordSettings';
 import { DEMO_LOGIN } from '@/lib/demoMode';
+import { startTour } from '@/components/tour/tourStorage';
 
 const MODES: { value: ColorMode; label: string; icon: React.ReactNode }[] = [
   { value: 'light', label: 'Light', icon: <Sun className="size-4" aria-hidden /> },
@@ -64,6 +65,14 @@ export default function SettingsPage() {
           description="Dial through your company's VICIdial from the Dialer."
         >
           <AgentLinkSettings />
+        </SettingsSection>
+        <SettingsSection
+          title="Product tour"
+          description="A one-minute look at where everything lives. Handy if you’re new or want a refresher."
+        >
+          <Button icon={<Compass aria-hidden />} onClick={startTour} className="self-start">
+            Replay tour
+          </Button>
         </SettingsSection>
       </div>
     </div>

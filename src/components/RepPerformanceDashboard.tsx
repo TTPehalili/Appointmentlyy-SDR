@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   BarChart3, 
@@ -35,7 +35,9 @@ import {
   List
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
-import { PageHeader, SegmentedControl, Button, StatTile, Badge, Tooltip } from '@/components/ui';
+import { PageHeader, SegmentedControl, Button, StatTile, Badge, Tooltip, EmptyState, buttonClasses } from '@/components/ui';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { getStoredActivities, subscribeToActivities, type CadenceActivityRecord } from '@/lib/activityStore';
 
 export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
@@ -73,7 +75,99 @@ export interface ActivityLogItem {
   notesSnippet: string;
 }
 
-// Master Raw Rep Performance Data Across All Tenants and Timeframes
+const PERIOD_DAYS: Record<TimePeriod, number> = { daily: 1, weekly: 7, monthly: 30, quarterly: 90, yearly: 365 };
+
+/** Activities inside the selected period (today for 'daily'). */
+function activitiesInPeriod(all: CadenceActivityRecord[], period: TimePeriod): CadenceActivityRecord[] {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (PERIOD_DAYS[period] - 1));
+  return all.filter((a) => {
+    const t = Date.parse(a.isoDate);
+    return !isNaN(t) && t >= start.getTime();
+  });
+}
+
+const isBooked = (d: string) => /book|meeting|appointment/i.test(d);
+const isDnc = (d: string) => /dnc|do not call|do-not-call/i.test(d);
+const isNotInterested = (d: string) => /not interested/i.test(d);
+const isCallback = (d: string) => /callback|call back|scheduled/i.test(d);
+const isNoConnect = (d: string) => /no answer|voicemail|busy|wrong number|disconnected/i.test(d);
+
+function emptyRepMetric(name: string, tenant: string): RepMetric {
+  return {
+    id: `rep_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'me'}`,
+    name,
+    role: 'Rep',
+    avatar: name.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase(),
+    status: 'Offline',
+    tenant,
+    campaign: 'All campaigns',
+    callsMade: 0,
+    connectRate: 0,
+    emailsSent: 0,
+    linkedInTouches: 0,
+    appointmentsBooked: 0,
+    quotaTarget: 0,
+    quotaAttainment: 0,
+    dncFlagged: 0,
+    notInterested: 0,
+    callbacksScheduled: 0,
+    avgTalkTimeSec: 0,
+    qaSparringScore: 0,
+  };
+}
+
+/** Real workspaces: per-rep metrics computed from the activity the team actually logged. */
+function repMetricsFromActivities(activities: CadenceActivityRecord[], tenant: string): RepMetric[] {
+  const byRep = new Map<string, RepMetric & { connected: number }>();
+  for (const a of activities) {
+    const name = (a.repName || 'Unassigned').trim() || 'Unassigned';
+    const r = byRep.get(name) || { ...emptyRepMetric(name, tenant), connected: 0 };
+    const d = a.disposition || '';
+    if (a.channel === 'Phone') {
+      r.callsMade++;
+      if (!isNoConnect(d)) r.connected++;
+    } else if (a.channel === 'Email') r.emailsSent++;
+    else if (a.channel === 'LinkedIn') r.linkedInTouches++;
+    if (isBooked(d)) r.appointmentsBooked++;
+    if (isDnc(d)) r.dncFlagged++;
+    if (isNotInterested(d)) r.notInterested++;
+    if (isCallback(d)) r.callbacksScheduled++;
+    byRep.set(name, r);
+  }
+  return Array.from(byRep.values()).map(({ connected, ...r }) => ({
+    ...r,
+    connectRate: r.callsMade > 0 ? Math.round((connected / r.callsMade) * 1000) / 10 : 0,
+  }));
+}
+
+function activityLogFromRecords(activities: CadenceActivityRecord[], tenant: string): ActivityLogItem[] {
+  return activities.map((a) => ({
+    id: a.id,
+    timestamp: a.timestamp,
+    tenant,
+    repName: a.repName,
+    prospectName: a.prospectName,
+    companyName: a.companyName,
+    channel: a.channel,
+    disposition: (isBooked(a.disposition)
+      ? 'Meeting Booked'
+      : isDnc(a.disposition)
+      ? 'DNC Quarantined'
+      : isNotInterested(a.disposition)
+      ? 'Not Interested'
+      : isCallback(a.disposition)
+      ? 'Callback Scheduled'
+      : a.channel === 'Email'
+      ? 'Follow-Up Email'
+      : 'No Answer') as ActivityLogItem['disposition'],
+    notesSnippet: a.notesSnippet,
+  }));
+}
+
+// Sample rep performance for the demo workspace only (see useDemoWorkspace).
 const MASTER_PERFORMANCE_DATA: Record<TimePeriod, RepMetric[]> = {
   daily: [
     // Apex Global BPO
@@ -1183,6 +1277,16 @@ const RECENT_ACTIVITY_STREAM: ActivityLogItem[] = [
 export default function RepPerformanceDashboard() {
   const { session, role, isAdmin, tenantName, repName } = useSession();
   const isRepMode = role === 'Rep';
+  const isDemo = useDemoWorkspace();
+
+  // Real workspaces report on the activity the team logged (Dialer, Inbox, Outreach).
+  const [loggedActivities, setLoggedActivities] = useState<CadenceActivityRecord[]>([]);
+  useEffect(() => {
+    if (isDemo) return;
+    const load = () => setLoggedActivities(getStoredActivities());
+    load();
+    return subscribeToActivities(load);
+  }, [isDemo]);
 
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('weekly');
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
@@ -1198,11 +1302,22 @@ export default function RepPerformanceDashboard() {
   const [hoveredRepId, setHoveredRepId] = useState<string | null>(null);
 
   // 1. Get raw period data
-  const rawPeriodReps = MASTER_PERFORMANCE_DATA[timePeriod] || MASTER_PERFORMANCE_DATA.weekly;
+  const periodActivities = useMemo(
+    () => (isDemo ? [] : activitiesInPeriod(loggedActivities, timePeriod)),
+    [isDemo, loggedActivities, timePeriod]
+  );
+  const rawPeriodReps = useMemo(
+    () => (isDemo
+      ? MASTER_PERFORMANCE_DATA[timePeriod] || MASTER_PERFORMANCE_DATA.weekly
+      : repMetricsFromActivities(periodActivities, tenantName)),
+    [isDemo, timePeriod, periodActivities, tenantName]
+  );
+  const noLoggedActivity = !isDemo && loggedActivities.length === 0;
 
   // 2. Strict Tenant Scoping:
   // Floor Admins, Tenant Managers, Admins, and Reps ONLY see stats of their organization!
   const organizationReps = useMemo(() => {
+    if (!isDemo) return rawPeriodReps;
     const matched = rawPeriodReps.filter(
       (r) => r.tenant.toLowerCase() === tenantName.toLowerCase()
     );
@@ -1211,7 +1326,7 @@ export default function RepPerformanceDashboard() {
       return rawPeriodReps.map((r) => ({ ...r, tenant: tenantName }));
     }
     return matched;
-  }, [rawPeriodReps, tenantName]);
+  }, [rawPeriodReps, tenantName, isDemo]);
 
   // Available campaigns in this specific organization
   const availableCampaigns = useMemo(() => {
@@ -1226,8 +1341,10 @@ export default function RepPerformanceDashboard() {
     const match = organizationReps.find(
       (r) => r.name.toLowerCase() === repName.toLowerCase()
     );
-    return match || organizationReps[0];
-  }, [organizationReps, repName]);
+    if (match) return match;
+    // Real workspaces never show someone else's numbers as "you".
+    return isDemo ? organizationReps[0] : emptyRepMetric(repName || 'You', tenantName);
+  }, [organizationReps, repName, isDemo, tenantName]);
 
   // 4. Filtered Reps List (Role & Tenant Enforced)
   const filteredReps = useMemo(() => {
@@ -1342,7 +1459,8 @@ export default function RepPerformanceDashboard() {
 
   // 6. Live Activity Stream Filtered by Role and Tenant
   const filteredActivities = useMemo(() => {
-    return RECENT_ACTIVITY_STREAM.filter((act) => {
+    const stream = isDemo ? RECENT_ACTIVITY_STREAM : activityLogFromRecords(periodActivities, tenantName);
+    return stream.filter((act) => {
       // Must match active tenant
       const matchesTenant = act.tenant.toLowerCase() === tenantName.toLowerCase();
       if (!matchesTenant) return false;
@@ -1370,7 +1488,7 @@ export default function RepPerformanceDashboard() {
 
       return true;
     });
-  }, [tenantName, isRepMode, repName, selectedRepFilter, selectedDispositionFilter, organizationReps]);
+  }, [tenantName, isRepMode, repName, selectedRepFilter, selectedDispositionFilter, organizationReps, isDemo, periodActivities]);
 
   // Export CSV Report Action
   const handleExportCSV = () => {
@@ -1456,6 +1574,21 @@ export default function RepPerformanceDashboard() {
               </Button>
             }
           />
+
+          {noLoggedActivity ? (
+            <div className="rounded-lg border border-line bg-surface shadow-xs">
+              <EmptyState
+                icon={<PhoneCall />}
+                title="No calls logged yet"
+                description="Calls, emails and meetings your team logs from the Dialer and Outreach will show up here."
+                action={
+                  <Link href="/dialer" className={buttonClasses('primary', 'sm')}>
+                    Open the Dialer
+                  </Link>
+                }
+              />
+            </div>
+          ) : (<>
 
           {/* GRANULAR FILTER TOOLBAR */}
           <div className="bg-surface border border-line rounded-lg p-4 shadow-xs space-y-3">
@@ -2287,6 +2420,7 @@ export default function RepPerformanceDashboard() {
 
           </div>
 
+          </>)}
         </div>
       </div>
     </div>

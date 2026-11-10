@@ -9,6 +9,8 @@
  * 3. Grounded in CSV intelligence: Persona-specific, never one-size-fits-all.
  */
 
+import { isDemoWorkspace } from './demoMode';
+
 export type OutboundChannel = 'Phone' | 'Email' | 'LinkedIn';
 export type TouchType = 'Cold Call' | 'Cold Email' | 'Follow-up Email' | 'LinkedIn Connection' | 'LinkedIn InMail';
 
@@ -259,7 +261,7 @@ Max 50 words.`,
     targetWordCount: 55,
     antiSalesPrinciple: 'Executives only care about three things: increasing revenue, reducing costs, or mitigating risk. Speak to business impact.',
     promptInstruction: `Write a John Barrows executive cold call opener.
-Focus directly on Julian's role as Managing Director at Apex Global BPO.
+Focus directly on the prospect's role and company (from the lead fields).
 Reference the risk of seat margin erosion when running 250 outbound seats on shared broker lists.
 Ask for a 20-second window to benchmark their caller qualification rate against similar BPOs.
 Max 60 words.`,
@@ -394,16 +396,55 @@ Strictly no pitch, no links, no calendar invites.`,
   }
 ];
 
+/**
+ * The example snippets and CTAs are written around the demo workspace's sample prospect.
+ * Client workspaces see the same templates with placeholders instead of that prospect.
+ */
+const PLACEHOLDER_SWAPS: [RegExp, string][] = [
+  [/Nick with Appointmentlyy/g, '[Your name] with [Your company]'],
+  [/Emil \(Founder BDM\)/g, 'Founder BDM'],
+  [/from Emil, a 17-year outbound BDM veteran,/g, 'from a veteran outbound BDM'],
+  [/Julian Vance/g, '[Prospect name]'],
+  [/Julian/g, '[First name]'],
+  [/Apex Global BPO/g, '[Company]'],
+  [/Apex Global/g, '[Company]'],
+  [/Apex/g, '[Company]'],
+  [/apex/g, '[company]'],
+];
+
+function withPlaceholders<T>(value: T): T {
+  const swap = (text: string) => PLACEHOLDER_SWAPS.reduce((t, [re, to]) => t.replace(re, to), text);
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return swap(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]));
+    }
+    return v;
+  };
+  return walk(value) as T;
+}
+
+/** Default frameworks for the current workspace (sample prospect only in the demo workspace). */
+export function getDefaultOutboundFrameworks(): OutboundFramework[] {
+  return isDemoWorkspace() ? DEFAULT_OUTBOUND_FRAMEWORKS : withPlaceholders(DEFAULT_OUTBOUND_FRAMEWORKS);
+}
+
+/** Default anti-sales CTAs for the current workspace. */
+export function getDefaultAntiSalesCtas(): AntiSalesCta[] {
+  return isDemoWorkspace() ? DEFAULT_ANTI_SALES_CTAS : withPlaceholders(DEFAULT_ANTI_SALES_CTAS);
+}
+
 // Helper to load frameworks from localStorage (with fallback to defaults)
 export function getStoredFrameworks(): OutboundFramework[] {
   if (typeof window === 'undefined') return DEFAULT_OUTBOUND_FRAMEWORKS;
   try {
     const raw = localStorage.getItem('appointmentlyy_outbound_frameworks');
-    if (!raw) return DEFAULT_OUTBOUND_FRAMEWORKS;
+    if (!raw) return getDefaultOutboundFrameworks();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_OUTBOUND_FRAMEWORKS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getDefaultOutboundFrameworks();
   } catch {
-    return DEFAULT_OUTBOUND_FRAMEWORKS;
+    return getDefaultOutboundFrameworks();
   }
 }
 
@@ -422,11 +463,11 @@ export function getStoredAntiSalesCtas(): AntiSalesCta[] {
   if (typeof window === 'undefined') return DEFAULT_ANTI_SALES_CTAS;
   try {
     const raw = localStorage.getItem('appointmentlyy_anti_sales_ctas');
-    if (!raw) return DEFAULT_ANTI_SALES_CTAS;
+    if (!raw) return getDefaultAntiSalesCtas();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_ANTI_SALES_CTAS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getDefaultAntiSalesCtas();
   } catch {
-    return DEFAULT_ANTI_SALES_CTAS;
+    return getDefaultAntiSalesCtas();
   }
 }
 

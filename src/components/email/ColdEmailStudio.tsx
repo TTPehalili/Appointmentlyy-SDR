@@ -48,6 +48,8 @@ import {
   sanitizeColdEmail 
 } from '@/lib/coldEmailStudio';
 import { useSession } from '@/lib/session';
+import { isDemoWorkspace } from '@/lib/demoMode';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 
 // B2B spam trigger words list
 const COMMON_SPAM_WORDS = [
@@ -58,6 +60,9 @@ const COMMON_SPAM_WORDS = [
 
 export default function ColdEmailStudio() {
   const { session } = useSession();
+  // The sample prospect and the pitch below are the platform owner's own: demo workspace only.
+  const isDemo = useDemoWorkspace();
+  const [demoAtMount] = useState<boolean>(() => isDemoWorkspace());
 
   // Dynamic verified sender from session
   const senderDisplayName = session?.repName || 'Emil Halili';
@@ -73,13 +78,13 @@ export default function ColdEmailStudio() {
       const saved = localStorage.getItem('sdr_target_recipient_email');
       if (saved) return saved;
     }
-    return 'emil@callview.ai';
+    return isDemoWorkspace() ? 'emil@callview.ai' : '';
   });
 
-  const isCallviewDefault = prospectEmail.toLowerCase().includes('callview.ai');
-  const [prospectName, setProspectName] = useState<string>(isCallviewDefault ? 'Emil Halili' : 'Julian Vance');
-  const [prospectCompany, setProspectCompany] = useState<string>(isCallviewDefault ? 'Callview AI' : 'Apex Global BPO');
-  const [prospectTitle, setProspectTitle] = useState<string>(isCallviewDefault ? 'Founder / CEO' : 'Director of Outbound Operations');
+  const isCallviewDefault = demoAtMount && prospectEmail.toLowerCase().includes('callview.ai');
+  const [prospectName, setProspectName] = useState<string>(!demoAtMount ? '' : isCallviewDefault ? 'Emil Halili' : 'Julian Vance');
+  const [prospectCompany, setProspectCompany] = useState<string>(!demoAtMount ? '' : isCallviewDefault ? 'Callview AI' : 'Apex Global BPO');
+  const [prospectTitle, setProspectTitle] = useState<string>(!demoAtMount ? '' : isCallviewDefault ? 'Founder / CEO' : 'Director of Outbound Operations');
 
   // Sync stored CSV leads or URL query parameters on mount
   useEffect(() => {
@@ -109,23 +114,23 @@ export default function ColdEmailStudio() {
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
 
   // Subject Line State
-  const [subjectText, setSubjectText] = useState<string>('quick question');
+  const [subjectText, setSubjectText] = useState<string>(() => (isDemoWorkspace() ? 'quick question' : ''));
   const [showSubjectSuggestions, setShowSubjectSuggestions] = useState<boolean>(false);
-  const [subjectSuggestions, setSubjectSuggestions] = useState<string[]>([
+  const [subjectSuggestions, setSubjectSuggestions] = useState<string[]>(() => isDemoWorkspace() ? [
     'quick question',
     'outbound hold rate',
     'caller margin leak',
     'rookie lead burn'
-  ]);
+  ] : ['quick question']);
 
   // Draft Body State
-  const [editableBody, setEditableBody] = useState<string>(() => 
+  const [editableBody, setEditableBody] = useState<string>(() => !isDemoWorkspace() ? '' :
     `Hi Emil,\n\nFollowing up after our call. Saw Callview AI is scaling outbound seats. Typically when BPO leaders scale outbound, the hidden leak is not lead volume, it is callers getting chopped on price by commodity competitors.\n\nTraditional coaching fails when reps freeze in the first 20 seconds. We feed consultative rebuttals in 150 milliseconds live on the dial.\n\nOpen to a 2-minute video showing how we insulate margins, or totally off base?`
   );
 
   // AI Framework & Angle State (Optional Assistant)
   const [selectedFrameworkId, setSelectedFrameworkId] = useState<string>('braun-poke-the-bear');
-  const [userIdea, setUserIdea] = useState<string>(
+  const [userIdea, setUserIdea] = useState<string>(() => !isDemoWorkspace() ? '' :
     'Following up after our call. Saw you are scaling outbound reps—wanted to share how we feed consultative rebuttals in 150ms live on the dial without burning shared lead lists.'
   );
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -148,8 +153,8 @@ export default function ColdEmailStudio() {
       localStorage.setItem('sdr_target_recipient_email', newEmail);
     }
 
-    // Smartly default name/company if pointing to Callview
-    if (newEmail.toLowerCase().includes('callview.ai') && (!prospectName || prospectName === 'Julian Vance')) {
+    // Smartly default name/company if pointing to Callview (demo workspace only)
+    if (isDemo && newEmail.toLowerCase().includes('callview.ai') && (!prospectName || prospectName === 'Julian Vance')) {
       setProspectName('Emil Halili');
       setProspectCompany('Callview AI');
       setProspectTitle('Founder / CEO');
@@ -295,7 +300,7 @@ export default function ColdEmailStudio() {
     let effectiveCompany = prospectCompany.trim() || 'Target Company';
     let effectiveTitle = prospectTitle.trim() || 'Decision Maker';
 
-    if (prospectEmail.trim().toLowerCase().includes('callview.ai')) {
+    if (isDemo && prospectEmail.trim().toLowerCase().includes('callview.ai')) {
       effectiveName = 'Emil Halili';
       effectiveCompany = 'Callview AI';
       effectiveTitle = 'Founder / CEO';
@@ -731,8 +736,14 @@ export default function ColdEmailStudio() {
 
                 <div className="space-y-0.5 border-t border-line pt-4 text-small text-fg-tertiary">
                   <div className="font-medium text-fg">{senderDisplayName}</div>
-                  <div>Outbound Operations, Appointmentlyy</div>
-                  <div className="text-fg-tertiary">appointmentlyy.com</div>
+                  {isDemo ? (
+                    <>
+                      <div>Outbound Operations, Appointmentlyy</div>
+                      <div className="text-fg-tertiary">appointmentlyy.com</div>
+                    </>
+                  ) : (
+                    session?.tenantName && <div>{session.tenantName}</div>
+                  )}
                 </div>
 
               </div>
