@@ -3,8 +3,13 @@ import Papa from 'papaparse';
 import { getServiceSupabase } from '@/lib/supabase';
 import { CadenceGenerator } from '@/lib/cadenceGenerator';
 import { Lead } from '@/types';
+import { getServerSession } from '@/lib/server/session';
+import { toLeadRows } from '@/lib/server/leadImport';
 
 export async function POST(req: NextRequest) {
+  // The workspace always comes from the session, never the request.
+  const session = await getServerSession(req);
+  if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
   try {
     const contentType = req.headers.get('content-type') || '';
     let csvData = '';
@@ -116,25 +121,19 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // 3. Persist into Supabase leads table
-    const supabase = getServiceSupabase();
-    try {
-      const recordsToInsert = mappedLeads.map(l => ({
-        campaign_id: campaignId === 'enterprise-outbound' ? null : campaignId,
-        assigned_rep_id: assignedRepId,
-        first_name: l.first_name,
-        last_name: l.last_name,
-        email: l.email,
-        phone: l.phone,
-        company: l.company,
-        title: l.title,
-        status: l.status,
-        custom_variables: l.custom_variables
-      }));
-
-      await supabase.from('leads').insert(recordsToInsert);
-    } catch (dbErr) {
-      console.warn('[CSV Import] Supabase insert notice:', dbErr);
+    // 3. Mirror into the Supabase leads table, tagged with the importing workspace. Only with the
+    // server's service key (never the public key). The browser keeps its own copy of the import,
+    // so a failed mirror is logged here and the import still succeeds for the user.
+    if ((process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()) {
+      try {
+        const recordsToInsert = toLeadRows(mappedLeads, { tenantCode: session.tenantCode, campaignId, assignedRepId });
+        const { error } = await getServiceSupabase().from('leads').insert(recordsToInsert);
+        if (error) {
+          console.error(`[CSV Import] Supabase insert failed for workspace ${session.tenantCode} (${recordsToInsert.length} rows): ${error.message}`);
+        }
+      } catch (dbErr) {
+        console.error('[CSV Import] Supabase insert error:', dbErr);
+      }
     }
 
     return NextResponse.json({

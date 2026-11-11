@@ -1,50 +1,69 @@
-import { NextResponse } from 'next/server';
-import { INITIAL_DEFAULT_DISPOSITIONS, CallDisposition } from '@/lib/dispositionStore';
+import { NextResponse, type NextRequest } from 'next/server';
+import { hasRank } from '@/lib/server/session';
+import { fail, json, readJsonObject, requireSession } from '@/lib/server/emailTemplateApi';
+import type { CallDisposition } from '@/lib/dispositionStore';
+import {
+  MAX_DISPOSITIONS_PER_WORKSPACE,
+  cleanDisposition,
+  listDispositions,
+  removeDisposition,
+  replaceDispositions,
+  upsertDisposition,
+} from '@/lib/server/dispositionStore';
 
-// In-memory cache for the server session
-let serverDispositionsCache: CallDisposition[] = [...INITIAL_DEFAULT_DISPOSITIONS];
+// Each workspace has its own list; the workspace always comes from the session, never the request.
+// Anyone in the workspace may read it; only Admins (and platform staff) may change it.
 
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    dispositions: serverDispositionsCache
-  });
+export async function GET(req: NextRequest) {
+  const session = await requireSession(req);
+  if (session instanceof NextResponse) return session;
+  return json({ success: true, dispositions: listDispositions(session.tenantCode) });
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    if (body.dispositions && Array.isArray(body.dispositions)) {
-      serverDispositionsCache = body.dispositions;
-      return NextResponse.json({ success: true, count: serverDispositionsCache.length });
-    }
+export async function POST(req: NextRequest) {
+  const session = await requireSession(req);
+  if (session instanceof NextResponse) return session;
+  if (!hasRank(session, 'Admin')) return fail(403, 'Only workspace admins can change call dispositions.');
 
-    if (body.disposition && body.disposition.id) {
-      const existingIdx = serverDispositionsCache.findIndex(d => d.id === body.disposition.id);
-      if (existingIdx >= 0) {
-        serverDispositionsCache[existingIdx] = body.disposition;
-      } else {
-        serverDispositionsCache.unshift(body.disposition);
-      }
-      return NextResponse.json({ success: true, disposition: body.disposition });
-    }
+  const body = await readJsonObject(req);
+  if (!body) return fail(400, 'Invalid payload');
 
-    return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  if (Array.isArray(body.dispositions)) {
+    if (body.dispositions.length > MAX_DISPOSITIONS_PER_WORKSPACE) {
+      return fail(400, `At most ${MAX_DISPOSITIONS_PER_WORKSPACE} dispositions per workspace.`, 'dispositions');
+    }
+    const next: CallDisposition[] = [];
+    const seen = new Set<string>();
+    for (const raw of body.dispositions) {
+      const c = cleanDisposition(raw);
+      if (!c.ok) return fail(400, `Invalid disposition field: ${c.field}`, c.field);
+      if (seen.has(c.value.id)) continue;
+      seen.add(c.value.id);
+      next.push(c.value);
+    }
+    replaceDispositions(session.tenantCode, next);
+    return json({ success: true, count: next.length });
   }
+
+  if (body.disposition !== undefined) {
+    const c = cleanDisposition(body.disposition);
+    if (!c.ok) return fail(400, `Invalid disposition field: ${c.field}`, c.field);
+    if (!upsertDisposition(session.tenantCode, c.value)) {
+      return fail(400, `At most ${MAX_DISPOSITIONS_PER_WORKSPACE} dispositions per workspace.`, 'disposition');
+    }
+    return json({ success: true, disposition: c.value });
+  }
+
+  return fail(400, 'Invalid payload');
 }
 
-export async function DELETE(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Missing id query param' }, { status: 400 });
-    }
-    serverDispositionsCache = serverDispositionsCache.filter(d => d.id !== id);
-    return NextResponse.json({ success: true, deletedId: id });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
-  }
+export async function DELETE(req: NextRequest) {
+  const session = await requireSession(req);
+  if (session instanceof NextResponse) return session;
+  if (!hasRank(session, 'Admin')) return fail(403, 'Only workspace admins can change call dispositions.');
+
+  const id = (new URL(req.url).searchParams.get('id') || '').trim();
+  if (!id || id.length > 80) return fail(400, 'Missing id query param', 'id');
+  removeDisposition(session.tenantCode, id);
+  return json({ success: true, deletedId: id });
 }

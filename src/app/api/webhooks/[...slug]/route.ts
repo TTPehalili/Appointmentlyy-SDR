@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { WorkflowRunner } from '@/engine/runner';
+import { safeEqual } from '@/lib/server/webhookSignatures';
+
+const REDACTED_HEADERS = new Set(['cookie', 'authorization', 'proxy-authorization', 'x-webhook-secret']);
 
 async function handleProductionWebhook(
   request: NextRequest,
@@ -44,14 +47,14 @@ async function handleProductionWebhook(
       );
     }
     {
-      const authHeader = request.headers.get('authorization') || '';
-      const secretHeader = request.headers.get('x-webhook-secret') || '';
-      const querySecret = new URL(request.url).searchParams.get('secret') || '';
+      // Exact, constant-time match on `Authorization: Bearer <secret>` or `X-Webhook-Secret: <secret>`.
+      // Query-string secrets are not accepted (they end up in proxy and access logs).
+      const secret = String(config.authSecret);
+      const authHeader = (request.headers.get('authorization') || '').trim();
+      const bearer = /^bearer\s+/i.test(authHeader) ? authHeader.replace(/^bearer\s+/i, '') : '';
+      const secretHeader = (request.headers.get('x-webhook-secret') || '').trim();
 
-      const isAuthorized =
-        authHeader.includes(config.authSecret) ||
-        secretHeader === config.authSecret ||
-        querySecret === config.authSecret;
+      const isAuthorized = (bearer !== '' && safeEqual(bearer, secret)) || (secretHeader !== '' && safeEqual(secretHeader, secret));
 
       if (!isAuthorized) {
         return NextResponse.json(
@@ -71,9 +74,10 @@ async function handleProductionWebhook(
       }
     }
 
+    // Run data is visible in execution logs: never copy credentials into it.
     const payload = {
-      headers: Object.fromEntries(request.headers.entries()),
-      query: Object.fromEntries(new URL(request.url).searchParams.entries()),
+      headers: Object.fromEntries([...request.headers.entries()].filter(([k]) => !REDACTED_HEADERS.has(k.toLowerCase()))),
+      query: Object.fromEntries([...new URL(request.url).searchParams.entries()].filter(([k]) => k !== 'secret')),
       params: { path: webhookPath },
       body,
       method: request.method,

@@ -1,8 +1,16 @@
 import { WorkflowItem, ItemPipeline } from './item-pipeline';
 
+/**
+ * SECURITY: this is NOT a sandbox. `new Function` runs the code inside the server process with
+ * its globals (process, process.env and its secrets, fetch to any host). It is only safe
+ * because the only workflows that ever run are in the platform (APPOINTMENTLYY) store, which only
+ * platform staff can switch on and run: client workspaces' workflows are drafts that the runner,
+ * webhooks and MCP never read (see workflowDbForTenant in src/lib/db.ts and isStaffOnlyApi in
+ * src/proxy.ts). Never let client-authored code reach WorkflowRunner without a real isolate.
+ */
 export class CodeSandbox {
   /**
-   * Executes custom user JavaScript with safe isolation and standard n8n-style helpers
+   * Executes custom user JavaScript with standard n8n-style helpers (no isolation: see above).
    */
   static async run(
     code: string,
