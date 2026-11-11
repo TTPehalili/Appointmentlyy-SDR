@@ -14,6 +14,8 @@ export interface TenantBrandingInfo {
   displayName?: string;
   logoInitials?: string;
   supportEmail?: string;
+  /** Lead Finder pull progress style. Unset = 'playful'. */
+  leadFinderAnimation?: 'playful' | 'professional';
 }
 
 export interface ServerIdentity {

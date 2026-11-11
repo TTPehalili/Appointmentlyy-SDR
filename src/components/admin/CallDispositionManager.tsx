@@ -365,7 +365,7 @@ export default function CallDispositionManager() {
   const getActionBadge = (action: ActionTrigger) => {
     switch (action) {
       case 'mark_booked':
-        return { label: 'Mark Booked & Sync CRM', color: 'text-success-700 bg-success-50/60' };
+        return { label: 'Mark Meeting Booked', color: 'text-success-700 bg-success-50/60' };
       case 'schedule_callback':
         return { label: 'Prompt Calendar Callback', color: 'text-warning-700 bg-warning-50/60' };
       case 'dnc_quarantine':
@@ -768,7 +768,7 @@ export default function CallDispositionManager() {
                     value={formActionTrigger}
                     onChange={(e) => setFormActionTrigger(e.target.value as ActionTrigger)}
                   >
-                    <option value="mark_booked">Mark Booked & Sync CRM</option>
+                    <option value="mark_booked">Mark Meeting Booked</option>
                     <option value="schedule_callback">Schedule Calendar Callback</option>
                     <option value="dnc_quarantine">TCPA DNC Quarantine</option>
                     <option value="resend_email_120s">Dispatch Recap Email in 120s</option>

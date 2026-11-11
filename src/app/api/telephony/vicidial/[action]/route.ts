@@ -11,10 +11,15 @@ import {
   splitPhone,
   VicidialUnreachableError,
 } from '@/lib/server/vicidial';
+import { getServerSession, hasRank } from '@/lib/server/session';
+import { getTelephonyAgentStore } from '@/lib/server/telephonyAgentStore';
+import { ownAgentUser, resolveAgentUser, telephonyAllowed } from '@/lib/server/telephonyAccess';
 
 /**
- * Relay between the Dialer and VICIdial. Credentials stay on the server; the browser sends only the
- * rep's VICIdial agent username and the action's inputs.
+ * Relay between the Dialer and VICIdial. Credentials stay on the server. Every call needs a live
+ * session, a workspace allowed to use telephony (src/lib/server/telephonyAccess.ts), and an agent
+ * username the caller may act as: their own (linked by an Admin in Admin › Phone system), or, for
+ * Supervisors and above, one linked in their workspace. The body's agentUser is optional.
  *
  * POST /api/telephony/vicidial/{config|test|status|dial|hangup|disposition}
  */
@@ -27,17 +32,31 @@ interface Body {
   callback?: { dueAt?: string; note?: string; userOnly?: boolean };
 }
 
-const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status });
+const json = (body: Record<string, unknown>, status = 200) =>
+  NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   const { action } = await ctx.params;
+  const session = await getServerSession(req);
+  if (!session) return json({ ok: false, message: 'Please sign in again.' }, 401);
   const cfg = getVicidialConfig();
+  const allowed = telephonyAllowed(session);
 
   if (action === 'config') {
-    return json({ ok: true, configured: Boolean(cfg), host: cfg ? new URL(cfg.baseUrl).host : null });
+    // Workspaces not allowed to use telephony see 'not configured', so the Dialer keeps tel: links.
+    const on = Boolean(cfg) && allowed;
+    return json({
+      ok: true,
+      configured: on,
+      host: on && cfg ? new URL(cfg.baseUrl).host : null,
+      agentUser: on ? await ownAgentUser(session) : null,
+    });
   }
   if (!cfg) {
     return json({ ok: false, configured: false, message: 'VICIdial is not configured on this server.' }, 503);
+  }
+  if (!allowed) {
+    return json({ ok: false, configured: false, message: 'Telephony is not enabled for this workspace.' }, 403);
   }
 
   let body: Body = {};
@@ -46,10 +65,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   } catch {
     // empty body is fine for "test"
   }
-  const agentUser = body.agentUser;
-
   try {
     if (action === 'test') {
+      if (!hasRank(session, 'Admin')) return json({ ok: false, configured: true, message: 'Only workspace admins can test the connection.' }, 403);
+      const agentUser = body.agentUser;
+      if (isValidAgentUser(agentUser) && !session.isPlatformAdmin) {
+        const link = await getTelephonyAgentStore().getByAgentUser(agentUser);
+        if (link && link.tenantCode !== session.tenantCode) {
+          return json({ ok: false, configured: true, message: 'That VICIdial agent belongs to another workspace.' }, 403);
+        }
+      }
       const version = await callVicidial(buildNonAgentUrl(cfg, 'version'));
       if (!version.ok) return json({ ok: false, configured: true, message: `API login failed: ${version.message}` });
       let agent: ReturnType<typeof parseAgentStatus> | null = null;
@@ -60,9 +85,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       return json({ ok: true, configured: true, message: ver ? `VICIdial ${ver}.` : version.message, agent });
     }
 
-    if (!isValidAgentUser(agentUser)) {
-      return json({ ok: false, configured: true, message: 'Set your VICIdial agent username in Settings first.' }, 400);
-    }
+    const who = await resolveAgentUser(session, body.agentUser);
+    if ('status' in who) return json({ ok: false, configured: true, message: who.message }, who.status);
+    const agentUser = who.agentUser;
 
     switch (action) {
       case 'status': {

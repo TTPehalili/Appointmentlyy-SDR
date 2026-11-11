@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { SPARRING_PERSONAS, getPersonaVoiceByCountry, SparringCountry } from '@/lib/personas';
 import { applyRateLimit } from '@/lib/security';
 import { ELEVENLABS_MODELS } from '@/lib/elevenlabs/voiceEngine';
@@ -8,6 +9,8 @@ export async function POST(req: NextRequest) {
   try {
     const rateLimitResponse = applyRateLimit(req, { maxRequests: 120, windowMs: 60000 });
     if (rateLimitResponse) return rateLimitResponse;
+    const auth = await requireApiSession(req);
+    if (auth instanceof NextResponse) return auth;
 
     const { personaId, country } = await req.json();
     const persona = SPARRING_PERSONAS.find(p => p.id === personaId) || SPARRING_PERSONAS[0];

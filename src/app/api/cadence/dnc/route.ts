@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
-    const { lead_id, phone, reason, rep_name } = body;
+    const { lead_id, phone, reason } = body;
+    // Who did it comes from the session, never the body.
+    const rep_name = auth.name || auth.email;
 
     const quarantineAuditId = `dnc_audit_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 

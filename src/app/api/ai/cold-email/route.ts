@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { 
   COLD_EMAIL_FRAMEWORKS,
   sanitizeColdEmail,
@@ -26,6 +27,8 @@ interface ColdEmailApiPayload {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const payload: ColdEmailApiPayload = await req.json();
     const { 

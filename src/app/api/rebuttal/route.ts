@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { getServiceSupabase } from '@/lib/supabase';
 import { ArmRebuttalResponse } from '@/types';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
@@ -23,6 +24,8 @@ interface LeadPersonaContext {
 export async function POST(req: NextRequest) {
   const rateLimitResponse = applyRateLimit(req, { maxRequests: 60, windowMs: 60000 });
   if (rateLimitResponse) return rateLimitResponse;
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
 
   const startTime = Date.now();
 

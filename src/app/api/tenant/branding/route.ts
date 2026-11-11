@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * PATCH /api/tenant/branding  { brandColor?, displayName?, logoInitials?, supportEmail? }
+ * PATCH /api/tenant/branding  { brandColor?, displayName?, logoInitials?, supportEmail?, leadFinderAnimation? }
  * Admins edit their own workspace's brand; colours that fail contrast checks are refused.
  */
 export async function PATCH(req: NextRequest) {

@@ -37,7 +37,7 @@ import {
   subscribeToCustomDomains,
   splitCustomDomainParts,
 } from '@/lib/customDomainStore';
-import { Badge, Button, IconButton, PageHeader, StatusDot } from '@/components/ui';
+import { Badge, Button, IconButton, PageHeader, SegmentedControl, StatusDot } from '@/components/ui';
 
 const SUBDOMAIN_PRESETS = ['app', 'sdr', 'portal', 'dialer', 'outbound'];
 
@@ -125,10 +125,22 @@ export default function CustomDomainsManager() {
   // workspace gets it on any device. Load it into the form once.
   const [brandSaving, setBrandSaving] = useState(false);
   const [canEditBrand, setCanEditBrand] = useState(DEMO_LOGIN);
+  // Lead Finder pull progress style (workspace-wide, saved with the brand). Unset = playful.
+  const [leadFinderAnimation, setLeadFinderAnimation] = useState<'playful' | 'professional'>('playful');
   useEffect(() => {
     if (DEMO_LOGIN) return;
     let alive = true;
-    apiJson<{ branding: { brandColor?: string; displayName?: string; logoInitials?: string; supportEmail?: string }; canEdit: boolean; tenantName: string }>(
+    apiJson<{
+      branding: {
+        brandColor?: string;
+        displayName?: string;
+        logoInitials?: string;
+        supportEmail?: string;
+        leadFinderAnimation?: 'playful' | 'professional';
+      };
+      canEdit: boolean;
+      tenantName: string;
+    }>(
       '/api/tenant/branding',
     ).then((res) => {
       if (!alive || !res.success) return;
@@ -137,6 +149,7 @@ export default function CustomDomainsManager() {
       setDisplayNameInput(res.branding.displayName ?? res.tenantName);
       setInitialsInput(res.branding.logoInitials ?? '');
       setSupportEmailInput(res.branding.supportEmail ?? '');
+      setLeadFinderAnimation(res.branding.leadFinderAnimation === 'professional' ? 'professional' : 'playful');
     });
     return () => {
       alive = false;
@@ -157,6 +170,7 @@ export default function CustomDomainsManager() {
         displayName: displayNameInput.trim(),
         logoInitials: initialsInput.trim(),
         supportEmail: supportEmailInput.trim(),
+        leadFinderAnimation,
       },
     });
     setBrandSaving(false);
@@ -514,6 +528,29 @@ export default function CustomDomainsManager() {
                       className="focus-ring size-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer"
                     />
                   </label>
+
+                  {!DEMO_LOGIN && (
+                    <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 rounded-lg border border-line">
+                      <div className="min-w-0">
+                        <span className="text-body-strong text-fg block">
+                          Lead Finder animation
+                        </span>
+                        <span className="text-small text-fg-secondary">
+                          Playful adds a robot SDR and light humor. Professional keeps the same live numbers with a calm visual.
+                        </span>
+                      </div>
+                      <SegmentedControl
+                        label="Lead Finder animation"
+                        size="sm"
+                        value={leadFinderAnimation}
+                        onChange={(v) => setLeadFinderAnimation(v === 'professional' ? 'professional' : 'playful')}
+                        items={[
+                          { value: 'playful', label: 'Playful' },
+                          { value: 'professional', label: 'Professional' },
+                        ]}
+                      />
+                    </div>
+                  )}
 
                   {!DEMO_LOGIN && (
                     <div className="flex items-center justify-end gap-3 border-t border-line pt-4">

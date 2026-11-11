@@ -261,9 +261,6 @@ function CampaignLeadsContent() {
             <span className="text-h3 text-fg">
               Prospect queue <span className="text-small tabular-nums text-fg-tertiary">{filteredLeads.length}</span>
             </span>
-            <span className="text-small text-fg-tertiary">
-              Fields auto-mapped and synced with your CRM
-            </span>
           </div>
 
           <div className="overflow-x-auto">

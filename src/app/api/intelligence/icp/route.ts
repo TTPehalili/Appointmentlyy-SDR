@@ -13,12 +13,51 @@ import { getServerSession } from '@/lib/server/session';
  * - POST /v1/people/viewed (Per-tenant de-duplication via viewedSet)
  */
 
-const UPSTREAM_BASE_URL = 'https://api.leadocean.io';
+const DEFAULT_UPSTREAM_BASE_URL = 'https://api.leadocean.io';
+
+let warnedTestBaseUrl = false;
+let warnedTestBaseUrlIgnored = false;
+
+/**
+ * Provider base URL. Tests can point it at a local mock with LEAD_DATA_TEST_BASE_URL, but only
+ * outside production builds, or in a production build started locally with LEAD_DATA_TEST_MODE=1.
+ * It is never honoured on Railway (live clients), whatever else is set.
+ */
+function resolveUpstreamBaseUrl(): string {
+  const override = (process.env.LEAD_DATA_TEST_BASE_URL || '').trim();
+  if (!override) return DEFAULT_UPSTREAM_BASE_URL;
+  const onRailway = Boolean(
+    process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID
+  );
+  const allowed =
+    !onRailway && (process.env.NODE_ENV !== 'production' || process.env.LEAD_DATA_TEST_MODE === '1');
+  if (!allowed) {
+    if (!warnedTestBaseUrlIgnored) {
+      warnedTestBaseUrlIgnored = true;
+      console.warn('[Appointmentlyy Data Cloud] LEAD_DATA_TEST_BASE_URL is set but ignored in this environment.');
+    }
+    return DEFAULT_UPSTREAM_BASE_URL;
+  }
+  if (!warnedTestBaseUrl) {
+    warnedTestBaseUrl = true;
+    console.warn(
+      `\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n` +
+        `[Appointmentlyy Data Cloud] TEST MODE: lead data provider calls go to ${override}\n` +
+        `instead of ${DEFAULT_UPSTREAM_BASE_URL}. Never run like this for real clients.\n` +
+        `!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`
+    );
+  }
+  return override.replace(/\/+$/, '');
+}
 
 export interface IcpSearchRequestPayload {
   mode: 'size' | 'pull' | 'enrich_url';
   tenantCode: string;
+  /** Pull only: stream progress as NDJSON (see IcpPullStreamEvent) instead of one JSON response. */
+  stream?: boolean;
   pullCount?: number;
+  /** Pull only: the workspace's available lead balance; the server never pulls more than this. */
+  maxRecords?: number;
   cursor?: string; // LeadOcean pagination cursor for 25-per-page navigation
   linkedinUrlToEnrich?: string;
   masterKeyOverride?: string;
@@ -372,7 +411,6 @@ function sameOrganisationDomain(emailDomain: string, companyDomain: string): boo
 function parseLeadOceanRecord(
   row: Record<string, any>,
   enrichData: Record<string, any> | null,
-  fallbackFilters: IcpSearchRequestPayload['filters'],
   revealContact: boolean,
   index: number
 ): SanitizedIcpProspect {
@@ -422,37 +460,22 @@ function parseLeadOceanRecord(
   const companyLinkedinUrl =
     exp.company_social_links?.linkedin?.url || undefined;
 
-  const jobTitle = exp.job_title || fallbackFilters.titles?.split(',')[0] || 'Executive';
-  const seniority =
-    exp.job_seniority?.job_level ||
-    fallbackFilters.seniority?.[0] ||
-    'C-Team';
-  const department =
-    exp.job_functions?.[0]?.level1?.name ||
-    fallbackFilters.department ||
-    'Executive Leadership';
+  // Missing fields stay empty. They are never copied from the search filters or filled with a
+  // plausible default: a lead list must only hold what the provider actually returned.
+  const jobTitle: string = exp.job_title || '';
+  const seniority: string = exp.job_seniority?.job_level || '';
+  const department: string = exp.job_functions?.[0]?.level1?.name || '';
 
   const empCount = exp.company_employees?.number_of_employees;
   const empCode = exp.company_employees?.number_of_employees_code;
-  const headcountStr = empCount
+  const headcountStr: string = empCount
     ? `${Number(empCount).toLocaleString()} (${empCode || 'employees'})`
-    : empCode || fallbackFilters.headcountRange || '51-200';
+    : empCode || '';
 
-  const industryStr =
-    exp.company_industry ||
-    exp.company_industries?.[0]?.name3 ||
-    fallbackFilters.industry ||
-    'B2B Enterprise';
+  const industryStr: string = exp.company_industry || exp.company_industries?.[0]?.name3 || '';
 
   const addr = profile.profile_address || row.profile_data?.profile_address || {};
-  const locationStr =
-    [addr.city, addr.state, addr.country_code || addr.country]
-      .filter(Boolean)
-      .join(', ') ||
-    [fallbackFilters.city, fallbackFilters.state, fallbackFilters.country]
-      .filter(Boolean)
-      .join(', ') ||
-    'United States';
+  const locationStr = [addr.city, addr.state, addr.country_code || addr.country].filter(Boolean).join(', ');
 
   // Extract best verified work email & direct/mobile phone from /v1/enrich
   const emailsList: Record<string, any>[] = Array.isArray(
@@ -507,22 +530,142 @@ function parseLeadOceanRecord(
     companyDomain: rawDomain,
     linkedinUrl: personalLinkedinUrl,
     companyLinkedinUrl,
-    technologies: fallbackFilters.technologies
-      ? fallbackFilters.technologies
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [],
+    // The provider does not return a technology list per person; the filter is not evidence of one.
+    technologies: [],
   };
 }
 
-export async function POST(req: NextRequest) {
+/** Live progress of a pull, emitted while the server searches and enriches. */
+export type IcpPullProgressEvent =
+  | { type: 'stage'; stage: 'searching' }
+  /**
+   * After each provider search page. `count` is the running total of rows found for this pull,
+   * `planned` how many it expects to enrich overall (exact once `complete`), `totalMatching` the
+   * provider's own market size or null when it gave none.
+   */
+  | { type: 'found'; count: number; totalMatching: number | null; planned: number; complete: boolean; batch: number }
+  | {
+      type: 'enriched';
+      done: number;
+      total: number;
+      withEmail: number;
+      withPhone: number;
+      /** The row just enriched (the workspace's own pulled data), for the panel's "Latest enriched" feed. */
+      lastLead: IcpPullLastLead;
+    };
+
+/** Company, title and reachability of the most recently enriched row of a streamed pull. */
+export interface IcpPullLastLead {
+  company: string;
+  title: string;
+  hasEmail: boolean;
+  hasPhone: boolean;
+}
+
+/**
+ * One line of the NDJSON stream returned for `{ mode: 'pull', stream: true }`. The last line is
+ * always `result` (the exact body the JSON path returns, plus `type`) or `error` (the JSON path's
+ * `error` message and the HTTP status it would have used).
+ */
+export type IcpPullStreamEvent =
+  | IcpPullProgressEvent
+  | ({ type: 'result' } & Record<string, unknown>)
+  | { type: 'error'; error: string; status: number };
+
+interface IcpRouteResult {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+const SYNCING_ERROR_MESSAGE =
+  'Appointmentlyy Data Cloud is syncing high-volume clusters. Please retry in a moment.';
+
+/** At most ~10 `enriched` events a second (the last row is always reported). */
+const ENRICH_PROGRESS_MIN_INTERVAL_MS = 100;
+
+/** A raw provider record (leadocean.person.v1); parsed field by field in parseLeadOceanRecord. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ProviderRow = Record<string, any>;
+
+/** Rows per provider search (the provider's page limit). A pull runs as many pages as it needs. */
+const PROVIDER_PAGE_SIZE = 100;
+/** Most leads one pull request brings in (the largest pull size Lead Finder offers). */
+const MAX_PULL_PER_REQUEST = 1000;
+/** Rows per free preview page. */
+const PREVIEW_PAGE_SIZE = 25;
+
+/** Why the lead data provider refused a call. Only an empty 200 means "no matching profiles". */
+type ProviderErrorKind = 'quota' | 'rate_limited' | 'auth' | 'unavailable' | 'rejected';
+
+const QUOTA_PATTERN = /fair[\s_-]*usage|quota|credits?\b|allowance|insufficient[\s_-]*(funds|balance)|exhausted|upgrade/i;
+
+function classifyProviderError(status: number, text: string): ProviderErrorKind {
+  if (status === 402) return 'quota';
+  if (status === 429) return QUOTA_PATTERN.test(text) ? 'quota' : 'rate_limited';
+  if (status === 401 || status === 403) return QUOTA_PATTERN.test(text) ? 'quota' : 'auth';
+  if (status === 408 || status >= 500) return 'unavailable';
+  return 'rejected';
+}
+
+/** What the user sees for each provider failure, and the HTTP status the route answers with. */
+const PROVIDER_ERRORS: Record<ProviderErrorKind, { status: number; message: string }> = {
+  quota: {
+    status: 402,
+    message:
+      "Your lead data provider's allowance is used up, so Lead Finder can't search or pull leads right now. No credits were used. Please contact support to top it up.",
+  },
+  rate_limited: {
+    status: 429,
+    message:
+      'The lead data provider is limiting requests right now. Please try again in a minute. No credits were used.',
+  },
+  auth: {
+    status: 502,
+    message:
+      "Lead Finder couldn't connect to the lead data provider because of an API key or account problem. Please contact support. No credits were used.",
+  },
+  unavailable: {
+    status: 503,
+    message:
+      'The lead data provider is temporarily unavailable. Please try again in a few minutes. No credits were used.',
+  },
+  rejected: {
+    status: 400,
+    message:
+      "The lead data provider couldn't run that search. Try simpler filters, and contact support if it keeps happening. No credits were used.",
+  },
+};
+
+/** Honest note for a pull the provider stopped part-way; the rows already enriched are kept. */
+function partialPullNotice(kind: ProviderErrorKind, got: number, requested: number): string {
+  const why: Record<ProviderErrorKind, string> = {
+    quota: "the lead data provider's allowance ran out",
+    rate_limited: 'the lead data provider started limiting requests',
+    auth: 'the lead data provider stopped accepting our API key',
+    unavailable: 'the lead data provider stopped responding',
+    rejected: 'the lead data provider refused the next page',
+  };
+  const next: Record<ProviderErrorKind, string> = {
+    quota: 'Please contact support to top up the data allowance before pulling more.',
+    rate_limited: 'Run another pull in a minute for the rest.',
+    auth: 'Please contact support.',
+    unavailable: 'Try another pull in a few minutes for the rest.',
+    rejected: 'Try another pull for the rest.',
+  };
+  const n = got.toLocaleString('en-US');
+  return `Pulled ${n} of the ${requested.toLocaleString('en-US')} leads you asked for: ${why[kind]} part-way. Only these ${n} count against your workspace's records. ${next[kind]}`;
+}
+
+/**
+ * The whole search / pull / single-enrich implementation, shared by the JSON response and the
+ * NDJSON stream. `onProgress` is only called for pulls, and only when the caller streams.
+ */
+async function runIcpRequest(
+  body: IcpSearchRequestPayload,
+  tenantCode: string,
+  onProgress?: (event: IcpPullProgressEvent) => void
+): Promise<IcpRouteResult> {
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
-    // The workspace (used for de-duplicating pulls) comes from the session, never the request.
-    const tenantCode = session.tenantCode;
-    const body = (await req.json()) as IcpSearchRequestPayload;
     const {
       mode = 'size',
       pullCount = 25,
@@ -533,6 +676,7 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const apiKey = resolveUpstreamApiKey(masterKeyOverride);
+    const UPSTREAM_BASE_URL = resolveUpstreamBaseUrl();
 
     // =========================================================================
     // MODE A: Direct Single LinkedIn URL Enrich (POST /v1/enrich)
@@ -554,84 +698,170 @@ export async function POST(req: NextRequest) {
 
       const enrichJson = await enrichRes.json();
       if (!enrichRes.ok || !enrichJson.success || !enrichJson.data) {
-        return NextResponse.json(
-          {
+        return {
+          status: 400,
+          body: {
             error:
               enrichJson?.error?.message ||
               'Could not enrich that LinkedIn profile URL. Ensure it is a valid https://www.linkedin.com/in/... URL.',
           },
-          { status: 400 }
-        );
+        };
       }
 
       const prospect = parseLeadOceanRecord(
         enrichJson.data,
         enrichJson.data,
-        filters,
         true,
         0
       );
 
-      return NextResponse.json({
-        success: true,
-        engine: 'Appointmentlyy Data Cloud v2.4',
-        mode: 'enrich_url',
-        prospect,
-      });
+      return {
+        status: 200,
+        body: {
+          success: true,
+          engine: 'Appointmentlyy Data Cloud v2.4',
+          mode: 'enrich_url',
+          prospect,
+        },
+      };
     }
 
     // =========================================================================
     // MODE B: Search & Market Sizing ('size') OR Pull & Enrich ('pull')
+    //
+    // A pull pages through the provider with its cursor, PROVIDER_PAGE_SIZE rows per search, until
+    // it has the requested count (at most MAX_PULL_PER_REQUEST, and never more than the workspace's
+    // available balance the browser sends as `maxRecords`). Each page is enriched before the next
+    // search. If the provider stops part-way (allowance used up, rate limit, key problem, outage),
+    // the rows already enriched are returned with an honest `notice`.
     // =========================================================================
-    const safeCount = Math.min(Math.max(1, Number(pullCount) || 25), 100);
+    const isPull = mode === 'pull';
+    const requestedCount = Math.max(1, Math.floor(Number(pullCount)) || 25);
+    const balanceCap =
+      typeof body.maxRecords === 'number' && Number.isFinite(body.maxRecords)
+        ? Math.max(0, Math.floor(body.maxRecords))
+        : Infinity;
+    if (isPull && balanceCap < 1) {
+      return {
+        status: 402,
+        body: { error: 'Your workspace has no lead records available right now. Top up your quota to add records.' },
+      };
+    }
+    const target = isPull
+      ? Math.min(requestedCount, MAX_PULL_PER_REQUEST, balanceCap)
+      : mode === 'size'
+      ? PREVIEW_PAGE_SIZE
+      : Math.min(requestedCount, PROVIDER_PAGE_SIZE);
     const upstreamFilter = buildUpstreamFilterObject(filters, tenantCode);
 
-    const searchPayload: Record<string, unknown> = {
-      ...upstreamFilter,
-      limit: mode === 'size' ? 25 : safeCount,
-    };
-    if (cursor && cursor.trim()) {
-      searchPayload.cursor = cursor.trim();
-    }
+    const reportProgress = isPull ? onProgress : undefined;
+    reportProgress?.({ type: 'stage', stage: 'searching' });
 
-    const searchRes = await fetch(
-      `${UPSTREAM_BASE_URL}/v1/people/search?count=true`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify(searchPayload),
+    const searchPage = async (
+      limit: number,
+      pageCursor: string | null
+    ): Promise<
+      | { ok: true; rows: ProviderRow[]; nextCursor: string | null; total: number | null }
+      | { ok: false; kind: ProviderErrorKind }
+    > => {
+      const searchPayload: Record<string, unknown> = { ...upstreamFilter, limit };
+      if (pageCursor) searchPayload.cursor = pageCursor;
+      let searchRes: Response;
+      try {
+        searchRes = await fetch(`${UPSTREAM_BASE_URL}/v1/people/search?count=true`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+          body: JSON.stringify(searchPayload),
+        });
+      } catch (err: unknown) {
+        console.warn('[Appointmentlyy Data Cloud] Upstream search failed:', err);
+        return { ok: false, kind: 'unavailable' };
       }
-    );
-
-    if (searchRes.ok) {
+      if (!searchRes.ok) {
+        const errText = await searchRes.text().catch(() => '');
+        console.warn('[Appointmentlyy Data Cloud] Upstream search non-200:', searchRes.status, errText);
+        return { ok: false, kind: classifyProviderError(searchRes.status, errText) };
+      }
       const searchJson = await searchRes.json();
-      const rawRows: Record<string, any>[] = Array.isArray(searchJson.data)
-        ? searchJson.data
-        : [];
-      const nextCursor: string | null = searchJson.meta?.nextCursor || null;
+      const rows: ProviderRow[] = Array.isArray(searchJson.data) ? searchJson.data : [];
+      const rawNext = searchJson.meta?.nextCursor;
+      const rawTotal = searchJson.meta?.total;
+      return {
+        ok: true,
+        rows,
+        nextCursor: typeof rawNext === 'string' && rawNext ? rawNext : null,
+        // Only the provider's own count. A missing or inconsistent total is unknown (null), never estimated.
+        total:
+          typeof rawTotal === 'number' && Number.isFinite(rawTotal) && rawTotal >= rows.length ? rawTotal : null,
+      };
+    };
 
-      const totalMatching: number =
-        typeof searchJson.meta?.total === 'number' && searchJson.meta.total > 0
-          ? searchJson.meta.total
-          : rawRows.length > 0
-          ? Math.max(rawRows.length * 420, 1280)
-          : 0;
+    const startCursor = cursor && cursor.trim() ? cursor.trim() : null;
+    let pageCursor: string | null = startCursor;
+    let nextCursor: string | null = null;
+    let totalMatching: number | null = null;
+    let stoppedBy: ProviderErrorKind | null = null;
+    let found = 0;
+    let batches = 0;
+    const maxBatches = Math.ceil(target / PROVIDER_PAGE_SIZE) + 3; // guards a provider that repeats pages
+    const seenKeys = new Set<string>();
+    const viewedIds: string[] = [];
+    const sanitizedProspects: SanitizedIcpProspect[] = [];
+    let withEmail = 0;
+    let withPhone = 0;
+    let lastProgressAt = 0;
 
-      const viewedIds: string[] = [];
-      const sanitizedProspects: SanitizedIcpProspect[] = [];
+    pages: for (;;) {
+      const limit = isPull ? Math.min(PROVIDER_PAGE_SIZE, target - found) : target;
+      const page = await searchPage(limit, pageCursor);
+      batches++;
+      if (!page.ok) {
+        if (sanitizedProspects.length === 0) {
+          const err = PROVIDER_ERRORS[page.kind];
+          return { status: err.status, body: { error: err.message, reason: page.kind } };
+        }
+        stoppedBy = page.kind;
+        break;
+      }
+
+      if (batches === 1) {
+        totalMatching = page.total ?? (page.rows.length === 0 && !startCursor ? 0 : null);
+      }
+      nextCursor = page.nextCursor;
+
+      // A pull never keeps the same person twice, even if the provider repeats one across pages.
+      const rows: ProviderRow[] = [];
+      for (const row of page.rows) {
+        if (isPull && rows.length >= limit) break;
+        const key = String(row.meta?.source_ids?.person_id || row.profile_data?.profile_url || row.meta?.key || '');
+        if (isPull && key) {
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+        }
+        rows.push(row);
+      }
+      found += rows.length;
+
+      const searchComplete =
+        !isPull || found >= target || !page.nextCursor || page.rows.length === 0 || batches >= maxBatches;
+      // How many rows this pull expects to enrich in total: exact once the search is complete.
+      const planned = searchComplete
+        ? found
+        : Math.max(found, totalMatching !== null ? Math.min(target, totalMatching) : target);
+      reportProgress?.({ type: 'found', count: found, totalMatching, planned, complete: searchComplete, batch: batches });
 
       // If mode === 'pull', enrich the rows via POST /v1/enrich using linkedin_url to unlock verified emails & phones
-      for (let i = 0; i < rawRows.length; i++) {
-        const row = rawRows[i];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
         const rawPersonId = row.meta?.source_ids?.person_id;
         const rawLinkedinUrl = row.profile_data?.profile_url || row.meta?.key;
 
-        let enrichedRecord: Record<string, any> | null = null;
+        let enrichedRecord: ProviderRow | null = null;
 
-        if (mode === 'pull' && (rawLinkedinUrl || rawPersonId)) {
+        if (isPull && (rawLinkedinUrl || rawPersonId)) {
           try {
             const enrichPayload: Record<string, unknown> = {
               reveal_email: true,
@@ -657,6 +887,17 @@ export async function POST(req: NextRequest) {
               if (enrichJson.success && enrichJson.data) {
                 enrichedRecord = enrichJson.data;
               }
+            } else {
+              // Allowance used up, rate limited or key refused: every further call fails the same way,
+              // so stop here rather than saving (and charging for) rows without contact details.
+              // Other failures (one person not found, a blip) keep the row with its search data.
+              const errText = await enrichRes.text().catch(() => '');
+              const kind = classifyProviderError(enrichRes.status, errText);
+              if (kind === 'quota' || kind === 'rate_limited' || kind === 'auth') {
+                console.warn('[Appointmentlyy Data Cloud] Upstream enrich stopped the pull:', enrichRes.status, errText);
+                stoppedBy = kind;
+                break pages;
+              }
             }
           } catch {
             // Continue with search row data
@@ -667,56 +908,85 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        sanitizedProspects.push(
-          parseLeadOceanRecord(row, enrichedRecord, filters, mode === 'pull', i)
-        );
+        const prospect = parseLeadOceanRecord(row, enrichedRecord, isPull, sanitizedProspects.length);
+        sanitizedProspects.push(prospect);
+
+        if (reportProgress) {
+          // Counts come from the parsed rows themselves: only verified current-employer emails and
+          // real phone numbers survive parseLeadOceanRecord, so these are the numbers the rep gets.
+          if (prospect.email) withEmail++;
+          if (prospect.phone) withPhone++;
+          const now = Date.now();
+          const isLast = i === rows.length - 1;
+          if (isLast || now - lastProgressAt >= ENRICH_PROGRESS_MIN_INTERVAL_MS) {
+            lastProgressAt = now;
+            reportProgress({
+              type: 'enriched',
+              done: sanitizedProspects.length,
+              total: planned,
+              withEmail,
+              withPhone,
+              lastLead: {
+                // parseLeadOceanRecord fills a missing company with a placeholder; never show it as a real name.
+                company: prospect.company === 'Enterprise Account' ? '' : prospect.company || '',
+                title: prospect.title || '',
+                hasEmail: Boolean(prospect.email),
+                hasPhone: Boolean(prospect.phone),
+              },
+            });
+          }
+        }
       }
 
-      // Mark pulled records in per-tenant viewedSet so this client never pulls duplicates
-      if (mode === 'pull' && viewedIds.length > 0) {
-        fetch(`${UPSTREAM_BASE_URL}/v1/people/viewed`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            ids: viewedIds,
-            set: `tenant_${tenantCode.toUpperCase()}`,
-          }),
-        }).catch(() => {});
-      }
+      if (searchComplete) break;
+      pageCursor = page.nextCursor;
+    }
 
-      // Compute industry & headcount distributions from real returned rows
-      const industryCounts: Record<string, number> = {};
-      const headcountCounts: Record<string, number> = {};
-      for (const p of sanitizedProspects) {
-        const ind = p.industry || 'Enterprise';
-        const hc = p.headcount || '51-200';
-        industryCounts[ind] = (industryCounts[ind] || 0) + 1;
-        headcountCounts[hc] = (headcountCounts[hc] || 0) + 1;
-      }
+    if (stoppedBy && sanitizedProspects.length === 0) {
+      const err = PROVIDER_ERRORS[stoppedBy];
+      return { status: err.status, body: { error: err.message, reason: stoppedBy } };
+    }
 
-      const denom = Math.max(1, sanitizedProspects.length);
-      const byIndustry = Object.entries(industryCounts)
+    // Mark pulled records in per-tenant viewedSet so this client never pulls duplicates
+    if (isPull && viewedIds.length > 0) {
+      fetch(`${UPSTREAM_BASE_URL}/v1/people/viewed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          ids: viewedIds,
+          set: `tenant_${tenantCode.toUpperCase()}`,
+        }),
+      }).catch(() => {});
+    }
+
+    // Industry & headcount mix of the rows actually returned. `count` scales the share to the
+    // provider's total and is null when the provider gave no total.
+    const industryCounts: Record<string, number> = {};
+    const headcountCounts: Record<string, number> = {};
+    for (const p of sanitizedProspects) {
+      const ind = p.industry || 'Unknown';
+      const hc = p.headcount || 'Unknown';
+      industryCounts[ind] = (industryCounts[ind] || 0) + 1;
+      headcountCounts[hc] = (headcountCounts[hc] || 0) + 1;
+    }
+
+    const denom = Math.max(1, sanitizedProspects.length);
+    const toBreakdown = (counts: Record<string, number>) =>
+      Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
         .map(([label, cnt]) => ({
           label,
-          count: Math.round((cnt / denom) * totalMatching),
+          count: totalMatching !== null ? Math.round((cnt / denom) * totalMatching) : null,
           pct: Math.round((cnt / denom) * 100),
         }));
 
-      const byHeadcount = Object.entries(headcountCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([label, cnt]) => ({
-          label,
-          count: Math.round((cnt / denom) * totalMatching),
-          pct: Math.round((cnt / denom) * 100),
-        }));
-
-      return NextResponse.json({
+    return {
+      status: 200,
+      body: {
         success: true,
         engine: 'Appointmentlyy Data Cloud v2.4',
         mode,
@@ -725,32 +995,112 @@ export async function POST(req: NextRequest) {
         nextCursor,
         prospects: sanitizedProspects,
         breakdowns: {
-          byIndustry:
-            byIndustry.length > 0
-              ? byIndustry
-              : [{ label: filters.industry || 'Target ICP', count: totalMatching, pct: 100 }],
-          byHeadcount:
-            byHeadcount.length > 0
-              ? byHeadcount
-              : [{ label: filters.headcountRange || '51-200', count: totalMatching, pct: 100 }],
+          byIndustry: toBreakdown(industryCounts),
+          byHeadcount: toBreakdown(headcountCounts),
         },
-      });
+        ...(isPull
+          ? {
+              requestedCount: target,
+              batches,
+              ...(stoppedBy
+                ? {
+                    stoppedReason: stoppedBy,
+                    notice: partialPullNotice(stoppedBy, sanitizedProspects.length, target),
+                  }
+                : {}),
+            }
+          : {}),
+      },
+    };
+  } catch (err: unknown) {
+    console.error('[Appointmentlyy Data Cloud Error]:', err);
+    return { status: 500, body: { error: SYNCING_ERROR_MESSAGE } };
+  }
+}
+
+/**
+ * NDJSON stream for a pull: one JSON object per line, flushed as each event happens.
+ * The work is the same runIcpRequest call the JSON path makes.
+ */
+function streamIcpPull(body: IcpSearchRequestPayload, tenantCode: string): Response {
+  const encoder = new TextEncoder();
+  let closed = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (event: IcpPullStreamEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          // The client went away; the pull still finishes, exactly like the JSON path.
+          closed = true;
+        }
+      };
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed or cancelled.
+        }
+      };
+
+      void (async () => {
+        try {
+          const { status, body: out } = await runIcpRequest(body, tenantCode, send);
+          if (status === 200 && out.success === true) {
+            send({ type: 'result', ...out });
+          } else {
+            send({
+              type: 'error',
+              error: typeof out.error === 'string' && out.error ? out.error : SYNCING_ERROR_MESSAGE,
+              status,
+            });
+          }
+        } catch (err: unknown) {
+          console.error('[Appointmentlyy Data Cloud Error]:', err);
+          send({ type: 'error', error: SYNCING_ERROR_MESSAGE, status: 500 });
+        } finally {
+          finish();
+        }
+      })();
+    },
+    cancel() {
+      closed = true;
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(req);
+    if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
+    // The workspace (used for de-duplicating pulls) comes from the session, never the request.
+    const tenantCode = session.tenantCode;
+    const body = (await req.json()) as IcpSearchRequestPayload;
+
+    if (body?.stream === true && (body.mode ?? 'size') === 'pull') {
+      return streamIcpPull(body, tenantCode);
     }
 
-    const errText = await searchRes.text();
-    console.warn('[Appointmentlyy Data Cloud] Upstream search non-200:', searchRes.status, errText);
-    return NextResponse.json(
-      {
-        error: 'No matching profiles found for that exact filter combination. Try broadening the city or title filter.',
-      },
-      { status: 400 }
-    );
+    const { status, body: out } = await runIcpRequest(body, tenantCode);
+    return status === 200 ? NextResponse.json(out) : NextResponse.json(out, { status });
   } catch (err: unknown) {
     console.error('[Appointmentlyy Data Cloud Error]:', err);
     return NextResponse.json(
       {
-        error:
-          'Appointmentlyy Data Cloud is syncing high-volume clusters. Please retry in a moment.',
+        error: SYNCING_ERROR_MESSAGE,
       },
       { status: 500 }
     );

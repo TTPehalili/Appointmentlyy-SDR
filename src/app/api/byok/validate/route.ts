@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req, 'Admin', 'Only workspace admins can check AI provider keys.');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { provider, apiKey, domain } = await req.json();
 

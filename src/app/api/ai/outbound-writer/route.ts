@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { 
   DEFAULT_OUTBOUND_FRAMEWORKS, 
   DEFAULT_ANTI_SALES_CTAS, 
@@ -37,6 +38,8 @@ function countWords(str: string): number {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const payload: OutboundWriterPayload = await req.json();
     const { 

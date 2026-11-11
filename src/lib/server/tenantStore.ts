@@ -24,6 +24,8 @@ export interface TenantBranding {
   /** Two letters shown on the workspace tile. */
   logoInitials?: string;
   supportEmail?: string;
+  /** Lead Finder pull progress style. Unset = 'playful'. */
+  leadFinderAnimation?: 'playful' | 'professional';
 }
 
 export interface Tenant {

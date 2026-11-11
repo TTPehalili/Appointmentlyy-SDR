@@ -2,14 +2,15 @@
 
 /**
  * Dialer telephony. Two modes:
- *  - 'vicidial': the server has VICIdial configured and this rep has set their agent username.
+ *  - 'vicidial': the server has VICIdial configured for this workspace and an admin has linked this
+ *    person to a VICIdial agent (Admin › Phone system). The server enforces the link on every call.
  *    Call / Hang up / outcomes drive the rep's logged-in VICIdial agent session.
  *  - 'tel': the original behaviour (tel: link opens the computer's phone app). Used whenever VICIdial
  *    isn't set up, so nothing changes for workspaces without it.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getOutcomeCodes, useAgentUser } from './settings';
+import { getOutcomeCodes } from './settings';
 
 export type AgentState = 'logged_out' | 'ready' | 'paused' | 'in_call' | 'wrap_up' | 'unknown';
 
@@ -24,6 +25,8 @@ interface ApiReply {
   unreachable?: boolean;
   message?: string;
   state?: AgentState;
+  /** config only: the VICIdial agent linked to the signed-in person. */
+  agentUser?: string | null;
 }
 
 async function api(action: string, body: Record<string, unknown> = {}): Promise<ApiReply> {
@@ -46,8 +49,8 @@ export interface CallbackDetails {
 }
 
 export function useTelephony() {
-  const agentUser = useAgentUser();
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [agentUser, setAgentUser] = useState('');
   const [agentState, setAgentState] = useState<AgentState>('unknown');
   const [problem, setProblem] = useState<string | null>(null);
   const mode: 'vicidial' | 'tel' = configured && agentUser ? 'vicidial' : 'tel';
@@ -59,7 +62,11 @@ export function useTelephony() {
 
   useEffect(() => {
     let alive = true;
-    api('config').then((r) => alive && setConfigured(Boolean(r.configured)));
+    api('config').then((r) => {
+      if (!alive) return;
+      setConfigured(Boolean(r.configured));
+      setAgentUser(typeof r.agentUser === 'string' ? r.agentUser : '');
+    });
     return () => {
       alive = false;
     };

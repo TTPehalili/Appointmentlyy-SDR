@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -63,11 +63,13 @@ import {
   subscribeToQuotaStore,
 } from '@/lib/icpQuotaStore';
 import { can } from '@/lib/permissions';
-import type { SanitizedIcpProspect } from '@/app/api/intelligence/icp/route';
+import type { SanitizedIcpProspect, IcpPullStreamEvent } from '@/app/api/intelligence/icp/route';
 import QuotaTopUpModal from './QuotaTopUpModal';
+import PullProgressPanel, { type PullProgressPanelProps } from './PullProgressPanel';
 import { useIcpTargetTenant } from './LeadCreditsAdmin';
 import { Button, Badge, Dialog, Meter, PageHeader, buttonClasses } from '@/components/ui';
 import { isDemoWorkspace } from '@/lib/demoMode';
+import { useServerAuth } from '@/lib/authClient';
 
 const SENIORITY_OPTIONS = ['C-Suite', 'VP', 'Director', 'Owner', 'Partner', 'Manager'];
 
@@ -280,8 +282,72 @@ const TRAINING_FAQS = [
   },
 ];
 
+type PullStreamFinal = { success?: boolean; error?: string; prospects?: SanitizedIcpProspect[] } & Record<string, unknown>;
+
+/**
+ * Reads the NDJSON pull stream from POST /api/intelligence/icp. Calls `onProgress` for each
+ * progress event and resolves with the same object the JSON path returns: the `result` body, or
+ * `{ success: false, error }` for an `error` event.
+ */
+async function readPullStream(
+  body: ReadableStream<Uint8Array>,
+  onProgress: (event: Extract<IcpPullStreamEvent, { type: 'stage' | 'found' | 'enriched' }>) => void
+): Promise<PullStreamFinal> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = '';
+  let final: PullStreamFinal | null = null;
+
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    let evt: IcpPullStreamEvent;
+    try {
+      evt = JSON.parse(trimmed) as IcpPullStreamEvent;
+    } catch {
+      return; // ignore a malformed line rather than failing the whole pull
+    }
+    if (evt.type === 'result') {
+      const rest: PullStreamFinal = { ...evt };
+      delete rest.type;
+      final = rest;
+    } else if (evt.type === 'error') {
+      final = { success: false, error: evt.error, status: evt.status };
+    } else if (evt.type === 'stage' || evt.type === 'found' || evt.type === 'enriched') {
+      onProgress(evt);
+    }
+  };
+
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      let nl = buffered.indexOf('\n');
+      while (nl !== -1) {
+        handleLine(buffered.slice(0, nl));
+        buffered = buffered.slice(nl + 1);
+        nl = buffered.indexOf('\n');
+      }
+    }
+    buffered += decoder.decode();
+    handleLine(buffered);
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!final) {
+    throw new Error('The connection to the data cloud dropped before the list finished. Please retry.');
+  }
+  return final;
+}
+
 export default function IcpListBuilderHub() {
   const { session, role, canAccessIcp, tenantName, repName, email } = useSession();
+  // Workspace setting (Admin > Branding & domains): Lead Finder progress animation style.
+  const { identity } = useServerAuth();
+  const pullStyle: PullProgressPanelProps['pullStyle'] =
+    identity?.branding?.leadFinderAnimation === 'professional' ? 'professional' : 'playful';
   const isSuperAdmin = role === 'Super Admin';
   const canExport = canUserExportCsv(role);
   const canBuildAndDistribute = canUserReassignLeads(role);
@@ -375,14 +441,15 @@ export default function IcpListBuilderHub() {
 
   // Live Market Sizing & Preview state (with 25-per-page cursor pagination)
   const [sizingLoading, setSizingLoading] = useState(false);
-  const [totalMatching, setTotalMatching] = useState<number>(12600);
+  // The provider's own count of matching people; null until a preview ran or when it gave no total.
+  const [totalMatching, setTotalMatching] = useState<number | null>(null);
   const [previewProspects, setPreviewProspects] = useState<SanitizedIcpProspect[]>([]);
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [cursorHistory, setCursorHistory] = useState<string[]>(['']); // index 0 = '' (page 1)
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [breakdowns, setBreakdowns] = useState<{
-    byIndustry: { label: string; count: number; pct: number }[];
-    byHeadcount: { label: string; count: number; pct: number }[];
+    byIndustry: { label: string; count: number | null; pct: number }[];
+    byHeadcount: { label: string; count: number | null; pct: number }[];
   } | null>(null);
 
   // Saved Folder 25-per-page pagination map (folderId -> pageNumber)
@@ -400,6 +467,13 @@ export default function IcpListBuilderHub() {
     message: string;
     folderId?: string;
   } | null>(null);
+  // Live pull progress (fed by the NDJSON stream); null when no pull is on screen.
+  const [pullProgress, setPullProgress] = useState<Omit<PullProgressPanelProps, 'onDismiss' | 'className'> | null>(null);
+  const pullProgressTimerRef = useRef<number | null>(null);
+  const pullBannerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => () => {
+    if (pullProgressTimerRef.current) window.clearTimeout(pullProgressTimerRef.current);
+  }, []);
 
   // Sync selected reps when active tenant changes
   useEffect(() => {
@@ -547,7 +621,7 @@ export default function IcpListBuilderHub() {
       });
       const data = await res.json();
       if (data.success) {
-        setTotalMatching(data.totalMatching || 0);
+        setTotalMatching(typeof data.totalMatching === 'number' ? data.totalMatching : null);
         setPreviewProspects(data.prospects || []);
         setBreakdowns(data.breakdowns || null);
         setPreviewPage(targetPage);
@@ -558,6 +632,12 @@ export default function IcpListBuilderHub() {
         if (advanceStep) {
           setActiveWizardStep(2);
         }
+      } else {
+        // Say why the preview failed (provider allowance, rate limit, outage...) instead of nothing.
+        setPullBanner({
+          type: 'error',
+          message: typeof data.error === 'string' && data.error ? data.error : 'Could not load the preview. Please try again.',
+        });
       }
     } catch (err) {
       console.error('[ICP Builder] Market sizing error:', err);
@@ -648,8 +728,39 @@ export default function IcpListBuilderHub() {
       return;
     }
 
+    if (pullProgressTimerRef.current) {
+      window.clearTimeout(pullProgressTimerRef.current);
+      pullProgressTimerRef.current = null;
+    }
     setPullingList(true);
     setPullBanner(null);
+    // Every number on the progress panel comes from a server event; nothing is estimated.
+    let livePhase: PullProgressPanelProps['phase'] = 'connecting';
+    const patchProgress = (patch: Partial<Omit<PullProgressPanelProps, 'onDismiss' | 'className'>>) => {
+      if (patch.phase) livePhase = patch.phase;
+      setPullProgress((prev) => (prev ? { ...prev, ...patch } : prev));
+    };
+    const failProgress = (message: string) => {
+      const failedPhase = livePhase;
+      setPullProgress((prev) => (prev ? { ...prev, phase: 'error', error: message, failedPhase } : prev));
+    };
+    setPullProgress({
+      phase: 'connecting',
+      requested: pullCount,
+      found: null,
+      totalMatching: null,
+      searchComplete: false,
+      done: 0,
+      total: 0,
+      withEmail: 0,
+      withPhone: 0,
+      savedCount: null,
+      folderName: folderNameInput.trim(),
+      error: null,
+      failedPhase: null,
+      startedAt: Date.now(),
+      lastLead: null,
+    });
 
     try {
       const res = await fetch('/api/intelligence/icp', {
@@ -657,8 +768,11 @@ export default function IcpListBuilderHub() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'pull',
+          stream: true,
           tenantCode: activeQuota.tenantCode,
           pullCount,
+          // The server pages through the provider up to pullCount, but never past this balance.
+          maxRecords: balance.totalPullableNow,
           masterKeyOverride: getSuperAdminMasterDataKey(),
           filters: {
             titles,
@@ -678,10 +792,44 @@ export default function IcpListBuilderHub() {
         }),
       });
 
-      const data = await res.json();
+      // Streamed progress (NDJSON) when the server supports it; plain JSON otherwise (older
+      // server, auth errors, proxies that strip the stream). Both end in the same `data` shape.
+      const contentType = res.headers.get('content-type') || '';
+      const data =
+        res.body && contentType.includes('application/x-ndjson')
+          ? await readPullStream(res.body, (evt) => {
+              if (evt.type === 'stage') {
+                patchProgress({ phase: 'searching' });
+              } else if (evt.type === 'found') {
+                // Large pulls arrive in batches: `count` is the running total, `planned` the
+                // whole request (exact once the search is complete).
+                patchProgress({
+                  found: evt.count,
+                  totalMatching: evt.totalMatching,
+                  total: evt.planned ?? evt.count,
+                  searchComplete: evt.complete ?? true,
+                  ...(evt.count > 0 ? { phase: 'enriching' as const } : {}),
+                });
+              } else if (evt.type === 'enriched') {
+                patchProgress({
+                  phase: 'enriching',
+                  done: evt.done,
+                  total: evt.total,
+                  withEmail: evt.withEmail,
+                  withPhone: evt.withPhone,
+                  lastLead: evt.lastLead ?? null,
+                });
+              }
+            })
+          : await res.json();
+
       if (!res.ok || !data.success || !Array.isArray(data.prospects)) {
         throw new Error(data.error || 'Failed to pull ICP records');
       }
+
+      patchProgress({ phase: 'saving' });
+      // Let the "Saving" step paint before the (synchronous) save below.
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
 
       const pulledProspects: SanitizedIcpProspect[] = data.prospects;
 
@@ -694,6 +842,7 @@ export default function IcpListBuilderHub() {
           type: 'error',
           message: deduction.error || 'Quota limit reached.',
         });
+        failProgress(deduction.error || 'Quota limit reached.');
         setPullingList(false);
         return;
       }
@@ -715,13 +864,15 @@ export default function IcpListBuilderHub() {
         status: 'New Lead',
         cadenceDay: 1,
         touchNumber: 0,
-        leadNotes: `ICP Cloud Verified Record • Industry: ${p.industry} • Location: ${
-          p.location
-        }${
-          p.technologies?.length
-            ? ` • Tech Stack: ${p.technologies.join(', ')}`
-            : ''
-        }`,
+        // Only what the provider returned; empty fields are left out rather than guessed.
+        leadNotes: [
+          'ICP Cloud Verified Record',
+          p.industry ? `Industry: ${p.industry}` : '',
+          p.location ? `Location: ${p.location}` : '',
+          p.technologies?.length ? `Tech Stack: ${p.technologies.join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join(' • '),
         footprint: [],
       }));
 
@@ -755,14 +906,26 @@ export default function IcpListBuilderHub() {
       const perRepCount = Math.floor(pulledProspects.length / targetReps.length);
       setPullBanner({
         type: 'success',
-        message: `Pulled ${pulledProspects.length} verified records into folder "${folder.name}" and distributed equally across ${targetReps.length} rep(s) (~${perRepCount} leads/rep). Synced to Global Contacts & Calling Floor.`,
+        message: `Pulled ${pulledProspects.length} verified records into folder "${folder.name}" and distributed equally across ${targetReps.length} rep(s) (~${perRepCount} leads/rep). Synced to Global Contacts & Calling Floor.${
+          typeof data.notice === 'string' && data.notice ? ` ${data.notice}` : ''
+        }`,
         folderId: folder.id,
       });
+      patchProgress({ phase: 'done', savedCount: pulledProspects.length, folderName: folder.name });
+      // Brief success state on the panel, then hand over to the success banner above.
+      pullProgressTimerRef.current = window.setTimeout(() => {
+        pullProgressTimerRef.current = null;
+        setPullProgress((prev) => (prev && prev.phase === 'done' ? null : prev));
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        pullBannerRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+      }, 2600);
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to pull list.';
       setPullBanner({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to pull list.',
+        message,
       });
+      failProgress(message);
     } finally {
       setPullingList(false);
     }
@@ -971,7 +1134,8 @@ export default function IcpListBuilderHub() {
           {/* Feedback Banner after Pulling */}
           {pullBanner && (
             <div
-              className={`rounded-lg p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              ref={pullBannerRef}
+              className={`scroll-mt-4 rounded-lg p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                 pullBanner.type === 'success'
                   ? 'bg-surface border-line text-fg shadow-xs'
                   : 'bg-danger-bg border-danger-fg/30 text-danger-fg'
@@ -1030,7 +1194,7 @@ export default function IcpListBuilderHub() {
                     step: 2 as const,
                     title: 'Preview matches (free)',
                     desc: 'Check how many people match and look at sample profiles, at no cost.',
-                    badge: `${totalMatching.toLocaleString()} matches`,
+                    badge: totalMatching === null ? '– matches' : `${totalMatching.toLocaleString()} matches`,
                   },
                   {
                     step: 3 as const,
@@ -1565,10 +1729,18 @@ export default function IcpListBuilderHub() {
                       </div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-kpi tabular-nums text-fg">
-                          {totalMatching.toLocaleString()}
+                          {totalMatching !== null
+                            ? totalMatching.toLocaleString()
+                            : previewProspects.length > 0
+                            ? `${(previewPage - 1) * 25 + previewProspects.length}+`
+                            : '–'}
                         </span>
                         <span className="text-small text-fg-secondary">
-                          verified decision-makers
+                          {totalMatching !== null
+                            ? 'verified decision-makers'
+                            : previewProspects.length > 0
+                            ? 'matching (the provider gave no total)'
+                            : 'matching'}
                         </span>
                       </div>
                     </div>
@@ -1929,6 +2101,15 @@ export default function IcpListBuilderHub() {
                       </div>
                     )}
                   </div>
+              )}
+
+              {/* Live pull progress, right above the Pull button the user just clicked */}
+              {pullProgress && (
+                <PullProgressPanel
+                  {...pullProgress}
+                  pullStyle={pullStyle}
+                  onDismiss={pullingList ? undefined : () => setPullProgress(null)}
+                />
               )}
 
               {/* Wizard footer: Back / Continue */}

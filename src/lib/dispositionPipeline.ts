@@ -4,7 +4,7 @@
  * Every call outcome a rep picks in the Dialer moves the lead to a Pipeline stage:
  * - Admin › Call outcomes can set the stage per outcome (CallDisposition.pipelineStageId);
  * - otherwise a default comes from the outcome's automation, category and name
- *   (Booked → Meeting Booked, Callback → Call Back Later, Voicemail → Left Voicemail,
+ *   (Booked → Meeting Booked, Callback or another positive outcome → Call Back Later, Voicemail → Left Voicemail,
  *   No answer / Gatekeeper / Referral → In Cadence, Not interested / DNC / Wrong number → Disqualified).
  *
  * Stages are user-editable (renamed, reordered, deleted), so a stage is found by its id first and
@@ -65,8 +65,11 @@ export function getOutcomeRole(outcome: OutcomeLike): StageRole | null {
   if (outcome.actionTrigger === 'resend_email_120s') return 'voicemail';
   if (outcome.actionTrigger === 'recycle_cadence') return 'attempted';
   switch (outcome.category) {
+    // A positive call is not a booking: only the mark_booked automation or booking words in the name
+    // (step 1 / 2 above) mean a meeting exists. A positive outcome without one is a warm prospect the
+    // rep has to come back to, so it goes to Call Back Later rather than inflating Meeting Booked.
     case 'Positive':
-      return 'booked';
+      return 'callback';
     case 'Follow-up':
       return 'callback';
     case 'Negative':

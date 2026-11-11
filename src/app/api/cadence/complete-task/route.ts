@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { lead_id, cadence_day, task_type, completion_status, redial_hours } = body;

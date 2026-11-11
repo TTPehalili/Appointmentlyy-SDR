@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { getServiceSupabase } from '@/lib/supabase';
 import { CertificateRenderer } from '@/lib/certificateRenderer';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
-    const repId: string = body.repId || '00000000-0000-0000-0000-000000000000';
-    const repName: string = body.repName || 'Emil Halili';
+    // An attempt is always the signed-in rep's own: the rep comes from the session, never the body.
+    const repId: string = auth.identity.member?.id || '00000000-0000-0000-0000-000000000000';
+    const repName: string = auth.name || auth.email;
     const campaignId: string = body.campaignId || '00000000-0000-0000-0000-000000000001';
     const score: number = Number(body.score || 88);
     const notes: string = body.notes || 'Completed live Boris certification simulation';

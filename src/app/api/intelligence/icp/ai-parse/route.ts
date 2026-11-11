@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 
 /**
  * AI ICP Prompt Parser
@@ -152,6 +153,8 @@ function keywordParse(prompt: string): ParsedIcpFilters {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const prompt = String(body?.prompt || '').trim();

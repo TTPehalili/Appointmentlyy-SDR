@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
 import { synthesizeWithElevenLabs } from '@/lib/server/elevenlabsTts';
 
@@ -12,6 +13,8 @@ export async function POST(req: NextRequest) {
     // 1. Enforce rate limiting (120 requests/minute per client IP)
     const rateLimitResponse = applyRateLimit(req, { maxRequests: 120, windowMs: 60000 });
     if (rateLimitResponse) return rateLimitResponse;
+    const auth = await requireApiSession(req);
+    if (auth instanceof NextResponse) return auth;
 
     const { text, voiceId, voiceSettings, modelId } = await req.json();
 

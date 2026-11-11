@@ -204,6 +204,12 @@ export function cleanBranding(input: unknown, current: TenantBranding = {}): Ten
     if (v) out.supportEmail = v;
     else delete out.supportEmail;
   }
+  if ('leadFinderAnimation' in b) {
+    const v = String(b.leadFinderAnimation ?? '').trim();
+    if (!v) delete out.leadFinderAnimation;
+    else if (v === 'playful' || v === 'professional') out.leadFinderAnimation = v;
+    else throw new TenancyError('Lead Finder animation must be Playful or Professional.');
+  }
   return out;
 }
 

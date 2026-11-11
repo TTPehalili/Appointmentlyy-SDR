@@ -14,7 +14,7 @@ import { checkWebhookUrl, integrationsApi } from './integrationsClient';
 
 const EVENT_HINT: Record<ActivityEventType, string> = {
   'contact.created': 'A contact is added: import, Lead Finder pull, or a new lead called from the Dialer.',
-  'call.logged': 'A rep logs a call outcome in the Dialer, with the saved call summary.',
+  'call.logged': "A rep logs a call outcome in the Dialer, with the rep's own call notes when they wrote any.",
   'meeting.booked': 'A call is logged with a booked outcome.',
   'callback.scheduled': 'A rep schedules a callback.',
   'pipeline.stage_changed': 'A lead moves to another Pipeline stage (by hand or by a call outcome).',

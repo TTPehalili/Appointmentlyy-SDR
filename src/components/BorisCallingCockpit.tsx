@@ -998,13 +998,23 @@ export default function BorisCallingCockpit({
       setLeadsQueue(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
     }
 
-    // Integrations (webhooks / CRM): the outcome and the summary just logged (never unsaved notes).
+    // Integrations (webhooks / CRM): the outcome, plus only the rep's own words as the summary (never
+    // unsaved notes). The auto-built CRM summary is a fixed template, not facts from this call, so it is
+    // sent only when the rep edited it by hand; otherwise the rep's typed notes, or no summary at all.
     if (customerName || activeLead.name) {
       const contact = integrationContact(updated?.id);
+      const repSummary = repEditedNotes
+        ? updatedNotes
+        : [customRepNotes, dispositionNotes].map((s) => (s || '').trim()).filter(Boolean).join('\n\n');
       emitActivityEvent({
         type: 'call.logged',
         contact,
-        call: { outcome: dispName, summary: updatedNotes, direction: 'outbound', ...(callTimerSeconds > 0 ? { durationSec: callTimerSeconds } : {}) },
+        call: {
+          outcome: dispName,
+          ...(repSummary ? { summary: repSummary } : {}),
+          direction: 'outbound',
+          ...(callTimerSeconds > 0 ? { durationSec: callTimerSeconds } : {}),
+        },
       });
       if (getOutcomeRole(outcomeDef) === 'booked') {
         // The slot picked on the call ("Thu 2:00 PM") as the next such time, when one was picked.
@@ -1038,7 +1048,9 @@ export default function BorisCallingCockpit({
       });
       setCompletedActivityCount(prev => prev + 1);
       if (!opts?.suppressToast) {
-        setActivityToast(`✓ Call logged: ${dispName}${stage ? ` • Pipeline: ${stage.label}` : ''} • Footprint & CRM Synced`);
+        // No CRM claim: nothing here syncs to a CRM. Webhook delivery (if the workspace has endpoints) happens
+        // in the background and is shown in Admin > Integrations > Delivery log.
+        setActivityToast(`✓ Call logged: ${dispName}${stage ? ` • Pipeline: ${stage.label}` : ''}`);
         setTimeout(() => setActivityToast(null), 3500);
       }
       return activity.id;

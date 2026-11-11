@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { AUTH_COOKIE_NAME, verifyAuthToken } from '@/lib/authToken';
 import { getServerSession } from '@/lib/server/session';
+import { ADMIN_NAV, findNavItem } from '@/lib/adminNav';
+import type { Permission } from '@/lib/permissions';
+import { parseRole, ROLE_RANK, type Role } from '@/lib/roles';
 
 const DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === '1';
 
@@ -58,6 +61,49 @@ const STAFF_ONLY_API_PREFIXES = [
 ];
 
 /**
+ * Which pages need more than a signed-in member, mirroring src/lib/adminNav.ts: the Admin area
+ * needs Supervisor/Manager+ ('admin'), org-level sections Admin+ ('adminOrg'), and the Platform
+ * Console (and platform-only Admin sections) Appointmentlyy staff ('platform').
+ */
+function pageRequirement(pathname: string): Permission | null {
+  if (pathname === '/platform' || pathname.startsWith('/platform/')) return 'platform';
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return findNavItem(ADMIN_NAV, pathname)?.permission ?? 'admin';
+  return null;
+}
+
+const PAGE_MIN_RANK: Partial<Record<Permission, number>> = { admin: ROLE_RANK.Supervisor, adminOrg: ROLE_RANK.Admin };
+
+function meets(need: Permission, role: Role | null, isPlatformAdmin: boolean): boolean {
+  if (isPlatformAdmin) return true;
+  if (need === 'platform' || !role) return false;
+  return ROLE_RANK[role] >= (PAGE_MIN_RANK[need] ?? ROLE_RANK.Supervisor);
+}
+
+/**
+ * Server-side page gate for /admin/** and /platform/**, so people below the required role never get
+ * those pages (the browser also hides them). The cookie role is the fast path; when it falls short
+ * the live session is consulted, so someone promoted since signing in still gets in. Platform pages
+ * always confirm staff status against storage. The APIs behind these pages remain the real guard.
+ * Unauthorised people are sent somewhere useful: the Admin area if they can use part of it, else Home.
+ */
+async function pageGate(request: NextRequest, cookieRole: string): Promise<NextResponse | null> {
+  const need = pageRequirement(request.nextUrl.pathname);
+  if (!need) return null;
+  const role = parseRole(cookieRole);
+  if (need !== 'platform' && meets(need, role, false)) return null;
+
+  const live = await getServerSession(request);
+  if (live && meets(need, live.role, live.isPlatformAdmin)) return null;
+
+  const url = request.nextUrl.clone();
+  const effective = live ? live.role : role;
+  url.pathname = request.nextUrl.pathname.startsWith('/admin') && meets('admin', effective, false) ? '/admin' : '/';
+  if (url.pathname === request.nextUrl.pathname) url.pathname = '/';
+  url.search = '';
+  return NextResponse.redirect(url);
+}
+
+/**
  * Coarse gate in front of every request: a valid, unexpired session cookie, and Super Admin for
  * staff-only APIs. Route handlers still re-check membership against storage (getServerSession),
  * so removed people and suspended workspaces are refused there even if their cookie is valid.
@@ -76,6 +122,7 @@ async function authGate(request: NextRequest): Promise<NextResponse | null> {
     url.search = pathname === '/' ? '' : `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
     return NextResponse.redirect(url);
   }
+  if (!isApi) return pageGate(request, session.role);
   if (isApi && ADMIN_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && !isStaffOnlyApi(pathname)) {
     if (session.role !== 'Super Admin' && session.role !== 'Admin') {
       return NextResponse.json({ success: false, error: 'Only workspace admins can use workflows.' }, { status: 403 });
@@ -200,6 +247,9 @@ export const config = {
   matcher: [
     // Run on all application routes while skipping static assets and internal _next files
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Every API path, even one ending in an image extension (skipped by the pattern above), so the
+    // session and staff gates can't be sidestepped with a crafted dynamic segment.
+    '/api/:path*',
   ],
 };
 

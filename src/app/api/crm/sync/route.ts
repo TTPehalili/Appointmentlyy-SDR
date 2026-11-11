@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { lead_id, disposition, cadence_day, crm_notes, telemetry } = body;

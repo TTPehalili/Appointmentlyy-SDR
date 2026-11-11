@@ -5,7 +5,6 @@ import { Button, Field, Input, SettingsSection } from '@/components/ui';
 import {
   DEFAULT_OUTCOME_CODES,
   DIALER_OUTCOMES,
-  getAgentUser,
   setOutcomeCodes,
   useOutcomeCodes,
 } from '@/lib/telephony/settings';
@@ -30,10 +29,10 @@ const STATE_TEXT: Record<string, string> = {
   unknown: 'status unknown',
 };
 
-/** Admin › Integrations › Phone system: VICIdial connection status, connection test and outcome codes. */
+/** Admin › Integrations › Phone system: VICIdial connection status, connection test, agent links and outcome codes. */
 export function PhoneSystemAdmin() {
   const [config, setConfig] = React.useState<ConfigReply | null>(null);
-  const [agent, setAgent] = React.useState(() => getAgentUser());
+  const [agent, setAgent] = React.useState('');
   const [testing, setTesting] = React.useState(false);
   const [test, setTest] = React.useState<TestReply | null>(null);
 
@@ -81,7 +80,8 @@ export function PhoneSystemAdmin() {
 {`VICIDIAL_URL=https://your-vicidial-server
 VICIDIAL_API_USER=api-user
 VICIDIAL_API_PASS=********
-VICIDIAL_TIMEZONE=America/New_York`}
+VICIDIAL_TIMEZONE=America/New_York
+VICIDIAL_TENANTS=YOUR-WORKSPACE-CODE`}
             </pre>
             <p>Until then the Dialer keeps using each rep&apos;s computer phone app.</p>
           </div>
@@ -133,6 +133,15 @@ VICIDIAL_TIMEZONE=America/New_York`}
         )}
       </SettingsSection>
 
+      {config?.configured && (
+        <SettingsSection
+          title="Agent links"
+          description="Which VICIdial agent each person dials as. People can only drive the agent linked to them here; supervisors and above can also use any agent linked in this workspace."
+        >
+          <AgentLinks />
+        </SettingsSection>
+      )}
+
       <SettingsSection
         title="Call outcomes → VICIdial status"
         description="When a rep picks an outcome in the Dialer, this status code is set on the call in VICIdial. Each code must exist in the campaign."
@@ -145,11 +154,126 @@ VICIDIAL_TIMEZONE=America/New_York`}
           <li>VICIdial web address (the main HTTPS site, not the :446 access portal).</li>
           <li>This app server&apos;s public IP permanently allow-listed in the VICIdial firewall.</li>
           <li>An API user (level 8+, API access on) allowed: external_dial, external_hangup, external_status, agent_status, version.</li>
-          <li>Each rep&apos;s VICIdial agent username, entered by the rep in Settings › Phone system.</li>
+          <li>Each rep&apos;s VICIdial agent username, linked to them by an admin under Agent links above.</li>
           <li>Campaigns allow manual dialing, and the status codes above exist in them.</li>
         </ol>
       </SettingsSection>
     </div>
+  );
+}
+
+interface AgentRow {
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  agentUser: string;
+}
+
+/** Admin+: link each member to their VICIdial agent username (stored on the server). */
+function AgentLinks() {
+  const [rows, setRows] = React.useState<AgentRow[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    fetch('/api/telephony/agents')
+      .then(async (r) => {
+        const data = await r.json();
+        if (!alive) return;
+        if (r.ok && data.success) setRows(data.members as AgentRow[]);
+        else setError(data.error || 'Could not load agent links.');
+      })
+      .catch(() => alive && setError('Could not reach the Appointmentlyy server.'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) return <p className="text-small text-danger-fg">{error}</p>;
+  if (rows === null) return <p className="text-small text-fg-tertiary">Loading…</p>;
+  if (rows.length === 0) return <p className="text-small text-fg-secondary">No members yet.</p>;
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((r) => (
+        <AgentLinkRow key={r.email} row={r} />
+      ))}
+    </div>
+  );
+}
+
+function AgentLinkRow({ row }: { row: AgentRow }) {
+  const [saved, setSaved] = React.useState(row.agentUser);
+  const [value, setValue] = React.useState(row.agentUser);
+  const [busy, setBusy] = React.useState(false);
+  const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const valid = value === '' || /^[A-Za-z0-9._-]{1,20}$/.test(value.trim());
+  const dirty = value.trim() !== saved;
+  const id = `agent-${row.email}`;
+
+  const save = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await fetch('/api/telephony/agents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: row.email, agentUser: value.trim() }),
+      });
+      const data = await r.json();
+      if (r.ok && data.success) {
+        setSaved(data.agentUser || '');
+        setValue(data.agentUser || '');
+        setNote({ ok: true, text: 'Saved' });
+      } else {
+        setNote({ ok: false, text: data.error || 'Could not save.' });
+      }
+    } catch {
+      setNote({ ok: false, text: 'Could not reach the Appointmentlyy server.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="grid grid-cols-[minmax(0,1fr)_9rem_auto] items-center gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid && dirty) save();
+      }}
+    >
+      <label htmlFor={id} className="min-w-0">
+        <span className="block truncate text-body text-fg">{row.name || row.email}</span>
+        <span className="block truncate text-small text-fg-tertiary">
+          {row.email} · {row.role}
+          {row.status !== 'active' ? ` · ${row.status}` : ''}
+        </span>
+      </label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => {
+          setNote(null);
+          setValue(e.target.value);
+        }}
+        placeholder="e.g. 6001"
+        autoComplete="off"
+        className="font-mono"
+        aria-invalid={!valid || undefined}
+      />
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="secondary" size="sm" disabled={!valid || !dirty} loading={busy}>
+          Save
+        </Button>
+        {note && (
+          <span role="status" className={`text-small ${note.ok ? 'text-success-fg' : 'text-danger-fg'}`}>
+            {note.text}
+          </span>
+        )}
+        {!valid && <span className="text-small text-danger-fg">Letters, numbers, . _ - (max 20)</span>}
+      </div>
+    </form>
   );
 }
 

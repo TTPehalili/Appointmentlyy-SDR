@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CertificateRenderer } from '@/lib/certificateRenderer';
 import { getServiceSupabase } from '@/lib/supabase';
+import { requireApiSession } from '@/lib/server/apiSession';
+import { getTenantStore } from '@/lib/server/tenantStore';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiSession(req, 'Supervisor', 'Only supervisors and above can issue certificates.');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
-    const repName = body.repName || 'Emil Halili';
+    // The rep must be a member of the signed-in workspace (defaults to the signer); the name comes
+    // from the member record, never the body.
+    const target = typeof body.repId === 'string' && body.repId ? await getTenantStore().getMember(body.repId).catch(() => null) : auth.identity.member ?? null;
+    if (body.repId && (!target || target.tenantCode !== auth.tenantCode || target.status === 'removed')) {
+      return NextResponse.json({ error: 'That rep is not in this workspace.' }, { status: 404 });
+    }
+    const repName = target?.name || auth.name || auth.email;
     const campaignName = body.campaignName || 'Enterprise Outbound SDR Mastery';
     const score = Number(body.score || 92);
-    const repId = body.repId || '00000000-0000-0000-0000-000000000000';
+    const repId = target?.id || '00000000-0000-0000-0000-000000000000';
     const campaignId = body.campaignId || '00000000-0000-0000-0000-000000000001';
 
     const certData = CertificateRenderer.createCertificateData(repName, campaignName, score);

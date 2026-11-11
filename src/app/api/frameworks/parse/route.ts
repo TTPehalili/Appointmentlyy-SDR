@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/server/apiSession';
 import { DocumentParser } from '@/lib/parsers/pdfParser';
 import { ArmExtractor } from '@/lib/parsers/armExtractor';
 import { getServiceSupabase } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
+  // Admin › Playbooks is a Manager+ section (adminNav permission 'admin').
+  const auth = await requireApiSession(req, 'Supervisor', 'Only managers and admins can upload playbooks.');
+  if (auth instanceof NextResponse) return auth;
   try {
     const contentType = req.headers.get('content-type') || '';
     let text = '';
