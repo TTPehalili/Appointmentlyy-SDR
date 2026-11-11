@@ -8,11 +8,11 @@ export default function McpDeveloperGateway() {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState('Apex Global BPO');
 
-  const mcpToken = 'mcp_tok_demo_tenant_sample';
-  const apiKey = 'lms_demo_key_example';
-  const webhookUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/api/webhooks/inbound/demo`
-    : 'https://api.yourdomain.com/api/webhooks/inbound/demo';
+  // No MCP tokens or REST API keys are issued yet, so none are shown (never put sample secrets
+  // here: they get copied into real tools). Workflow webhooks live at /api/webhooks/<path>.
+  const webhookBase = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/webhooks/`
+    : '/api/webhooks/';
 
   const copyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -59,12 +59,12 @@ export default function McpDeveloperGateway() {
               <Tooltip content="Model Context Protocol: lets AI tools read workspace data through a standard interface.">
                 <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">MCP server</span>
               </Tooltip>
-              <Badge tone="success">Active</Badge>
+              <Badge tone="neutral">Not issued yet</Badge>
             </span>
           }
           description={
             <>
-              Bearer token scoped to <span className="text-body-strong text-fg">{selectedTenant}</span>.
+              Bearer token scoped to <span className="text-body-strong text-fg">{selectedTenant}</span>. Tokens are not issued yet.
             </>
           }
         />
@@ -72,9 +72,11 @@ export default function McpDeveloperGateway() {
           <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
             <div className="truncate font-mono text-small text-fg">
               <span className="mr-2 text-fg-secondary">Authorization: Bearer</span>
-              <span>{mcpToken}</span>
+              <span className="text-fg-tertiary">Not issued yet</span>
             </div>
-            {copyButton(mcpToken, 'mcp', 'Copy token')}
+            <Button size="sm" variant="secondary" disabled icon={<Copy />}>
+              Copy token
+            </Button>
           </div>
 
           <div className="space-y-2">
@@ -104,15 +106,16 @@ export default function McpDeveloperGateway() {
         <CardHeader
           title="REST API key"
           description="Server-to-server key for external dialers and CRMs."
-          actions={<span className="text-small tabular-nums text-fg-secondary">Rate limit: 60 req/min</span>}
         />
         <CardBody>
           <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
             <div className="truncate font-mono text-small text-fg">
               <span className="mr-2 text-fg-secondary">API secret:</span>
-              <span>{apiKey}</span>
+              <span className="text-fg-tertiary">Not issued yet</span>
             </div>
-            {copyButton(apiKey, 'api', 'Copy key')}
+            <Button size="sm" variant="secondary" disabled icon={<Copy />}>
+              Copy key
+            </Button>
           </div>
         </CardBody>
       </Card>
@@ -121,21 +124,22 @@ export default function McpDeveloperGateway() {
       <Card>
         <CardHeader
           title="Inbound webhook"
-          description="Endpoint for inbound events from GoHighLevel, HubSpot or custom dialers."
+          description="Each workflow with a Webhook trigger gets its own endpoint: the trigger's path after this base URL."
         />
         <CardBody className="space-y-3">
           <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2.5">
             <div className="truncate font-mono text-small text-fg">
               <span className="mr-2 text-success-fg">POST</span>
-              <span>{webhookUrl}</span>
+              <span>{webhookBase}</span>
+              <span className="text-fg-tertiary">&lt;workflow path&gt;</span>
             </div>
-            {copyButton(webhookUrl, 'wh', 'Copy URL')}
+            {copyButton(webhookBase, 'wh', 'Copy base URL')}
           </div>
 
           <p className="flex items-center gap-2 text-small text-fg-secondary">
             <Lock className="h-4 w-4 shrink-0 text-fg-secondary" />
             <span>
-              Verification header <span className="font-mono text-fg">X-Appointmentlyy-Signature: sha256=...</span>. Payloads are validated in under 15ms.
+              Callers send the trigger&apos;s secret as <span className="font-mono text-fg">Authorization: Bearer &lt;secret&gt;</span> or an <span className="font-mono text-fg">X-Webhook-Secret</span> header. Calls without it are refused.
             </span>
           </p>
         </CardBody>

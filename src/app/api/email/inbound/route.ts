@@ -4,6 +4,12 @@ import path from 'path';
 import { getResendApiKey } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
 import { getServerSession } from '@/lib/server/session';
+import {
+  allowUnsignedWithoutSecret,
+  logRejection,
+  verifySvixSignature,
+  webhookSecret,
+} from '@/lib/server/webhookSignatures';
 
 const INBOUND_STORE_FILE = path.join(process.cwd(), '.inbound_emails.json');
 
@@ -201,9 +207,62 @@ export async function GET(req: NextRequest) {
  * Receives incoming emails and replies from Resend Inbound, SendGrid, email relays,
  * or local testing ingestion, and persists them into the unified inbox.
  */
+/** JSON.parse that returns null instead of throwing. */
+function parseJson(raw: string) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+const ROUTE = 'INBOUND EMAIL WEBHOOK';
+const SECRET_ENV = 'RESEND_WEBHOOK_SECRET';
+const MAX_BODY_BYTES = 1_000_000;
+
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: 'Payload too large.' }, { status: 413 });
+    }
+
+    // Two callers: a signed-in member adding a reply by hand (session cookie), or Resend's webhook
+    // (no cookie), which must carry a valid Svix signature when RESEND_WEBHOOK_SECRET is set.
+    // Without that secret, unsigned calls are refused in production.
+    const session = await getServerSession(req);
+    let fromProvider = false;
+    if (!session) {
+      const secret = webhookSecret(SECRET_ENV);
+      if (secret) {
+        const v = verifySvixSignature({
+          secret,
+          id: req.headers.get('svix-id'),
+          timestamp: req.headers.get('svix-timestamp'),
+          signature: req.headers.get('svix-signature'),
+          rawBody,
+        });
+        if (!v.ok) {
+          logRejection(ROUTE, `Rejected a webhook call: ${v.reason}.`);
+          return NextResponse.json({ error: 'Unauthorized webhook call.' }, { status: 401 });
+        }
+        fromProvider = true;
+      } else if (!allowUnsignedWithoutSecret(ROUTE, SECRET_ENV)) {
+        return NextResponse.json({ error: 'Unauthorized webhook call.' }, { status: 401 });
+      }
+    }
+
+    const payload = parseJson(rawBody);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return NextResponse.json({ error: 'Body must be a JSON object.' }, { status: 400 });
+    }
+
+    // Resend's event envelope ({ type, created_at, data: { email_id, ... } }) carries no message
+    // body: pull the full message from Resend's receiving API instead (same path as GET's sync).
+    if (fromProvider && typeof payload.type === 'string' && payload.data && typeof payload.data === 'object') {
+      if (payload.type === 'email.received') await syncFromResendReceiving();
+      return NextResponse.json({ received: true, type: payload.type });
+    }
 
     // Standard webhook extraction (supporting Resend, SendGrid, or custom relay)
     const from = payload.from || payload.sender || payload.headers?.from || 'emil@callview.ai';
@@ -245,7 +304,9 @@ export async function POST(req: NextRequest) {
       leadName: leadName,
       leadCompany: leadCompany,
       provider: 'resend_live',
-      read: false
+      read: false,
+      // A reply added by a signed-in member belongs to their workspace (GET shows clients only their own).
+      ...(session ? { tenantCode: session.tenantCode } : {})
     };
 
     // Persist to local JSON file

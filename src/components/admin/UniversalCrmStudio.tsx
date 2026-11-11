@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Building2, CheckCircle2, RefreshCw, Check, ShieldCheck, Unplug } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, PageHeader, Tabs, Tooltip } from '@/components/ui';
-import { isDemoWorkspace } from '@/lib/demoMode';
+import { DEMO_LOGIN, isDemoWorkspace } from '@/lib/demoMode';
+import { useServerAuth } from '@/lib/authClient';
+import { useSession } from '@/lib/session';
+import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 
 interface FieldMapping {
   id: string;
@@ -24,7 +27,38 @@ interface CrmConnector {
   recordsSynced: number;
 }
 
+/**
+ * CRM connections are not live yet: nothing on the preview screen syncs anywhere. Client
+ * workspaces see an honest "being rolled out" state; the demo workspace and platform staff keep
+ * the visual preview, clearly badged as a preview.
+ */
 export default function UniversalCrmStudio() {
+  const isDemo = useDemoWorkspace();
+  const { role } = useSession();
+  const server = useServerAuth();
+  const isStaff = DEMO_LOGIN ? role === 'Super Admin' : Boolean(server.identity?.isPlatformAdmin);
+  return isDemo || isStaff ? <CrmStudioPreview /> : <CrmRollout />;
+}
+
+function CrmRollout() {
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="CRM & field mapping"
+        description="Sync reps, call activity, practice scores and objections with your CRM."
+      />
+      <Card>
+        <EmptyState
+          icon={<Building2 />}
+          title="CRM connections are being rolled out"
+          description="Zoho, HubSpot, GoHighLevel and Salesforce are set up with you during onboarding. Contact support to schedule."
+        />
+      </Card>
+    </div>
+  );
+}
+
+function CrmStudioPreview() {
   const [activeTab, setActiveTab] = useState<'connectors' | 'mapper' | 'stream'>('mapper');
   const [retryingDlq, setRetryingDlq] = useState(false);
   const [dlqSuccess, setDlqSuccess] = useState(false);
@@ -158,6 +192,7 @@ export default function UniversalCrmStudio() {
       <PageHeader
         title="CRM & field mapping"
         description="Sync reps, call activity, practice scores and objections with your CRM."
+        meta={<Badge tone="warning">Preview</Badge>}
         tabs={
           <Tabs
             label="CRM sections"
@@ -171,6 +206,10 @@ export default function UniversalCrmStudio() {
           />
         }
       />
+
+      <div role="note" className="rounded-md border border-warning-400/40 bg-warning-bg px-3 py-2 text-small text-warning-fg">
+        Preview with sample data. Nothing on this page syncs to a CRM yet: client CRM connections are set up during onboarding.
+      </div>
 
       {/* TAB 1: FIELD SCHEMA MAPPER */}
       {activeTab === 'mapper' && (

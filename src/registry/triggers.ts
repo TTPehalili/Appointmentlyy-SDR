@@ -43,10 +43,10 @@ export const webhookTriggerNode: INodeDefinition = {
     },
     {
       name: 'authSecret',
-      displayName: 'Secret / Bearer Token (Optional)',
+      displayName: 'Secret / Bearer Token',
       type: 'string',
       default: '',
-      description: 'Authorization header check or query parameter secret'
+      description: 'Required. Callers send it as "Authorization: Bearer <secret>" or an "X-Webhook-Secret" header.'
     }
   ],
   execute: async (context: NodeExecutionContext): Promise<WorkflowItem[][]> => {

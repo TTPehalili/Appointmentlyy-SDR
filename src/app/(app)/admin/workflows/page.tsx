@@ -40,7 +40,7 @@ export default function WorkflowsStandalonePage() {
                 <Badge tone="danger">Role restricted: {userRole}</Badge>
                 <h2 className="text-h2 text-fg mt-3">Admin access required</h2>
                 <p className="text-body text-fg-secondary mt-1.5">
-                  Workflows run live webhook triggers, CRM sync and AI evaluations. Only workspace admins can open the workflow builder.
+                  The workflow builder is where workspace admins draft automations for follow-ups, alerts and CRM updates. Only workspace admins can open it.
                 </p>
               </div>
 
@@ -80,7 +80,9 @@ export default function WorkflowsStandalonePage() {
                   <div className="min-w-0">
                     <h1 className="text-h1 text-fg">Workflows</h1>
                     <p className="mt-1 text-body text-fg-secondary">
-                      Automate follow-ups, CRM updates and alerts with triggers and actions.
+                      {userRole === 'Super Admin'
+                        ? 'Automate follow-ups, CRM updates and alerts with triggers and actions.'
+                        : 'Draft automations for follow-ups, CRM updates and alerts. Workflows you build here are saved as drafts and do not run yet; live automations are set up with you by the Appointmentlyy team.'}
                     </p>
                   </div>
 
