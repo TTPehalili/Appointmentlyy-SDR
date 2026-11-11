@@ -23,6 +23,8 @@ import {
   RotateCcw,
   UserPlus,
   Clock,
+  CalendarCheck,
+  Sparkles,
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
@@ -65,7 +67,11 @@ import {
   isContactAssignedTo,
   isSameRep,
 } from '@/lib/leadStore';
-import { resolveStageForStatus } from '@/lib/dispositionPipeline';
+import { findStageByRole, resolveStageForStatus } from '@/lib/dispositionPipeline';
+import BookingHandoffDialog from '@/components/meetings/BookingHandoffDialog';
+import { meetingPlansApi } from '@/components/meetings/meetingPlanClient';
+import { MeetingStatusBadge } from '@/components/meetings/meetingUi';
+import { meetingContactKey, type MeetingPlan, type MeetingPlanSummary } from '@/lib/meetingPlan';
 import {
   type CallbackTask,
   formatCallbackDue,
@@ -248,6 +254,64 @@ export default function PipelineKanbanHub() {
     [session.tenantCode, tenantName]
   );
 
+  // Meeting plans (Meetings), by prospect key, for the plan badge on booked cards. Refreshed every
+  // few seconds while any plan is still being prepared, so "Preparing…" turns into "Ready" by itself.
+  const [meetingPlans, setMeetingPlans] = useState<Map<string, MeetingPlanSummary>>(() => new Map());
+  const [planListVersion, setPlanListVersion] = useState(0);
+  const anyPlanPreparing = useMemo(
+    () => [...meetingPlans.values()].some((p) => p.status === 'preparing'),
+    [meetingPlans],
+  );
+  useEffect(() => {
+    let live = true;
+    void meetingPlansApi.list().then((r) => {
+      if (!live || !r.ok) return;
+      const map = new Map<string, MeetingPlanSummary>();
+      [...r.plans]
+        .sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''))
+        .forEach((p) => map.set((p.contactKey || '').toLowerCase(), p));
+      setMeetingPlans(map);
+    });
+    return () => {
+      live = false;
+    };
+  }, [planListVersion]);
+  useEffect(() => {
+    if (!anyPlanPreparing) return;
+    const t = setTimeout(() => setPlanListVersion((v) => v + 1), 5000);
+    return () => clearTimeout(t);
+  }, [anyPlanPreparing, meetingPlans]);
+  const planForContact = (c: ContactRecord): MeetingPlanSummary | null =>
+    meetingPlans.get(meetingContactKey({ email: c.email, contactId: c.id }).toLowerCase()) ?? null;
+  // "Create plan" from a booked card opens the same handoff the Dialer uses (meeting time empty).
+  const [planHandoff, setPlanHandoff] = useState<{ key: number; contact: ContactRecord } | null>(null);
+  const [isPlanHandoffOpen, setIsPlanHandoffOpen] = useState(false);
+  const openPlanHandoff = (contact: ContactRecord) => {
+    setPlanHandoff((prev) => ({ key: (prev?.key ?? 0) + 1, contact }));
+    setIsPlanHandoffOpen(true);
+  };
+  const handlePlanCreated = (plan: MeetingPlan) => {
+    setMeetingPlans((prev) => {
+      const next = new Map(prev);
+      next.set((plan.contactKey || '').toLowerCase(), {
+        id: plan.id,
+        contactKey: plan.contactKey,
+        status: plan.status,
+        bookedBy: plan.bookedBy,
+        bookedByName: plan.bookedByName,
+        assignedAe: plan.assignedAe,
+        assignedAeName: plan.assignedAeName,
+        sentAt: plan.sentAt,
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt,
+        error: plan.error,
+        lead: { name: plan.lead.name, email: plan.lead.email, company: plan.lead.company, title: plan.lead.title, website: plan.lead.website },
+        meetingAt: plan.call.meetingAt,
+      });
+      return next;
+    });
+  };
+
   // The signed-in person, however their leads were assigned (display name or email, any case).
   const myIdentityKeys = useMemo(
     () => getRepIdentityKeys({ repName, email: session.email }),
@@ -339,6 +403,9 @@ export default function PipelineKanbanHub() {
         : stages.filter((s) => s.statusValue === selectedStageFilter),
     [stages, selectedStageFilter]
   );
+
+  // The booked column: its cards get the meeting plan badge / "Create plan".
+  const bookedStageId = useMemo(() => findStageByRole('booked', stages)?.id ?? null, [stages]);
 
   // Group contacts by Kanban stage
   const contactsByStage = useMemo(() => {
@@ -1065,6 +1132,39 @@ export default function PipelineKanbanHub() {
                                 lastDisposition={lead.lastDisposition}
                                 stageLabel={col.label}
                               />
+
+                              {/* Booked: the meeting plan, or a quick way to create one */}
+                              {col.id === bookedStageId && (() => {
+                                const mp = planForContact(lead);
+                                return mp ? (
+                                  <Link
+                                    href={`/meetings/${mp.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    draggable={false}
+                                    className="focus-ring flex items-center justify-between gap-2 rounded-md border border-line bg-subtle/60 px-2 py-1.5 text-caption text-fg-secondary hover:border-line-strong hover:text-fg"
+                                    data-testid="pipeline-plan-badge"
+                                  >
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <CalendarCheck className="size-3.5 shrink-0" aria-hidden />
+                                      <span className="truncate">Meeting plan</span>
+                                    </span>
+                                    <MeetingStatusBadge status={mp.status} />
+                                  </Link>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openPlanHandoff(lead);
+                                    }}
+                                    className="focus-ring inline-flex items-center gap-1 rounded-sm text-caption font-medium text-fg-secondary hover:text-fg hover:underline"
+                                    data-testid="pipeline-create-plan"
+                                  >
+                                    <Sparkles className="size-3.5" aria-hidden />
+                                    Create plan
+                                  </button>
+                                );
+                              })()}
                             </div>
                           );
                         })
@@ -1847,6 +1947,30 @@ export default function PipelineKanbanHub() {
           </div>
         )}
       </Drawer>
+
+      {planHandoff && (
+        <BookingHandoffDialog
+          key={planHandoff.key}
+          open={isPlanHandoffOpen}
+          onClose={() => setIsPlanHandoffOpen(false)}
+          outcome={planHandoff.contact.lastDisposition || 'Meeting Booked'}
+          notes={planHandoff.contact.leadNotes || ''}
+          lead={{
+            name: planHandoff.contact.name || '',
+            email: (planHandoff.contact.email || '').trim(),
+            company: planHandoff.contact.company || '',
+            title: planHandoff.contact.title || undefined,
+            phone: planHandoff.contact.phone || undefined,
+            website: planHandoff.contact.website || undefined,
+            personLinkedinUrl: planHandoff.contact.linkedinUrl || undefined,
+            industry: planHandoff.contact.industry || undefined,
+            location: planHandoff.contact.location || undefined,
+            headcount: planHandoff.contact.headcount || undefined,
+            contactId: planHandoff.contact.id || undefined,
+          }}
+          onCreated={handlePlanCreated}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { DEMO_LOGIN, canViewAsRoles, getViewAsRole, refreshServerIdentity, setViewAsRole } from '@/lib/authClient';
-import { clearStoredSession, getStoredSession, setStoredSession } from '@/lib/session';
+import { clearStoredSession, getStoredSession, normalizeUserRole, setStoredSession } from '@/lib/session';
 import { STORAGE_OWNER_KEY, claimTenantStorage, getStorageOwner } from '@/lib/tenantStorage';
 
 /**
@@ -57,7 +57,7 @@ export function SessionSync() {
         wiped ||
         !cur.isAuthenticated ||
         cur.email !== id.email ||
-        cur.role !== effectiveRole ||
+        cur.role !== normalizeUserRole(effectiveRole) ||
         cur.tenantCode !== id.tenantCode ||
         cur.tenantName !== id.tenantName ||
         cur.repName !== id.repName

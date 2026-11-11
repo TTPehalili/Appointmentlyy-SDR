@@ -63,6 +63,9 @@ import { useTelephony } from '@/lib/telephony/useTelephony';
 import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
 import type { AssistantCallContext } from '@/lib/coldEmailAssistant';
 import TemplatePicker from '@/components/outreach/TemplatePicker';
+import BookingHandoffDialog from '@/components/meetings/BookingHandoffDialog';
+import { mergeNotes } from '@/components/meetings/meetingPlanClient';
+import type { LeadSnapshot, MeetingPlan } from '@/lib/meetingPlan';
 import MergeFieldGaps, { unfilledMergeFields } from '@/components/outreach/MergeFieldGaps';
 import {
   CallTelemetryState,
@@ -146,6 +149,17 @@ const DEMO_PROSPECT_PERSONA =
   SPARRING_PERSONAS.find((p) => p.id === 'demo-dialer-julian') ??
   SPARRING_PERSONAS.find((p) => p.id === 'bpo-directory-buyer') ??
   SPARRING_PERSONAS[0];
+
+/**
+ * The rep's hand-edited CRM summary, with the outcome line updated to the outcome just picked
+ * (the rest of their edit is kept as typed).
+ */
+function withOutcomeLine(notes: string, dispName: string): string {
+  const line = `OUTCOME / DISPOSITION: ${dispName.toUpperCase()}`;
+  if (/^OUTCOME \/ DISPOSITION:.*$/m.test(notes)) return notes.replace(/^OUTCOME \/ DISPOSITION:.*$/m, line);
+  if (notes.toLowerCase().includes(dispName.toLowerCase())) return notes;
+  return `${notes.trimEnd()}\n\n${line}`;
+}
 
 /** Wall-clock time for practice call ids and durations (only called from event handlers). */
 const nowMs = () => Date.now();
@@ -850,6 +864,61 @@ export default function BorisCallingCockpit({
   const [loggedStage, setLoggedStage] = useState<{ disposition: string; label: string | null } | null>(null);
   // A configured callback-type outcome picked from "More outcomes" waits here for the scheduler.
   const [pendingCallbackOutcome, setPendingCallbackOutcome] = useState<CallDisposition | null>(null);
+  // The CRM summary text the rep last typed by hand (null = untouched). Picking an outcome keeps
+  // their edit instead of rebuilding the summary, as long as nothing has replaced it since.
+  const notesEditedRef = useRef<string | null>(null);
+
+  // Booking handoff (Meeting Action Plans): opens after a booked outcome is logged. Never in practice.
+  const [handoff, setHandoff] = useState<{
+    key: number;
+    outcome: string;
+    meetingAt: string;
+    notes: string;
+    transcript?: string;
+    lead: LeadSnapshot;
+  } | null>(null);
+  const [isHandoffOpen, setIsHandoffOpen] = useState<boolean>(false);
+  // The plan created for this lead's booking (ignored once the rep moves to another lead).
+  const [handoffPlan, setHandoffPlan] = useState<{ leadKey: string; plan: MeetingPlan } | null>(null);
+  const currentLeadKey = activeLead.id || directEmail || '';
+  const planForThisLead = handoffPlan && handoffPlan.leadKey === currentLeadKey ? handoffPlan.plan : null;
+
+  const openBookingHandoff = (outcomeName: string, crmNotes: string) => {
+    if (practiceMode) return;
+    const ctx = buildFollowUpContext();
+    // Leads imported from Lead Finder may carry the company's LinkedIn page; ContactRecord has none.
+    const companyLinkedin = [activeLead, activeContact].map((l) => (l as { companyLinkedinUrl?: unknown } | null)?.companyLinkedinUrl).find(
+      (v): v is string => typeof v === 'string' && /linkedin\.com\/company\//i.test(v)
+    );
+    setHandoff(prev => ({
+      key: (prev?.key ?? 0) + 1,
+      outcome: outcomeName,
+      meetingAt: bookingSlot || '',
+      // Saved lead notes + the unsaved note being typed + the CRM summary (the rep reviews it in the dialog).
+      notes: mergeNotes([
+        typeof activeContact?.leadNotes === 'string' ? activeContact.leadNotes : '',
+        leadNoteInput,
+        dispositionNotes,
+        crmNotes,
+      ]),
+      transcript: ctx.transcript || undefined,
+      lead: {
+        name: customerName || activeLead.name || '',
+        email: (directEmail || activeLead.email || '').trim(),
+        company: partnerName || activeLead.company || '',
+        title: title || activeLead.title || undefined,
+        phone: phone || activeLead.phone || undefined,
+        website: leadWebsite || undefined,
+        companyLinkedinUrl: companyLinkedin,
+        personLinkedinUrl: leadLinkedinUrl || undefined,
+        industry: activeLead.industry || activeContact?.industry || undefined,
+        location: activeLead.location || activeContact?.location || undefined,
+        headcount: headcount || activeLead.headcount || undefined,
+        contactId: activeLead.id || undefined,
+      },
+    }));
+    setIsHandoffOpen(true);
+  };
 
   // Handle Call Outcome / Disposition Selection
   const handleSelectDisposition = (
@@ -877,8 +946,11 @@ export default function BorisCallingCockpit({
       });
     }
 
-    const updatedNotes = buildNotes({ disp: dispName });
+    // Keep the rep's hand-edited CRM summary (only its outcome line is updated); otherwise rebuild it.
+    const repEditedNotes = notesEditedRef.current !== null && notesEditedRef.current === notesDraft;
+    const updatedNotes = repEditedNotes ? withOutcomeLine(notesDraft, dispName) : buildNotes({ disp: dispName });
     setNotesDraft(updatedNotes);
+    if (repEditedNotes) notesEditedRef.current = updatedNotes;
 
     // Move the lead to the outcome's Pipeline stage (and give an unowned lead to this rep).
     const stage = resolveOutcomeStage(outcomeDef, pipelineStages);
@@ -910,6 +982,13 @@ export default function BorisCallingCockpit({
 
     if (updated) {
       setLeadsQueue(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
+    }
+
+    // Booked: the outcome is logged above exactly as before; the AE handoff opens on top (skippable).
+    if (getOutcomeRole(outcomeDef) === 'booked') {
+      // The auto-built CRM summary is a fixed template (not facts from this call), so the AE's plan only
+      // gets it when the rep wrote it themselves; otherwise just the rep's own notes go across.
+      openBookingHandoff(dispName, repEditedNotes ? updatedNotes : customRepNotes);
     }
 
     // Log Cadence Activity with full synthesized CRM call notes
@@ -1106,7 +1185,7 @@ export default function BorisCallingCockpit({
         })
       });
       const data = await res.json();
-      if (res.ok && data.status === 'success') {
+      if (res.ok && (data.success === true || data.status === 'success')) {
         setQuickEmailSuccess('Email dispatched successfully via Resend!');
 
         const targetId = activeLead.id || directEmail;
@@ -1125,7 +1204,7 @@ export default function BorisCallingCockpit({
           setQuickEmailSuccess(null);
         }, 1800);
       } else {
-        alert(data.message || 'Error dispatching email.');
+        alert(data.error || data.message || 'Error dispatching email.');
       }
     } catch (e: any) {
       alert('Network or dispatch error.');
@@ -1610,6 +1689,29 @@ export default function BorisCallingCockpit({
                       <span className="text-fg-secondary"> · Pipeline: {loggedStage.label}</span>
                     )}
                   </span>
+                  {/* Booked: reopen the AE handoff, or jump to the plan once it exists */}
+                  {!practiceMode && handoff && handoff.outcome === disposition && (
+                    planForThisLead ? (
+                      <Link
+                        href={`/meetings/${planForThisLead.id}`}
+                        className="focus-ring ml-1 inline-flex items-center gap-1 rounded-sm font-medium text-fg underline-offset-2 hover:underline"
+                        data-testid="cockpit-view-meeting-plan"
+                      >
+                        View meeting plan
+                        <ArrowRight className="size-3.5" aria-hidden />
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsHandoffOpen(true)}
+                        className="focus-ring ml-1 inline-flex items-center gap-1 rounded-sm font-medium text-fg underline-offset-2 hover:underline"
+                        data-testid="cockpit-open-handoff"
+                      >
+                        <Sparkles className="size-3.5" aria-hidden />
+                        Create meeting plan
+                      </button>
+                    )
+                  )}
                 </span>
               )}
             </div>
@@ -2190,7 +2292,10 @@ export default function BorisCallingCockpit({
                     <textarea
  aria-label="CRM call summary"                      rows={7}
                       value={notesDraft}
-                      onChange={(e) => setNotesDraft(e.target.value)}
+                      onChange={(e) => {
+                        setNotesDraft(e.target.value);
+                        notesEditedRef.current = e.target.value;
+                      }}
                       className="focus-ring w-full select-text rounded-sm border border-line-strong bg-surface p-2.5 font-sans text-small text-fg placeholder:text-fg-disabled"
                       placeholder="CRM call notes auto-populate here..."
                     />
@@ -2338,6 +2443,20 @@ export default function BorisCallingCockpit({
       {/* ========================================================================= */}
       {/* QUICK FOLLOW-UP EMAIL COMPOSER MODAL                                      */}
       {/* ========================================================================= */}
+      {handoff && !practiceMode && (
+        <BookingHandoffDialog
+          key={handoff.key}
+          open={isHandoffOpen}
+          onClose={() => setIsHandoffOpen(false)}
+          lead={handoff.lead}
+          outcome={handoff.outcome}
+          meetingAt={handoff.meetingAt}
+          notes={handoff.notes}
+          transcript={handoff.transcript}
+          onCreated={(plan) => setHandoffPlan({ leadKey: currentLeadKey, plan })}
+        />
+      )}
+
       <Dialog
         open={isQuickEmailOpen}
         onClose={() => setIsQuickEmailOpen(false)}

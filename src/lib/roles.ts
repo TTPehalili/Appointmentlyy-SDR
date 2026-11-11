@@ -3,15 +3,20 @@
  * No 'use client' and no browser APIs: safe to import from route handlers.
  */
 
-export type Role = 'Super Admin' | 'Admin' | 'Manager' | 'Supervisor' | 'Rep';
+export type Role = 'Super Admin' | 'Admin' | 'Manager' | 'Supervisor' | 'Account Executive' | 'Rep';
 
-export const ROLES: Role[] = ['Super Admin', 'Admin', 'Manager', 'Supervisor', 'Rep'];
+export const ROLES: Role[] = ['Super Admin', 'Admin', 'Manager', 'Supervisor', 'Account Executive', 'Rep'];
 
 /** Roles a client workspace can hold. Super Admin exists only in the platform workspace. */
-export const CLIENT_ROLES: Role[] = ['Admin', 'Manager', 'Supervisor', 'Rep'];
+export const CLIENT_ROLES: Role[] = ['Admin', 'Manager', 'Supervisor', 'Account Executive', 'Rep'];
 
+/**
+ * An Account Executive runs the meetings reps book (Meeting Action Plans). Everywhere else they have
+ * exactly a Rep's access: same rank, so every ROLE_RANK / hasRank check treats them alike.
+ */
 export const ROLE_RANK: Record<Role, number> = {
   Rep: 0,
+  'Account Executive': 0,
   Supervisor: 1,
   Manager: 1,
   Admin: 2,
@@ -20,10 +25,11 @@ export const ROLE_RANK: Record<Role, number> = {
 
 /** Which roles each role may grant when inviting or changing someone's role. */
 export const GRANTABLE: Record<Role, Role[]> = {
-  'Super Admin': ['Super Admin', 'Admin', 'Manager', 'Supervisor', 'Rep'],
-  Admin: ['Admin', 'Manager', 'Supervisor', 'Rep'],
-  Manager: ['Supervisor', 'Rep'],
+  'Super Admin': ['Super Admin', 'Admin', 'Manager', 'Supervisor', 'Account Executive', 'Rep'],
+  Admin: ['Admin', 'Manager', 'Supervisor', 'Account Executive', 'Rep'],
+  Manager: ['Supervisor', 'Account Executive', 'Rep'],
   Supervisor: ['Rep'],
+  'Account Executive': [],
   Rep: [],
 };
 
@@ -32,6 +38,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   Admin: 'Admin',
   Manager: 'Manager',
   Supervisor: 'Supervisor',
+  'Account Executive': 'Account Executive',
   Rep: 'Rep',
 };
 
@@ -43,8 +50,14 @@ export function parseRole(raw: unknown): Role | null {
   if (r === 'admin' || r === 'client admin') return 'Admin';
   if (r === 'manager') return 'Manager';
   if (r === 'supervisor') return 'Supervisor';
+  if (r === 'account executive' || r === 'ae' || r === 'closer') return 'Account Executive';
   if (r === 'rep' || r === 'sdr' || r === 'sales rep') return 'Rep';
   return null;
+}
+
+/** Rep-level access (Rep or Account Executive): own work only, no team views. */
+export function isRepLevel(role: Role): boolean {
+  return ROLE_RANK[role] === 0;
 }
 
 /** The platform's own workspace (Appointmentlyy staff). */

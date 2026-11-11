@@ -212,7 +212,7 @@ export function MembersManager() {
                               onChange={(e) => changeRole(m, e.target.value as Role)}
                               disabled={busy === m.id}
                               aria-label={`Role for ${m.email}`}
-                              className="h-8 w-36"
+                              className="h-8 w-44"
                             >
                               {Array.from(new Set([m.role, ...data.grantable])).map((r) => (
                                 <option key={r} value={r}>
@@ -405,5 +405,6 @@ const ROLE_HINT: Record<Role, string> = {
   Admin: 'Everything in this workspace, including members, billing and branding.',
   Manager: 'Team pages, coaching and reports. Can invite supervisors and reps.',
   Supervisor: 'Live floor and coaching for their team. Can invite reps.',
+  'Account Executive': 'Runs the meetings reps book, with their meeting plans. Otherwise the same access as a Rep.',
   Rep: 'Dialer, inbox, practice and their own pipeline.',
 };

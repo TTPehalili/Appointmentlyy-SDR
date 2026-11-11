@@ -39,6 +39,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: 'playbooks', label: 'Playbooks', href: '/admin/frameworks', permission: 'admin', keywords: 'upload playbook ingestion ai vectorizer frameworks' },
       { id: 'call-outcomes', label: 'Call outcomes', href: '/admin/call-outcomes', permission: 'admin', keywords: 'call dispositions campaign rules' },
+      { id: 'company-profile', label: 'Company profile', href: '/admin/company-profile', permission: 'adminOrg', keywords: 'company profile services usp offer meeting plans one-pager what we sell' },
       { id: 'training', label: 'Training modules', href: '/admin/training', permission: 'admin', controlSection: 'modules', keywords: 'modules courses' },
     ],
   },

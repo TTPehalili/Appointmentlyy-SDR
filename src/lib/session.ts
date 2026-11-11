@@ -336,6 +336,9 @@ export function normalizeUserRole(rawRole?: string | null): UserRole {
   if (r === 'manager' || r === 'sales manager') return 'Manager';
   if (r === 'supervisor' || r === 'lead' || r === 'team lead' || r === 'floor supervisor') return 'Supervisor';
   if (r === 'rep' || r === 'sdr' || r === 'bdr' || r === 'sales rep' || r === 'agent') return 'Rep';
+  // Account Executives have exactly a Rep's access in the app (the server knows the real role and
+  // offers them as meeting assignees). In the permission matrix that is the SDR column.
+  if (r === 'account executive' || r === 'ae' || r === 'closer') return 'Rep';
   return fallback;
 }
 
@@ -416,7 +419,8 @@ export function getStoredSession(): SdrSession {
 /**
  * Persist updated session to localStorage and broadcast change event
  */
-export function setStoredSession(sessionUpdates: Partial<SdrSession>): SdrSession {
+/** `role` may be any server role (e.g. 'Account Executive'); it is normalised to the browser's UserRole. */
+export function setStoredSession(sessionUpdates: Omit<Partial<SdrSession>, 'role'> & { role?: UserRole | string }): SdrSession {
   if (typeof window === 'undefined') return DEFAULT_SESSION;
 
   const current = getStoredSession();

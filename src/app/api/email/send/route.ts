@@ -3,6 +3,34 @@ import { blockUnconnectedSending } from '@/lib/server/sendingPolicy';
 import { formatEmailToParagraphs } from '@/lib/coldEmailStudio';
 import { getResendApiKey, getResendInboundEmail, getResendFromEmail } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
+import { getServerSession } from '@/lib/server/session';
+import { onePagerFileName } from '@/lib/onePagerRender';
+import { isMeetingPlanId } from '@/lib/server/meetingPlanStore';
+import { brandFor, loadVisiblePlan, renderPlanPdf } from '@/lib/server/meetingPlanApi';
+
+type ResendAttachment = { filename: string; content: string };
+
+/**
+ * Optional `meetingPlanId`: attach that Meeting Action Plan's one-pager as a PDF. The plan is loaded
+ * from the signed-in person's own workspace and must be one they can see. Returns the attachment, or
+ * the error response to send (nothing is sent without the attachment that was asked for).
+ */
+async function meetingPlanAttachment(req: NextRequest, meetingPlanId: unknown): Promise<ResendAttachment | NextResponse> {
+  const session = await getServerSession(req);
+  if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
+  const notFound = () => NextResponse.json({ error: 'Meeting plan not found.' }, { status: 404 });
+  if (typeof meetingPlanId !== 'string' || !isMeetingPlanId(meetingPlanId)) return notFound();
+  const plan = await loadVisiblePlan(session, meetingPlanId);
+  if (!plan) return notFound();
+  if (!plan.onePager) return NextResponse.json({ error: 'There is no one-pager for this meeting plan yet.' }, { status: 409 });
+  try {
+    const pdf = await renderPlanPdf(plan, await brandFor(session));
+    return { filename: onePagerFileName(plan.lead.company), content: pdf.toString('base64') };
+  } catch (err) {
+    console.error('[EMAIL SEND] meeting plan PDF', err);
+    return NextResponse.json({ error: 'Could not attach the meeting recap PDF. Nothing was sent.' }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   // Safety switch: client workspaces can't send until their own mailbox is connected.
@@ -20,7 +48,8 @@ export async function POST(req: NextRequest) {
       leadTitle = 'Decision Maker',
       threadId,
       customResendApiKey,
-      customSendingDomain
+      customSendingDomain,
+      meetingPlanId
     } = payload;
 
     if (!to || !subject || !body) {
@@ -28,6 +57,13 @@ export async function POST(req: NextRequest) {
         { error: 'Missing required fields: to, subject, body' },
         { status: 400 }
       );
+    }
+
+    let attachments: ResendAttachment[] | undefined;
+    if (meetingPlanId !== undefined && meetingPlanId !== null && meetingPlanId !== '') {
+      const att = await meetingPlanAttachment(req, meetingPlanId);
+      if (att instanceof NextResponse) return att;
+      attachments = [att];
     }
 
     // Escape HTML special characters to prevent malformed tags
@@ -89,7 +125,8 @@ export async function POST(req: NextRequest) {
         subject: subject,
         text: formattedText,
         html: formattedHtml,
-        reply_to: replyTo ? [inboundAddress, replyTo] : [inboundAddress, 'emil@appointmentlyy.com']
+        reply_to: replyTo ? [inboundAddress, replyTo] : [inboundAddress, 'emil@appointmentlyy.com'],
+        ...(attachments ? { attachments } : {})
       };
 
       // Attempt 1: Send with active key

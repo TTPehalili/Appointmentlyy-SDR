@@ -3,7 +3,7 @@ import { DEMO_INITIAL_DEMO_ACTIVITIES } from '@/lib/activityStore';
 import { DEMO_LOGIN, isDemoSession } from '@/lib/demoMode';
 import { getServerSession, type ServerSession } from '@/lib/server/session';
 import { getTenantStore } from '@/lib/server/tenantStore';
-import { ROLE_RANK, parseRole, type Role } from '@/lib/roles';
+import { ROLE_RANK, isRepLevel, parseRole, type Role } from '@/lib/roles';
 import { detectCopilotIntent, reportMetrics, sanitizeReportData, type ReportData } from '@/lib/copilotReport';
 import { raceGemini } from '@/lib/server/gemini';
 import {
@@ -438,8 +438,8 @@ export async function POST(req: NextRequest) {
       return reply(await writingReply(intent, question, { isDemo, tenantName, senderName, history, apiKey }));
     }
 
-    // Reps get a coach that only knows their own numbers.
-    if (role === 'Rep') {
+    // Reps (and Account Executives, who have a Rep's access) get a coach that only knows their own numbers.
+    if (isRepLevel(role)) {
       const extraContext = snapshotHasData(snapshot) ? `MY LEADS (real workspace data):${renderSnapshot(snapshot)}` : '';
       return reply(await repChatReply(question, { isDemo, tenantName, senderName, history, apiKey, personal, extraContext }));
     }

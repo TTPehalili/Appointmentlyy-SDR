@@ -116,18 +116,18 @@ export default function UploadLeadsCsvModal({
         // Critical High-Value Signal Columns
         const website = findField('website', 'url', 'domain', 'web', 'company_url') || '';
         const linkedinUrl = findField('linkedin', 'linkedin_url', 'profile', 'li_url') || '';
-        const techStack = findField('tech_stack', 'tech', 'stack', 'crm', 'dialer', 'software') || 'Apollo & HubSpot';
-        const painPoint = findField('pain_point', 'pain', 'challenge', 'bottleneck', 'problem') || 'objection hesitation on shared lead lists';
-        const outsourcer = findField('outsourcer', 'vendor', 'current_agency', 'incumbent', 'agency') || 'Titan BPO Solutions';
+        const techStack = findField('tech_stack', 'tech', 'stack', 'crm', 'dialer', 'software') || '';
+        const painPoint = findField('pain_point', 'pain', 'challenge', 'bottleneck', 'problem') || '';
+        const outsourcer = findField('outsourcer', 'vendor', 'current_agency', 'incumbent', 'agency') || '';
         
         const rawSignals = findField('buying_signals', 'signals', 'signal', 'notes', 'triggers') || '';
         const buyingSignals = rawSignals 
           ? rawSignals.split(';').map(s => s.trim()).filter(Boolean)
           : [
-              `Target Domain: ${website || company}`,
-              `Tech Stack: ${techStack}`,
-              `Primary Bottleneck: ${painPoint}`
-            ];
+              // Only real columns from the file: invented defaults ended up in AE plans and customer recaps.
+              techStack && `Tech Stack: ${techStack}`,
+              painPoint && `Primary Bottleneck: ${painPoint}`,
+            ].filter((v): v is string => Boolean(v));
 
         return {
           id: `lead_csv_${Date.now()}_${idx}`,

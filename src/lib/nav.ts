@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarCheck,
   Contact,
   GraduationCap,
   Inbox,
@@ -36,6 +37,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: 'dialer', label: 'Dialer', icon: Phone, href: '/dialer', group: 'main', keywords: 'calling floor cockpit call' },
   { id: 'inbox', label: 'Inbox', icon: Inbox, href: '/inbox', group: 'main', keywords: 'email replies' },
+  { id: 'meetings', label: 'Meetings', icon: CalendarCheck, href: '/meetings', group: 'main', keywords: 'booked meetings action plan one-pager account executive ae handoff' },
 
   { id: 'contacts', label: 'Contacts', icon: Contact, href: '/contacts', group: 'prospect', keywords: 'leads people lists' },
   { id: 'pipeline', label: 'Pipeline', icon: Kanban, href: '/pipeline', group: 'prospect', keywords: 'deals board' },

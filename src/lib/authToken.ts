@@ -4,13 +4,15 @@
  */
 import crypto from 'node:crypto';
 import type { UserRole } from '@/lib/session';
+import type { Role } from '@/lib/roles';
 
 export type AuthTokenType = 'login' | 'invite' | 'session' | 'reset';
 
 export interface AuthTokenPayload {
   typ: AuthTokenType;
   email: string;
-  role: UserRole;
+  /** Informational only: the server re-reads the member's role on every request. */
+  role: UserRole | Role;
   tenantName: string;
   tenantCode: string;
   repName: string;
