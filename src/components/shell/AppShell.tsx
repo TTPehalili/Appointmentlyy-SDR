@@ -12,6 +12,7 @@ import { MobileTabBar } from './MobileTabBar';
 import { ShellCommandPalette } from './ShellCommandPalette';
 import { ThemeSync } from './ThemeSync';
 import { SessionSync } from './SessionSync';
+import { ActivityEventSync } from '@/components/integrations/ActivityEventSync';
 import { ProductTour } from '@/components/tour/ProductTour';
 import { cn } from '@/lib/cn';
 
@@ -61,6 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <React.Suspense fallback={null}>
           <SessionSync />
         </React.Suspense>
+        <ActivityEventSync />
         <React.Suspense fallback={null}>
           <ProductTour />
         </React.Suspense>

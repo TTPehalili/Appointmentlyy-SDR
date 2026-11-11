@@ -9,6 +9,7 @@
 
 import { getStoredSession, normalizeUserRole, canUserReassignLeads, formatRepNameFromEmail } from './session';
 import { isDemoWorkspace } from '@/lib/demoMode';
+import { emitActivityEvent, emitContactsCreated, eventContact } from '@/lib/activityEvents';
 
 export interface LeadFootprintItem {
   id: string;
@@ -894,6 +895,7 @@ export function createIcpFolderWithLeads(params: {
   const existingIds = new Set(existingContacts.map((c) => `${c.tenantId}:${c.id}`));
   const uniqueNew = stampedLeads.filter((c) => !existingIds.has(`${c.tenantId}:${c.id}`));
   saveStoredContacts([...uniqueNew, ...existingContacts]);
+  emitContactsCreated(uniqueNew, { source: 'Lead Finder pull' });
 
   return { folder: newFolder, addedContacts: stampedLeads };
 }
@@ -1109,7 +1111,24 @@ export function updateContactPipelineStage(
 
   contacts[index] = updatedContact;
   saveStoredContacts(contacts);
+  emitActivityEvent({
+    type: 'pipeline.stage_changed',
+    contact: eventContact(updatedContact),
+    stage: { from: pipelineStageLabel(prevStatus), to: pipelineStageLabel(newStatus) },
+  });
   return updatedContact;
+}
+
+/** A lead status as its Pipeline stage label (stages are user-editable), for integrations. */
+function pipelineStageLabel(status: string | undefined): string {
+  const s = (status || '').trim();
+  if (!s) return '';
+  try {
+    const stage = getStoredPipelineStages().find((st) => st.statusValue === s || st.label.toLowerCase() === s.toLowerCase());
+    return stage?.label || s;
+  } catch {
+    return s;
+  }
 }
 
 // ------------------------------------------------------------------ Rep ownership
@@ -1221,6 +1240,7 @@ export function recordCallOutcome(params: {
 
   const contacts = [...getStoredContacts()];
   let index = findContactIndex(contacts, params.contactIdOrEmail);
+  let createdNow: ContactRecord | null = null;
   const now = new Date();
   const timestamp = footprintTimestamp(now);
   const rep = (params.repName || '').trim();
@@ -1259,6 +1279,7 @@ export function recordCallOutcome(params: {
     };
     contacts.unshift(created);
     index = 0;
+    createdNow = created;
   }
 
   const current = contacts[index];
@@ -1285,6 +1306,15 @@ export function recordCallOutcome(params: {
 
   contacts[index] = updated;
   saveStoredContacts(contacts);
+  // Integrations: a lead new to Contacts, then its stage move (the Dialer sends call.logged itself).
+  if (createdNow) emitContactsCreated([createdNow], { source: 'Dialer' });
+  if (updated.status !== current.status) {
+    emitActivityEvent({
+      type: 'pipeline.stage_changed',
+      contact: eventContact(updated),
+      stage: { from: pipelineStageLabel(current.status), to: pipelineStageLabel(updated.status) },
+    });
+  }
   return updated;
 }
 
@@ -1383,6 +1413,7 @@ export function importLeadsIntoContacts(
 
   saveStoredContacts([...added, ...contacts]);
   if (reassigned > 0) syncFolderRepCounts([...added, ...contacts]);
+  emitContactsCreated(added, { source: opts.source });
   return { added, reassigned };
 }
 

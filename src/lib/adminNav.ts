@@ -58,6 +58,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     label: 'Integrations',
     items: [
+      { id: 'integrations', label: 'Integrations', href: '/admin/integrations', permission: 'adminOrg', keywords: 'webhooks zapier make crm sync delivery log zoho hubspot gohighlevel salesforce signing secret' },
       { id: 'crm', label: 'CRM & field mapping', href: '/admin/crm', permission: 'adminOrg', keywords: 'universal crm mapper hubspot salesforce' },
       { id: 'mcp', label: 'MCP server & webhooks', href: '/admin/mcp', permission: 'platform', keywords: 'mcp ingress api developer gateway' },
       { id: 'ai-providers', label: 'AI providers', href: '/admin/ai-providers', permission: 'adminOrg', keywords: 'byok ai vault keys' },

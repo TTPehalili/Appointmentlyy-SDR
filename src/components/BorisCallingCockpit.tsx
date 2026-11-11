@@ -49,6 +49,7 @@ import { logCadenceActivity, getDailyActivitySummary, subscribeToActivities } fr
 import { getDispositionsSnapshot, getServerDispositionsSnapshot, subscribeToDispositions, type CallDisposition } from '@/lib/dispositionStore';
 import { getOutcomeRole, getQuickOutcomeForRole, resolveOutcomeStage } from '@/lib/dispositionPipeline';
 import { recordCallOutcome, getPipelineStagesSnapshot, getServerPipelineStagesSnapshot, subscribeToPipelineStages } from '@/lib/leadStore';
+import { emitActivityEvent, eventContact, meetingSlotToIso } from '@/lib/activityEvents';
 import { getOutcomeCodes } from '@/lib/telephony/settings';
 import MoreOutcomesMenu from '@/components/cockpit/MoreOutcomesMenu';
 import { useSession, isRoleAdmin } from '@/lib/session';
@@ -920,6 +921,19 @@ export default function BorisCallingCockpit({
     setIsHandoffOpen(true);
   };
 
+  // The prospect as reported to integrations (webhooks / CRM). Never used in practice mode.
+  const integrationContact = (contactId?: string) =>
+    eventContact({
+      id: contactId || activeLead.id || undefined,
+      name: customerName || activeLead.name,
+      email: directEmail || activeLead.email,
+      phone: phone || activeLead.phone,
+      company: partnerName || activeLead.company,
+      title: title || activeLead.title,
+      website: leadWebsite,
+      linkedinUrl: leadLinkedinUrl,
+    });
+
   // Handle Call Outcome / Disposition Selection
   const handleSelectDisposition = (
     dispName: string,
@@ -982,6 +996,21 @@ export default function BorisCallingCockpit({
 
     if (updated) {
       setLeadsQueue(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
+    }
+
+    // Integrations (webhooks / CRM): the outcome and the summary just logged (never unsaved notes).
+    if (customerName || activeLead.name) {
+      const contact = integrationContact(updated?.id);
+      emitActivityEvent({
+        type: 'call.logged',
+        contact,
+        call: { outcome: dispName, summary: updatedNotes, direction: 'outbound', ...(callTimerSeconds > 0 ? { durationSec: callTimerSeconds } : {}) },
+      });
+      if (getOutcomeRole(outcomeDef) === 'booked') {
+        // The slot picked on the call ("Thu 2:00 PM") as the next such time, when one was picked.
+        const at = meetingSlotToIso(bookingSlot);
+        emitActivityEvent({ type: 'meeting.booked', contact, meeting: at ? { at } : {} });
+      }
     }
 
     // Booked: the outcome is logged above exactly as before; the AE handoff opens on top (skippable).
@@ -1067,6 +1096,13 @@ export default function BorisCallingCockpit({
       assignedTo: input.assignedTo,
       activityId
     });
+    if (!practiceMode && (customerName || activeLead.name)) {
+      emitActivityEvent({
+        type: 'callback.scheduled',
+        contact: integrationContact(activeLead.id || task.contactId),
+        callback: { at: input.dueAt, note: input.note },
+      });
+    }
     refreshLeadFromStore(targetId);
     setIsCallbackDialogOpen(false);
     setLastCallbackId(task.id);
@@ -1197,6 +1233,9 @@ export default function BorisCallingCockpit({
         });
         if (updated) {
           setLeadsQueue(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
+        }
+        if (!practiceMode) {
+          emitActivityEvent({ type: 'email.sent', contact: integrationContact(updated?.id), email: { subject: quickEmailSubject, to: directEmail } });
         }
 
         setTimeout(() => {
