@@ -34,7 +34,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, buttonClasses } from '@/components/ui';
+import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, SegmentedControl, buttonClasses } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
   CADENCE_TOUCHES,
@@ -99,6 +99,8 @@ import {
   useCallbackTasks
 } from '@/components/cockpit/CallbackTasks';
 import { companySize } from '@/lib/companySize';
+
+const DEMO_CALL_MODE_KEY = 'appy_demo_call_mode';
 
 /** Placeholder lead while a client workspace has no leads yet (the screen shows an empty state). */
 const EMPTY_LEAD = {
@@ -197,7 +199,21 @@ export default function BorisCallingCockpit({
   const practiceLead = useMemo(() => (practicePersona ? buildPracticeLead(practicePersona) : null), [practicePersona]);
   // Who answers a simulated call: the practice persona, else the demo workspace's Julian Vance.
   const prospectPersona = practicePersona ?? DEMO_PROSPECT_PERSONA;
-  const simulatedCall = isDemo || practiceMode;
+  // Demo workspace only: Call either starts the simulated AI prospect (for client demos) or opens the
+  // computer's phone app via tel: (e.g. Phone Link) for real prospecting. Remembered on this computer.
+  const [demoCallMode, setDemoCallMode] = useState<'ai' | 'phone'>('ai');
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(DEMO_CALL_MODE_KEY) === 'phone') setDemoCallMode('phone');
+    } catch {}
+  }, []);
+  const changeDemoCallMode = (mode: 'ai' | 'phone') => {
+    setDemoCallMode(mode);
+    try {
+      localStorage.setItem(DEMO_CALL_MODE_KEY, mode);
+    } catch {}
+  };
+  const simulatedCall = practiceMode || (isDemo && demoCallMode === 'ai');
   const repName = sessionRep || '';
   const PRESET_REBUTTALS = getPresetRebuttals(isDemo);
   const adminClearance = isRoleAdmin(role);
@@ -1569,6 +1585,24 @@ export default function BorisCallingCockpit({
                       {phone || 'No phone'}
                     </span>
                   </a>
+                  )}
+
+                  {isDemo && !practiceMode && !viaVicidial && (
+                    <span title={isCallingActive ? 'Hang up to switch' : 'Real phone opens your phone app (e.g. Phone Link). AI demo starts the AI prospect call.'}>
+                      <SegmentedControl
+                        label="Call mode"
+                        size="sm"
+                        value={demoCallMode}
+                        onChange={(v) => {
+                          if (!isCallingActive) changeDemoCallMode(v === 'phone' ? 'phone' : 'ai');
+                        }}
+                        className={isCallingActive ? 'pointer-events-none opacity-60' : undefined}
+                        items={[
+                          { value: 'phone', label: 'Real phone' },
+                          { value: 'ai', label: 'AI demo' },
+                        ]}
+                      />
+                    </span>
                   )}
 
                   {callActive && (
