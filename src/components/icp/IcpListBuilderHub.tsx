@@ -64,6 +64,13 @@ import {
 } from '@/lib/icpQuotaStore';
 import { can } from '@/lib/permissions';
 import type { SanitizedIcpProspect, IcpPullStreamEvent } from '@/app/api/intelligence/icp/route';
+import {
+  FUNDING_STAGE_OPTIONS,
+  NEW_IN_ROLE_OPTIONS,
+  REVENUE_BAND_OPTIONS,
+  type IcpFilters,
+  type LeadDataProviderId,
+} from '@/lib/leadData/types';
 import QuotaTopUpModal from './QuotaTopUpModal';
 import PullProgressPanel, { type PullProgressPanelProps } from './PullProgressPanel';
 import { useIcpTargetTenant } from './LeadCreditsAdmin';
@@ -83,7 +90,7 @@ const HEADCOUNT_OPTIONS = [
 ];
 
 const INDUSTRY_PRESETS = [
-  'Outsource Accelerator BPO & Virtual Assistant Agencies',
+  'BPO & Virtual Assistant Agencies',
   'Outsourcing / Offshoring (BPO)',
   'Construction & Commercial HVAC',
   'Computer Software & SaaS',
@@ -114,20 +121,35 @@ interface IcpSmartBlueprint {
 
 const SMART_ICP_BLUEPRINTS: IcpSmartBlueprint[] = [
   {
+    id: 'bp_outsource_buyers',
+    title: 'Companies Ready to Outsource',
+    subtitle: 'Owners & operations leaders at growing US & Australian SMBs',
+    tag: 'BPO client acquisition',
+    titles: 'Owner, Founder, CEO, COO, Chief Operating Officer, Head of Operations, VP of Operations, Operations Manager',
+    excludeTitles: 'Intern, Assistant, Student, Freelancer',
+    seniority: ['C-Suite', 'Owner', 'VP', 'Director'],
+    industry: '',
+    headcount: '11-50 employees',
+    country: 'United States, Australia',
+    state: '',
+    technologies: '',
+    suggestedFolder: 'US & AU Companies Ready to Outsource',
+  },
+  {
     id: 'bp_oa_bpo',
-    title: 'Outsource Accelerator BPO & VA Leaders',
+    title: 'BPO & VA Agency Leaders',
     subtitle: 'CEOs, Founders & VPs at top BPOs & Virtual Assistant agencies',
     tag: 'BPO & Virtual Assistants',
     titles:
       'CEO, Founder, Co-Founder, Managing Director, Chief Operations Officer, VP of Sales, Chief Growth Officer',
     excludeTitles: 'Agent, Intern, Support, Junior',
     seniority: ['C-Suite', 'VP', 'Director', 'Owner', 'Partner'],
-    industry: 'Outsource Accelerator BPO & Virtual Assistant Agencies',
+    industry: 'BPO & Virtual Assistant Agencies',
     headcount: '51-200 employees',
     country: 'US, PH, AU, GB',
     state: 'Global BPO Hubs',
-    technologies: 'outsourceaccelerator.com, HubSpot, Salesforce, Five9',
-    suggestedFolder: 'Outsource Accelerator BPO & Virtual Assistant Leaders',
+    technologies: '',
+    suggestedFolder: 'BPO & VA Agency Leaders',
   },
   {
     id: 'bp_hvac',
@@ -141,7 +163,7 @@ const SMART_ICP_BLUEPRINTS: IcpSmartBlueprint[] = [
     headcount: '11-50 employees',
     country: 'United States',
     state: 'Texas',
-    technologies: 'ServiceTitan, QuickBooks, HubSpot',
+    technologies: '',
     suggestedFolder: 'Texas Commercial HVAC Owners — Q4',
   },
   {
@@ -156,23 +178,23 @@ const SMART_ICP_BLUEPRINTS: IcpSmartBlueprint[] = [
     headcount: '51-200 employees',
     country: 'United States',
     state: 'New York',
-    technologies: 'Salesforce, HubSpot, Stripe, AWS',
+    technologies: '',
     suggestedFolder: 'NY B2B SaaS Founders & VPs of Sales',
   },
   {
     id: 'bp_solar',
-    title: 'Solar & Renewable Sales Directors',
-    subtitle: 'Residential & commercial solar installation leaders',
+    title: 'Commercial Solar Sales Directors',
+    subtitle: 'Commercial & industrial solar installation leaders',
     tag: 'Clean Energy',
     titles: 'Managing Director, Owner, VP of Sales, General Manager',
-    excludeTitles: 'Installer, Intern, Canvasser',
+    excludeTitles: 'Installer, Intern, Canvasser, Residential',
     seniority: ['C-Suite', 'VP', 'Director', 'Owner'],
     industry: 'Renewables & Solar Energy',
     headcount: '11-50 employees',
     country: 'United States',
     state: 'Arizona',
-    technologies: 'HubSpot, Aurora Solar, Salesforce',
-    suggestedFolder: 'Arizona Solar Managing Directors',
+    technologies: '',
+    suggestedFolder: 'Arizona Commercial Solar Directors',
   },
 ];
 
@@ -342,6 +364,41 @@ async function readPullStream(
   return final;
 }
 
+/**
+ * Offset-paged providers (GetLeads): where the next pull with the same filters should start, per
+ * workspace, so "skip leads this workspace already pulled" continues instead of re-buying people.
+ */
+const PULL_OFFSETS_KEY = 'aply_lf_pull_offsets_v1';
+
+function pullOffsetSignature(tenantCode: string, filters: IcpFilters): string {
+  const rest: IcpFilters = { ...filters };
+  delete rest.excludePreviouslyPulled;
+  return `${tenantCode}|${JSON.stringify(rest)}`;
+}
+
+function readPullOffset(signature: string): number {
+  try {
+    const map = JSON.parse(window.localStorage.getItem(PULL_OFFSETS_KEY) || '{}') as Record<string, number>;
+    const v = map[signature];
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function savePullOffset(signature: string, offset: number) {
+  try {
+    const map = JSON.parse(window.localStorage.getItem(PULL_OFFSETS_KEY) || '{}') as Record<string, number>;
+    delete map[signature];
+    map[signature] = offset;
+    // Keep the newest 200 filter sets.
+    const entries = Object.entries(map).slice(-200);
+    window.localStorage.setItem(PULL_OFFSETS_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Storage full or blocked: the next pull simply starts at the top again.
+  }
+}
+
 export default function IcpListBuilderHub() {
   const { session, role, canAccessIcp, tenantName, repName, email } = useSession();
   // Workspace setting (Admin > Branding & domains): Lead Finder progress animation style.
@@ -394,35 +451,35 @@ export default function IcpListBuilderHub() {
   // Top-up modal state (opens automatically when a pull exceeds the available balance)
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
 
-  // ICP Filter state (Defaulted to Outsource Accelerator BPO & Virtual Assistant Leaders)
-  const [activeBlueprintId, setActiveBlueprintId] = useState<string>('bp_oa_bpo');
-  const [titles, setTitles] = useState(
-    'CEO, Founder, Co-Founder, Managing Director, Chief Operations Officer, VP of Sales, Chief Growth Officer'
-  );
-  const [excludeTitles, setExcludeTitles] = useState(
-    'Agent, Intern, Support, Junior'
-  );
-  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([
-    'C-Suite',
-    'VP',
-    'Director',
-    'Owner',
-    'Partner',
-  ]);
+  // ICP Filter state (defaults to the first blueprint: Companies Ready to Outsource)
+  const [activeBlueprintId, setActiveBlueprintId] = useState<string>(SMART_ICP_BLUEPRINTS[0].id);
+  const [titles, setTitles] = useState(SMART_ICP_BLUEPRINTS[0].titles);
+  const [excludeTitles, setExcludeTitles] = useState(SMART_ICP_BLUEPRINTS[0].excludeTitles);
+  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>(SMART_ICP_BLUEPRINTS[0].seniority);
   const [department, setDepartment] = useState('Executive & Revenue Leadership');
-  const [industry, setIndustry] = useState(
-    'Outsource Accelerator BPO & Virtual Assistant Agencies'
-  );
-  const [headcountRange, setHeadcountRange] = useState('51-200 employees');
-  const [country, setCountry] = useState('US, PH, AU, GB');
-  const [state, setState] = useState('Global BPO Hubs');
+  const [industry, setIndustry] = useState(SMART_ICP_BLUEPRINTS[0].industry);
+  const [headcountRange, setHeadcountRange] = useState(SMART_ICP_BLUEPRINTS[0].headcount);
+  const [country, setCountry] = useState(SMART_ICP_BLUEPRINTS[0].country);
+  const [state, setState] = useState(SMART_ICP_BLUEPRINTS[0].state);
   const [city, setCity] = useState('');
-  const [technologies, setTechnologies] = useState(
-    'outsourceaccelerator.com, HubSpot, Salesforce, Five9'
-  );
+  const [technologies, setTechnologies] = useState(SMART_ICP_BLUEPRINTS[0].technologies);
   const [requirePhone, setRequirePhone] = useState(true);
   const [requireVerifiedEmail, setRequireVerifiedEmail] = useState(true);
   const [excludePreviouslyPulled, setExcludePreviouslyPulled] = useState(true);
+  // Extra filters, offered only when the active data provider applies them (GetLeads).
+  const [revenueBands, setRevenueBands] = useState<string[]>([]);
+  const [fundingStages, setFundingStages] = useState<string[]>([]);
+  const [newInRoleMonths, setNewInRoleMonths] = useState<number>(0);
+  const [personKeywords, setPersonKeywords] = useState('');
+  const [companyKeywords, setCompanyKeywords] = useState('');
+  const [requireDirectDial, setRequireDirectDial] = useState(false);
+  const [isHiring, setIsHiring] = useState(false);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  // Which provider answers Lead Finder (from GET /api/intelligence/icp); null until known.
+  const [leadProvider, setLeadProvider] = useState<LeadDataProviderId | null>(null);
+  const extraFiltersAvailable = leadProvider === 'getleads';
+  // Providers that charge per returned profile (GetLeads) preview the free count only.
+  const previewRowsAvailable = leadProvider !== 'getleads';
 
   // AI Prompt-to-ICP state
   const [aiPromptInput, setAiPromptInput] = useState('');
@@ -443,6 +500,10 @@ export default function IcpListBuilderHub() {
   const [sizingLoading, setSizingLoading] = useState(false);
   // The provider's own count of matching people; null until a preview ran or when it gave no total.
   const [totalMatching, setTotalMatching] = useState<number | null>(null);
+  // True when the provider's total is a lower bound ("500,001+"), never shown as exact.
+  const [totalIsMinimum, setTotalIsMinimum] = useState(false);
+  // Filters the provider could not apply as typed (e.g. an unknown industry label).
+  const [filterNotes, setFilterNotes] = useState<string[]>([]);
   const [previewProspects, setPreviewProspects] = useState<SanitizedIcpProspect[]>([]);
   const [previewPage, setPreviewPage] = useState<number>(1);
   const [cursorHistory, setCursorHistory] = useState<string[]>(['']); // index 0 = '' (page 1)
@@ -456,9 +517,7 @@ export default function IcpListBuilderHub() {
   const [folderPageMap, setFolderPageMap] = useState<Record<string, number>>({});
 
   // Pull & Folder Distribution state
-  const [folderNameInput, setFolderNameInput] = useState(
-    'Outsource Accelerator BPO & Virtual Assistant Leaders'
-  );
+  const [folderNameInput, setFolderNameInput] = useState(SMART_ICP_BLUEPRINTS[0].suggestedFolder);
   const [pullCount, setPullCount] = useState<number>(25);
   const [selectedRepsForPull, setSelectedRepsForPull] = useState<string[]>([]);
   const [pullingList, setPullingList] = useState(false);
@@ -497,10 +556,62 @@ export default function IcpListBuilderHub() {
     };
   }, []);
 
-  // Run initial free market sizing on mount
+  // Run initial free market sizing on mount, and learn which data provider is active.
   useEffect(() => {
     handleCalculateMarketSize(false);
+    let cancelled = false;
+    fetch('/api/intelligence/icp', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d && (d.provider === 'getleads' || d.provider === 'leadocean')) setLeadProvider(d.provider);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  /** The filters both the free preview and the pull send (extra filters only when offered). */
+  const buildFiltersPayload = (): IcpFilters => ({
+    titles,
+    excludeTitles,
+    seniority: selectedSeniorities,
+    department,
+    industry,
+    headcountRange,
+    country,
+    state,
+    city,
+    technologies,
+    requirePhone,
+    requireVerifiedEmail,
+    excludePreviouslyPulled,
+    ...(extraFiltersAvailable
+      ? {
+          companyKeywords: companyKeywords.trim() || undefined,
+          revenue: revenueBands.length ? revenueBands : undefined,
+          fundingStages: fundingStages.length ? fundingStages : undefined,
+          newInRoleMonths: newInRoleMonths || undefined,
+          personKeywords: personKeywords.trim() || undefined,
+          requireDirectDial: requireDirectDial || undefined,
+          isHiring: isHiring || undefined,
+        }
+      : {}),
+  });
+
+  const extraFiltersActive =
+    revenueBands.length +
+    fundingStages.length +
+    (newInRoleMonths ? 1 : 0) +
+    (personKeywords.trim() ? 1 : 0) +
+    (companyKeywords.trim() ? 1 : 0) +
+    (requireDirectDial ? 1 : 0) +
+    (isHiring ? 1 : 0);
+
+  const toggleInList = (setter: React.Dispatch<React.SetStateAction<string[]>>, value: string) => {
+    setActiveWizardStep(1);
+    setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+  };
 
   const applySmartBlueprint = (bp: IcpSmartBlueprint) => {
     setActiveBlueprintId(bp.id);
@@ -602,26 +713,15 @@ export default function IcpListBuilderHub() {
           pullCount: 25,
           cursor: cursorToken || undefined,
           masterKeyOverride: getSuperAdminMasterDataKey(),
-          filters: {
-            titles,
-            excludeTitles,
-            seniority: selectedSeniorities,
-            department,
-            industry,
-            headcountRange,
-            country,
-            state,
-            city,
-            technologies,
-            requirePhone,
-            requireVerifiedEmail,
-            excludePreviouslyPulled,
-          },
+          filters: buildFiltersPayload(),
         }),
       });
       const data = await res.json();
       if (data.success) {
         setTotalMatching(typeof data.totalMatching === 'number' ? data.totalMatching : null);
+        setTotalIsMinimum(data.totalIsMinimum === true);
+        setFilterNotes(Array.isArray(data.filterNotes) ? data.filterNotes.filter((n: unknown) => typeof n === 'string') : []);
+        if (data.provider === 'getleads' || data.provider === 'leadocean') setLeadProvider(data.provider);
         setPreviewProspects(data.prospects || []);
         setBreakdowns(data.breakdowns || null);
         setPreviewPage(targetPage);
@@ -762,6 +862,10 @@ export default function IcpListBuilderHub() {
       lastLead: null,
     });
 
+    const pullFilters = buildFiltersPayload();
+    const offsetSignature = pullOffsetSignature(activeQuota.tenantCode, pullFilters);
+    const pullOffset = extraFiltersAvailable && excludePreviouslyPulled ? readPullOffset(offsetSignature) : 0;
+
     try {
       const res = await fetch('/api/intelligence/icp', {
         method: 'POST',
@@ -774,21 +878,8 @@ export default function IcpListBuilderHub() {
           // The server pages through the provider up to pullCount, but never past this balance.
           maxRecords: balance.totalPullableNow,
           masterKeyOverride: getSuperAdminMasterDataKey(),
-          filters: {
-            titles,
-            excludeTitles,
-            seniority: selectedSeniorities,
-            department,
-            industry,
-            headcountRange,
-            country,
-            state,
-            city,
-            technologies,
-            requirePhone,
-            requireVerifiedEmail,
-            excludePreviouslyPulled,
-          },
+          filters: pullFilters,
+          ...(pullOffset > 0 ? { offset: pullOffset } : {}),
         }),
       });
 
@@ -832,6 +923,9 @@ export default function IcpListBuilderHub() {
       await new Promise((resolve) => window.setTimeout(resolve, 50));
 
       const pulledProspects: SanitizedIcpProspect[] = data.prospects;
+      if (data.provider === 'getleads' && typeof data.nextOffset === 'number') {
+        savePullOffset(offsetSignature, data.nextOffset);
+      }
 
       const deduction = deductTenantQuota(
         activeQuota.tenantCode,
@@ -1193,8 +1287,13 @@ export default function IcpListBuilderHub() {
                   {
                     step: 2 as const,
                     title: 'Preview matches (free)',
-                    desc: 'Check how many people match and look at sample profiles, at no cost.',
-                    badge: totalMatching === null ? '– matches' : `${totalMatching.toLocaleString()} matches`,
+                    desc: previewRowsAvailable
+                      ? 'Check how many people match and look at sample profiles, at no cost.'
+                      : 'Check how many people match, at no cost.',
+                    badge:
+                      totalMatching === null
+                        ? '– matches'
+                        : `${totalMatching.toLocaleString()}${totalIsMinimum ? '+' : ''} matches`,
                   },
                   {
                     step: 3 as const,
@@ -1584,6 +1683,7 @@ export default function IcpListBuilderHub() {
                           }}
                           className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body text-fg cursor-pointer"
                         >
+                          <option value="">Any industry</option>
                           {INDUSTRY_PRESETS.map((ind) => (
                             <option key={ind} value={ind}>
                               {ind}
@@ -1669,6 +1769,159 @@ export default function IcpListBuilderHub() {
                     </div>
                   </div>
 
+                  {/* More filters: only offered when the active data provider applies them */}
+                  {extraFiltersAvailable && (
+                    <div className="pt-4 border-t border-line text-small">
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreFilters((v) => !v)}
+                        aria-expanded={showMoreFilters}
+                        aria-controls="lf-more-filters"
+                        className="focus-ring w-full flex items-center justify-between gap-3 rounded-sm text-left cursor-pointer"
+                      >
+                        <span className="inline-flex items-center gap-2 font-medium text-fg">
+                          <SlidersHorizontal className="w-4 h-4 text-fg-tertiary" />
+                          More filters
+                          {extraFiltersActive > 0 && <Badge tone="brand">{extraFiltersActive} on</Badge>}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-fg-tertiary">
+                          <span className="hidden sm:inline">Revenue, funding, new in role, keywords</span>
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-150 ${showMoreFilters ? 'rotate-180' : ''}`}
+                          />
+                        </span>
+                      </button>
+
+                      {showMoreFilters && (
+                        <div id="lf-more-filters" className="mt-3 space-y-3">
+                          <div>
+                            <div className="font-medium text-fg mb-2">Company revenue</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {REVENUE_BAND_OPTIONS.map((band) => {
+                                const on = revenueBands.includes(band);
+                                return (
+                                  <button
+                                    key={band}
+                                    type="button"
+                                    aria-pressed={on}
+                                    onClick={() => toggleInList(setRevenueBands, band)}
+                                    className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
+                                    on
+                                      ? 'bg-selected text-fg border-action'
+                                      : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
+                                  }`}
+                                  >
+                                    {band}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="font-medium text-fg mb-2">Last funding round</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {FUNDING_STAGE_OPTIONS.map((stage) => {
+                                const on = fundingStages.includes(stage.key);
+                                return (
+                                  <button
+                                    key={stage.key}
+                                    type="button"
+                                    aria-pressed={on}
+                                    onClick={() => toggleInList(setFundingStages, stage.key)}
+                                    className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
+                                    on
+                                      ? 'bg-selected text-fg border-action'
+                                      : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
+                                  }`}
+                                  >
+                                    {stage.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label htmlFor="lf-new-in-role" className="block font-medium text-fg mb-1">
+                                New in role
+                              </label>
+                              <select
+                                id="lf-new-in-role"
+                                value={newInRoleMonths}
+                                onChange={(e) => {
+                                  setActiveWizardStep(1);
+                                  setNewInRoleMonths(Number(e.target.value) || 0);
+                                }}
+                                className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body text-fg cursor-pointer"
+                              >
+                                <option value={0}>Any start date</option>
+                                {NEW_IN_ROLE_OPTIONS.map((o) => (
+                                  <option key={o.months} value={o.months}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label htmlFor="lf-person-kw" className="block font-medium text-fg mb-1">
+                                Keyword in their LinkedIn About
+                              </label>
+                              <input
+                                id="lf-person-kw"
+                                type="text"
+                                value={personKeywords}
+                                onFocus={() => setActiveWizardStep(1)}
+                                onChange={(e) => setPersonKeywords(e.target.value)}
+                                className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
+                                placeholder="outbound, lead generation"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label htmlFor="lf-company-kw" className="block font-medium text-fg mb-1">
+                              Keyword in company description
+                            </label>
+                            <input
+                              id="lf-company-kw"
+                              type="text"
+                              value={companyKeywords}
+                              onFocus={() => setActiveWizardStep(1)}
+                              onChange={(e) => setCompanyKeywords(e.target.value)}
+                              className="focus-ring w-full h-9 px-3 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled transition-colors duration-150"
+                              placeholder="managed IT services"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
+                              <span className="text-fg">Direct dial only</span>
+                              <input
+                                type="checkbox"
+                                checked={requireDirectDial}
+                                onChange={(e) => setRequireDirectDial(e.target.checked)}
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                              />
+                            </label>
+                            <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
+                              <span className="text-fg">
+                                Hiring now <span className="text-fg-tertiary">(LinkedIn Hiring badge)</span>
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={isHiring}
+                                onChange={(e) => setIsHiring(e.target.checked)}
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Section D: Quality Guardrails */}
                   <div className="pt-4 border-t border-line space-y-2 text-small">
                     <div className="font-medium text-fg mb-1">
@@ -1724,20 +1977,24 @@ export default function IcpListBuilderHub() {
                           Step 2 of 3, free preview
                         </span>
                         <h3 className="text-h3 text-fg mt-0.5">
-                          Matching people and sample profiles
+                          {previewRowsAvailable ? 'Matching people and sample profiles' : 'Matching people'}
                         </h3>
                       </div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-kpi tabular-nums text-fg">
                           {totalMatching !== null
-                            ? totalMatching.toLocaleString()
+                            ? `${totalMatching.toLocaleString()}${totalIsMinimum ? '+' : ''}`
                             : previewProspects.length > 0
                             ? `${(previewPage - 1) * 25 + previewProspects.length}+`
                             : '–'}
                         </span>
                         <span className="text-small text-fg-secondary">
                           {totalMatching !== null
-                            ? 'verified decision-makers'
+                            ? previewRowsAvailable
+                              ? 'verified decision-makers'
+                              : totalIsMinimum
+                              ? 'matching contacts, at least'
+                              : 'matching contacts'
                             : previewProspects.length > 0
                             ? 'matching (the provider gave no total)'
                             : 'matching'}
@@ -1745,8 +2002,19 @@ export default function IcpListBuilderHub() {
                       </div>
                     </div>
 
+                    {filterNotes.length > 0 && (
+                      <div role="status" className="flex gap-2 p-3 rounded-md border border-line bg-subtle text-small text-fg-secondary">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-fg-tertiary" />
+                        <ul className="space-y-0.5">
+                          {filterNotes.map((note, i) => (
+                            <li key={i}>{note}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Visual Breakdown Bars */}
-                    {breakdowns && (
+                    {breakdowns && previewRowsAvailable && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-small">
                         <div className="p-3.5 rounded-lg bg-subtle border border-line space-y-2">
                           <div className="font-medium text-fg">
@@ -1784,7 +2052,19 @@ export default function IcpListBuilderHub() {
                       </div>
                     )}
 
+                    {!previewRowsAvailable && (
+                      <div className="p-4 rounded-lg border border-line bg-subtle text-small space-y-2">
+                        <div className="font-medium text-fg">The count above is free. Sample profiles are not shown.</div>
+                        <p className="text-fg-secondary">
+                          With this data source every profile returned uses a paid data credit, so the free preview
+                          shows the exact count only. You see the people when you pull them in Step 3, and only
+                          the leads you pull count against your records.
+                        </p>
+                      </div>
+                    )}
+
                     {/* 25-Per-Page Paginated Preview Table */}
+                    {previewRowsAvailable && (
                     <div className="border border-line rounded-lg overflow-hidden select-none">
                       <div className="bg-surface px-4 py-2.5 border-b border-line flex flex-wrap items-center justify-between gap-2 text-small">
                         <div className="flex items-center gap-2">
@@ -1926,6 +2206,7 @@ export default function IcpListBuilderHub() {
                         </div>
                       </div>
                     </div>
+                    )}
                   </div>
 
               )}

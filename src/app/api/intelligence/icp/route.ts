@@ -1,12 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from '@/lib/server/session';
+import { requireApiSession } from '@/lib/server/apiSession';
+import type {
+  IcpPullProgressEvent,
+  IcpPullStreamEvent,
+  IcpSearchRequestPayload,
+  SanitizedIcpProspect,
+} from '@/lib/leadData/types';
+import {
+  ENRICH_PROGRESS_MIN_INTERVAL_MS,
+  MAX_PULL_PER_REQUEST,
+  PROVIDER_ERRORS,
+  PROVIDER_PAGE_SIZE,
+  SYNCING_ERROR_MESSAGE,
+  classifyProviderError,
+  partialPullNotice,
+  resolveLeadDataBaseUrl,
+  selectLeadDataProvider,
+  type IcpRouteResult,
+  type ProviderErrorKind,
+} from '@/lib/server/leadData/provider';
+import { getLeadsConfigFromEnv, runGetLeadsRequest } from '@/lib/server/leadData/getleads';
+import { OA_DIRECTORY_BPO_DOMAINS, isOaBpoDirectorySearch } from '@/lib/server/leadData/oaDirectory';
+
+export type {
+  IcpPullLastLead,
+  IcpPullProgressEvent,
+  IcpPullStreamEvent,
+  IcpSearchRequestPayload,
+  SanitizedIcpProspect,
+} from '@/lib/leadData/types';
 
 /**
  * Appointmentlyy ICP Data Cloud — Stealth Server-Side Proxy Gateway
  *
- * Route: POST /api/intelligence/icp
+ * Route: POST /api/intelligence/icp   (GET: which provider is active, for the Lead Finder UI)
  *
- * Connects to https://api.leadocean.io using the master API key:
+ * The provider is chosen on the server (lib/server/leadData/provider.ts): GetLeads when
+ * GETLEADS_API_KEY is set (lib/server/leadData/getleads.ts), unless LEAD_DATA_PROVIDER=leadocean;
+ * otherwise LeadOcean, below, using the master API key:
  * - POST /v1/people/search?count=true (Audience sizing & search)
  * - POST /v1/enrich (Full contact reveal: verified work email, direct/mobile phones,
  *   company website domain, and accurate personal & company LinkedIn URLs)
@@ -15,89 +46,9 @@ import { getServerSession } from '@/lib/server/session';
 
 const DEFAULT_UPSTREAM_BASE_URL = 'https://api.leadocean.io';
 
-let warnedTestBaseUrl = false;
-let warnedTestBaseUrlIgnored = false;
-
-/**
- * Provider base URL. Tests can point it at a local mock with LEAD_DATA_TEST_BASE_URL, but only
- * outside production builds, or in a production build started locally with LEAD_DATA_TEST_MODE=1.
- * It is never honoured on Railway (live clients), whatever else is set.
- */
+/** LeadOcean base URL (or the local test mock; see resolveLeadDataBaseUrl). */
 function resolveUpstreamBaseUrl(): string {
-  const override = (process.env.LEAD_DATA_TEST_BASE_URL || '').trim();
-  if (!override) return DEFAULT_UPSTREAM_BASE_URL;
-  const onRailway = Boolean(
-    process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID
-  );
-  const allowed =
-    !onRailway && (process.env.NODE_ENV !== 'production' || process.env.LEAD_DATA_TEST_MODE === '1');
-  if (!allowed) {
-    if (!warnedTestBaseUrlIgnored) {
-      warnedTestBaseUrlIgnored = true;
-      console.warn('[Appointmentlyy Data Cloud] LEAD_DATA_TEST_BASE_URL is set but ignored in this environment.');
-    }
-    return DEFAULT_UPSTREAM_BASE_URL;
-  }
-  if (!warnedTestBaseUrl) {
-    warnedTestBaseUrl = true;
-    console.warn(
-      `\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n` +
-        `[Appointmentlyy Data Cloud] TEST MODE: lead data provider calls go to ${override}\n` +
-        `instead of ${DEFAULT_UPSTREAM_BASE_URL}. Never run like this for real clients.\n` +
-        `!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`
-    );
-  }
-  return override.replace(/\/+$/, '');
-}
-
-export interface IcpSearchRequestPayload {
-  mode: 'size' | 'pull' | 'enrich_url';
-  tenantCode: string;
-  /** Pull only: stream progress as NDJSON (see IcpPullStreamEvent) instead of one JSON response. */
-  stream?: boolean;
-  pullCount?: number;
-  /** Pull only: the workspace's available lead balance; the server never pulls more than this. */
-  maxRecords?: number;
-  cursor?: string; // LeadOcean pagination cursor for 25-per-page navigation
-  linkedinUrlToEnrich?: string;
-  masterKeyOverride?: string;
-  filters: {
-    titles?: string;
-    excludeTitles?: string;
-    seniority?: string[];
-    department?: string;
-    industry?: string;
-    headcountRange?: string;
-    country?: string;
-    state?: string;
-    city?: string;
-    technologies?: string;
-    companyKeywords?: string;
-    requirePhone?: boolean;
-    requireVerifiedEmail?: boolean;
-    excludePreviouslyPulled?: boolean;
-  };
-}
-
-export interface SanitizedIcpProspect {
-  id: string; // Always prefixed with APLY-
-  name: string;
-  company: string;
-  title: string;
-  seniority: string;
-  department: string;
-  email: string;
-  emailVerified: boolean;
-  phone: string;
-  hasDirectPhone: boolean;
-  headcount: string;
-  industry: string;
-  location: string;
-  website: string;             // Accurate company website (https://domain.com)
-  companyDomain: string;       // Raw domain (domain.com)
-  linkedinUrl: string;         // Accurate personal LinkedIn URL (https://www.linkedin.com/in/...)
-  companyLinkedinUrl?: string; // Accurate company LinkedIn URL (https://www.linkedin.com/company/...)
-  technologies: string[];
+  return resolveLeadDataBaseUrl(DEFAULT_UPSTREAM_BASE_URL);
 }
 
 function resolveUpstreamApiKey(overrideKey?: string): string {
@@ -214,94 +165,12 @@ function normalizeEmployeeRangeEnum(hc?: string): string[] | undefined {
   return undefined;
 }
 
-const OA_DIRECTORY_BPO_DOMAINS = [
-  'outsourceaccelerator.com',
-  'cloudstaff.com',
-  'boothandpartners.com',
-  'shoreagents.com',
-  'outsourced.ph',
-  'bruntwork.co',
-  'multiplymii.com',
-  'wingassistant.com',
-  'athena.com',
-  'cyberbacker.com',
-  'microsourcing.com',
-  'kmc.solutions',
-  'remotestaff.com.au',
-  'flatplanet.com.au',
-  'emsoutsource.com',
-  'stealthagents.com',
-  'virtudesk.com',
-  'myoutdesk.com',
-  'boldr.com',
-  'boldrimpact.com',
-  'supportninja.com',
-  'taskus.com',
-  'acquirebpo.com',
-  'staffdomain.com',
-  'satelliteoffice.com',
-  'offshoremvp.com',
-  'kineticstaff.com',
-  'hammerjack.com.au',
-  'somewhere.com',
-  'emapta.com',
-  'concentrix.com',
-  'foundever.com',
-  'teleperformance.com',
-  'alorica.com',
-  ' Sutherlandglobal.com',
-  'probe-group.com',
-  'probecx.com',
-  'connectos.co',
-  'penbrothers.com',
-  'filtaglobal.com',
-  'diversifyoss.com',
-  'eastvantage.com',
-  'fullscale.io',
-  'coopsys.com',
-  'superstaff.com',
-  'infinit-o.com',
-  'magellan-solutions.com',
-  'piton-global.com',
-  'openaccessbpo.com',
-  'helpware.com',
-  '247-inc.com',
-  'startek.com',
-  'vxi.com',
-  'ibex.co',
-  'tdcx.com',
-  'everise.com',
-  'connext.solutions',
-  'connextglobal.com',
-  'beepo.com.au',
-  'teamglobal.com.au',
-  'offshorly.com',
-  'scalableos.com',
-  'smartoutsourcing.co.uk',
-  'deployed.co',
-  'kamelbpo.com',
-  'selectvoicecom.com',
-  'philippinecompanies.com',
-  'virtuallyincredible.com',
-  'outsourcey.com',
-  'ClearSourceBPO.com',
-  'optimbpo.com',
-  'personiv.com',
-  ' Hugoinc.com',
-  'intelepeer.com',
-].map((d) => d.trim().toLowerCase());
-
 function buildUpstreamFilterObject(
   filters: IcpSearchRequestPayload['filters'],
   tenantCode: string
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
-  const indLower = (filters.industry || '').toLowerCase();
-  const kwLower = (filters.companyKeywords || '').toLowerCase();
-  const isOaBpoDirectory =
-    indLower.includes('outsource accelerator') ||
-    kwLower.includes('outsourceaccelerator.com') ||
-    indLower.includes('bpo & virtual assistant');
+  const isOaBpoDirectory = isOaBpoDirectorySearch(filters);
 
   if (isOaBpoDirectory) {
     payload.domain = OA_DIRECTORY_BPO_DOMAINS.slice(0, 50);
@@ -537,126 +406,12 @@ function parseLeadOceanRecord(
   };
 }
 
-/** Live progress of a pull, emitted while the server searches and enriches. */
-export type IcpPullProgressEvent =
-  | { type: 'stage'; stage: 'searching' }
-  /**
-   * After each provider search page. `count` is the running total of rows found for this pull,
-   * `planned` how many it expects to enrich overall (exact once `complete`), `totalMatching` the
-   * provider's own market size or null when it gave none.
-   */
-  | { type: 'found'; count: number; totalMatching: number | null; planned: number; complete: boolean; batch: number }
-  | {
-      type: 'enriched';
-      done: number;
-      total: number;
-      withEmail: number;
-      withPhone: number;
-      /** The row just enriched (the workspace's own pulled data), for the panel's "Latest enriched" feed. */
-      lastLead: IcpPullLastLead;
-    };
-
-/** Company, title and reachability of the most recently enriched row of a streamed pull. */
-export interface IcpPullLastLead {
-  company: string;
-  title: string;
-  hasEmail: boolean;
-  hasPhone: boolean;
-}
-
-/**
- * One line of the NDJSON stream returned for `{ mode: 'pull', stream: true }`. The last line is
- * always `result` (the exact body the JSON path returns, plus `type`) or `error` (the JSON path's
- * `error` message and the HTTP status it would have used).
- */
-export type IcpPullStreamEvent =
-  | IcpPullProgressEvent
-  | ({ type: 'result' } & Record<string, unknown>)
-  | { type: 'error'; error: string; status: number };
-
-interface IcpRouteResult {
-  status: number;
-  body: Record<string, unknown>;
-}
-
-const SYNCING_ERROR_MESSAGE =
-  'Appointmentlyy Data Cloud is syncing high-volume clusters. Please retry in a moment.';
-
-/** At most ~10 `enriched` events a second (the last row is always reported). */
-const ENRICH_PROGRESS_MIN_INTERVAL_MS = 100;
-
 /** A raw provider record (leadocean.person.v1); parsed field by field in parseLeadOceanRecord. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ProviderRow = Record<string, any>;
 
-/** Rows per provider search (the provider's page limit). A pull runs as many pages as it needs. */
-const PROVIDER_PAGE_SIZE = 100;
-/** Most leads one pull request brings in (the largest pull size Lead Finder offers). */
-const MAX_PULL_PER_REQUEST = 1000;
 /** Rows per free preview page. */
 const PREVIEW_PAGE_SIZE = 25;
-
-/** Why the lead data provider refused a call. Only an empty 200 means "no matching profiles". */
-type ProviderErrorKind = 'quota' | 'rate_limited' | 'auth' | 'unavailable' | 'rejected';
-
-const QUOTA_PATTERN = /fair[\s_-]*usage|quota|credits?\b|allowance|insufficient[\s_-]*(funds|balance)|exhausted|upgrade/i;
-
-function classifyProviderError(status: number, text: string): ProviderErrorKind {
-  if (status === 402) return 'quota';
-  if (status === 429) return QUOTA_PATTERN.test(text) ? 'quota' : 'rate_limited';
-  if (status === 401 || status === 403) return QUOTA_PATTERN.test(text) ? 'quota' : 'auth';
-  if (status === 408 || status >= 500) return 'unavailable';
-  return 'rejected';
-}
-
-/** What the user sees for each provider failure, and the HTTP status the route answers with. */
-const PROVIDER_ERRORS: Record<ProviderErrorKind, { status: number; message: string }> = {
-  quota: {
-    status: 402,
-    message:
-      "Your lead data provider's allowance is used up, so Lead Finder can't search or pull leads right now. No credits were used. Please contact support to top it up.",
-  },
-  rate_limited: {
-    status: 429,
-    message:
-      'The lead data provider is limiting requests right now. Please try again in a minute. No credits were used.',
-  },
-  auth: {
-    status: 502,
-    message:
-      "Lead Finder couldn't connect to the lead data provider because of an API key or account problem. Please contact support. No credits were used.",
-  },
-  unavailable: {
-    status: 503,
-    message:
-      'The lead data provider is temporarily unavailable. Please try again in a few minutes. No credits were used.',
-  },
-  rejected: {
-    status: 400,
-    message:
-      "The lead data provider couldn't run that search. Try simpler filters, and contact support if it keeps happening. No credits were used.",
-  },
-};
-
-/** Honest note for a pull the provider stopped part-way; the rows already enriched are kept. */
-function partialPullNotice(kind: ProviderErrorKind, got: number, requested: number): string {
-  const why: Record<ProviderErrorKind, string> = {
-    quota: "the lead data provider's allowance ran out",
-    rate_limited: 'the lead data provider started limiting requests',
-    auth: 'the lead data provider stopped accepting our API key',
-    unavailable: 'the lead data provider stopped responding',
-    rejected: 'the lead data provider refused the next page',
-  };
-  const next: Record<ProviderErrorKind, string> = {
-    quota: 'Please contact support to top up the data allowance before pulling more.',
-    rate_limited: 'Run another pull in a minute for the rest.',
-    auth: 'Please contact support.',
-    unavailable: 'Try another pull in a few minutes for the rest.',
-    rejected: 'Try another pull for the rest.',
-  };
-  const n = got.toLocaleString('en-US');
-  return `Pulled ${n} of the ${requested.toLocaleString('en-US')} leads you asked for: ${why[kind]} part-way. Only these ${n} count against your workspace's records. ${next[kind]}`;
-}
 
 /**
  * The whole search / pull / single-enrich implementation, shared by the JSON response and the
@@ -668,6 +423,12 @@ async function runIcpRequest(
   onProgress?: (event: IcpPullProgressEvent) => void
 ): Promise<IcpRouteResult> {
   try {
+    const provider = selectLeadDataProvider();
+    if (provider.id === 'getleads') {
+      // The GetLeads key stays on the server: a browser-supplied masterKeyOverride is ignored.
+      return await runGetLeadsRequest(body, getLeadsConfigFromEnv(provider.apiKey), onProgress);
+    }
+
     const {
       mode = 'size',
       pullCount = 25,
@@ -1084,10 +845,27 @@ function streamIcpPull(body: IcpSearchRequestPayload, tenantCode: string): Respo
   });
 }
 
+/** Which provider answers Lead Finder, so the UI only offers filters that provider applies. */
+export async function GET(req: NextRequest) {
+  const session = await requireApiSession(req);
+  if (session instanceof NextResponse) return session;
+  const provider = selectLeadDataProvider().id;
+  return NextResponse.json(
+    {
+      success: true,
+      provider,
+      // GetLeads charges per returned profile, so its free preview is the count only.
+      previewRows: provider !== 'getleads',
+      extraFilters: provider === 'getleads',
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
+    const session = await requireApiSession(req);
+    if (session instanceof NextResponse) return session;
     // The workspace (used for de-duplicating pulls) comes from the session, never the request.
     const tenantCode = session.tenantCode;
     const body = (await req.json()) as IcpSearchRequestPayload;

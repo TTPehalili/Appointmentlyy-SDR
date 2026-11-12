@@ -204,7 +204,7 @@ export function canUserExportCsv(roleInput?: string): boolean {
 const DEMO_INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
   {
     id: 'folder_oa_bpo_va_live',
-    name: 'Outsource Accelerator BPO & Virtual Assistant Leaders (1,000 Live)',
+    name: 'BPO & VA Agency Leaders (1,000 Live)',
     tenantCode: 'APEX-GLOBAL',
     tenantName: 'Apex Global BPO',
     createdBy: 'Emil Halili',
@@ -212,7 +212,7 @@ const DEMO_INITIAL_DEFAULT_FOLDERS: IcpFolder[] = [
     filtersSummary: {
       titles: 'CEO, Founder, Co-Founder, COO, Managing Director, VP Sales, Chief Growth Officer, Director',
       seniority: 'C-Suite, VP, Director, Owner, Partner',
-      industry: 'Outsource Accelerator BPO & Virtual Assistant Agencies',
+      industry: 'BPO & Virtual Assistant Agencies',
       headcount: '51-5,000 employees',
       location: 'US, PH, AU, GB, CA',
       technologies: 'outsourceaccelerator.com, Cloudstaff, Staff Domain, KMC, TaskUs, Athena, Wing, MicroSourcing',

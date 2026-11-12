@@ -125,7 +125,7 @@ function keywordParse(prompt: string): ParsedIcpFilters {
 
   let industry = '';
   if (/bpo|outsourc|virtual assistant|call cent/.test(p))
-    industry = 'Outsource Accelerator BPO & Virtual Assistant Agencies';
+    industry = 'BPO & Virtual Assistant Agencies';
   else if (/saas|software/.test(p)) industry = 'Computer Software & SaaS';
   else if (/hvac|construction/.test(p)) industry = 'Construction & Commercial HVAC';
   else if (/solar|renewable/.test(p)) industry = 'Renewables & Solar Energy';
