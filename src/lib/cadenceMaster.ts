@@ -270,7 +270,7 @@ export const DEMO_CADENCE_LEADS: CadenceLeadRecord[] = [
     website: 'https://apexglobalbpo.ph',
     linkedinUrl: 'https://www.linkedin.com/in/julian-vance-bpo',
     techStack: 'HubSpot & Apollo.io',
-    painPoint: 'outbound hold rate and objection hesitation on shared lead lists',
+    painPoint: 'outbound hold rate and wasted dials on stale lead data',
     outsourcer: 'Titan BPO Solutions',
     buyingSignals: [
       'Hiring 15 Outbound SDRs (Manila & Cebu)',
@@ -279,7 +279,7 @@ export const DEMO_CADENCE_LEADS: CadenceLeadRecord[] = [
       'Current Problem: 30% show-up drop-off from junior rep objection stumbling'
     ],
     customVariables: {
-      'Lead Source': 'Directory Intake (Outsource Accelerator)',
+      'Lead Source': 'Purchased B2B lead list',
       'Target Geography': 'US & Canada Enterprise',
       'Average Deal Size': '$45,000 ARR',
       'Incumbent Dialer': 'Apollo / Twilio BYOT'
@@ -334,8 +334,8 @@ export const DEMO_CADENCE_LEADS: CadenceLeadRecord[] = [
     painPoint: 'qualified discovery conversions and broker margin squeeze',
     outsourcer: 'Internal 6-person SDR Team',
     buyingSignals: [
-      'Attended Outsource Accelerator Global Summit',
-      'Publicly criticized $8/hr rate erosion on commoditized voice calls',
+      'Attended a BPO industry leadership summit',
+      'Publicly flagged low connect rates from stale contact data',
       'Actively piloting AI copilots for cold call objection reversal'
     ],
     customVariables: {

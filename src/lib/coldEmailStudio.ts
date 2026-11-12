@@ -168,7 +168,7 @@ Strict rules: Under 65 words. Zero em dashes. Zero emojis.`,
     name: 'Problem-Agitate-Solve (PAS)',
     authorOrStyle: 'Dan Kennedy / Consultative',
     category: 'Executive Diagnostic',
-    description: 'Problem (shared lead burn) -> Agitate (paying $8/hr for reps to get yelled at) -> Solve (pre-qualified live cockpit).',
+    description: 'Problem (bad lead data) -> Agitate (paying reps to dial wrong numbers and bad-fit contacts) -> Solve (verified lists + live cockpit).',
     targetWordCount: 65,
     antiSalesPrinciple: 'Agitate the economic cost, not emotional pain. Executives care about gross margin and seat yield.',
     promptInstruction: `Write a consultative PAS cold email focused on seat economics and lead list fatigue.

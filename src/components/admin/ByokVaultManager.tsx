@@ -98,7 +98,7 @@ export default function ByokVaultManager() {
     },
     'ten_2': {
       tenantId: 'ten_2',
-      tenantName: 'Outsource Accelerator Partner A',
+      tenantName: 'Harbor Point BPO',
       isUnlocked: true,
       resendKey: '',
       resendDomain: '',

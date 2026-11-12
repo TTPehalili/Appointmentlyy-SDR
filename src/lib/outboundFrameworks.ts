@@ -54,7 +54,7 @@ export const QUALIFYING_QUESTIONS: QualifyingQuestion[] = [
   {
     id: 'qual_competitor_price',
     category: 'Competitor Friction',
-    question: 'When your callers reach prospects who already buy from Outsource Accelerator or an incumbent BPO, what percentage of those dials die in the first 20 seconds on price?',
+    question: 'When your callers reach prospects who already work with an incumbent BPO, what percentage of those dials die in the first 20 seconds on price?',
     diagnosticRationale: 'Exposes caller helplessness against commodity competitors.'
   },
   {
@@ -339,7 +339,7 @@ Frame the issue around seat gross margin and lead list economics.
 Mention that buying more list data doesn't fix caller conversion when reps freeze on competitor price objections.
 Offer a direct peer conversation without a pitch deck.
 Max 70 words.`,
-    exampleSnippet: `Subject: apex seat margins\n\nJulian,\n\nRunning 250 outbound seats means every $8/hr rep fumbling a shared list burns gross margin fast. Most BPOs keep buying more broker leads, but the bottleneck is callers getting cut down the second a prospect mentions Titan BPO.\n\nOpen to a peer-to-peer screen share Thursday to show how we solve that in 2 minutes?`,
+    exampleSnippet: `Subject: apex seat margins\n\nJulian,\n\nRunning 250 outbound seats means every rep dialing stale contacts and wrong numbers burns gross margin fast. Most BPOs keep buying more leads, but the bottleneck is list quality and callers getting cut down the second a prospect mentions Titan BPO.\n\nOpen to a peer-to-peer screen share Thursday to show how we solve that in 2 minutes?`,
     isActive: true
   },
 
@@ -391,7 +391,7 @@ Anti-sales CTA: "Mind if I send the 90-sec Loom over here, or too busy right now
     promptInstruction: `Write a 2-sentence conversational LinkedIn message under 40 words.
 Ask an authentic, candid question about whether their reps struggle with the common industry pain point.
 Strictly no pitch, no links, no calendar invites.`,
-    exampleSnippet: `Hey Julian, quick question—when your reps at Apex reach prospects who already buy from Outsource Accelerator, do they usually push through or is price shopping an uphill battle?`,
+    exampleSnippet: `Hey Julian, quick question—how much of the list your reps at Apex dial actually connects, or do bounced emails and wrong numbers eat most of the shift?`,
     isActive: true
   }
 ];

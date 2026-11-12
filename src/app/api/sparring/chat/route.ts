@@ -41,14 +41,15 @@ function generateContextualFallback(
   let armObservation = 'Prospect raised cold-call friction.';
 
   if (persona.id === 'bpo-directory-buyer') {
-    // Julian Vance (BPO Directory Buyer / Outsource Accelerator user)
+    // Julian Vance (BPO buyer whose pains are lead quality and pipeline health).
+    // The matchers below also catch legacy wording reps may still use (internal matching only).
     const mentionsOA = lower.includes('outsource accelerator') || lower.includes('directory') || lower.includes('broker') || lower.includes('lead vendor') || lower.includes('oa');
     const mentionsSharedTrap = lower.includes('shared') || lower.includes('price war') || lower.includes('3 to 5') || lower.includes('margin') || lower.includes('cheaper') || lower.includes('8');
     const mentionsEmil = lower.includes('emil') || lower.includes('17 years') || lower.includes('claude') || lower.includes('sparring');
 
     if (turnCount >= 2 && (mentionsEmil || (hasEmpathy && hasValue)) && hasClose) {
       candidateReplies = [
-        "If Emil has 17 years in the BPO space and can show us private lists that aren't shared on directories, I'll take a look Thursday at 2:00 PM.",
+        "If Emil has 17 years in the BPO space and can show us verified contacts and a pipeline we can actually forecast, I'll take a look Thursday at 2:00 PM.",
         "Alright, if it's strictly a 20-minute screen share with Emil to see how the sparring simulator works on our floor, put Friday morning on my calendar."
       ];
       completedIds = persona.objectives.map(o => o.id);
@@ -56,36 +57,36 @@ function generateContextualFallback(
       armObservation = 'Rep executed BPO playbook and locked 20-min demo with Founder Emil.';
     } else if (isAskingQuestion) {
       candidateReplies = [
-        "Why are you asking about our internal SDR floor? We buy our lists from directories and hit quota. What are you actually selling?",
-        "I don't share internal operational headcounts with cold callers. What makes your model different from Outsource Accelerator?"
+        "Why are you asking about our internal SDR floor? We've got our lists and we hit quota. What are you actually selling?",
+        "I don't share internal operational headcounts with cold callers. What makes your data any different from the lists we already have?"
       ];
       completedIds = [];
       sentiment = 'hostile';
       armObservation = 'Prospect challenged unsolicited qualification.';
     } else if (mentionsSharedTrap || lower.includes('price') || lower.includes('competing')) {
       candidateReplies = [
-        "Yeah, that is a headache. We pay top dollar for directory lists and our reps are in a dogfight against four other BPOs pitching the same client. How do you stop that?",
-        "It's true—clients on shared lists always try to grind us down to eight dollars an hour. But our senior reps know how to close. What's your alternative?"
+        "Yeah, that is a headache. We pay good money for lists and half the numbers are wrong or the person left months ago. How do you stop that?",
+        "It's true—our pipeline swings all over the place month to month and deals stall after the first meeting. But our senior reps know how to close. What's your alternative?"
       ];
       completedIds = [persona.objectives[0].id, persona.objectives[1].id];
       sentiment = 'softened';
-      armObservation = 'Prospect confirmed shared-lead price war trap.';
+      armObservation = 'Prospect confirmed lead-quality and pipeline-health pain.';
     } else if (mentionsOA || hasEmpathy) {
       candidateReplies = [
-        "Yeah, we know Outsource Accelerator—we buy from them every month. Our senior reps don't need roleplay practice. Why are you calling me?",
-        "Yes, we use directories. But my team has years of experience in the BPO space. Why would we need an AI simulator?"
+        "Yeah, we buy lead lists every month. The data's hit and miss, but our senior reps don't need roleplay practice. Why are you calling me?",
+        "Yes, we buy our data. But my team has years of experience in the BPO space. Why would we need an AI simulator?"
       ];
       completedIds = [persona.objectives[0].id];
       sentiment = 'neutral';
-      armObservation = 'Prospect acknowledged directory lead sourcing but defended veteran reps.';
+      armObservation = 'Prospect acknowledged patchy lead data but defended veteran reps.';
     } else {
       candidateReplies = [
-        "Look, we already buy all our leads from Outsource Accelerator and our senior reps don't need roleplay. What is this regarding?",
+        "Look, we already buy all our leads and our senior reps don't need roleplay. What is this regarding?",
         "I'm heading into an operational review with our Manila floor. Give me the headline—what does this actually solve?"
       ];
       completedIds = [];
       sentiment = 'skeptical';
-      armObservation = 'Prospect raised initial BPO directory defense.';
+      armObservation = 'Prospect raised initial "we already have leads" defense.';
     }
   } else if (persona.id === 'incumbent-loyalist') {
     // David Reynolds (Incumbent Loyalist)
@@ -273,11 +274,11 @@ function deriveDynamicScriptAssist(
   if (lower.includes('need clients') || lower.includes('need customers') || lower.includes('another tool') || lower.includes('revenue not software') || lower.includes('more tools') || lower.includes('software to manage') || lower.includes('payroll') || lower.includes('only looking for clients') || lower.includes('only want customers')) {
     return {
       objectionType: 'Need Clients, Not Tools ("We just need clients, not another tool")',
-      recommendedScript: `100% fair, ${firstName}. At the end of the day, you can't pay payroll with software—you need paying clients. That's exactly why we don't sell 'just software.' The problem is, buying more leads doesn't fix anything if your reps get cut down on price the moment a prospect picks up. We give you the targeted client pipeline—built and fully enriched by Claude—and give your reps the sparring tool so they actually win and close those clients instead of losing them to cheaper BPOs. Emil built this specifically to put signed client contracts in your pipeline. Give him 20 minutes to show you how the client acquisition engine works. How does Thursday at 2:00 PM look?`,
+      recommendedScript: `100% fair, ${firstName}. At the end of the day, you can't pay payroll with software—you need paying clients. That's exactly why we don't sell 'just software.' The problem is, buying more leads doesn't fix anything if half the numbers are wrong and the rest were never a fit. We give you the targeted client pipeline—built and fully enriched by Claude—and give your reps the sparring tool so they actually win and close those clients instead of letting them stall. Emil built this specifically to put signed client contracts in your pipeline. Give him 20 minutes to show you how the client acquisition engine works. How does Thursday at 2:00 PM look?`,
       tacticalRationale: 'Validate payroll reality (Acknowledge). Contrast lead purchase vs. pitch execution (Redirect). Propose 20-min demo with Emil (Move).',
       arm: {
         acknowledge: "100% fair—you can't pay payroll with software, you need paying clients.",
-        respond: "Buying leads doesn't fix reps getting beaten on price. We give Claude-enriched lists AND sparring so reps win deals.",
+        respond: "Buying more leads doesn't fix bad data or a stalled pipeline. We give Claude-enriched lists AND sparring so reps win deals.",
         move: "Give Emil 20 minutes to show how the acquisition engine works. How does Thursday at 2:00 PM look?"
       }
     };
@@ -315,26 +316,26 @@ function deriveDynamicScriptAssist(
   if (lower.includes('no budget') || lower.includes('tight on money') || lower.includes('cannot afford') || lower.includes("can't afford") || lower.includes('not spending on software') || lower.includes('cost-cutting') || lower.includes('budget freeze')) {
     return {
       objectionType: 'Budget Constraint ("We don\'t have budget for new software right now")',
-      recommendedScript: `I completely respect that, ${firstName}. Running a BPO means keeping a tight lid on expenses. This isn't an extra software expense; it replaces the money you're already burning when reps fumble expensive leads or get beaten by cheaper offshore bids. We customize the whole scope to fit right inside what you already spend on lead data. Let’s take money off the table completely: take 20 minutes with Emil to see how the system stops lead burn. If the math doesn't show an immediate return, we shake hands and walk away. Does next Tuesday at 10:00 AM work?`,
+      recommendedScript: `I completely respect that, ${firstName}. Running a BPO means keeping a tight lid on expenses. This isn't an extra software expense; it replaces the money you're already burning when reps dial wrong numbers, chase bad-fit leads or let deals stall. We customize the whole scope to fit right inside what you already spend on lead data. Let’s take money off the table completely: take 20 minutes with Emil to see how the system stops lead burn. If the math doesn't show an immediate return, we shake hands and walk away. Does next Tuesday at 10:00 AM work?`,
       tacticalRationale: 'Respect tight budget (Acknowledge). Frame as lead-burn replacement, not added cost (Redirect). Zero-risk demo ask (Move).',
       arm: {
         acknowledge: "Completely respect that—running a BPO requires tight expense control.",
-        respond: "Not an extra cost; it replaces the money burned when reps fumble expensive leads or lose to cheaper bids.",
+        respond: "Not an extra cost; it replaces the money burned on bad data, bad-fit leads and stalled deals.",
         move: "Take money off the table: 20 minutes with Emil to see the math. If no immediate return, we walk away. Next Tuesday at 10 AM?"
       }
     };
   }
 
-  // 5. SCENARIO 3A: OBJ_VENDOR_OUTSOURCE_ACCELERATOR
+  // 5. SCENARIO 3A: OBJ_VENDOR_ALREADY_BUY_LEADS ("we already buy leads"; also matches legacy wording)
   if (lower.includes('outsource accelerator') || lower.includes('oa') || lower.includes('buy our leads') || lower.includes('directory') || lower.includes('lead vendor') || lower.includes('broker')) {
     return {
-      objectionType: 'Directory Lead Status Quo ("We already buy our leads from Outsource Accelerator / brokers")',
-      recommendedScript: `That makes total sense, ${firstName}—they do a great job sending lead volume. The catch is, you're paying full price for leads that are shared with 3 to 5 other BPOs. If your reps aren't pre-trained to beat lower price quotes the second a buyer brings them up, that lead spend is just wasted money. Let’s grab 20 minutes with Emil so he can show you how our private lists and AI sparring tool protect your margins on those calls. How does Thursday look?`,
-      tacticalRationale: 'Validate lead volume (Acknowledge). Expose shared lead 3-5 BPO price wars (Redirect). Propose Emil 20-min margin defense demo (Move).',
+      objectionType: 'Lead Source Status Quo ("We already buy our leads")',
+      recommendedScript: `That makes total sense, ${firstName}—volume matters on a floor your size. The catch is quality: when a chunk of those contacts bounce, ring wrong numbers or were never a fit, your reps burn the day and the pipeline stays thin. Let’s grab 20 minutes with Emil so he can show you how verified contacts and our AI sparring tool turn more of those dials into held meetings. How does Thursday look?`,
+      tacticalRationale: 'Validate lead volume (Acknowledge). Expose the cost of bad data and a thin pipeline (Redirect). Propose Emil 20-min pipeline health demo (Move).',
       arm: {
-        acknowledge: "Totally makes sense—they do a great job sending lead volume.",
-        respond: "Full price for leads shared with 3 to 5 other BPOs. Reps must be trained to beat cheaper quotes immediately.",
-        move: "Grab 20 minutes with Emil to see how private lists and AI sparring protect margins. How does Thursday look?"
+        acknowledge: "Totally makes sense—volume matters on a floor your size.",
+        respond: "Bounced emails, wrong numbers and bad-fit leads burn rep time and keep the pipeline thin.",
+        move: "Grab 20 minutes with Emil to see how verified contacts and AI sparring lift held meetings. How does Thursday look?"
       }
     };
   }
@@ -343,12 +344,12 @@ function deriveDynamicScriptAssist(
   if (lower.includes('exclusive leads') || lower.includes('leads are exclusive') || lower.includes('exclusive to us') || lower.includes('we get exclusive')) {
     return {
       objectionType: 'Exclusive Lead Claim ("Our lead vendor gives us exclusive leads")',
-      recommendedScript: `I hear that a lot, ${firstName}, and on paper, that's what they bill you for. Even if the calendar invite wasn't sold twice today, that same prospect was pitched by two other BPOs two weeks ago. If your reps sound like every other vendor pitching seats, the buyer will still shop you against offshore bargain rates. Emil can show you in 20 minutes how our AI sparring drills reps to completely steer the conversation away from hourly rates. Would Friday morning work?`,
-      tacticalRationale: 'Validate what vendor bills (Acknowledge). Expose market reality of previous BPO pitches (Redirect). Emil 20-min hourly-rate steering demo (Move).',
+      recommendedScript: `I hear that a lot, ${firstName}, and on paper, that's what they bill you for. Exclusive doesn't mean accurate, though: if the contact changed roles or the number is dead, it's still a wasted dial, and if reps sound like every other vendor, the meeting still stalls. Emil can show you in 20 minutes how verified contacts and AI sparring keep those leads moving through your pipeline. Would Friday morning work?`,
+      tacticalRationale: 'Validate what vendor bills (Acknowledge). Separate exclusive from accurate and on-fit (Redirect). Emil 20-min pipeline demo (Move).',
       arm: {
         acknowledge: "Hear that a lot, and on paper, that's what they bill you for.",
-        respond: "Even if invite wasn't sold twice today, prospect was pitched by other BPOs weeks ago. Reps get shopped on price.",
-        move: "Emil can show in 20 minutes how sparring drills reps to steer away from hourly rates. Would Friday morning work?"
+        respond: "Exclusive isn't the same as accurate. Dead numbers and role changes still waste dials, and weak calls still stall.",
+        move: "Emil can show in 20 minutes how verified data and sparring keep leads moving. Would Friday morning work?"
       }
     };
   }
@@ -357,11 +358,11 @@ function deriveDynamicScriptAssist(
   if (lower.includes('experience') || lower.includes('senior') || lower.includes('veteran') || lower.includes('practice') || lower.includes('roleplay') || lower.includes('years') || lower.includes("don't need training")) {
     return {
       objectionType: 'Veteran Rep Defense ("Our reps have years of experience, they don\'t need practice")',
-      recommendedScript: `That’s awesome, ${firstName}—having experienced callers is a huge advantage. The trouble is, leads cost too much money to use as warm-up swings. Even your best reps can get caught off guard when a buyer brings up a cheaper competitor's quote out of nowhere. Emil built this so reps can sharpen their edge in 2 minutes before dialing. Would 20 minutes with him next Tuesday be worth a look?`,
+      recommendedScript: `That’s awesome, ${firstName}—having experienced callers is a huge advantage. The trouble is, leads cost too much money to use as warm-up swings. Even your best reps can get caught off guard when a buyer throws an objection they haven't heard in a while. Emil built this so reps can sharpen their edge in 2 minutes before dialing. Would 20 minutes with him next Tuesday be worth a look?`,
       tacticalRationale: 'Praise experienced team (Acknowledge). Contrast burning expensive leads as warm-up swings (Redirect). 20-min look with Emil (Move).',
       arm: {
         acknowledge: "That's awesome—having experienced callers is a huge advantage.",
-        respond: "Leads cost too much money to use as warm-up swings. Even best reps get caught off guard by cheaper quotes.",
+        respond: "Leads cost too much money to use as warm-up swings. Even best reps get caught off guard by a new objection.",
         move: "Emil built this so reps sharpen edge in 2 minutes before dialing. 20 minutes with him next Tuesday worth a look?"
       }
     };
@@ -399,11 +400,11 @@ function deriveDynamicScriptAssist(
   if (lower.includes('too busy') || lower.includes('call back in 6 months') || lower.includes('swamped right now') || lower.includes('running a floor') || lower.includes('busy shop') || lower.includes('bad time') || lower.includes('busy right now')) {
     return {
       objectionType: 'Time Constraint ("We are too busy right now / Call back in 6 months")',
-      recommendedScript: `I get it, ${firstName}! You have a busy shop to run and deals to close. The only reason other BPO bosses jump on with Emil is because every month they wait, they are burning thousands of dollars on shared leads that get stolen by cheaper competitors. Let’s grab 20 quick minutes with Emil early next week before your day gets crazy. How does Wednesday morning look?`,
+      recommendedScript: `I get it, ${firstName}! You have a busy shop to run and deals to close. The only reason other BPO bosses jump on with Emil is because every month they wait, they are burning thousands of dollars on bad data and deals that stall in the pipeline. Let’s grab 20 quick minutes with Emil early next week before your day gets crazy. How does Wednesday morning look?`,
       tacticalRationale: 'Validate busy shop (Acknowledge). Expose ongoing lead-burn bleed while waiting (Redirect). Propose 20-min early next week (Move).',
       arm: {
         acknowledge: "I get it! You have a busy shop to run and deals to close.",
-        respond: "Other BPO bosses jump on with Emil because every month they wait, they burn thousands on shared leads stolen by cheaper rivals.",
+        respond: "Other BPO bosses jump on with Emil because every month they wait, they burn thousands on bad data and stalled deals.",
         move: "Let's grab 20 quick minutes with Emil early next week before your day gets crazy. How does Wednesday morning look?"
       }
     };
@@ -472,7 +473,7 @@ export async function POST(req: NextRequest) {
     const STAGES: Record<string, string> = {
       opener: `OPENER: the call just started. Answer like a normal person picking up the phone: confirm who you are and return pleasantries naturally (e.g. "Yes, this is him. How's it going?" / "Good, good, thanks. Who's this?"). Stay friendly until they say why they are calling; only then become a little busy and guarded, and give them a short chance if they are respectful and relevant (e.g. "Okay, I've got a minute, what's this about?").`,
       problem: bpoBuyer
-        ? 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain per good question (shared directory leads where 3-5 BPOs pitch the same prospect, price wars at $7-8/hr, reps losing deals on price, slow ramp of new hires). Short, honest, a little frustrated. Do not refuse to talk about your business.'
+        ? 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain per good question (stale or inaccurate contact data, bounced emails and wrong numbers, reps wasting dials on bad-fit leads, a thin and unpredictable pipeline, deals stalling after the first meeting, no clear view of pipeline stages, inconsistent follow-up). Short, honest, a little frustrated. Do not refuse to talk about your business.'
         : 'PROBLEM: the rep is asking discovery questions. Answer like a real executive: reveal one genuine pain from your situation per good question. Short, honest, a little frustrated. Do not refuse to talk about your business.',
       solution: 'SOLUTION: the rep is pitching how they solve it. Raise one realistic objection at a time (cost, "my senior reps are experienced", "we already buy leads", "prove it"). Soften when they answer with specifics, numbers or proof.',
       close: 'CLOSE: the rep is asking for a meeting. If they handled your objections reasonably, agree to a short meeting and confirm a day/time (e.g. "Fine, Thursday at 2 works, send me the invite."). If they rushed or ignored your concerns, push back once more before agreeing.',
@@ -488,9 +489,9 @@ ${difficultyLine}- The rep follows a 4-step call script: Opener, Problem, Soluti
 - You MAY discuss your business, pains and numbers when asked good questions. You MAY agree to a meeting at the Close if it was earned (even before turn 3).
 - Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.
 ${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line they are reading (roughly): ${stepText}. Coaching note for the rep: ${stepTip}.
-- Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, ${bpoBuyer ? 'vent honestly about your lead quality and price pressure' : 'share an honest pain from your situation'}; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : bpoBuyer ? 'your signature "no budget" objection' : 'your core pushback'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
+- Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, ${bpoBuyer ? 'vent honestly about your lead quality and pipeline health' : 'share an honest pain from your situation'}; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : bpoBuyer ? 'your signature "no budget" objection' : 'your core pushback'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
 ` : ''}${objLabel ? `- YOUR MAIN OBJECTION ON THIS CALL (the rep chose to practise it): "${objLine}" (${objLabel}). It replaces your usual "no budget" objection${/budget/i.test(objLabel) ? '' : ': on this call do NOT mention budget, finance freezes or spend approvals at all; when they pitch at the Solution step, push back with this objection (or a natural variation of it) instead'}. Raise it ${isBrushOff ? 'early, at the Opener, as soon as they say why they are calling' : 'at the natural moment, usually right after they pitch at the Solution step'}, in your own words and with real emotion. Keep pressing it until the rep handles it well (acknowledges you, answers with substance, proposes a sensible next step); then soften and let the call move on.
-` : ''}- React ONLY to what the rep has actually said so far. Never bring up emails, ramp time, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
+` : ''}- React ONLY to what the rep has actually said so far. Never bring up emails, your pains, budget or numbers before the rep raises the topic or asks. Answer greetings and small talk like a normal human first.`
       : '';
 
     if (repMessage) {

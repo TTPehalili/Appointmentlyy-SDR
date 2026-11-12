@@ -570,21 +570,21 @@ export function getDeterministicLinkedInSeries(
     return {
       seriesTitle: `The Autonomous BPO Outbound Series: Week 4 (Episodes 10-12)`,
       seriesHookRecap: preset.recapHook,
-      targetBottleneckSummary: `Grounded in ${summary.totalLeads} accounts: Breaking free from $8/hr rate wars into direct $24/hr enterprise retainers.`,
+      targetBottleneckSummary: `Grounded in ${summary.totalLeads} accounts: Breaking free from low-rate commodity bids into direct $24/hr enterprise retainers.`,
       targetAudience: `BPO Founders, Managing Directors, CROs & Outbound Operations Leaders`,
       posts: [
         {
           id: 'post-ep10',
           episodeNumber: 10,
           dayLabel: 'Tuesday • Episode 10',
-          title: 'The $8/Hour Commodity Trap: Escaping Margin Compression',
-          hook: `Competing on low hourly rates is a race to the bottom that you win by losing.\nHere is what happens when you sell seats at $8/hour:`,
+          title: 'The Commodity Rate Trap: Escaping Margin Compression',
+          hook: `Competing on low hourly rates is a race to the bottom that you win by losing.\nHere is what happens when you sell seats at rock-bottom hourly rates:`,
           body: `You are forced to hire unvetted reps, pay minimum wages, and tolerate 60% quarterly agent churn.\n\nWhen BPOs build an autonomous internal acquisition engine, they bypass middleman brokers and sign direct US clients at $22 to $25 per billable hour.\n\nPrice is not determined by geography. It is determined by pipeline control.`,
-          cta: `Are your managing directors defending $8/hr bids today, or commanding $22+/hr on direct contracts?`,
+          cta: `Are your managing directors defending rock-bottom bids today, or commanding $22+/hr on direct contracts?`,
           wordCount: 73,
           estimatedReadSeconds: 20,
           hashtags: ['#BPOOperations', '#ExecutiveLeadership', '#DealEconomics', '#RevenueGrowth', '#OutboundSales'],
-          imagePrompt: `Minimalist margin comparison infographic comparing $8/hr commodity seat margins with 60% churn versus $24/hr direct retainers with 12-month retention.`,
+          imagePrompt: `Minimalist margin comparison infographic comparing low-rate commodity seat margins with 60% churn versus $24/hr direct retainers with 12-month retention.`,
           realisticPhotoPrompt: `A cinematic 35mm editorial photograph of a predatory corporate lead broker and middleman depicted as a devil in disguise: An arrogant, manipulative man in his late 40s in an expensive dark charcoal suit with a crimson silk pocket square, leaning back in a leather armchair in a shadowy penthouse boardroom, steepled hands, wearing a calculating cynical smirk over contracts stamped with 35% margin fees.`,
           realisticImageUrl: '/images/linkedin/broker-middleman-devil.jpg',
           alternativeImageUrl: '/images/linkedin/direct-partnership-equity.jpg',
@@ -599,9 +599,9 @@ export function getDeterministicLinkedInSeries(
             tag: 'EPISODE 10 • THE MARGIN TRAP'
           },
           injectedComments: [
-            'Selling seats at $8/hr is a race to the bottom that you win by going bankrupt. You cannot retain tier-one talent on broker commodity crumbs. Who is ready to stop competing on price?',
+            'Selling seats at rock-bottom rates is a race to the bottom that you win by going bankrupt. You cannot retain tier-one talent on broker commodity crumbs. Who is ready to stop competing on price?',
             'If your floor has a 60% quarterly rep turnover, stop blaming the recruiters. Your rock-bottom billable rates are the disease. Thoughts on this?',
-            'The moment an agency accepts an $8/hr rate from a broker, they become an accessory to wage compression. When will BPO owners demand direct enterprise value?'
+            'The moment an agency accepts a rock-bottom rate from a broker, they become an accessory to wage compression. When will BPO owners demand direct enterprise value?'
           ]
         },
         {
@@ -799,7 +799,7 @@ export function getDeterministicViralComments(viralPostText: string): ViralComme
     {
       id: 'viral-cmt-3',
       angle: 'Frontline BPO Operator',
-      comment: 'Spot on. On our outbound floors, once we built an internal acquisition pod and bypassed brokers, agent retention jumped and seat rates climbed from $8 to $24/hr. Owning acquisition changes everything.',
+      comment: 'Spot on. On our outbound floors, once we built an internal acquisition pod and bypassed brokers, agent retention jumped and seat rates climbed to $24/hr. Owning acquisition changes everything.',
       wordCount: 30,
       intent: 'Shares verified frontline experience without promoting or selling.'
     },

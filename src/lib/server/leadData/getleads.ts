@@ -443,7 +443,7 @@ export async function buildGetLeadsFilters(f: IcpFilters, cfg: GetLeadsConfig): 
   const notes: string[] = [];
 
   if (isOaBpoDirectorySearch(f)) {
-    // Same audience as the LeadOcean path: the Outsource Accelerator BPO directory's companies.
+    // Same audience as the LeadOcean path: the BPO & Virtual Assistant agency domain list.
     out.domains = OA_DIRECTORY_BPO_DOMAINS;
     const sen = mapSeniority(f.seniority?.length ? f.seniority : ['C-Suite', 'VP', 'Director', 'Owner']);
     if (sen.length) out.seniority = sen;

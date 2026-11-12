@@ -179,14 +179,14 @@ export default function ScriptViewer({
         {activeChannel === 'call' && (
           <div className="space-y-4">
             
-            {/* Step 1: Opener & Directory Check */}
+            {/* Step 1: Opener & Lead Source Check */}
             <div className="relative rounded-lg border border-line bg-app p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-caption text-fg-tertiary">
                   1. Pattern interrupt and lead source check (15s)
                 </span>
                 <button
-                  onClick={() => copyToClipboard(`Hey ${lead.name.split(' ')[0]}, quick question—are you guys currently buying any of your outbound leads from Outsource Accelerator or similar BPO directories?`, 'c1')}
+                  onClick={() => copyToClipboard(`Hey ${lead.name.split(' ')[0]}, quick question—where do your outbound leads come from today, and how much of that list actually connects?`, 'c1')}
                   aria-label="Copy line"
                   className="focus-ring rounded-sm p-1 text-fg-tertiary hover:bg-subtle hover:text-fg"
                 >
@@ -194,7 +194,7 @@ export default function ScriptViewer({
                 </button>
               </div>
               <p className="text-body text-fg">
-                &quot;Hey <span className="rounded-sm bg-subtle px-1 font-medium text-fg">{lead.name.split(' ')[0]}</span>, quick question—are you guys currently buying any of your outbound leads from Outsource Accelerator or similar BPO directories?&quot;
+                &quot;Hey <span className="rounded-sm bg-subtle px-1 font-medium text-fg">{lead.name.split(' ')[0]}</span>, quick question—where do your outbound leads come from today, and how much of that list actually connects?&quot;
               </p>
             </div>
 
@@ -202,10 +202,10 @@ export default function ScriptViewer({
             <div className="relative rounded-lg border border-line bg-app p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-caption text-fg-tertiary">
-                  2. The shared-lead price trap (30s)
+                  2. The lead-quality and pipeline check (30s)
                 </span>
                 <button
-                  onClick={() => copyToClipboard(`The reason I ask is most BPO owners we talk to tell us those directories sell the exact same lead list to 3 to 5 competing agencies at the exact same time. It forces you into an $8/hour price-war race to the bottom. Is that hitting your margins too?`, 'c2')}
+                  onClick={() => copyToClipboard(`The reason I ask is most BPO owners we talk to tell us a big share of every list is stale: bounced emails, wrong numbers, people who left months ago, or companies that were never a fit. Reps burn the shift and the pipeline stays thin and hard to forecast. Is that happening on your floor too?`, 'c2')}
                   aria-label="Copy line"
                   className="focus-ring rounded-sm p-1 text-fg-tertiary hover:bg-subtle hover:text-fg"
                 >
@@ -213,7 +213,7 @@ export default function ScriptViewer({
                 </button>
               </div>
               <p className="text-body text-fg">
-                &quot;The reason I ask is most BPO owners tell us those directories sell the exact same lead list to 3 to 5 competing agencies at the exact same time. It forces you into an $8/hour price-war race to the bottom. Is that hitting your margins too?&quot;
+                &quot;The reason I ask is most BPO owners tell us a big share of every list is stale: bounced emails, wrong numbers, people who left months ago, or companies that were never a fit. Reps burn the shift and the pipeline stays thin and hard to forecast. Is that happening on your floor too?&quot;
               </p>
             </div>
 
@@ -221,10 +221,10 @@ export default function ScriptViewer({
             <div className="relative rounded-lg border border-line bg-app p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-caption text-fg-tertiary">
-                  3. Lead burn vs. private AI lists and practice (45s)
+                  3. Lead burn vs. verified AI lists and practice (45s)
                 </span>
                 <button
-                  onClick={() => copyToClipboard(`What we do differently is twofold: First, we generate private, Claude-enriched ICP lists that zero competitors touch. Second, before your reps ever dial those leads, our AI Boris runs them through 5 realistic objection sparring rounds so they never burn expensive contacts on warm-up swings.`, 'c3')}
+                  onClick={() => copyToClipboard(`What we do differently is twofold: First, we generate verified, Claude-enriched ICP lists matched to the clients you actually want. Second, before your reps ever dial those leads, our AI Boris runs them through 5 realistic objection sparring rounds so they never burn expensive contacts on warm-up swings.`, 'c3')}
                   aria-label="Copy line"
                   className="focus-ring rounded-sm p-1 text-fg-tertiary hover:bg-subtle hover:text-fg"
                 >
@@ -232,7 +232,7 @@ export default function ScriptViewer({
                 </button>
               </div>
               <p className="text-body text-fg">
-                &quot;What we do differently is twofold: First, we generate private, Claude-enriched ICP lists that zero competitors touch. Second, before your reps ever dial those leads, our AI Boris runs them through 5 realistic objection sparring rounds so they never burn expensive contacts on warm-up swings.&quot;
+                &quot;What we do differently is twofold: First, we generate verified, Claude-enriched ICP lists matched to the clients you actually want. Second, before your reps ever dial those leads, our AI Boris runs them through 5 realistic objection sparring rounds so they never burn expensive contacts on warm-up swings.&quot;
               </p>
             </div>
 

@@ -355,21 +355,21 @@ export default function BorisCallingCockpit({
       step: 1,
       name: '1. Opener',
       goal: 'Earn 30 seconds and tie the call to yesterday\'s email.',
-      spokenText: `"Hi {{first_name}}, it's {{rep_name}} from Appointmentlyy, I emailed you yesterday about new reps burning paid leads. Got 30 seconds for the short version?"`,
+      spokenText: `"Hi {{first_name}}, it's {{rep_name}} from Appointmentlyy, I emailed you yesterday about reps burning dials on bad lead data. Got 30 seconds for the short version?"`,
       deliveryTip: 'Slow, calm, peer tone. Never apologize for calling.'
     },
     {
       step: 2,
       name: '2. Problem',
-      goal: 'Surface the shared-lead, price-pressure pain in one question.',
-      spokenText: `"Quick question: when your juniors call shared leads that three other BPOs got the same day, how often do they lose on price?"`,
+      goal: 'Surface the lead-quality and pipeline-health pain in one question.',
+      spokenText: `"Quick question: how much of your floor's day goes on wrong numbers, bounced emails and leads that were never a fit, and how predictable is the pipeline that's left?"`,
       deliveryTip: 'Ask, then stop talking. Let them vent.'
     },
     {
       step: 3,
       name: '3. Solution',
-      goal: 'One line of value: reps ready in 72 hours, live help.',
-      spokenText: `"That's what we fix: new reps practice on AI buyers and are call-ready in 72 hours, with live objection help on the call. How are you ramping new hires now?"`,
+      goal: 'One line of value: verified leads, reps ready in 72 hours, live help.',
+      spokenText: `"That's what we fix: verified, on-fit contacts to dial, reps who practice on AI buyers first, and live objection help on the call, so more dials turn into held meetings. How are you tracking pipeline by stage today?"`,
       deliveryTip: 'Talk floor economics and rep confidence, not features.'
     },
     {
@@ -644,8 +644,8 @@ export default function BorisCallingCockpit({
       ...telemetry,
       directoryDiscussed: true,
       sharedLeadComment: val
-        ? 'Confirmed Outsource Accelerator awareness'
-        : 'Unfamiliar with broker directories'
+        ? 'Confirmed stale contact data (bounced emails, wrong numbers)'
+        : 'Says contact data is accurate'
     };
     setTelemetry(nextTel);
     setNotesDraft(buildNotes({ tel: nextTel }));
@@ -658,8 +658,8 @@ export default function BorisCallingCockpit({
       directoryDiscussed: true,
       sharedLeadConfirmed: status === 'confirmed',
       sharedLeadComment: status === 'confirmed'
-        ? 'Confirmed: Competing against 3-5 BPOs on identical Outsource Accelerator lists ($8/hr price war)'
-        : 'Claims lists are exclusive / defended margins'
+        ? 'Confirmed: Thin, unpredictable pipeline (deals stall, follow-up is inconsistent)'
+        : 'Says pipeline is healthy and predictable'
     };
     setTelemetry(nextTel);
     setNotesDraft(buildNotes({ tel: nextTel }));
@@ -2080,7 +2080,7 @@ export default function BorisCallingCockpit({
                 {currentStep === 2 && isDemo && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
-                      Quick qualify: lead source
+                      Quick qualify: lead quality and pipeline
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -2091,7 +2091,7 @@ export default function BorisCallingCockpit({
                             : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>Uses lead brokers</span>
+                        <span>Bad contact data</span>
                         {recognizedOA ? <Check className="size-3.5" /> : null}
                       </button>
 
@@ -2103,7 +2103,7 @@ export default function BorisCallingCockpit({
                             : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
-                        <span>Shared lead pain</span>
+                        <span>Pipeline pain</span>
                         {priceTrapStatus === 'confirmed' ? <Check className="size-3.5" /> : null}
                       </button>
                     </div>

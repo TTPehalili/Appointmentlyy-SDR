@@ -248,6 +248,7 @@ function matchPreset(question: string, presets: ARMRebuttal[]): ARMRebuttal | un
   const byId = (id: string) => presets.find((p) => p.id === id);
   if (/budget|afford|fiscal/.test(q)) return byId('OBJ_NO_BUDGET');
   if (/price|pricing|cost|expensive|how much/.test(q)) return byId('OBJ_PRICING');
+  // 'outsource accelerator' stays as a legacy match for questions that still name it (matching only).
   if (/broker|outsource accelerator|lead (list|vendor)s?/.test(q)) return byId('OBJ_SHARED_LEADS_OA') || byId('OBJ_HAVE_TEAM');
   if (/vendor|already|in-house|internal|own team|provider|agency|competitor|incumbent/.test(q)) return byId('OBJ_HAVE_TEAM');
   if (/e-?mail|busy|bad time|not a good time|call me later/.test(q)) return byId('OBJ_SEND_EMAIL');

@@ -212,7 +212,7 @@ export default function LiveMonitoringCenter() {
         personaDifficulty: 'High',
         countryAccent: customerAccent,
         initialSeconds: 228,
-        currentObjection: '“We already buy shared leads from Outsource Accelerator. Why pay for private data?”',
+        currentObjection: '“We already buy our leads every month. Why pay for more data?”',
         score: 88,
         sentiment: 'Engaged',
         wpm: 142,
@@ -222,7 +222,7 @@ export default function LiveMonitoringCenter() {
             id: 'turn-1-1',
             speaker: 'Julian Vance',
             role: 'prospect',
-            text: `We already buy shared lead packs from Outsource Accelerator, ${isArabic ? 'Tariq' : 'Paolo'}. Why on earth would I pay for additional software?`,
+            text: `We already buy lead lists every month, ${isArabic ? 'Tariq' : 'Paolo'}. Why on earth would I pay for additional software?`,
             time: '03:15',
             voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
           },
@@ -230,7 +230,7 @@ export default function LiveMonitoringCenter() {
             id: 'turn-1-2',
             speaker: `${isArabic ? arabicMale.name : filipinoMale.name} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
             role: 'rep',
-            text: 'Totally fair, Julian. But OA sells those identical leads to 3 to 5 other BPOs simultaneously, so you end up in eight dollar per hour price wars.',
+            text: 'Totally fair, Julian. Quick question though: how many of those contacts bounce or ring a wrong number before your reps reach a real decision maker?',
             time: '03:26',
             voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
           },
@@ -238,7 +238,7 @@ export default function LiveMonitoringCenter() {
             id: 'turn-1-3',
             speaker: 'Julian Vance',
             role: 'prospect',
-            text: 'That is actually true. Our margins have taken a beating on those directory accounts. What are you doing differently?',
+            text: 'Honestly? Too many. Half the shift goes on dead numbers and the pipeline is all over the place month to month. What are you doing differently?',
             time: '03:38',
             voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
           },
@@ -246,7 +246,7 @@ export default function LiveMonitoringCenter() {
             id: 'turn-1-4',
             speaker: `${isArabic ? arabicMale.name : filipinoMale.name} (${isArabic ? arabicMale.flag : filipinoMale.flag} ${isArabic ? 'Arabic SDR' : 'Filipino SDR'})`,
             role: 'rep',
-            text: 'We give you exclusive, verified tech-founder triggers before OA even lists them. Can I show you three live accounts right now?',
+            text: 'We give you verified contacts matched to the clients you actually want, and every deal tracked by pipeline stage. Can I show you three live accounts right now?',
             time: '03:49',
             voiceId: isArabic ? arabicMale.voiceId : filipinoMale.voiceId
           },
@@ -254,7 +254,7 @@ export default function LiveMonitoringCenter() {
             id: 'turn-1-5',
             speaker: 'Julian Vance',
             role: 'prospect',
-            text: `Alright ${isArabic ? 'Tariq' : 'Paolo'}, pull them up on screen. If they are genuinely exclusive, you have got my attention.`,
+            text: `Alright ${isArabic ? 'Tariq' : 'Paolo'}, pull them up on screen. If the numbers actually connect, you have got my attention.`,
             time: '04:01',
             voiceId: getCustomerVoiceId('bpo-directory-buyer', customerAccent)
           }
@@ -382,11 +382,11 @@ export default function LiveMonitoringCenter() {
         id: 'sess-4',
         line: 'LINE 04',
         repName: isArabic ? arabicFemale.name : 'Nicole Bautista',
-        repEmail: isArabic ? 'noor.hassan@gulfcontact.ae' : 'nicole.b@oa-partner.ph',
+        repEmail: isArabic ? 'noor.hassan@gulfcontact.ae' : 'nicole.b@harborpointbpo.ph',
         repGender: 'female',
         repAccent: isArabic ? `${arabicFemale.flag} ${arabicFemale.accentBadge}` : `${filipinoFemale.flag} ${filipinoFemale.accentBadge}`,
         avatar: isArabic ? 'NA' : 'NB',
-        tenant: isArabic ? 'Gulf Contact Partner Hub (Dubai)' : 'Outsource Accelerator Partner Hub',
+        tenant: isArabic ? 'Gulf Contact Partner Hub (Dubai)' : 'Harbor Point Partner Hub',
         personaId: 'burned-director',
         personaName: 'Sarah Jenkins',
         personaRole: 'VP Operations (Global Contact Center)',
@@ -949,7 +949,7 @@ export default function LiveMonitoringCenter() {
                 <option value="Apex Global BPO (Manila)">Apex Global (Manila)</option>
                 <option value="Fintech Scaleups (Cebu)">Fintech Scaleups (Cebu)</option>
                 <option value="Horizon Solar Outbound Floor">Horizon Solar</option>
-                <option value="Outsource Accelerator Partner Hub">OA Partner Hub</option>
+                <option value="Harbor Point Partner Hub">Harbor Point Partner Hub</option>
               </>
             ) : (
               tenantName && <option value={tenantName}>{tenantName}</option>

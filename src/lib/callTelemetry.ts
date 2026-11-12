@@ -64,7 +64,7 @@ export function synthesizeCrmNotes({
 }: NoteSynthesizerParams): string {
   const ts = timestamp || 'LIVE CALL IN PROGRESS (Active Session)';
 
-  // The broker / founder-demo talk track below is the platform owner's own pitch: only the demo
+  // The lead-quality / founder-demo talk track below is the platform owner's own pitch: only the demo
   // workspace uses it. Client workspaces get a neutral call log built from the lead's fields.
   if (!isDemoWorkspace()) {
     const outcome = disposition
@@ -107,21 +107,21 @@ OUTCOME / DISPOSITION: ${outcome}`;
     : (telemetry.roleTitleStatus || 'Pending verification');
 
   const directoryStatusText = telemetry.directoryDiscussed
-    ? 'Outsource Accelerator / Broker Directories discussed'
-    : 'Pending directory confirmation';
+    ? 'Lead data quality discussed'
+    : 'Pending lead quality check';
 
   const sharedLeadFrictionSummary = telemetry.sharedLeadConfirmed
-    ? '✓ Confirmed: Competing against 3-5 BPOs on identical Outsource Accelerator lists ($8/hr price war)'
+    ? '✓ Confirmed: Thin, unpredictable pipeline (reps burn dials on stale or bad-fit leads)'
     : telemetry.directoryDiscussed
-    ? '• Claims lists are exclusive / defended margins'
-    : 'Pending lead sourcing confirmation';
+    ? '• Says pipeline is healthy / data is clean'
+    : 'Pending pipeline health check';
 
   const sharedLeadComment = telemetry.sharedLeadComment || (
     telemetry.sharedLeadConfirmed
-      ? 'Confirmed competing against 3-5 BPOs on identical Outsource Accelerator lists'
+      ? 'Confirmed bounced emails, wrong numbers and deals stalling between stages'
       : telemetry.directoryDiscussed
-      ? 'Claims lists are exclusive'
-      : 'No additional broker notes'
+      ? 'Says contact data is accurate'
+      : 'No additional lead quality notes'
   );
 
   const problemFixStatusText = telemetry.problemFixDiscussed
@@ -160,14 +160,14 @@ TIMESTAMP: ${ts}
 - Status: ${roleStatusText}
 - Department / Title: ${department} as ${title}
 
-2. LEAD SOURCING & PRICE TRAP AUDIT:
-- Directory Anchor: ${directoryStatusText}
-- Shared Lead Friction: ${sharedLeadFrictionSummary}
+2. LEAD QUALITY & PIPELINE HEALTH:
+- Data Quality: ${directoryStatusText}
+- Pipeline Health: ${sharedLeadFrictionSummary}
 - Additional Intel: ${sharedLeadComment}
 
 3. DIAGNOSTIC PROFILE:
 - Primary Revenue Driver: ${telemetry.primaryService}
-- Operational Bottleneck: Competing against 3-5 BPOs on identical lists ($8/hr margin crush)
+- Operational Bottleneck: Stale contact data and a thin, hard-to-forecast pipeline
 - Practice Swings & Ramp: ${problemFixStatusText}
 
 4. DEMO / MEETING OUTCOME:

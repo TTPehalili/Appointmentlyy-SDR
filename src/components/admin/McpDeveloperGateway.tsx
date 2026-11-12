@@ -44,7 +44,7 @@ export default function McpDeveloperGateway() {
             onChange={(e) => setSelectedTenant(e.target.value)}
           >
             <option value="Apex Global BPO">Apex Global BPO</option>
-            <option value="Outsource Accelerator Partner A">Outsource Accelerator Partner A</option>
+            <option value="Harbor Point BPO">Harbor Point BPO</option>
             <option value="Horizon Solar Sales Floor">Horizon Solar</option>
           </Select>
           </div>

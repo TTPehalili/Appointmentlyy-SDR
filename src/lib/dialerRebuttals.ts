@@ -58,13 +58,13 @@ export const DEMO_PRESET_REBUTTALS: ARMRebuttal[] = [
   },
   {
     id: 'OBJ_SHARED_LEADS_OA',
-    shortLabel: 'Use Lead Brokers',
+    shortLabel: 'Already Buy Leads',
     category: 'Lead Vendors',
-    trigger: 'We already buy our leads from Outsource Accelerator.',
-    acknowledge: "Makes sense, they're great for volume.",
-    respond: 'But three or four rival BPOs often get the same list. We build private, verified lists only you call.',
-    move: 'How often are your reps the first to call?',
-    fullSpoken: "Makes sense, they're great for volume. But three or four rival BPOs often get the same list. We build private, verified lists only you call. How often are your reps the first to call?"
+    trigger: 'We already buy our leads.',
+    acknowledge: 'Makes sense, volume matters on a floor your size.',
+    respond: 'But bounced emails, wrong numbers and bad-fit contacts burn rep time and keep the pipeline thin. We build verified lists matched to your ideal client.',
+    move: 'How much of your list actually connects today?',
+    fullSpoken: "Makes sense, volume matters on a floor your size. But bounced emails, wrong numbers and bad-fit contacts burn rep time and keep the pipeline thin. We build verified lists matched to your ideal client. How much of your list actually connects today?"
   },
   {
     id: 'OBJ_HOW_DID_YOU_GET_NUMBER',
@@ -73,8 +73,8 @@ export const DEMO_PRESET_REBUTTALS: ARMRebuttal[] = [
     trigger: 'How did you get my direct number?',
     acknowledge: "Fair question, {{first_name}}, I'd ask the same.",
     respond: 'We use business data tools like Apollo and Sales Navigator to reach outbound leaders at growing BPOs.',
-    move: "Since I've got you, how's new-rep ramp time looking this quarter?",
-    fullSpoken: "Fair question, {{first_name}}, I'd ask the same. We use business data tools like Apollo and Sales Navigator to reach outbound leaders at growing BPOs. Since I've got you, how's new-rep ramp time looking this quarter?"
+    move: "Since I've got you, how's your pipeline looking this quarter?",
+    fullSpoken: "Fair question, {{first_name}}, I'd ask the same. We use business data tools like Apollo and Sales Navigator to reach outbound leaders at growing BPOs. Since I've got you, how's your pipeline looking this quarter?"
   }
 ];
 

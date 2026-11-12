@@ -104,7 +104,7 @@ const DEMO_INITIAL_SEED_EMAILS: EmailMessage[] = [
     from: 'Emil Halili <emil@appointmentlyy.com>',
     to: 'julian@apexglobalbpo.com',
     subject: 'apex lead burn',
-    body: `Hi Julian, Saw Apex Global BPO is scaling outbound seats to 65. Typically when BPO leaders scale outbound, the hidden leak is not lead volume, it is callers getting chopped on price by commodity competitors. Traditional coaching fails when reps freeze in the first 20 seconds. We feed consultative rebuttals in 150 milliseconds live on the dial. Open to a 2-minute video showing how we insulate margins, or totally off base?`,
+    body: `Hi Julian, Saw Apex Global BPO is scaling outbound seats to 65. Typically when BPO leaders scale outbound, the hidden leak is not lead volume, it is lead quality: stale contacts and wrong numbers burn the shift, and reps freeze in the first 20 seconds on the calls that do connect. We feed consultative rebuttals in 150 milliseconds live on the dial. Open to a 2-minute video showing how we keep your pipeline healthy, or totally off base?`,
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
     status: 'replied',
     leadName: 'Julian Vance',

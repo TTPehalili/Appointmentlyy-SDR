@@ -60,8 +60,8 @@ export default function UserGuideHub() {
       highlights: [
         '1-Click Click-to-Call: Click the emerald "Click to Call" button below the phone number to immediately trigger your default dialer (Dialpad, Teams, RingCentral, Phone Link, Softphone).',
         'Screen 1 (Role Verification): Confirm prospect active status (Still in Role, Promoted, Left Company).',
-        'Screen 2 (Directory Anchor): Pattern interrupt on Outsource Accelerator awareness.',
-        'Screen 3 (Shared-Lead Trap): Expose the hidden cost of competing against 3-5 BPOs on identical leads.',
+        'Screen 2 (Lead Source Check): Pattern interrupt on where their leads come from and how many actually connect.',
+        'Screen 3 (Lead Quality & Pipeline Check): Expose the hidden cost of stale contact data, wasted dials and a thin, unpredictable pipeline.',
         'Screen 4 (Diagnostic Engine): Click target services (A to E) to dynamically generate tailored value cards.'
       ],
       proTip: 'Never break conversational pacing. Click any service tag on Screen 4 to instantly load the exact talk track.'
@@ -124,7 +124,7 @@ export default function UserGuideHub() {
       image: '/guide/step5-admin.png',
       caption: 'Admin Control showing active BPO tenants, seat allocations, and Admin Shadow Mode banner.',
       highlights: [
-        'Tenants & Client Access: View all provisioned client BPOs (Apex Global BPO, Outsource Accelerator partners, etc.).',
+        'Tenants & Client Access: View all provisioned client BPOs (Apex Global BPO, Harbor Point BPO, etc.).',
         'Module Entitlement Toggles: 1-click toggle access for Boris Cockpit, AI Sparring, Certification Exam Gate, and Leads CRM.',
         'Admin Shadow Mode (Impersonate): Click "👁️ Impersonate" to safely view any client workspace in shadow mode.',
         'Provision Tenant Wizard: Onboard new BPOs with seat caps, plan tiers, and telephony gateway choices.'

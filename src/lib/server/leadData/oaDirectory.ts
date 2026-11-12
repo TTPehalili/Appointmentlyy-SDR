@@ -1,11 +1,10 @@
 /**
- * The Outsource Accelerator BPO & Virtual Assistant directory: the companies Lead Finder's
- * "Outsource Accelerator BPO & Virtual Assistant Agencies" preset searches (any provider).
+ * The BPO & Virtual Assistant agency domain list: the companies Lead Finder's
+ * "BPO & Virtual Assistant Agencies" preset searches (any provider). The OA_* names are legacy.
  */
 import type { IcpFilters } from '@/lib/leadData/types';
 
 export const OA_DIRECTORY_BPO_DOMAINS: string[] = [
-  'outsourceaccelerator.com',
   'cloudstaff.com',
   'boothandpartners.com',
   'shoreagents.com',
@@ -81,7 +80,10 @@ export const OA_DIRECTORY_BPO_DOMAINS: string[] = [
   'intelepeer.com',
 ].map((d) => d.trim().toLowerCase());
 
-/** True when the filters pick the Outsource Accelerator directory preset. */
+/**
+ * True when the filters pick the BPO & Virtual Assistant agencies preset. The legacy strings
+ * below are still matched because older saved searches may contain them (matching only, never shown).
+ */
 export function isOaBpoDirectorySearch(filters: Pick<IcpFilters, 'industry' | 'companyKeywords'>): boolean {
   const indLower = (filters.industry || '').toLowerCase();
   const kwLower = (filters.companyKeywords || '').toLowerCase();

@@ -81,7 +81,7 @@ const CALL_DRIVERS_ANALYSIS = {
     {
       driver: 'Immediate Email Subject Reference in Opener (Screen 1)',
       impact: '+22.2% Hold Rate Lift',
-      description: 'When reps speak the exact Day 1/Day 7 email subject line within the first 5 seconds ("Sent an email yesterday titled quick question on ramp time..."), prospect defensiveness drops from 68% to 26%.'
+      description: 'When reps speak the exact Day 1/Day 7 email subject line within the first 5 seconds ("Sent an email yesterday titled quick question on your lead data..."), prospect defensiveness drops from 68% to 26%.'
     },
     {
       driver: 'Desktop Attendance Verification Gate (Screen 6)',
@@ -89,16 +89,16 @@ const CALL_DRIVERS_ANALYSIS = {
       description: 'Asking prospects if they will have their laptop open and sending the calendar invite while on the line eliminates 70% of ghosted demos.'
     },
     {
-      driver: 'Day 15 Negative Reverse Selling (Broker Margin Skim)',
+      driver: 'Day 15 Negative Reverse Selling (Pipeline Check-In)',
       impact: '16.4% Conversion on Cold Callbacks',
-      description: 'Replying "Usually when I haven\'t connected by now, it means either reps are crushing quotas with zero shared leads or you are swamped" generated 14 executive callbacks last week.'
+      description: 'Replying "Usually when I haven\'t connected by now, it means either your pipeline is full and reps are crushing quotas or you are swamped" generated 14 executive callbacks last week.'
     }
   ],
   primaryNegativeDrivers: [
     {
-      driver: 'Price Objection Freeze (Reps debating hourly offshore rates)',
+      driver: 'Lead Quality Freeze (Reps defending the list instead of asking about it)',
       impact: '48% of All Lost Calls',
-      description: 'Call notes reveal that when buyers state "Our offshore vendor charges $8/hr", reps who fail to acknowledge and pivot to margin leakage lose the prospect in under 45 seconds.'
+      description: 'Call notes reveal that when buyers say "We already buy our leads", reps who fail to acknowledge and pivot to bounced emails, wrong numbers and stalled pipeline lose the prospect in under 45 seconds.'
     },
     {
       driver: 'Premature Calendly Pushes without Role Verification',
@@ -192,7 +192,7 @@ function compileLiveSystemContext(snapshot?: LiveSnapshot | null): string {
 
   // 5. Active Target Leads
   const leadsSummary = DEMO_CADENCE_LEADS.slice(0, 5).map((l) =>
-    `• Lead: ${l.name} (${l.title} at ${l.company}) - Phone: ${l.phone} | Headcount: ${l.headcount} | Pain: ${l.painPoint || 'Shared lead broker margin loss'}`
+    `• Lead: ${l.name} (${l.title} at ${l.company}) - Phone: ${l.phone} | Headcount: ${l.headcount} | Pain: ${l.painPoint || 'Lead quality and pipeline health'}`
   ).join('\n');
 
   return `
@@ -221,7 +221,7 @@ ${leadsSummary}
 
 [THE 6-SCREEN BPO PLAYBOOK METHODOLOGY]:
 1. Screen 1: Role Verification Gate (Enforce Director/VP of Outbound check before pitching).
-2. Screen 2: Directory & Shared Lead Trap (Expose broker price wars on identical shared lists from Outsource Accelerator).
+2. Screen 2: Lead Quality & Pipeline Health Check (Surface stale contact data, wrong numbers, bad-fit leads and a thin or stalled pipeline).
 3. Screen 3: Problem vs Fix (Highlight $6k/mo in wasted leads when untrained reps fumble objections).
 4. Screen 4: Diagnostic Engine (Benchmark SLA, ramp time, and talk tracks).
 5. Screen 5: The Dual Attendance Close (Lock 20-min strategy demo with Founder Emil).
@@ -601,7 +601,7 @@ Here is the verified data for your sales organization across your requested time
 | Operational Driver | High-Performing Cohort | Floor Average / Lagging | Net Booking Impact | Action Priority |
 | :--- | :--- | :--- | :--- | :--- |
 | **Email Context Opener (Screen 1)** | 91.4% Adherence | 34.2% Adherence | **+22.2% Hold Rate** | **CRITICAL (P0)** |
-| **Price Pivot to Shared Lead Waste** | 82.5% Rebuttal Use | 19.8% Rebuttal Use | **+18.6% Reversal Rate** | **HIGH (P1)** |
+| **Pivot to Lead Quality & Pipeline Health** | 82.5% Rebuttal Use | 19.8% Rebuttal Use | **+18.6% Reversal Rate** | **HIGH (P1)** |
 | **Calendar Screen-Share Lock (Screen 6)** | 94.1% Live Verification | 41.0% Premature Push | **+36.8% Show-Up Rate** | **HIGH (P1)** |
 | **Day 3 Voicemail Drop Trigger** | 88.0% Audio Drop Rate | 32.5% Manual Hang-Up | **+15.0% Email #2 Opens** | **MEDIUM (P2)** |
 | **Premature Closing w/o Role Check** | 4.2% Occurrence | 28.6% Occurrence | **-24.0% Disqualification** | **CRITICAL (P0)** |
@@ -653,19 +653,21 @@ Here is the verified data for your sales organization across your requested time
 ---
 
 ### 🔍 Exact Objections Raised on Call:
-1. **The Shared Lead Directory Trap:**  
-   Julian expressed frustration over buying leads from directories like **Outsource Accelerator** where 3–5 competitor BPOs call the exact same list, causing a brutal price war down to $8/hr commodity margins.
-2. **The "Rookie Tax" Resistance:**  
+1. **The Bad Data Drain:**  
+   Julian expressed frustration that a big share of every purchased list is stale: bounced emails, wrong numbers and contacts who left months ago, so reps burn the shift on dials that never connect.
+2. **The Unpredictable Pipeline:**  
+   Julian said the pipeline swings month to month, deals stall after the first meeting, follow-up depends on which rep remembers, and he has no clear view of how many deals sit at each stage.
+3. **The "Rookie Tax" Resistance:**  
    Julian worried that onboarding outside appointment setters or new SDRs would burn through paid leads while taking weeks to reach quota.
 
 ---
 
 ### 🛡️ What SDRs Must Do (Playbook Recommendations):
-1. **Deploy Screen 2 (Directory Trap Defense):**  
-   Acknowledge the margin crush immediately:  
-   > *"I hear you Julian—buying from directories puts you in an $8/hr bidding war against 4 other BPOs on identical names. That's why our AI builds private, unshared account lists."*
-2. **Pivot to the $6,000 Margin Leak (Screen 3):**  
-   Highlight that saving $2/hr on offshore reps is useless if reps burn $6k/mo in paid prospect lists because they fumble initial objections.
+1. **Deploy Screen 2 (Lead Quality & Pipeline Check):**  
+   Acknowledge the wasted dials immediately:  
+   > *"I hear you Julian—when a chunk of every list bounces or rings a wrong number, your reps burn the day and the pipeline stays thin. That's why our AI builds verified account lists matched to the clients you actually want."*
+2. **Pivot to the $6,000 List Leak (Screen 3):**  
+   Highlight that $6k/mo in purchased lists is wasted if nobody can tie them to booked meetings, and if reps fumble the few good conversations they do get.
 3. **Lock 20-Minute Strategy Demo with Founder Emil (Screen 5):**  
    Do not pitch a long contract. Propose a strict **20-minute diagnostic screen-share** with Founder Emil (17+ yrs BDM).
 4. **Enforce Screen 6 Desktop Verification Gate:**  
@@ -694,7 +696,7 @@ Here are the highest-converting objection responses actively configured in your 
 
 | Objection Category | Listen-For Friction | [A] Acknowledge (Empathy) | [R] Respond (Reframe) | [M] Move (Diagnostic CTA) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Commodity Price ($8/hr)** | *"Your rates are too high / vendor is $8/hr"* | *"Completely understand—cost per hour is crucial on an outbound floor."* | *"Paying $8/hr for reps who fumble calls burns $6k/mo in paid client leads."* | *"Would you be opposed to a 10-minute diagnostic on rep lead burn rates?"* |
+| **Price / Cost** | *"Your price is too high / we already pay for leads"* | *"Completely understand—every dollar counts on an outbound floor."* | *"Lists full of wrong numbers and bad-fit contacts burn $6k/mo before a rep books a single meeting."* | *"Would you be opposed to a 10-minute diagnostic on your connect and meeting rates?"* |
 | **Incumbent Vendor** | *"We already have an agency / internal team"* | *"Fair point—you already have an established rhythm with them."* | *"We don't replace your team; we take repetitive cold outreach off their plate."* | *"How about a 10-minute SLA benchmark comparison this Thursday?"* |
 | **Brush-off / Send Email** | *"Send me an email / not a good time"* | *"Gladly—I know your inbox gets flooded daily."* | *"Usually when leaders ask for an email, it gets buried with 50 other pitches."* | *"Give me 30 seconds to explain our 72-hour ramp, and if no fit, we hang up?"* |
 | **Gatekeeper / Authority** | *"I'm not the decision maker"* | *"Appreciate you pointing me in the right direction."* | *"I want to ensure this only goes to whoever owns the floor's booked revenue."* | *"Who on your executive team manages the outbound sales quota?"* |

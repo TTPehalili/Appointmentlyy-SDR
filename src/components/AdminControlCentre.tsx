@@ -220,9 +220,9 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
     },
     {
       id: 'ten_2',
-      name: 'Outsource Accelerator Partner A',
-      slug: 'oa-partner-a',
-      adminEmail: 'ops@oapartner.com',
+      name: 'Harbor Point BPO',
+      slug: 'harbor-point-bpo',
+      adminEmail: 'ops@harborpointbpo.com',
       plan: 'AI LMS Software ($50/rep)',
       seats: 60,
       seatsUsed: 42,
