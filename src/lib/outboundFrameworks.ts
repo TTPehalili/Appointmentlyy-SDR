@@ -10,6 +10,7 @@
  */
 
 import { isDemoWorkspace } from './demoMode';
+import { cleanStoredDemoText } from './demoTextCleanup';
 
 export type OutboundChannel = 'Phone' | 'Email' | 'LinkedIn';
 export type TouchType = 'Cold Call' | 'Cold Email' | 'Follow-up Email' | 'LinkedIn Connection' | 'LinkedIn InMail';
@@ -476,7 +477,10 @@ export function getStoredFrameworks(): OutboundFramework[] {
     const raw = localStorage.getItem('appointmentlyy_outbound_frameworks');
     if (!raw) return getDefaultOutboundFrameworks();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getDefaultOutboundFrameworks();
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return cleanStoredDemoText('appointmentlyy_outbound_frameworks', parsed as OutboundFramework[], getDefaultOutboundFrameworks(), !isDemoWorkspace());
+    }
+    return getDefaultOutboundFrameworks();
   } catch {
     return getDefaultOutboundFrameworks();
   }
@@ -499,7 +503,10 @@ export function getStoredAntiSalesCtas(): AntiSalesCta[] {
     const raw = localStorage.getItem('appointmentlyy_anti_sales_ctas');
     if (!raw) return getDefaultAntiSalesCtas();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : getDefaultAntiSalesCtas();
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return cleanStoredDemoText('appointmentlyy_anti_sales_ctas', parsed as AntiSalesCta[], getDefaultAntiSalesCtas(), !isDemoWorkspace());
+    }
+    return getDefaultAntiSalesCtas();
   } catch {
     return getDefaultAntiSalesCtas();
   }

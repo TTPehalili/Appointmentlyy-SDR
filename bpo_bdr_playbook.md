@@ -20,7 +20,7 @@
           └──> (Confirmed in Role)
                     │
                     ▼
-[SCREEN 2: Pattern Interrupt & Outsource Accelerator Check]
+[SCREEN 2: Pattern Interrupt & Lead Quality Check]
           │
           ├──> (Yes / No / What is that?)
                     │
@@ -73,14 +73,14 @@
 
 ---
 
-### Screen 2: Pattern Interrupt & Directory Anchor
+### Screen 2: Pattern Interrupt & Lead Quality Check
 
 #### Teleprompter Script:
-> "Appreciate that, **{{prospect.first_name}}**. We work with BPO bosses who buy lists of people to call. A lot of folks we talk to buy leads or appointments from directories like **Outsource Accelerator**—does that name ring a bell?"
+> "Appreciate that, **{{prospect.first_name}}**. We work with BPO bosses who buy lists of people to call. A lot of folks we talk to tell us a big chunk of those lists bounce, ring wrong numbers, or reach people who left—does that sound familiar?"
 
 #### UI Actions & State Buttons:
-* `[ Button: Yes / Familiar ]` ➔ Sets `prospect.knows_oa = true` ➔ Advances to **Screen 3**.
-* `[ Button: No / Never Heard ]` ➔ Sets `prospect.knows_oa = false` ➔ Advances to **Screen 3**.
+* `[ Button: Yes / Familiar ]` ➔ Sets `prospect.has_lead_quality_pain = true` ➔ Advances to **Screen 3**.
+* `[ Button: No / Lists Are Fine ]` ➔ Sets `prospect.has_lead_quality_pain = false` ➔ Advances to **Screen 3**.
 
 ---
 
@@ -219,14 +219,14 @@
 
 ### SCENARIO 3: Lead Vendor & Directory Objections
 
-#### Objection 3A: "We already buy our leads from Outsource Accelerator / brokers."
-*System ID: `OBJ_VENDOR_OUTSOURCE_ACCELERATOR`*
+#### Objection 3A: "We already buy our leads from a list vendor."
+*System ID: `OBJ_VENDOR_LEAD_LISTS`*
 * **Acknowledge (Agree):**  
-  > "That makes total sense—they do a great job sending lead volume."
-* **Redirect (Shared Leads & Price Wars):**  
-  > "The catch is, you're paying full price for leads that are shared with 3 to 5 other BPOs. If your reps aren't pre-trained to beat lower price quotes the second a buyer brings them up, that lead spend is just wasted money."
+  > "That makes total sense—you need volume to keep the floor busy."
+* **Redirect (Lead Quality & Pipeline Health):**  
+  > "Quick gut check: how much of that list actually connects? When emails bounce and numbers are wrong, your reps burn the shift on dead dials and the pipeline gets thin and hard to forecast. That's lead spend you can't tie back to meetings."
 * **Move (Low-Friction Demo Ask):**  
-  > "Let’s grab 20 minutes with Emil so he can show you how our private lists and AI sparring tool protect your margins on those calls. How does Thursday look?"
+  > "Let’s grab 20 minutes with Emil so he can show you verified lists and how your pipeline looks stage by stage. How does Thursday look?"
 
 #### Objection 3B: "Our lead vendor gives us exclusive leads."
 *System ID: `OBJ_VENDOR_EXCLUSIVE_LEADS`*
@@ -313,7 +313,7 @@ Build a streaming audio classifier that intercepts customer dialogue, identifies
 | `OBJ_PRICE_TELL_ME_NOW` | "how much is it", "give me the price", "what's the cost", "how much do you charge" | Render Scenario 2A Rebuttal |
 | `OBJ_PRICE_RATE_CARD` | "send rate card", "send pricing sheet", "email me the prices", "send PDF of prices" | Render Scenario 2B Rebuttal |
 | `OBJ_PRICE_NO_BUDGET` | "no budget", "money is tight", "not spending on software", "cannot afford" | Render Scenario 2C Rebuttal |
-| `OBJ_VENDOR_OUTSOURCE_ACCELERATOR` | "use Outsource Accelerator", "already with OA", "buying from brokers", "happy with vendors" | Render Scenario 3A Rebuttal |
+| `OBJ_VENDOR_LEAD_LISTS` | "we buy our leads", "already have a list vendor", "buying from brokers", "happy with vendors" | Render Scenario 3A Rebuttal |
 | `OBJ_REPS_EXPERIENCED` | "reps don't need training", "experienced callers", "seniors reps only", "already trained" | Render Scenario 4A Rebuttal |
 | `OBJ_BRUSH_OFF_EMAIL` | "send an email", "shoot me a message", "email me details" | Render Scenario 5A Rebuttal |
 
@@ -340,7 +340,7 @@ agent_config:
     2. Deploy at least TWO of the following core objections during the simulation:
        - "We already looked at offshore support and got quoted $7/hr from another BPO."
        - "We don't need any software or tools, we just need paying customers right now."
-       - "We already buy our leads and outsource through Outsource Accelerator, we are good."
+       - "We already buy our leads from a list vendor, we are good."
        - "Just send me an email with your pricing sheet."
     3. Evaluate if the trainee:
        - Acknowledges your point without being defensive.
@@ -370,7 +370,7 @@ agent_config:
     "title": "VP of Business Development",
     "department": "Client Acquisition",
     "is_active_role": true,
-    "knows_outsource_accelerator": true,
+    "has_lead_quality_pain": true,
     "confirmed_shared_lead_pain": true
   },
   "qualification": {
@@ -389,7 +389,7 @@ agent_config:
     "active_objection_pool": [
       "OBJ_NEED_CLIENTS_NOT_TOOLS",
       "OBJ_PRICE_TELL_ME_NOW",
-      "OBJ_VENDOR_OUTSOURCE_ACCELERATOR"
+      "OBJ_VENDOR_LEAD_LISTS"
     ],
     "last_session_score": {
       "arm_compliance_percent": 88,
