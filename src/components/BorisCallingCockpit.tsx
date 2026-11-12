@@ -98,6 +98,7 @@ import {
   getOrgRepRoster,
   useCallbackTasks
 } from '@/components/cockpit/CallbackTasks';
+import { companySize } from '@/lib/companySize';
 
 /** Placeholder lead while a client workspace has no leads yet (the screen shows an empty state). */
 const EMPTY_LEAD = {
@@ -761,7 +762,7 @@ export default function BorisCallingCockpit({
       .replace(/\{\{title\}\}/gi, title || 'Executive')
       .replace(/\{\{phone\}\}/gi, phone || '')
       .replace(/\{\{email\}\}/gi, directEmail || '')
-      .replace(/\{\{headcount\}\}/gi, headcount || '50+ seats');
+      .replace(/\{\{headcount\}\}/gi, companySize(headcount)?.exact || '50+ seats');
   };
 
   // Selected Rebuttal Object
@@ -1430,21 +1431,27 @@ export default function BorisCallingCockpit({
                       <h2 className="truncate text-h2 text-fg">
                         {customerName}
                       </h2>
-                      <span className="text-small tabular-nums text-fg-secondary">
-                        {headcount}
-                      </span>
                       {practiceMode ? (
                         <Badge tone="warning">Practice lead</Badge>
-                      ) : (
-                      <span className="text-small tabular-nums text-fg-tertiary">
-                        {currentLeadIndex + 1} of {leadsQueue.length}
-                      </span>
-                      )}
+                      ) : leadsQueue.length > 0 ? (
+                        <Badge tone="neutral">
+                          Lead {(currentLeadIndex + 1).toLocaleString('en-US')} of {leadsQueue.length.toLocaleString('en-US')}
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-3 text-small text-fg-secondary">
                       <span className="truncate">
                         {title} at <span className="text-body-strong text-fg">{partnerName}</span>
                       </span>
+                      {companySize(headcount) && (
+                        <span
+                          className="flex items-center gap-1 tabular-nums"
+                          title={`Company size: ${companySize(headcount)!.exact}`}
+                        >
+                          <Users className="size-3.5" />
+                          <span>{companySize(headcount)!.short}</span>
+                        </span>
+                      )}
                       {leadWebsite && (
                         <a
                           href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}

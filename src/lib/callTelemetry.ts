@@ -1,4 +1,5 @@
 import { isDemoWorkspace } from '@/lib/demoMode';
+import { companySize } from '@/lib/companySize';
 
 export interface CallTelemetryState {
   roleVerified: boolean;
@@ -81,8 +82,9 @@ export function synthesizeCrmNotes({
       : 'Not booked yet';
     let neutral = `=== CALL LOG ===
 PROSPECT: ${contactName || '-'}${companyName ? ` | ${companyName}` : ''}
-ROLE: ${title || '-'}${headcount ? ` (${headcount})` : ''}
-PHONE: ${phone || '-'}
+ROLE: ${title || '-'}
+${companySize(headcount) ? `COMPANY SIZE: ${companySize(headcount)!.exact}
+` : ''}PHONE: ${phone || '-'}
 CADENCE TOUCH: Day ${cadenceDay} (${stepName})
 TIMESTAMP: ${ts}
 
@@ -148,8 +150,9 @@ OUTCOME / DISPOSITION: ${outcome}`;
 
   let log = `=== APPOINTMENTLYY SDR CALL LOG ===
 PROSPECT: ${contactName} | ${companyName}
-ROLE: ${title} (${headcount})
-PHONE: ${phone}
+ROLE: ${title || '-'}
+${companySize(headcount) ? `COMPANY SIZE: ${companySize(headcount)!.exact}
+` : ''}PHONE: ${phone}
 CADENCE TOUCH: Day ${cadenceDay} (${stepName})
 TIMESTAMP: ${ts}
 

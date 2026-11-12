@@ -469,8 +469,10 @@ function parseLeadOceanRecord(
   const empCount = exp.company_employees?.number_of_employees;
   const empCode = exp.company_employees?.number_of_employees_code;
   const headcountStr: string = empCount
-    ? `${Number(empCount).toLocaleString()} (${empCode || 'employees'})`
-    : empCode || '';
+    ? `${Number(empCount).toLocaleString('en-US')} employees`
+    : empCode
+      ? `${empCode.replace(/\d{4,}/g, (n: string) => Number(n).toLocaleString('en-US'))} employees`
+      : '';
 
   const industryStr: string = exp.company_industry || exp.company_industries?.[0]?.name3 || '';
 
