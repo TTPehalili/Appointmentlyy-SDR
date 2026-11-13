@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/server/apiSession';
 import { SPARRING_PERSONAS, SparringPersona, getPersonaVoiceByCountry, SparringCountry, findSparringPersona } from '@/lib/personas';
-import { BPO_HITL_FALLBACK, BPO_HITL_PERSONA, BPO_HITL_REBUTTALS } from '@/lib/scriptPacks/bpoAiHitl';
+import { BPO_HITL_PERSONA, BPO_HITL_REBUTTALS, bpoHitlScriptedReply } from '@/lib/scriptPacks/bpoAiHitl';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
 import { ELEVENLABS_MODELS } from '@/lib/elevenlabs/voiceEngine';
 import { synthesizeWithElevenLabs } from '@/lib/server/elevenlabsTts';
@@ -26,99 +26,6 @@ function extractJson(text: string) {
 // Demo Dialer prospect for the AI + Human-in-the-Loop BPO script pack.
 const HITL_PERSONA_ID = BPO_HITL_PERSONA.id;
 
-/**
- * Scripted (no AI model) replies for the AI + Human-in-the-Loop prospect. A cooperative demo prospect:
- * when the rep's line matches a script step she gives that step's expected answer, so a rep reading the
- * script verbatim gets "Sure, go ahead." → "Yes." → "Yeah." → "Yeah." → the email line → calendar /
- * Tuesday → "Tuesday at 10 works." Only an off-script line can draw ONE light objection; whatever the
- * rep says next brings her straight back to the script. No randomness.
- */
-function hitlScriptedReply(
-  persona: SparringPersona,
-  repMessage: string,
-  history: Array<{ role: string; content: string }>,
-  stageKey: string,
-  objectionLine: string
-): { reply: string; completedIds: string[]; sentiment: string; armObservation: string } {
-  const F = BPO_HITL_FALLBACK;
-  const lower = repMessage.toLowerCase().replace(/[‘’]/g, "'");
-  const prospect = history.filter(t => t.role === 'prospect').map(t => String(t.content || '').trim().toLowerCase());
-  const said = (line: string) => prospect.includes(line.toLowerCase());
-  const pick = (lines: string[]) => lines.find(l => !said(l)) ?? lines[lines.length - 1];
-  const lastProspect = prospect[prospect.length - 1] || '';
-  const objLine = objectionLine.trim();
-  const objectionLines = objLine ? [objLine, ...F.objectionLines] : F.objectionLines;
-  const objectionSaid = objectionLines.some(said);
-  const lastWasObjection = objectionLines.some(l => l.toLowerCase() === lastProspect);
-
-  // The script's expected answers, step by step (all lines come from BPO_HITL_FALLBACK).
-  const permissionLines = [F.opener[0], F.opener[1]]; // "[laughs] Okay, sure, go ahead." first
-  const aiLines = [F.opener[3], F.opener[2]]; // "Yes." first
-  const problemLines = [F.problem[0], F.problem[2], F.problem[1]];
-  const concedeLine = F.problem[1]; // "Yeah... escalations are where it hurts."
-  const fairLine = F.problem[2]; // "Yeah, that's fair."
-  const emailLines = [F.solution[1], F.solution[2]];
-  const lookLine = F.close[0];
-  const tuesdayLines = [F.close[1], F.close[2]];
-  const emailSaid = emailLines.some(said);
-  const bookedSaid = F.booked.some(said);
-
-  const is = {
-    tuesday: /\btuesday\b/.test(lower),
-    calendar: /calendar|not gonna happen|not going to happen/.test(lower),
-    days: /\b(monday|wednesday|thursday|friday)\b|good day|which day|what day/.test(lower),
-    demoAsk: /worth a demo|worth a look|show you how|should i show you/.test(lower),
-    solution: /what if i told you|help the business|human.in.the.loop|human specialists|\bpods?\b/.test(lower),
-    problem: /fair to assume|hallucinat|risky|brand takes the hit|autonomous/.test(lower),
-    aiQuestion: /accurate to assume|automation|chatbot/.test(lower),
-    permission: /27 seconds|twenty.seven seconds|tabasco|why i'?m calling|is that fair/.test(lower),
-  };
-
-  const ids = persona.objectives.map(o => o.id);
-  const upTo = (n: number) => ids.slice(0, n);
-  const out = (reply: string, done: number, sentiment: string, armObservation: string) => ({
-    reply,
-    completedIds: upTo(done),
-    sentiment,
-    armObservation,
-  });
-
-  // On-script lines, latest step first (a rep may read a whole step, which repeats earlier keywords).
-  if (bookedSaid || is.tuesday) return out(pick(F.booked), 4, 'agreed', 'Rep held the calendar ask and booked Tuesday at 10 a.m.');
-  if (is.calendar || is.days) {
-    if (is.calendar && !said(lookLine)) {
-      return is.days
-        ? out(`${lookLine} ${pick(tuesdayLines)}`, 3, 'softened', 'Rep turned the email deflection into a calendar ask; prospect countered with Tuesday.')
-        : out(lookLine, 3, 'softened', 'Rep turned the email deflection into a calendar ask.');
-    }
-    return out(pick(tuesdayLines), 3, 'softened', 'Prospect countered with Tuesday.');
-  }
-  if (is.demoAsk) return out(pick(emailLines), 3, 'neutral', 'Rep asked for the demo; prospect deflected to email.');
-  const stage = ['opener', 'problem', 'solution', 'close'].includes(stageKey) ? stageKey : 'opener';
-  if (lastWasObjection) {
-    // The rep answered the objection (with anything): straight back to the script flow.
-    if (stage === 'opener') return out(pick(permissionLines), 0, 'neutral', 'Rep answered the objection; back on script.');
-    if (stage === 'problem') return out(said(concedeLine) ? fairLine : concedeLine, 2, 'softened', 'Rep answered the objection; back on script.');
-    if (stage === 'solution') return out(emailSaid ? fairLine : pick(emailLines), 3, 'neutral', 'Rep answered the objection; back on script.');
-    return out(said(lookLine) ? pick(tuesdayLines) : lookLine, 3, 'softened', 'Rep answered the objection; back on script.');
-  }
-  if (is.solution) return out(F.solution[0], 2, 'softened', 'Prospect agreed AI plus human specialists would help.');
-  if (is.problem) return out(pick(problemLines), 2, 'softened', 'Prospect agreed running AI alone is risky to the brand.');
-  if (is.aiQuestion) return out(is.permission ? F.opener[2] : pick(aiLines), 1, 'neutral', 'Prospect confirmed heavy use of AI automation.');
-  if (is.permission) return out(pick(permissionLines), 0, 'neutral', 'Prospect gave the rep the 27 seconds.');
-
-  // Off-script line.
-  if (!objectionSaid && stage !== 'opener') {
-    // At most one light objection per call, only when the rep goes off-script.
-    const line = objLine || (stage === 'problem' ? F.objectionLines[0] : F.objectionLines[1]);
-    return out(line, stage === 'problem' ? 1 : 2, 'skeptical', 'Prospect raised one objection after an off-script line.');
-  }
-  if (stage === 'opener') return out(said(F.pickup) ? pick(permissionLines) : F.pickup, 0, 'neutral', 'Prospect picked up.');
-  if (stage === 'problem') return out(pick(problemLines), 2, 'softened', 'Prospect went along with the problem step.');
-  if (stage === 'solution') return out(emailSaid ? fairLine : F.solution[0], 2, 'neutral', 'Prospect went along with the solution step.');
-  return out(said(lookLine) ? pick(tuesdayLines) : lookLine, 3, 'softened', 'Prospect went along with the close.');
-}
-
 /** Script assist for the AI + Human-in-the-Loop prospect: the matching pack rebuttal (no other pitch). */
 function hitlScriptAssist(persona: SparringPersona, buyerReply: string): any {
   const lower = buyerReply.toLowerCase();
@@ -136,14 +43,16 @@ function hitlScriptAssist(persona: SparringPersona, buyerReply: string): any {
       },
     };
   }
+  // Objection phrasing only: her discovery answers mention the bot, costs and her team without
+  // being objections.
   const MATCH: Array<[RegExp, string]> = [
-    [/bot|fine with ai/, 'bpo_ai_only'],
+    [/pretty solid|fine with ai|bot handles it/, 'bpo_ai_only'],
     [/offshore/, 'bpo_offshore_burned'],
-    [/security|customers' data|data/, 'bpo_security'],
-    [/cost|expensive|price/, 'bpo_price'],
+    [/security|customers' data/, 'bpo_security'],
+    [/what does (this|it) (actually )?cost|expensive|price/, 'bpo_price'],
     [/email/, 'bpo_send_email'],
     [/priority/, 'bpo_not_priority'],
-    [/locally|in-house/, 'bpo_in_house'],
+    [/hire locally|keeping it in-house|keep (it|this stuff) in-house/, 'bpo_in_house'],
     [/any good/, 'bpo_quality'],
   ];
   const id = MATCH.find(([re]) => re.test(lower))?.[1];
@@ -165,7 +74,8 @@ function generateContextualFallback(
   ctx: { stageKey?: string; objectionLine?: string } = {}
 ): { reply: string; completedIds: string[]; sentiment: string; armObservation: string } {
   if (persona.id === HITL_PERSONA_ID) {
-    return hitlScriptedReply(persona, repMessage, history, ctx.stageKey || '', ctx.objectionLine || '');
+    // One canonical answer per script beat (src/lib/scriptPacks/bpoAiHitl.ts).
+    return bpoHitlScriptedReply(repMessage, history, ctx.stageKey || '', ctx.objectionLine || '');
   }
   const lower = repMessage.toLowerCase();
   const pastReplies = history
@@ -625,23 +535,25 @@ export async function POST(req: NextRequest) {
       close: 'CLOSE: the rep is asking for a meeting. If they handled your objections reasonably, agree to a short meeting and confirm a day/time (e.g. "Fine, Thursday at 2 works, send me the invite."). If they rushed or ignored your concerns, push back once more before agreeing.',
     };
     const stageKey = String(scriptStage || '').toLowerCase().replace(/[^a-z]/g, '');
-    // AI + Human-in-the-Loop prospect: follows the BPO script when the rep does (owner's demo flow).
+    // AI + Human-in-the-Loop prospect: a cooperative, talkative demo prospect for the question-led BPO
+    // script (owner's demo flow). Each step lists her answer to each of the rep's questions.
     const HITL_STAGES: Record<string, string> = {
-      opener: 'OPENER: when the rep asks for 27 seconds (the "I\'m not an AI" / Tabasco line), laugh naturally at the Tabasco joke, then give it: start your reply with the audio tag [laughs] and then say "Okay, sure, go ahead." When they ask if it is accurate to assume you use a lot of AI automation and chatbots to keep operational costs down, answer: "Yes." or "Yes. As much as we can."',
-      problem: 'PROBLEM: the rep says running purely autonomous AI on customer retention, complex workflows and escalations is risky because AI sometimes hallucinates and breaks trust, and your brand takes the hit, not the AI vendor, then asks if that is fair to assume. Agree: "Yeah." Only if they ask a follow-up question, admit one real pain (the bot gives confidently wrong billing or integration answers, escalations pile up on two support leads, a key account churned after a botched escalation).',
-      solution: 'SOLUTION: the rep pitches AI plus trained human specialists in an AI + Human-in-the-Loop service model. When they ask if that would help the business, say "Yeah." When they explain the pod (AI handles repetitive data entry, routing and tier-one volume; specialists supervise outputs, handle exceptions and step in when human judgment is needed; you keep full operational control) and ask if it is worth a demo, answer exactly: "Yeah, if you want to send me an email, I\'d be interested to check out the offering."',
-      close: 'CLOSE: the rep agrees to send the email but says "not in the calendar, not gonna happen" and asks to put a demo in the calendar. Laugh and check your calendar ("Ha, fair enough. Hang on, let me look..."). Wednesday and Thursday are packed, so when they offer days, counter with Tuesday: "Wednesday and Thursday are rough. How about Tuesday?" When they ask for Tuesday morning at 10 a.m., accept: "Tuesday at 10 works. Send me the invite." This replaces any rule about picking one of the times they offered.',
+      opener: 'OPENER (two lines). 1) The "I\'m not an AI" / 27 seconds / Tabasco permission ask: laugh at the Tabasco joke and give them the time: start your reply with the audio tag [laughs], then say "Okay, sure, go ahead." (you may add a few playful words, e.g. that you\'re holding them to the Tabasco). 2) "I\'m with ..." then "how are you handling support and ops volume today?": mostly AI. A chatbot handles tier-one and automation covers a lot of back-office work, which is how you kept headcount flat while you grew; anything the bot can\'t handle goes to your two support leads, who are stretched.',
+      problem: 'PROBLEM (discovery: answer each question with its fact). "When the AI gets something wrong, who catches it today?": honestly, usually the customer catches it first; your two leads only see it once the ticket escalates; last month the bot quoted the wrong refund policy to a bigger account and you nearly lost them. "How often in a normal week?": a few times a week, worse around month-end when billing, invoice and proration questions spike. "What does it cost you most?": churn risk mostly (your customers are finance teams, so one wrong answer makes them doubt the whole product), plus credits you hand out to calm people down. "How many people handle that today?": your two support leads plus you jumping in when it\'s bad, so three of you, on top of your actual jobs.',
+      solution: 'SOLUTION. After their one-line fit ("that\'s exactly where we fit": AI on tier-1 volume, specialists check its work and take the exceptions), react with short, genuine interest as a statement, not a question (the rep moves straight on to the next question), e.g. "Okay, that\'s actually interesting. That\'s exactly what we\'re missing." "If you could fix one workflow first, which would it be?": tier-one plus escalations, because someone checking the bot and owning escalations before they hit your leads would take the pressure off, especially at month-end. "Besides you, who else would weigh in?": you\'d loop in your CFO since it touches budget, but ops is your call and they usually back you when you bring a clear plan.',
+      close: 'CLOSE. "Worth a 15-minute look?": answer exactly "Yeah, if you want to send me an email, I\'d be interested to check out the offering." (you may add one short reason, e.g. it\'s hectic right now). When they agree to the email but say "not in the calendar, not gonna happen" and offer Wednesday or Thursday: laugh, check your calendar ("Ha, fair enough. Hang on, let me look..."), say Wednesday and Thursday are rough and ask "How about Tuesday?". When they ask for Tuesday (morning) at 10 a.m., accept: "Tuesday at 10 works. Send me the invite." This replaces any rule about picking one of the times they offered.',
     };
     const hitlLiveCallBlock = `
 
-COOPERATIVE DEMO PROSPECT (TOP PRIORITY: this overrides every sparring rule above, including "throw an objection in every turn", "never agree on turn 1 or 2" and "do not volunteer information"):
-- This is a live demo of a real cold-call script. When the rep follows the script, you go along with it and answer each step the way the script expects, so the call flows Opener → Problem → Solution → Close → booked.
-- If the rep's line matches the current script step (the 27-second / Tabasco permission ask; "accurate to assume" about AI automation; "fair to assume" about AI risk; "what if I told you" / "would that help"; "is it worth a demo"; the calendar ask), reply with the short, agreeable answer the script expects ("Sure, go ahead.", "Yes.", "Yeah."). Do not add new objections, questions or conditions to an on-script line.
-- Objections are a light touch only: at most ONE in the whole call, and only when the rep goes off-script or right after your email line. Once the rep answers it with anything reasonable, go straight back to the script flow. Never derail, stall or refuse to book when the rep sticks to the script.
-${difficultyLine}- Current script step on the rep's screen: ${HITL_STAGES[stageKey] || 'Infer the step from what the rep just said, and give that step\'s expected answer.'}
-${stepText ? `- The line the rep is reading for this step (roughly): ${stepText}. Respond to THAT line with the step's expected answer.
+COOPERATIVE DEMO PROSPECT (TOP PRIORITY: this overrides every sparring rule above, including "throw an objection in every turn", "never agree on turn 1 or 2", "do not volunteer information", "push back on qualification questions" and the 15 to 25 word limit):
+- This is a live demo of a real cold-call script built on short discovery questions: the rep asks, and you do most of the talking (about 70% of the words on this call are yours). The call flows Opener → Problem → Solution → Close → booked.
+- When the rep asks a discovery question, answer THAT question in 1 to 3 specific, human spoken sentences (about 25 to 45 words) using your fact for it (listed per step below), like you're thinking out loud about your own operation. Answer only what was asked and save the other facts for the questions that come later. Never stall, deflect or refuse an on-script question, and never answer one with just "Yes." or "Yeah."
+- When the rep makes a statement instead of asking (the permission ask, their one-line fit), give a short, natural reaction.
+- Stay cooperative and on-script: no new objections or conditions on an on-script line. Objections are a light touch only: at most ONE in the whole call, and only when the rep goes off-script or right after your email line. Once the rep answers it with anything reasonable, go straight back to the script flow. Never derail, stall or refuse to book when the rep sticks to the script.
+${difficultyLine}- Current script step on the rep's screen: ${HITL_STAGES[stageKey] || 'Infer the step from what the rep just said, and answer that question with your facts.'}
+${stepText ? `- The lines on the rep's screen for this step (short beats they read one at a time, roughly): ${stepText}. Work out which one they just said and answer it.
 ` : ''}${objLabel ? `- If (and only if) the rep goes off-script, you may use this as your one light objection: "${objLine}" (${objLabel}). Accept any reasonable answer and move on.
-` : ''}- Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply. Never mention budget freezes, lead lists or contact data.
+` : ''}- Never more than about 45 words per reply. No lists, no stage directions, no quotes around your reply. Never mention budget freezes, lead lists or contact data, and never invent statistics about real companies.
 ${AUDIO_TAG_RULE}`;
     const liveCallBlock = liveCall && hitlBuyer
       ? hitlLiveCallBlock

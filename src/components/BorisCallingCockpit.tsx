@@ -69,6 +69,8 @@ import {
   getScriptPack,
   parseScriptPackId,
   type PackRebuttal,
+  type ScriptBeat,
+  type ScriptBeatAnswer,
   type ScriptPackId,
 } from '@/lib/scriptPacks';
 import { useTelephony } from '@/lib/telephony/useTelephony';
@@ -339,7 +341,9 @@ export default function BorisCallingCockpit({
   // everywhere else the default pack applies, i.e. exactly the previous behaviour.
   const showScriptPicker = isDemo && !practiceMode && !viaVicidial;
   const activePack = getScriptPack(showScriptPicker ? scriptPackChoice : DEFAULT_SCRIPT_PACK_ID);
-  const packQualify = activePack.qualify;
+  // Script packs with beats (demo BPO script): short lines/questions with the prospect's answers as
+  // buttons; they replace the qualify buttons. null everywhere else (unchanged UI).
+  const packBeats = activePack.beats;
   const notesTemplate = activePack.neutralCrmNotes ? ('neutral' as const) : undefined;
   const callingAsValue = callingAsInput ?? (sessionTenant || '');
   const PRESET_REBUTTALS: PackRebuttal[] = activePack.rebuttals ?? getPresetRebuttals(isDemo);
@@ -463,6 +467,7 @@ export default function BorisCallingCockpit({
   }, []);
 
   const activeStepData = scriptSteps[currentStep - 1] || scriptSteps[0];
+  const activeBeatStep = packBeats ? packBeats.find(s => s.step === currentStep) ?? null : null;
 
   // Helper to construct synthesized CRM notes
   const buildNotes = (params?: {
@@ -483,7 +488,7 @@ export default function BorisCallingCockpit({
       department: 'Operations & BDM',
       headcount: headcount || '100+ seats',
       phone: params?.cPhone || phone,
-      cadenceDay: 2,
+      cadenceDay: activeLead.cadenceDay || 2,
       stepName: scriptSteps[currentStep - 1]?.name || 'Day 2 Phone Outreach',
       telemetry: activeTel,
       disposition: activeDisp,
@@ -618,7 +623,7 @@ export default function BorisCallingCockpit({
       headcount: lead.headcount,
       phone: lead.phone,
       cadenceDay: lead.cadenceDay || 2,
-      stepName: '1. The Opener',
+      stepName: scriptSteps[0]?.name || '1. The Opener',
       telemetry: INITIAL_TELEMETRY_STATE,
       disposition: null,
       customRepNotes: '',
@@ -709,21 +714,44 @@ export default function BorisCallingCockpit({
     setNotesDraft(buildNotes({ tel: nextTel }));
   };
 
-  // Script-pack qualify buttons (demo BPO script): step-2 notes and the service of interest.
-  const handleTogglePackQualify = (note: string) => {
-    const current = telemetry.qualifyNotes ?? [];
-    const on = !current.includes(note);
-    const order = packQualify?.step2.map(q => q.note) ?? [];
-    const nextNotes = order.filter(n => (n === note ? on : current.includes(n)));
-    const nextTel = { ...telemetry, qualifyNotes: nextNotes };
+  // Script-pack beats (demo BPO script): the rep records the prospect's answer to each beat (single
+  // select, click again to clear). Answers go to the CRM note in script order; a slot answer books the
+  // meeting like the slot buttons, "Other time" only records. Rebuilds the CRM summary, never a lead note.
+  const handleBeatAnswer = (beat: ScriptBeat, answer: ScriptBeatAnswer) => {
+    if (!packBeats) return;
+    const current = telemetry.beatAnswers ?? {};
+    const clearing = current[beat.id] === answer.id;
+    const beatAnswers = { ...current };
+    if (clearing) delete beatAnswers[beat.id];
+    else beatAnswers[beat.id] = answer.id;
+    const allBeats = packBeats.flatMap(st => st.beats);
+    const qualifyNotes = allBeats.flatMap(b => {
+      if (b.meeting) return [];
+      const picked = b.answers.find(x => x.id === beatAnswers[b.id]);
+      return picked ? [`${b.crmLabel}: ${picked.label}`] : [];
+    });
+    let nextTel: CallTelemetryState = { ...telemetry, beatAnswers, qualifyNotes };
+    let nextDisp = disposition;
+    if (beat.meeting) {
+      if (!clearing && answer.slot) {
+        // Same flow as the slot buttons (handleSelectSlot).
+        setBookingSlot(answer.slot);
+        nextDisp = 'Meeting Booked';
+        setDisposition(nextDisp);
+        nextTel = { ...nextTel, screenSharePitched: true, screenShareSlot: answer.slot, meetingNote: '' };
+      } else {
+        // Cleared or "Other time": no slot held (the outcome the rep picked stays as it is).
+        setBookingSlot(null);
+        nextTel = {
+          ...nextTel,
+          screenSharePitched: !clearing,
+          screenShareSlot: '',
+          meetingNote: clearing ? '' : `${answer.label} requested (to confirm)`,
+        };
+      }
+    }
     setTelemetry(nextTel);
-    setNotesDraft(buildNotes({ tel: nextTel }));
-  };
-
-  const handleSetPackService = (serv: string) => {
-    const nextTel = { ...telemetry, serviceInterest: telemetry.serviceInterest === serv ? '' : serv };
-    setTelemetry(nextTel);
-    setNotesDraft(buildNotes({ tel: nextTel }));
+    setNotesDraft(buildNotes({ tel: nextTel, disp: nextDisp }));
   };
 
   const handleSelectSlot = (slot: string) => {
@@ -774,7 +802,7 @@ export default function BorisCallingCockpit({
       department: 'Operations & BDM',
       headcount,
       phone,
-      cadenceDay: 2,
+      cadenceDay: activeLead.cadenceDay || 2,
       stepName: scriptSteps[currentStep - 1]?.name || '1. The Opener',
       telemetry: INITIAL_TELEMETRY_STATE,
       disposition: null,
@@ -913,6 +941,16 @@ export default function BorisCallingCockpit({
   const goToStep = (step: number) => {
     setSelectedRebuttalId(null);
     setCurrentStep(step);
+    // Keep the CRM summary's "CADENCE TOUCH: Day N (<step>)" on the step now open. Only that line
+    // changes, so anything the rep typed into the summary stays.
+    const stepName = scriptSteps[step - 1]?.name;
+    if (stepName) {
+      const next = notesDraft.replace(/^(CADENCE TOUCH: Day \d+) \(.*\)$/m, (_m, head: string) => `${head} (${stepName})`);
+      if (next !== notesDraft) {
+        if (notesEditedRef.current === notesDraft) notesEditedRef.current = next;
+        setNotesDraft(next);
+      }
+    }
     if (practiceMode && isCallingActive && demoCallPhase === 'connected') {
       setPracticeStepsReached(prev => (prev.includes(step) ? prev : [...prev, step]));
     }
@@ -2079,9 +2117,66 @@ export default function BorisCallingCockpit({
                       </span>
                     </div>
 
-                    <p className="select-text text-prompter">
-                      {interpolate(activeStepData.spokenText)}
-                    </p>
+                    {activeBeatStep ? (
+                      <div className="space-y-2.5">
+                        {activeBeatStep.beats.map((beat) => {
+                          const pickedId = telemetry.beatAnswers?.[beat.id];
+                          return (
+                            <div
+                              key={beat.id}
+                              data-testid="script-beat"
+                              data-beat-id={beat.id}
+                              className="rounded-md border border-ink-800 bg-ink-900 p-3"
+                            >
+                              {beat.caption && (
+                                <span className="mb-1 block text-caption text-ink-400">{beat.caption}</span>
+                              )}
+                              <p className="select-text text-prompter">{interpolate(beat.text)}</p>
+                              <p className="mt-1.5 flex items-start gap-1.5 text-small text-ink-400">
+                                <Lightbulb className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                                <span>{beat.deliveryTip}</span>
+                              </p>
+                              {beat.answers.length > 0 && (
+                                <div
+                                  className="mt-2.5 flex flex-wrap items-center gap-1.5"
+                                  role="group"
+                                  aria-label={`Their answer: ${beat.crmLabel}`}
+                                >
+                                  <span className="mr-0.5 text-caption text-ink-400">Their answer:</span>
+                                  {beat.answers.map((ans) => {
+                                    const on = pickedId === ans.id;
+                                    return (
+                                      <button
+                                        key={ans.id}
+                                        type="button"
+                                        data-testid="beat-answer"
+                                        data-beat-id={beat.id}
+                                        data-answer-id={ans.id}
+                                        aria-pressed={on}
+                                        onClick={() => handleBeatAnswer(beat, ans)}
+                                        className={`focus-ring inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border px-2.5 text-small font-medium transition-colors duration-150 ${on
+                                            ? ans.slot
+                                              ? 'border-transparent bg-success-500 text-ink-900'
+                                              : 'border-transparent bg-ink-50 text-ink-900'
+                                            : 'border-ink-700 bg-ink-800 text-ink-50 hover:bg-ink-700'
+                                          }`}
+                                      >
+                                        {on ? <Check className="size-3.5" aria-hidden /> : null}
+                                        <span>{ans.label}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="select-text text-prompter">
+                        {interpolate(activeStepData.spokenText)}
+                      </p>
+                    )}
 
                     <div className="mt-4 flex items-center justify-between gap-2 border-t border-ink-800 pt-3">
                       <span className="flex items-start gap-1.5 text-small text-ink-400">
@@ -2101,9 +2196,9 @@ export default function BorisCallingCockpit({
                 </div>
               )}
 
-              {/* COMPACT QUALIFICATION CHECKPOINTS */}
+              {/* COMPACT QUALIFICATION CHECKPOINTS (beat packs record answers on the beat cards instead) */}
               <div className="space-y-3">
-                {currentStep === 1 && (
+                {currentStep === 1 && !packBeats && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
                       Quick qualify: role check
@@ -2196,36 +2291,7 @@ export default function BorisCallingCockpit({
                   </div>
                 )}
 
-                {currentStep === 2 && isDemo && packQualify && (
-                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
-                    <span className="block text-caption text-fg-tertiary">
-                      Quick qualify: AI use and risk
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      {packQualify.step2.map((q) => {
-                        const on = (telemetry.qualifyNotes ?? []).includes(q.note);
-                        return (
-                          <button
-                            key={q.id}
-                            type="button"
-                            onClick={() => handleTogglePackQualify(q.note)}
-                            aria-pressed={on}
-                            title={q.note}
-                            className={`py-1.5 px-3 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-between cursor-pointer ${on
-                                ? 'bg-action border-transparent text-action-fg'
-                                : 'bg-surface border-line-strong text-fg hover:bg-subtle'
-                              }`}
-                          >
-                            <span>{q.label}</span>
-                            {on ? <Check className="size-3.5" /> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {currentStep === 2 && isDemo && !packQualify && (
+                {currentStep === 2 && isDemo && !packBeats && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
                       Quick qualify: lead quality and pipeline
@@ -2258,7 +2324,7 @@ export default function BorisCallingCockpit({
                   </div>
                 )}
 
-                {currentStep === 3 && (
+                {currentStep === 3 && !packBeats && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-caption text-fg-tertiary">
@@ -2278,12 +2344,12 @@ export default function BorisCallingCockpit({
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                      {(packQualify?.services ?? ['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office']).map((serv) => (
+                      {['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office'].map((serv) => (
                         <button
                           key={serv}
                           type="button"
-                          onClick={() => (packQualify ? handleSetPackService(serv) : handleSetService(serv))}
-                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${(packQualify ? telemetry.serviceInterest : telemetry.primaryService) === serv
+                          onClick={() => handleSetService(serv)}
+                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${telemetry.primaryService === serv
                               ? 'bg-action border-transparent text-action-fg'
                               : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                             }`}
@@ -2295,13 +2361,13 @@ export default function BorisCallingCockpit({
                   </div>
                 )}
 
-                {currentStep === 4 && (
+                {currentStep === 4 && !packBeats && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
                       Quick qualify: lock a demo slot
                     </span>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {(packQualify?.slots ?? ['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM']).map((slot) => (
+                      {['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM'].map((slot) => (
                         <button
                           key={slot}
                           type="button"

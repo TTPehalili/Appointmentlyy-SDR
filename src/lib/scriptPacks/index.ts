@@ -11,7 +11,7 @@
 import type { PhoneScriptStep } from '@/lib/parsers/armExtractor';
 import type { ARMRebuttal } from '@/lib/dialerRebuttals';
 import type { SparringPersona } from '@/lib/personas';
-import { BPO_HITL_PERSONA, BPO_HITL_QUALIFY, BPO_HITL_REBUTTALS, BPO_HITL_STEPS } from './bpoAiHitl';
+import { BPO_HITL_BEAT_STEPS, BPO_HITL_PERSONA, BPO_HITL_REBUTTALS, BPO_HITL_STEPS } from './bpoAiHitl';
 
 export type ScriptPackId = 'appointmentlyy' | 'bpo_ai_hitl';
 
@@ -23,7 +23,7 @@ export const DEFAULT_SCRIPT_PACK_ID: ScriptPackId = 'appointmentlyy';
 
 export const SCRIPT_PACK_OPTIONS: { value: ScriptPackId; label: string }[] = [
   { value: 'appointmentlyy', label: 'Appointmentlyy script' },
-  { value: 'bpo_ai_hitl', label: 'BPO script (AI + Human-in-the-Loop)' },
+  { value: 'bpo_ai_hitl', label: 'BPO script' },
 ];
 
 export function parseScriptPackId(v: unknown): ScriptPackId {
@@ -33,23 +33,57 @@ export function parseScriptPackId(v: unknown): ScriptPackId {
 /** An objection chip; packs may add a second comeback for when the prospect pushes back again. */
 export type PackRebuttal = ARMRebuttal & { ifPushedBack?: string };
 
-export interface ScriptPackQualify {
-  step2: { id: string; label: string; note: string }[];
-  services: string[];
-  slots: string[];
+/** One answer button under a beat: something the prospect may say back to that exact line. */
+export interface ScriptBeatAnswer {
+  id: string;
+  /** Button text, also written to the CRM note ("<beat crmLabel>: <label>"). */
+  label: string;
+  /** Booking answers: the meeting slot this answer books (same flow as the slot buttons). */
+  slot?: string;
+}
+
+/**
+ * A beat: one short rep line and/or question, with the prospect's possible answers as buttons
+ * directly beneath it. Script packs with beats render each beat as its own teleprompter card.
+ */
+export interface ScriptBeat {
+  id: string;
+  /** What the rep says (merge fields allowed). */
+  text: string;
+  deliveryTip: string;
+  /** CRM note label, e.g. "Who catches AI mistakes" -> "Who catches AI mistakes: Customers do". */
+  crmLabel: string;
+  /** Small label shown above the card, e.g. "If they ask for an email". */
+  caption?: string;
+  /** The prospect's likely answers (single-select). Empty for a statement. */
+  answers: ScriptBeatAnswer[];
+  /** true: the answer goes under MEETING in the CRM note instead of QUALIFICATION. */
+  meeting?: boolean;
+}
+
+/** A teleprompter step made of beats (the step's spokenText is its beat lines joined). */
+export interface ScriptBeatStep {
+  step: number;
+  name: string;
+  goal: string;
+  deliveryTip: string;
+  beats: ScriptBeat[];
 }
 
 export interface ScriptPack {
   id: ScriptPackId;
   label: string;
   steps: PhoneScriptStep[];
+  /**
+   * null: the teleprompter shows whole steps with the built-in qualify buttons. Otherwise the same
+   * steps split into beats with answer buttons (replaces the qualify buttons).
+   */
+  beats: ScriptBeatStep[] | null;
   /** null: the workspace's preset objection chips. */
   rebuttals: PackRebuttal[] | null;
   /** null: the default demo prospect (Julian Vance). */
   persona: SparringPersona | null;
-  /** null: the built-in demo qualify buttons, services and slots. */
-  qualify: ScriptPackQualify | null;
-  /** true: the CRM summary uses the generic call log (no Appointmentlyy talk track). */
+  /** true: the CRM summary uses the generic call log with a qualification section (no Appointmentlyy talk track). */
   neutralCrmNotes: boolean;
   /** The demo sample lead the Dialer opens when this pack is picked. */
   sampleLeadId: string;
@@ -96,9 +130,9 @@ const PACKS: Record<ScriptPackId, ScriptPack> = {
     id: 'appointmentlyy',
     label: 'Appointmentlyy script',
     steps: APPOINTMENTLYY_DEMO_STEPS,
+    beats: null,
     rebuttals: null,
     persona: null,
-    qualify: null,
     neutralCrmNotes: false,
     sampleLeadId: APPOINTMENTLYY_SAMPLE_LEAD_ID,
   },
@@ -106,9 +140,9 @@ const PACKS: Record<ScriptPackId, ScriptPack> = {
     id: 'bpo_ai_hitl',
     label: 'BPO script (AI + Human-in-the-Loop)',
     steps: BPO_HITL_STEPS,
+    beats: BPO_HITL_BEAT_STEPS,
     rebuttals: BPO_HITL_REBUTTALS,
     persona: BPO_HITL_PERSONA,
-    qualify: BPO_HITL_QUALIFY,
     neutralCrmNotes: true,
     sampleLeadId: BPO_HITL_SAMPLE_LEAD_ID,
   },

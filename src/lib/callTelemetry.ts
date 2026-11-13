@@ -15,10 +15,14 @@ export interface CallTelemetryState {
   zeroPrepConfirmed: boolean;
   attendanceVerified: boolean;
   directMobileCaptured: string;
-  /** Script-pack qualify notes the rep ticked (generic call log only). */
+  /**
+   * Script-pack beats (demo script packs only): the answer the rep picked per beat (beat id -> answer id),
+   * and the matching CRM lines ("<label>: <answer>") in script order for the QUALIFICATION section.
+   */
+  beatAnswers?: Record<string, string>;
   qualifyNotes?: string[];
-  /** Script-pack service the prospect is interested in (generic call log only). */
-  serviceInterest?: string;
+  /** Script-pack meeting answer that isn't a booked slot, e.g. "Other time requested (to confirm)". */
+  meetingNote?: string;
 }
 
 export const INITIAL_TELEMETRY_STATE: CallTelemetryState = {
@@ -52,7 +56,8 @@ export interface NoteSynthesizerParams {
   customRepNotes?: string;
   /**
    * 'workspace' (default): the demo workspace's own talk track there, the generic call log elsewhere.
-   * 'neutral': always the generic call log, with a qualification section (demo script packs).
+   * 'neutral': always the generic call log, with a QUALIFICATION section listing every answered
+   * script beat (demo script packs).
    */
   template?: 'workspace' | 'neutral';
 }
@@ -91,15 +96,14 @@ export function synthesizeCrmNotes({
       : telemetry.screenSharePitched
       ? 'Meeting proposed'
       : 'Not booked yet';
-    // Script packs (demo workspace) add what the rep qualified; client workspaces never pass this.
-    const qualifyLines = [
-      ...(telemetry.qualifyNotes && telemetry.qualifyNotes.length > 0
-        ? telemetry.qualifyNotes.map((n) => `- ${n}`)
-        : ['- Pending qualification']),
-      `- Value pitched: ${telemetry.problemFixDiscussed ? 'Yes' : 'Pending'}`,
-      `- Service interest: ${telemetry.serviceInterest || 'Not chosen yet'}`,
-    ];
     if (forceNeutral) {
+      // Script packs (demo workspace): every beat the rep recorded an answer for, in script order.
+      const qualifyLines = telemetry.qualifyNotes && telemetry.qualifyNotes.length > 0
+        ? telemetry.qualifyNotes.map((n) => `- ${n}`)
+        : ['- No answers recorded yet'];
+      const packMeetingLine = telemetry.screenShareSlot
+        ? `Booked: ${telemetry.screenShareSlot}`
+        : telemetry.meetingNote || (telemetry.screenSharePitched ? 'Meeting proposed' : 'Not booked yet');
       let generic = `=== CALL LOG ===
 PROSPECT: ${contactName || '-'}${companyName ? ` | ${companyName}` : ''}
 ROLE: ${title || '-'}
@@ -108,14 +112,11 @@ ${companySize(headcount) ? `COMPANY SIZE: ${companySize(headcount)!.exact}
 CADENCE TOUCH: Day ${cadenceDay} (${stepName})
 TIMESTAMP: ${ts}
 
-1. ROLE VERIFICATION:
-- Status: ${roleLine}
-
-2. QUALIFICATION:
+1. QUALIFICATION:
 ${qualifyLines.join('\n')}
 
-3. MEETING:
-- Status: ${meetingLine}
+2. MEETING:
+- Status: ${packMeetingLine}
 - Direct mobile: ${telemetry.directMobileCaptured || phone || 'Not provided'}
 
 OUTCOME / DISPOSITION: ${outcome}`;
