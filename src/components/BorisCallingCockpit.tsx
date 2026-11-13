@@ -34,7 +34,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
-import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, SegmentedControl, buttonClasses } from '@/components/ui';
+import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, SegmentedControl, Select, Input, buttonClasses } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import {
   CADENCE_TOUCHES,
@@ -60,6 +60,17 @@ import { PracticeBanner, PracticeSummaryDialog, type PracticeSummaryData } from 
 import { type PracticeSetup, buildPracticeLead, getPracticePersona } from '@/lib/practice';
 import { SPARRING_PERSONAS, getPersonaVoiceByCountry } from '@/lib/personas';
 import { getPresetRebuttals } from '@/lib/dialerRebuttals';
+import {
+  APPOINTMENTLYY_DEMO_STEPS,
+  CALLING_AS_STORAGE_KEY,
+  DEFAULT_SCRIPT_PACK_ID,
+  SCRIPT_PACK_OPTIONS,
+  SCRIPT_PACK_STORAGE_KEY,
+  getScriptPack,
+  parseScriptPackId,
+  type PackRebuttal,
+  type ScriptPackId,
+} from '@/lib/scriptPacks';
 import { useTelephony } from '@/lib/telephony/useTelephony';
 import ColdEmailAssistant, { type AssistantAutoStart } from '@/components/email/ColdEmailAssistant';
 import type { AssistantCallContext } from '@/lib/coldEmailAssistant';
@@ -197,8 +208,31 @@ export default function BorisCallingCockpit({
   const practicePersona = practice ? getPracticePersona(practice.personaId) : null;
   const practiceMode = Boolean(practice && practicePersona);
   const practiceLead = useMemo(() => (practicePersona ? buildPracticeLead(practicePersona) : null), [practicePersona]);
-  // Who answers a simulated call: the practice persona, else the demo workspace's Julian Vance.
-  const prospectPersona = practicePersona ?? DEMO_PROSPECT_PERSONA;
+  // Demo workspace only: which call script the Dialer shows (Script picker), and who the rep says
+  // they call for in the BPO script ({{calling_as}}; empty until edited: the workspace name).
+  // Both remembered on this computer.
+  const [scriptPackChoice, setScriptPackChoice] = useState<ScriptPackId>(DEFAULT_SCRIPT_PACK_ID);
+  const [callingAsInput, setCallingAsInput] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const savedPack = parseScriptPackId(localStorage.getItem(SCRIPT_PACK_STORAGE_KEY));
+      if (savedPack !== DEFAULT_SCRIPT_PACK_ID) setScriptPackChoice(savedPack);
+      const savedCallingAs = localStorage.getItem(CALLING_AS_STORAGE_KEY);
+      if (savedCallingAs !== null) setCallingAsInput(savedCallingAs);
+    } catch {}
+  }, []);
+  const changeScriptPack = (id: ScriptPackId) => {
+    setScriptPackChoice(id);
+    try {
+      localStorage.setItem(SCRIPT_PACK_STORAGE_KEY, id);
+    } catch {}
+  };
+  const changeCallingAs = (value: string) => {
+    setCallingAsInput(value);
+    try {
+      localStorage.setItem(CALLING_AS_STORAGE_KEY, value);
+    } catch {}
+  };
   // Demo workspace only: Call either starts the simulated AI prospect (for client demos) or opens the
   // computer's phone app via tel: (e.g. Phone Link) for real prospecting. Remembered on this computer.
   const [demoCallMode, setDemoCallMode] = useState<'ai' | 'phone'>('ai');
@@ -215,7 +249,6 @@ export default function BorisCallingCockpit({
   };
   const simulatedCall = practiceMode || (isDemo && demoCallMode === 'ai');
   const repName = sessionRep || '';
-  const PRESET_REBUTTALS = getPresetRebuttals(isDemo);
   const adminClearance = isRoleAdmin(role);
 
   // Tab State for Right Column: 'notes' | 'footprint' | 'callbacks'
@@ -301,6 +334,18 @@ export default function BorisCallingCockpit({
   const telephony = useTelephony();
   const viaVicidial = !practiceMode && telephony.mode === 'vicidial';
   const callActive = viaVicidial ? telephony.agentState === 'in_call' : isCallingActive;
+
+  // Script pack: only the demo workspace's own Dialer (not practice, not VICIdial) uses the picker;
+  // everywhere else the default pack applies, i.e. exactly the previous behaviour.
+  const showScriptPicker = isDemo && !practiceMode && !viaVicidial;
+  const activePack = getScriptPack(showScriptPicker ? scriptPackChoice : DEFAULT_SCRIPT_PACK_ID);
+  const packQualify = activePack.qualify;
+  const notesTemplate = activePack.neutralCrmNotes ? ('neutral' as const) : undefined;
+  const callingAsValue = callingAsInput ?? (sessionTenant || '');
+  const PRESET_REBUTTALS: PackRebuttal[] = activePack.rebuttals ?? getPresetRebuttals(isDemo);
+  // Who answers a simulated call: the practice persona, else the pack's prospect, else the demo
+  // workspace's Julian Vance.
+  const prospectPersona = practicePersona ?? activePack.persona ?? DEMO_PROSPECT_PERSONA;
   const showTelephonyNotice = (message: string) => {
     setActivityToast(`VICIdial: ${message}`);
     setTimeout(() => setActivityToast(null), 5000);
@@ -350,36 +395,8 @@ export default function BorisCallingCockpit({
 
   // Spoken Steps Definitions (Dynamically hydrated from synthesized playbook or system default)
   // The demo script is the platform owner's own pitch; client workspaces get a neutral starter.
-  const DEMO_SCRIPT_STEPS = [
-    {
-      step: 1,
-      name: '1. Opener',
-      goal: 'Earn 30 seconds and tie the call to yesterday\'s email.',
-      spokenText: `"Hi {{first_name}}, it's {{rep_name}} from Appointmentlyy, I emailed you yesterday about reps burning dials on bad lead data. Got 30 seconds for the short version?"`,
-      deliveryTip: 'Slow, calm, peer tone. Never apologize for calling.'
-    },
-    {
-      step: 2,
-      name: '2. Problem',
-      goal: 'Surface the lead-quality and pipeline-health pain in one question.',
-      spokenText: `"Quick question: how much of your floor's day goes on wrong numbers, bounced emails and leads that were never a fit, and how predictable is the pipeline that's left?"`,
-      deliveryTip: 'Ask, then stop talking. Let them vent.'
-    },
-    {
-      step: 3,
-      name: '3. Solution',
-      goal: 'One line of value: verified leads, reps ready in 72 hours, live help.',
-      spokenText: `"That's what we fix: verified, on-fit contacts to dial, reps who practice on AI buyers first, and live objection help on the call, so more dials turn into held meetings. How are you tracking pipeline by stage today?"`,
-      deliveryTip: 'Talk floor economics and rep confidence, not features.'
-    },
-    {
-      step: 4,
-      name: '4. Close',
-      goal: 'Book 15 minutes with founder Emil.',
-      spokenText: `"{{first_name}}, let's get you 15 minutes with Emil, our founder, to run this on your floor numbers. Which works better, Thursday at 2 PM or Friday morning?"`,
-      deliveryTip: 'Give two times, then stay quiet.'
-    }
-  ];
+  // The demo workspace's script comes from its script pack (Appointmentlyy pack: APPOINTMENTLYY_DEMO_STEPS).
+  const DEMO_SCRIPT_STEPS = activePack.steps;
 
   const NEUTRAL_SCRIPT_STEPS = [
     {
@@ -414,8 +431,12 @@ export default function BorisCallingCockpit({
   const DEFAULT_SCRIPT_STEPS = isDemo ? DEMO_SCRIPT_STEPS : NEUTRAL_SCRIPT_STEPS;
 
   // A playbook saved for this workspace wins; otherwise the default for this workspace.
-  const [savedScriptSteps, setScriptSteps] = useState<typeof DEMO_SCRIPT_STEPS | null>(null);
-  const scriptSteps = savedScriptSteps ?? DEFAULT_SCRIPT_STEPS;
+  const [savedScriptSteps, setScriptSteps] = useState<typeof APPOINTMENTLYY_DEMO_STEPS | null>(null);
+  // A script picked explicitly in the demo Dialer (not the default) always shows its own steps;
+  // otherwise a saved playbook wins over the default script, as before.
+  const scriptSteps = showScriptPicker && activePack.id !== DEFAULT_SCRIPT_PACK_ID
+    ? DEFAULT_SCRIPT_STEPS
+    : savedScriptSteps ?? DEFAULT_SCRIPT_STEPS;
 
   useEffect(() => {
     const loadTenantScripts = () => {
@@ -466,7 +487,8 @@ export default function BorisCallingCockpit({
       stepName: scriptSteps[currentStep - 1]?.name || 'Day 2 Phone Outreach',
       telemetry: activeTel,
       disposition: activeDisp,
-      customRepNotes: params?.customNotes !== undefined ? params.customNotes : customRepNotes
+      customRepNotes: params?.customNotes !== undefined ? params.customNotes : customRepNotes,
+      template: notesTemplate
     });
   };
 
@@ -481,7 +503,8 @@ export default function BorisCallingCockpit({
     stepName: '1. The Opener',
     telemetry: INITIAL_TELEMETRY_STATE,
     disposition: null,
-    customRepNotes: ''
+    customRepNotes: '',
+    template: notesTemplate
   }));
 
   // Sync tenant calendar link from storage
@@ -518,7 +541,8 @@ export default function BorisCallingCockpit({
             stepName: '1. The Opener',
             telemetry: INITIAL_TELEMETRY_STATE,
             disposition: null,
-            customRepNotes: ''
+            customRepNotes: '',
+            template: notesTemplate
           }));
         }
       } else {
@@ -597,7 +621,8 @@ export default function BorisCallingCockpit({
       stepName: '1. The Opener',
       telemetry: INITIAL_TELEMETRY_STATE,
       disposition: null,
-      customRepNotes: ''
+      customRepNotes: '',
+      template: notesTemplate
     }));
 
     // Sync active email globally
@@ -684,6 +709,23 @@ export default function BorisCallingCockpit({
     setNotesDraft(buildNotes({ tel: nextTel }));
   };
 
+  // Script-pack qualify buttons (demo BPO script): step-2 notes and the service of interest.
+  const handleTogglePackQualify = (note: string) => {
+    const current = telemetry.qualifyNotes ?? [];
+    const on = !current.includes(note);
+    const order = packQualify?.step2.map(q => q.note) ?? [];
+    const nextNotes = order.filter(n => (n === note ? on : current.includes(n)));
+    const nextTel = { ...telemetry, qualifyNotes: nextNotes };
+    setTelemetry(nextTel);
+    setNotesDraft(buildNotes({ tel: nextTel }));
+  };
+
+  const handleSetPackService = (serv: string) => {
+    const nextTel = { ...telemetry, serviceInterest: telemetry.serviceInterest === serv ? '' : serv };
+    setTelemetry(nextTel);
+    setNotesDraft(buildNotes({ tel: nextTel }));
+  };
+
   const handleSelectSlot = (slot: string) => {
     setBookingSlot(slot);
     setDisposition('Meeting Booked');
@@ -736,9 +778,29 @@ export default function BorisCallingCockpit({
       stepName: scriptSteps[currentStep - 1]?.name || '1. The Opener',
       telemetry: INITIAL_TELEMETRY_STATE,
       disposition: null,
-      customRepNotes: ''
+      customRepNotes: '',
+      template: notesTemplate
     }));
   };
+
+  // Demo workspace: picking a script pack (or loading the saved one) starts over at step 1 with fresh
+  // qualify state and CRM summary, on that pack's sample lead when it's in the queue. Runs after the
+  // render that switched packs, so the notes template, steps and queue are the new pack's.
+  const appliedScriptPackRef = useRef<ScriptPackId>(DEFAULT_SCRIPT_PACK_ID);
+  useEffect(() => {
+    if (!showScriptPicker || appliedScriptPackRef.current === activePack.id) return;
+    appliedScriptPackRef.current = activePack.id;
+    const sampleIndex = leadsQueue.findIndex(l => l && l.id === activePack.sampleLeadId);
+    if (sampleIndex >= 0) {
+      selectLeadAtIndex(sampleIndex); // resets step, objection, qualify state and notes
+    } else {
+      setCurrentStep(1);
+      setSelectedRebuttalId(null);
+      handleResetTelemetry();
+    }
+    // Only a pack change triggers this (the handlers read the current render's state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePack.id, showScriptPicker]);
 
   // GLOBAL EMAIL CONFIRMATION SYNC
   const handleConfirmedEmailChange = (newEmail: string) => {
@@ -769,7 +831,11 @@ export default function BorisCallingCockpit({
   const interpolate = (text: string): string => {
     if (!text) return '';
     const firstName = customerName.split(' ')[0] || 'there';
-    return text
+    // {{calling_as}}: who the rep calls for in a demo script pack (only the demo Dialer fills it).
+    const withCallingAs = showScriptPicker
+      ? text.replace(/\{\{calling_as\}\}/gi, callingAsValue.trim() || sessionTenant || 'our team')
+      : text;
+    return withCallingAs
       .replace(/\{\{first_name\}\}/gi, firstName)
       .replace(/\{\{full_name\}\}/gi, customerName || 'there')
       .replace(/\{\{rep_name\}\}/gi, repName)
@@ -1605,6 +1671,50 @@ export default function BorisCallingCockpit({
                     </span>
                   )}
 
+                  {showScriptPicker && (
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      title={isCallingActive ? 'Hang up to switch' : 'The call script, objections and AI prospect for this demo.'}
+                    >
+                      <label htmlFor="dialer-script-pack" className="text-caption text-fg-tertiary">
+                        Script
+                      </label>
+                      <span className="w-64">
+                        <Select
+                          id="dialer-script-pack"
+                          data-testid="script-pack-select"
+                          value={scriptPackChoice}
+                          disabled={isCallingActive}
+                          onChange={(e) => {
+                            if (!isCallingActive) changeScriptPack(parseScriptPackId(e.target.value));
+                          }}
+                        >
+                          {SCRIPT_PACK_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </span>
+                      {activePack.id === 'bpo_ai_hitl' && (
+                        <>
+                          <label htmlFor="dialer-calling-as" className="ml-1 text-caption text-fg-tertiary">
+                            Calling as
+                          </label>
+                          <Input
+                            id="dialer-calling-as"
+                            data-testid="calling-as-input"
+                            value={callingAsValue}
+                            disabled={isCallingActive}
+                            onChange={(e) => changeCallingAs(e.target.value)}
+                            placeholder={sessionTenant || 'Company you call for'}
+                            className="w-40"
+                          />
+                        </>
+                      )}
+                    </span>
+                  )}
+
                   {callActive && (
                     <IconButton
                       label="Hang up"
@@ -1944,6 +2054,15 @@ export default function BorisCallingCockpit({
                       </span>
                       <p className="text-ink-50 underline decoration-ai decoration-2 underline-offset-[6px]">{interpolate(activeRebuttal.move)}</p>
                     </div>
+
+                    {activeRebuttal.ifPushedBack && (
+                      <div className="rounded-md border border-ink-800 bg-ink-900 p-3" data-testid="rebuttal-pushback">
+                        <span className="mb-1 block font-sans text-caption text-ink-400">
+                          If they push back:
+                        </span>
+                        <p className="text-ink-50">{interpolate(activeRebuttal.ifPushedBack)}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -2077,7 +2196,36 @@ export default function BorisCallingCockpit({
                   </div>
                 )}
 
-                {currentStep === 2 && isDemo && (
+                {currentStep === 2 && isDemo && packQualify && (
+                  <div className="space-y-2 rounded-lg border border-line bg-app p-3">
+                    <span className="block text-caption text-fg-tertiary">
+                      Quick qualify: AI use and risk
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {packQualify.step2.map((q) => {
+                        const on = (telemetry.qualifyNotes ?? []).includes(q.note);
+                        return (
+                          <button
+                            key={q.id}
+                            type="button"
+                            onClick={() => handleTogglePackQualify(q.note)}
+                            aria-pressed={on}
+                            title={q.note}
+                            className={`py-1.5 px-3 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-between cursor-pointer ${on
+                                ? 'bg-action border-transparent text-action-fg'
+                                : 'bg-surface border-line-strong text-fg hover:bg-subtle'
+                              }`}
+                          >
+                            <span>{q.label}</span>
+                            {on ? <Check className="size-3.5" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {currentStep === 2 && isDemo && !packQualify && (
                   <div className="space-y-2 rounded-lg border border-line bg-app p-3">
                     <span className="block text-caption text-fg-tertiary">
                       Quick qualify: lead quality and pipeline
@@ -2130,12 +2278,12 @@ export default function BorisCallingCockpit({
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                      {['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office'].map((serv) => (
+                      {(packQualify?.services ?? ['Customer Support', 'Outbound Sales', 'Tech Support', 'Back-Office']).map((serv) => (
                         <button
                           key={serv}
                           type="button"
-                          onClick={() => handleSetService(serv)}
-                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${telemetry.primaryService === serv
+                          onClick={() => (packQualify ? handleSetPackService(serv) : handleSetService(serv))}
+                          className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${(packQualify ? telemetry.serviceInterest : telemetry.primaryService) === serv
                               ? 'bg-action border-transparent text-action-fg'
                               : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                             }`}
@@ -2153,7 +2301,7 @@ export default function BorisCallingCockpit({
                       Quick qualify: lock a demo slot
                     </span>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM'].map((slot) => (
+                      {(packQualify?.slots ?? ['Thu 2:00 PM', 'Fri 10:30 AM', 'Tue 2:00 PM']).map((slot) => (
                         <button
                           key={slot}
                           type="button"

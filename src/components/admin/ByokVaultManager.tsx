@@ -61,7 +61,7 @@ export default function ByokVaultManager() {
   const [testResults, setTestResults] = useState<{ [key: string]: { success: boolean; latency: string; model: string } }>(() => !isDemoWorkspace() ? ({} as { [key: string]: { success: boolean; latency: string; model: string } }) : {
     'resend': { success: true, latency: '88ms', model: 'Resend API Active' },
     'openai': { success: true, latency: '142ms', model: 'gpt-4o' },
-    'elevenlabs': { success: true, latency: '185ms', model: `${elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} (live calls) and ${elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} (Live floor)` }
+    'elevenlabs': { success: true, latency: '185ms', model: `${elevenLabsModelLabel(ELEVENLABS_MODELS.live)} (live calls) and ${elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} (Live floor)` }
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [requestUpgradeModal, setRequestUpgradeModal] = useState(false);
@@ -442,7 +442,7 @@ export default function ByokVaultManager() {
                       <Tooltip content="Text to speech">
                         <span className="cursor-help underline decoration-dotted decoration-fg-tertiary underline-offset-4">TTS</span>
                       </Tooltip>
-                      : {elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} for live practice and AI customer calls, {elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} for Live floor listen-in.
+                      : {elevenLabsModelLabel(ELEVENLABS_MODELS.live)} for live practice and AI customer calls, {elevenLabsModelLabel(ELEVENLABS_MODELS.expressive)} for Live floor listen-in.
                       With your own key the workspace uses its own ElevenLabs voice library, voice clones and character quota.
                     </span>
                   </div>

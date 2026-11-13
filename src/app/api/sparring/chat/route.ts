@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/server/apiSession';
-import { SPARRING_PERSONAS, SparringPersona, getPersonaVoiceByCountry, SparringCountry } from '@/lib/personas';
+import { SPARRING_PERSONAS, SparringPersona, getPersonaVoiceByCountry, SparringCountry, findSparringPersona } from '@/lib/personas';
+import { BPO_HITL_FALLBACK, BPO_HITL_PERSONA, BPO_HITL_REBUTTALS } from '@/lib/scriptPacks/bpoAiHitl';
 import { applyRateLimit, validateTextPayload } from '@/lib/security';
 import { ELEVENLABS_MODELS } from '@/lib/elevenlabs/voiceEngine';
 import { synthesizeWithElevenLabs } from '@/lib/server/elevenlabsTts';
+
+/** Live calls are voiced by a model that performs audio tags, so the prospect can laugh or sigh. */
+const AUDIO_TAG_RULE =
+  '- You may start a reply with ONE audio tag in square brackets when a real person would react that way: [laughs] at a joke or playful line, [chuckles] when amused, [sighs] when weary. At most one tag per reply, never in every reply, and no other kind of stage direction.';
 
 function extractJson(text: string) {
   try {
@@ -18,12 +23,150 @@ function extractJson(text: string) {
   }
 }
 
+// Demo Dialer prospect for the AI + Human-in-the-Loop BPO script pack.
+const HITL_PERSONA_ID = BPO_HITL_PERSONA.id;
+
+/**
+ * Scripted (no AI model) replies for the AI + Human-in-the-Loop prospect. A cooperative demo prospect:
+ * when the rep's line matches a script step she gives that step's expected answer, so a rep reading the
+ * script verbatim gets "Sure, go ahead." → "Yes." → "Yeah." → "Yeah." → the email line → calendar /
+ * Tuesday → "Tuesday at 10 works." Only an off-script line can draw ONE light objection; whatever the
+ * rep says next brings her straight back to the script. No randomness.
+ */
+function hitlScriptedReply(
+  persona: SparringPersona,
+  repMessage: string,
+  history: Array<{ role: string; content: string }>,
+  stageKey: string,
+  objectionLine: string
+): { reply: string; completedIds: string[]; sentiment: string; armObservation: string } {
+  const F = BPO_HITL_FALLBACK;
+  const lower = repMessage.toLowerCase().replace(/[‘’]/g, "'");
+  const prospect = history.filter(t => t.role === 'prospect').map(t => String(t.content || '').trim().toLowerCase());
+  const said = (line: string) => prospect.includes(line.toLowerCase());
+  const pick = (lines: string[]) => lines.find(l => !said(l)) ?? lines[lines.length - 1];
+  const lastProspect = prospect[prospect.length - 1] || '';
+  const objLine = objectionLine.trim();
+  const objectionLines = objLine ? [objLine, ...F.objectionLines] : F.objectionLines;
+  const objectionSaid = objectionLines.some(said);
+  const lastWasObjection = objectionLines.some(l => l.toLowerCase() === lastProspect);
+
+  // The script's expected answers, step by step (all lines come from BPO_HITL_FALLBACK).
+  const permissionLines = [F.opener[0], F.opener[1]]; // "[laughs] Okay, sure, go ahead." first
+  const aiLines = [F.opener[3], F.opener[2]]; // "Yes." first
+  const problemLines = [F.problem[0], F.problem[2], F.problem[1]];
+  const concedeLine = F.problem[1]; // "Yeah... escalations are where it hurts."
+  const fairLine = F.problem[2]; // "Yeah, that's fair."
+  const emailLines = [F.solution[1], F.solution[2]];
+  const lookLine = F.close[0];
+  const tuesdayLines = [F.close[1], F.close[2]];
+  const emailSaid = emailLines.some(said);
+  const bookedSaid = F.booked.some(said);
+
+  const is = {
+    tuesday: /\btuesday\b/.test(lower),
+    calendar: /calendar|not gonna happen|not going to happen/.test(lower),
+    days: /\b(monday|wednesday|thursday|friday)\b|good day|which day|what day/.test(lower),
+    demoAsk: /worth a demo|worth a look|show you how|should i show you/.test(lower),
+    solution: /what if i told you|help the business|human.in.the.loop|human specialists|\bpods?\b/.test(lower),
+    problem: /fair to assume|hallucinat|risky|brand takes the hit|autonomous/.test(lower),
+    aiQuestion: /accurate to assume|automation|chatbot/.test(lower),
+    permission: /27 seconds|twenty.seven seconds|tabasco|why i'?m calling|is that fair/.test(lower),
+  };
+
+  const ids = persona.objectives.map(o => o.id);
+  const upTo = (n: number) => ids.slice(0, n);
+  const out = (reply: string, done: number, sentiment: string, armObservation: string) => ({
+    reply,
+    completedIds: upTo(done),
+    sentiment,
+    armObservation,
+  });
+
+  // On-script lines, latest step first (a rep may read a whole step, which repeats earlier keywords).
+  if (bookedSaid || is.tuesday) return out(pick(F.booked), 4, 'agreed', 'Rep held the calendar ask and booked Tuesday at 10 a.m.');
+  if (is.calendar || is.days) {
+    if (is.calendar && !said(lookLine)) {
+      return is.days
+        ? out(`${lookLine} ${pick(tuesdayLines)}`, 3, 'softened', 'Rep turned the email deflection into a calendar ask; prospect countered with Tuesday.')
+        : out(lookLine, 3, 'softened', 'Rep turned the email deflection into a calendar ask.');
+    }
+    return out(pick(tuesdayLines), 3, 'softened', 'Prospect countered with Tuesday.');
+  }
+  if (is.demoAsk) return out(pick(emailLines), 3, 'neutral', 'Rep asked for the demo; prospect deflected to email.');
+  const stage = ['opener', 'problem', 'solution', 'close'].includes(stageKey) ? stageKey : 'opener';
+  if (lastWasObjection) {
+    // The rep answered the objection (with anything): straight back to the script flow.
+    if (stage === 'opener') return out(pick(permissionLines), 0, 'neutral', 'Rep answered the objection; back on script.');
+    if (stage === 'problem') return out(said(concedeLine) ? fairLine : concedeLine, 2, 'softened', 'Rep answered the objection; back on script.');
+    if (stage === 'solution') return out(emailSaid ? fairLine : pick(emailLines), 3, 'neutral', 'Rep answered the objection; back on script.');
+    return out(said(lookLine) ? pick(tuesdayLines) : lookLine, 3, 'softened', 'Rep answered the objection; back on script.');
+  }
+  if (is.solution) return out(F.solution[0], 2, 'softened', 'Prospect agreed AI plus human specialists would help.');
+  if (is.problem) return out(pick(problemLines), 2, 'softened', 'Prospect agreed running AI alone is risky to the brand.');
+  if (is.aiQuestion) return out(is.permission ? F.opener[2] : pick(aiLines), 1, 'neutral', 'Prospect confirmed heavy use of AI automation.');
+  if (is.permission) return out(pick(permissionLines), 0, 'neutral', 'Prospect gave the rep the 27 seconds.');
+
+  // Off-script line.
+  if (!objectionSaid && stage !== 'opener') {
+    // At most one light objection per call, only when the rep goes off-script.
+    const line = objLine || (stage === 'problem' ? F.objectionLines[0] : F.objectionLines[1]);
+    return out(line, stage === 'problem' ? 1 : 2, 'skeptical', 'Prospect raised one objection after an off-script line.');
+  }
+  if (stage === 'opener') return out(said(F.pickup) ? pick(permissionLines) : F.pickup, 0, 'neutral', 'Prospect picked up.');
+  if (stage === 'problem') return out(pick(problemLines), 2, 'softened', 'Prospect went along with the problem step.');
+  if (stage === 'solution') return out(emailSaid ? fairLine : F.solution[0], 2, 'neutral', 'Prospect went along with the solution step.');
+  return out(said(lookLine) ? pick(tuesdayLines) : lookLine, 3, 'softened', 'Prospect went along with the close.');
+}
+
+/** Script assist for the AI + Human-in-the-Loop prospect: the matching pack rebuttal (no other pitch). */
+function hitlScriptAssist(persona: SparringPersona, buyerReply: string): any {
+  const lower = buyerReply.toLowerCase();
+  const firstName = persona.name.split(' ')[0];
+  const fill = (s: string) => s.replace(/\{\{first_name\}\}/g, firstName).replace(/\{\{company\}\}/g, 'your team');
+  if (/tuesday|invite|put it in/.test(lower)) {
+    return {
+      objectionType: 'Agreement Reached (Tuesday at 10 a.m.)',
+      recommendedScript: `Fantastic, ${firstName}. Tuesday at 10 a.m. it is. What's the best email for the calendar invite? I'll send the short email I promised today too.`,
+      tacticalRationale: 'Lock the day and time she gave, confirm the invite email, and keep the email promise.',
+      arm: {
+        acknowledge: 'Confirm Tuesday at 10 a.m. warmly',
+        respond: 'Promise the calendar invite and the email you agreed to send',
+        move: 'Ask for the best email for the invite',
+      },
+    };
+  }
+  const MATCH: Array<[RegExp, string]> = [
+    [/bot|fine with ai/, 'bpo_ai_only'],
+    [/offshore/, 'bpo_offshore_burned'],
+    [/security|customers' data|data/, 'bpo_security'],
+    [/cost|expensive|price/, 'bpo_price'],
+    [/email/, 'bpo_send_email'],
+    [/priority/, 'bpo_not_priority'],
+    [/locally|in-house/, 'bpo_in_house'],
+    [/any good/, 'bpo_quality'],
+  ];
+  const id = MATCH.find(([re]) => re.test(lower))?.[1];
+  const r = id ? BPO_HITL_REBUTTALS.find(x => x.id === id) : undefined;
+  if (!r) return persona.initialScriptAssist;
+  return {
+    objectionType: `${r.shortLabel} ("${r.trigger}")`,
+    recommendedScript: fill(r.fullSpoken),
+    tacticalRationale: 'Acknowledge her concern, answer with substance, then move to an easy calendar choice.',
+    arm: { acknowledge: fill(r.acknowledge), respond: fill(r.respond), move: fill(r.move) },
+  };
+}
+
 // Persona-specific contextual fallback logic that acts as an authentic adversarial sparring partner
 function generateContextualFallback(
   persona: SparringPersona,
   repMessage: string,
-  history: Array<{ role: string; content: string }>
+  history: Array<{ role: string; content: string }>,
+  ctx: { stageKey?: string; objectionLine?: string } = {}
 ): { reply: string; completedIds: string[]; sentiment: string; armObservation: string } {
+  if (persona.id === HITL_PERSONA_ID) {
+    return hitlScriptedReply(persona, repMessage, history, ctx.stageKey || '', ctx.objectionLine || '');
+  }
   const lower = repMessage.toLowerCase();
   const pastReplies = history
     .filter(t => t.role === 'prospect')
@@ -254,6 +397,7 @@ function deriveDynamicScriptAssist(
   buyerReply: string,
   sentiment: string
 ): any {
+  if (persona.id === HITL_PERSONA_ID) return hitlScriptAssist(persona, buyerReply);
   const lower = buyerReply.toLowerCase();
   const firstName = persona.name.split(' ')[0];
 
@@ -459,9 +603,11 @@ export async function POST(req: NextRequest) {
     const isBrushOff = /email|busy|number/i.test(objLabel);
     // Dialer demo: a live call that follows the rep's 4-step script (Opener → Problem → Solution → Close).
     const liveCall = mode === 'live_call';
-    const persona = SPARRING_PERSONAS.find(p => p.id === personaId) || SPARRING_PERSONAS[0];
+    const persona = findSparringPersona(personaId) || SPARRING_PERSONAS[0];
     // The BPO buyers keep their BPO-specific pains; other practice personas use their own scenario.
     const bpoBuyer = persona.id === 'demo-dialer-julian' || persona.id === 'bpo-directory-buyer';
+    // Demo Dialer prospect for the AI + Human-in-the-Loop BPO script pack: a cooperative demo prospect.
+    const hitlBuyer = persona.id === HITL_PERSONA_ID;
     // Practice mode only: how hard the buyer is to win. Absent on normal Dialer calls (no change).
     const DIFFICULTY_LINES: Record<string, string> = {
       friendly: 'DIFFICULTY FOR THIS PRACTICE CALL: friendly. Be open and warm. Raise your objection once, mildly, and accept any reasonable answer; agree to a meeting at the Close if asked politely.',
@@ -479,7 +625,27 @@ export async function POST(req: NextRequest) {
       close: 'CLOSE: the rep is asking for a meeting. If they handled your objections reasonably, agree to a short meeting and confirm a day/time (e.g. "Fine, Thursday at 2 works, send me the invite."). If they rushed or ignored your concerns, push back once more before agreeing.',
     };
     const stageKey = String(scriptStage || '').toLowerCase().replace(/[^a-z]/g, '');
-    const liveCallBlock = liveCall
+    // AI + Human-in-the-Loop prospect: follows the BPO script when the rep does (owner's demo flow).
+    const HITL_STAGES: Record<string, string> = {
+      opener: 'OPENER: when the rep asks for 27 seconds (the "I\'m not an AI" / Tabasco line), laugh naturally at the Tabasco joke, then give it: start your reply with the audio tag [laughs] and then say "Okay, sure, go ahead." When they ask if it is accurate to assume you use a lot of AI automation and chatbots to keep operational costs down, answer: "Yes." or "Yes. As much as we can."',
+      problem: 'PROBLEM: the rep says running purely autonomous AI on customer retention, complex workflows and escalations is risky because AI sometimes hallucinates and breaks trust, and your brand takes the hit, not the AI vendor, then asks if that is fair to assume. Agree: "Yeah." Only if they ask a follow-up question, admit one real pain (the bot gives confidently wrong billing or integration answers, escalations pile up on two support leads, a key account churned after a botched escalation).',
+      solution: 'SOLUTION: the rep pitches AI plus trained human specialists in an AI + Human-in-the-Loop service model. When they ask if that would help the business, say "Yeah." When they explain the pod (AI handles repetitive data entry, routing and tier-one volume; specialists supervise outputs, handle exceptions and step in when human judgment is needed; you keep full operational control) and ask if it is worth a demo, answer exactly: "Yeah, if you want to send me an email, I\'d be interested to check out the offering."',
+      close: 'CLOSE: the rep agrees to send the email but says "not in the calendar, not gonna happen" and asks to put a demo in the calendar. Laugh and check your calendar ("Ha, fair enough. Hang on, let me look..."). Wednesday and Thursday are packed, so when they offer days, counter with Tuesday: "Wednesday and Thursday are rough. How about Tuesday?" When they ask for Tuesday morning at 10 a.m., accept: "Tuesday at 10 works. Send me the invite." This replaces any rule about picking one of the times they offered.',
+    };
+    const hitlLiveCallBlock = `
+
+COOPERATIVE DEMO PROSPECT (TOP PRIORITY: this overrides every sparring rule above, including "throw an objection in every turn", "never agree on turn 1 or 2" and "do not volunteer information"):
+- This is a live demo of a real cold-call script. When the rep follows the script, you go along with it and answer each step the way the script expects, so the call flows Opener → Problem → Solution → Close → booked.
+- If the rep's line matches the current script step (the 27-second / Tabasco permission ask; "accurate to assume" about AI automation; "fair to assume" about AI risk; "what if I told you" / "would that help"; "is it worth a demo"; the calendar ask), reply with the short, agreeable answer the script expects ("Sure, go ahead.", "Yes.", "Yeah."). Do not add new objections, questions or conditions to an on-script line.
+- Objections are a light touch only: at most ONE in the whole call, and only when the rep goes off-script or right after your email line. Once the rep answers it with anything reasonable, go straight back to the script flow. Never derail, stall or refuse to book when the rep sticks to the script.
+${difficultyLine}- Current script step on the rep's screen: ${HITL_STAGES[stageKey] || 'Infer the step from what the rep just said, and give that step\'s expected answer.'}
+${stepText ? `- The line the rep is reading for this step (roughly): ${stepText}. Respond to THAT line with the step's expected answer.
+` : ''}${objLabel ? `- If (and only if) the rep goes off-script, you may use this as your one light objection: "${objLine}" (${objLabel}). Accept any reasonable answer and move on.
+` : ''}- Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply. Never mention budget freezes, lead lists or contact data.
+${AUDIO_TAG_RULE}`;
+    const liveCallBlock = liveCall && hitlBuyer
+      ? hitlLiveCallBlock
+      : liveCall
       ? `
 
 LIVE PHONE CALL MODE (this overrides the sparring rules above wherever they conflict):
@@ -488,6 +654,7 @@ ${difficultyLine}- The rep follows a 4-step call script: Opener, Problem, Soluti
 - Current script step on the rep's screen: ${STAGES[stageKey] || 'Infer the step from what the rep just said.'}
 - You MAY discuss your business, pains and numbers when asked good questions. You MAY agree to a meeting at the Close if it was earned (even before turn 3).
 - Keep every reply to 1-2 short spoken sentences, like a real phone call. No lists, no stage directions, no quotes around your reply.
+${AUDIO_TAG_RULE}
 ${stepText ? `- The rep's call script for this step. Goal: ${stepGoal}. The line they are reading (roughly): ${stepText}. Coaching note for the rep: ${stepTip}.
 - Respond the way a real prospect in your situation would respond to THAT line, so the call naturally moves to the next step: at the Opener, half-remember the email and give them a moment; at the Problem, ${bpoBuyer ? 'vent honestly about your lead quality and pipeline health' : 'share an honest pain from your situation'}; at the Solution, raise ${objLabel ? 'your main objection for this call (below)' : bpoBuyer ? 'your signature "no budget" objection' : 'your core pushback'} (unless they already handled it); at the Close, pick one of the times they offered if your concerns were handled.
 ` : ''}${objLabel ? `- YOUR MAIN OBJECTION ON THIS CALL (the rep chose to practise it): "${objLine}" (${objLabel}). It replaces your usual "no budget" objection${/budget/i.test(objLabel) ? '' : ': on this call do NOT mention budget, finance freezes or spend approvals at all; when they pitch at the Solution step, push back with this objection (or a natural variation of it) instead'}. Raise it ${isBrushOff ? 'early, at the Opener, as soon as they say why they are calling' : 'at the natural moment, usually right after they pitch at the Solution step'}, in your own words and with real emotion. Keep pressing it until the rep handles it well (acknowledges you, answers with substance, proposes a sensible next step); then soften and let the call move on.
@@ -632,7 +799,7 @@ Return STRICT JSON only:
 
     // 2. Intelligent persona-aware fallback if Gemini was unreachable
     if (!personaReply) {
-      const fallbackResult = generateContextualFallback(persona, repMessage, transcript);
+      const fallbackResult = generateContextualFallback(persona, repMessage, transcript, { stageKey, objectionLine: objLine });
       personaReply = fallbackResult.reply;
       completedIds = fallbackResult.completedIds;
       sentiment = fallbackResult.sentiment;
@@ -655,7 +822,9 @@ Return STRICT JSON only:
         // Live calls (demo Dialer / Mock dialer) use the persona's own voice, matching the "Hello?" pickup.
         voiceId: liveCall && persona.voiceId ? persona.voiceId : voiceConfig.voiceId,
         voiceSettings: persona.voiceSettings,
-        modelId: ELEVENLABS_MODELS.realtime,
+        // Live calls use v4 Turbo so audio tags ([laughs]) are performed; it falls back to the
+        // realtime models (tags stripped) if v4 fails for a voice.
+        modelId: liveCall ? ELEVENLABS_MODELS.live : ELEVENLABS_MODELS.realtime,
       });
       if (voice.ok) {
         audioUrl = voice.audio;

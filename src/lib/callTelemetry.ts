@@ -15,6 +15,10 @@ export interface CallTelemetryState {
   zeroPrepConfirmed: boolean;
   attendanceVerified: boolean;
   directMobileCaptured: string;
+  /** Script-pack qualify notes the rep ticked (generic call log only). */
+  qualifyNotes?: string[];
+  /** Script-pack service the prospect is interested in (generic call log only). */
+  serviceInterest?: string;
 }
 
 export const INITIAL_TELEMETRY_STATE: CallTelemetryState = {
@@ -46,6 +50,11 @@ export interface NoteSynthesizerParams {
   telemetry: CallTelemetryState;
   disposition: string | null;
   customRepNotes?: string;
+  /**
+   * 'workspace' (default): the demo workspace's own talk track there, the generic call log elsewhere.
+   * 'neutral': always the generic call log, with a qualification section (demo script packs).
+   */
+  template?: 'workspace' | 'neutral';
 }
 
 export function synthesizeCrmNotes({
@@ -60,13 +69,15 @@ export function synthesizeCrmNotes({
   timestamp,
   telemetry,
   disposition,
-  customRepNotes
+  customRepNotes,
+  template = 'workspace'
 }: NoteSynthesizerParams): string {
   const ts = timestamp || 'LIVE CALL IN PROGRESS (Active Session)';
+  const forceNeutral = template === 'neutral';
 
   // The lead-quality / founder-demo talk track below is the platform owner's own pitch: only the demo
   // workspace uses it. Client workspaces get a neutral call log built from the lead's fields.
-  if (!isDemoWorkspace()) {
+  if (forceNeutral || !isDemoWorkspace()) {
     const outcome = disposition
       ? disposition.toUpperCase()
       : telemetry.screenShareSlot
@@ -80,6 +91,39 @@ export function synthesizeCrmNotes({
       : telemetry.screenSharePitched
       ? 'Meeting proposed'
       : 'Not booked yet';
+    // Script packs (demo workspace) add what the rep qualified; client workspaces never pass this.
+    const qualifyLines = [
+      ...(telemetry.qualifyNotes && telemetry.qualifyNotes.length > 0
+        ? telemetry.qualifyNotes.map((n) => `- ${n}`)
+        : ['- Pending qualification']),
+      `- Value pitched: ${telemetry.problemFixDiscussed ? 'Yes' : 'Pending'}`,
+      `- Service interest: ${telemetry.serviceInterest || 'Not chosen yet'}`,
+    ];
+    if (forceNeutral) {
+      let generic = `=== CALL LOG ===
+PROSPECT: ${contactName || '-'}${companyName ? ` | ${companyName}` : ''}
+ROLE: ${title || '-'}
+${companySize(headcount) ? `COMPANY SIZE: ${companySize(headcount)!.exact}
+` : ''}PHONE: ${phone || '-'}
+CADENCE TOUCH: Day ${cadenceDay} (${stepName})
+TIMESTAMP: ${ts}
+
+1. ROLE VERIFICATION:
+- Status: ${roleLine}
+
+2. QUALIFICATION:
+${qualifyLines.join('\n')}
+
+3. MEETING:
+- Status: ${meetingLine}
+- Direct mobile: ${telemetry.directMobileCaptured || phone || 'Not provided'}
+
+OUTCOME / DISPOSITION: ${outcome}`;
+      if (customRepNotes && customRepNotes.trim()) {
+        generic += `\n\nREP NOTES:\n${customRepNotes.trim()}`;
+      }
+      return generic;
+    }
     let neutral = `=== CALL LOG ===
 PROSPECT: ${contactName || '-'}${companyName ? ` | ${companyName}` : ''}
 ROLE: ${title || '-'}

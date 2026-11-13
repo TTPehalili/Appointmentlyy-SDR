@@ -4,7 +4,7 @@ import * as React from 'react';
 import { AlertCircle, Mic, MicOff, RotateCcw, Send, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
-import { ELEVENLABS_MODELS, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
+import { ELEVENLABS_MODELS, displayAudioTags, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
 
 /**
  * Simulated calls (demo workspace, and Practice in every workspace): when the call connects, an AI
@@ -163,7 +163,7 @@ export function AiProspectCall({
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voiceId, voiceSettings, modelId: ELEVENLABS_MODELS.realtime }),
+          body: JSON.stringify({ text, voiceId, voiceSettings, modelId: ELEVENLABS_MODELS.live }),
         });
         const data = await res.json().catch(() => ({}));
         const src = res.ok ? toAudioSrc(data.audio ?? data.audioUrl) : null;
@@ -430,7 +430,7 @@ export function AiProspectCall({
             {status === 'prospect' ? <Volume2 className="size-4 text-success-fg" aria-hidden /> : null}
             {statusText[status]}
           </span>
-          <ElevenLabsAttribution label="Voice:" detail={elevenLabsModelLabel(ELEVENLABS_MODELS.realtime)} className="hidden sm:inline-flex" />
+          <ElevenLabsAttribution label="Voice:" detail={elevenLabsModelLabel(ELEVENLABS_MODELS.live)} className="hidden sm:inline-flex" />
           {speechSupported && (
             <Button
               size="sm"
@@ -463,7 +463,7 @@ export function AiProspectCall({
       <div ref={listRef} className="max-h-48 space-y-1.5 overflow-y-auto rounded-md bg-surface p-2.5 text-small">
         {turns.map((t, i) => (
           <p key={i} className={t.role === 'rep' ? 'text-fg' : 'text-fg-secondary'}>
-            <span className="font-medium">{t.role === 'rep' ? 'You' : firstName}:</span> {t.content}
+            <span className="font-medium">{t.role === 'rep' ? 'You' : firstName}:</span> {t.role === 'rep' ? t.content : displayAudioTags(t.content)}
           </p>
         ))}
         {interim && (

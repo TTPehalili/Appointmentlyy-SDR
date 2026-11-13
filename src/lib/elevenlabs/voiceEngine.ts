@@ -16,7 +16,30 @@ export const ELEVENLABS_MODELS = {
   realtimeFallback: 'eleven_flash_v2_5',
   /** Live floor listen-in: the most expressive model; turns are pre-fetched, so latency is hidden. */
   expressive: 'eleven_v4_turbo',
+  /**
+   * Live AI prospect calls (Dialer AI demo, Practice): v4 Turbo is low-latency and performs inline
+   * audio tags such as [laughs]. Falls back to the realtime pair (tags stripped) if it fails.
+   */
+  live: 'eleven_v4_turbo',
 } as const;
+
+/** Models that perform inline audio tags ([laughs], [sighs]); other models would read them aloud. */
+export function supportsAudioTags(modelId: string): boolean {
+  return /^eleven_v(3|4)/.test(modelId);
+}
+
+/** Bracketed audio tags in a reply, e.g. "[laughs]" or "[chuckles softly]". */
+const AUDIO_TAG = /\[([a-z][a-z ,'-]{1,40})\]/gi;
+
+/** Removes audio tags (for models that can't perform them). */
+export function stripAudioTags(text: string): string {
+  return text.replace(AUDIO_TAG, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Shows audio tags as stage directions in on-screen transcripts: "[laughs] Sure" -> "(laughs) Sure". */
+export function displayAudioTags(text: string): string {
+  return text.replace(AUDIO_TAG, (_m, tag: string) => `(${tag.trim().toLowerCase()})`);
+}
 
 /** Models a client may ask /api/tts for. Anything else uses the realtime model. */
 export const ALLOWED_ELEVENLABS_MODELS: readonly string[] = [

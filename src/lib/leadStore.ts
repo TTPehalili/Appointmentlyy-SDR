@@ -430,8 +430,107 @@ const DEMO_INITIAL_DEFAULT_CONTACTS: ContactRecord[] = [
         repName: 'System'
       }
     ]
+  },
+  // Fictional B2B SaaS buyers for the BPO (AI + Human-in-the-Loop) script pack.
+  {
+    id: 'lead_saas_priya_d1',
+    name: 'Priya Raman',
+    company: 'LedgerLoop',
+    title: 'VP of Operations',
+    department: 'Support & Operations',
+    email: 'priya.raman@ledgerloop.example',
+    phone: '+1 (512) 555-0143',
+    headcount: '120 employees',
+    website: 'https://ledgerloop.example',
+    linkedinUrl: '',
+    assignedRep: 'Emil Halili',
+    tenantId: 'APEX-GLOBAL',
+    folderId: 'folder_apex_bpo_q4',
+    folderName: 'US & APAC Enterprise Outbound Ops Directors',
+    industry: 'Computer Software',
+    location: 'Austin, TX',
+    status: 'New Lead',
+    cadenceDay: 1,
+    touchNumber: 1,
+    leadNotes: 'B2B SaaS (billing and reconciliation). Leans hard on an AI support chatbot and automation to keep headcount flat; escalations pile up on two support leads. Tried offshore support before and pulled it back in-house.',
+    footprint: [
+      {
+        id: 'fp_10',
+        timestamp: 'Nov 12, 2026 • 09:00 AM',
+        isoDate: '2026-11-12T01:00:00.000Z',
+        type: 'status',
+        title: 'Lead Enrolled in Cadence',
+        summary: 'Enrolled into the AI + Human-in-the-Loop outbound cadence.',
+        repName: 'System'
+      }
+    ]
+  },
+  {
+    id: 'lead_saas_kestrel_d1',
+    name: 'Daniel Okafor',
+    company: 'KestrelCart',
+    title: 'Chief Operating Officer',
+    department: 'Operations',
+    email: 'daniel.okafor@kestrelcart.example',
+    phone: '+1 (720) 555-0176',
+    headcount: '90 employees',
+    website: 'https://kestrelcart.example',
+    linkedinUrl: '',
+    assignedRep: 'Emil Halili',
+    tenantId: 'APEX-GLOBAL',
+    folderId: 'folder_apex_bpo_q4',
+    folderName: 'US & APAC Enterprise Outbound Ops Directors',
+    industry: 'E-commerce Software',
+    location: 'Denver, CO',
+    status: 'New Lead',
+    cadenceDay: 1,
+    touchNumber: 1,
+    leadNotes: 'E-commerce SaaS platform for B2B merchants. AI handles tier-one tickets and order routing; complex merchant escalations and data entry backlog land on a small ops team.',
+    footprint: [
+      {
+        id: 'fp_11',
+        timestamp: 'Nov 12, 2026 • 09:05 AM',
+        isoDate: '2026-11-12T01:05:00.000Z',
+        type: 'status',
+        title: 'Lead Enrolled in Cadence',
+        summary: 'Enrolled into the AI + Human-in-the-Loop outbound cadence.',
+        repName: 'System'
+      }
+    ]
   }
 ];
+
+/** Sample leads added after demo browsers were seeded: merged into stored demo contacts once. */
+const DEMO_SEED_MERGE_KEY = 'appy_demo_seed_merge_v2';
+const DEMO_SEED_MERGE_IDS = ['lead_saas_priya_d1', 'lead_saas_kestrel_d1'];
+
+/**
+ * Demo workspace only, once per browser: add the newer sample leads a stored demo list is missing,
+ * right after the sample leads it already holds. Existing records are never changed or removed.
+ * Returns the same array when nothing was added.
+ */
+function mergeMissingDemoSeeds(stored: ContactRecord[]): ContactRecord[] {
+  try {
+    if (localStorage.getItem(DEMO_SEED_MERGE_KEY) === '1') return stored;
+    const ids = new Set(stored.map((c) => c.id));
+    const emails = new Set(stored.map((c) => (c.email || '').toLowerCase()).filter(Boolean));
+    const missing = DEMO_INITIAL_DEFAULT_CONTACTS.filter(
+      (c) => DEMO_SEED_MERGE_IDS.includes(c.id) && !ids.has(c.id) && !emails.has(c.email.toLowerCase())
+    );
+    localStorage.setItem(DEMO_SEED_MERGE_KEY, '1');
+    if (missing.length === 0) return stored;
+    let lastSeed = -1;
+    stored.forEach((c, i) => {
+      if (DEMO_SEED_IDS.has(c.id)) lastSeed = i;
+    });
+    const at = lastSeed >= 0 ? lastSeed + 1 : stored.length;
+    const merged = [...stored.slice(0, at), ...missing, ...stored.slice(at)];
+    localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(merged));
+    return merged;
+  } catch {
+    return stored;
+  }
+}
 
 /**
  * Get all stored contacts (with automatic fallback to initial demo contacts)
@@ -447,7 +546,9 @@ export function getStoredContacts(): ContactRecord[] {
     if (Array.isArray(parsed) && parsed.length > 0) {
       if (isDemoWorkspace()) {
         cleanDemoPlaybookKeys();
-        const cleaned = cleanStoredDemoText(CONTACTS_STORAGE_KEY, parsed, DEMO_INITIAL_DEFAULT_CONTACTS);
+        const cleaned = mergeMissingDemoSeeds(
+          cleanStoredDemoText(CONTACTS_STORAGE_KEY, parsed, DEMO_INITIAL_DEFAULT_CONTACTS)
+        );
         if (cleaned !== parsed) {
           localStorage.setItem('sdr_active_csv_leads', JSON.stringify(cleaned));
           return cleaned;
@@ -468,6 +569,7 @@ export function getStoredContacts(): ContactRecord[] {
     const seed = initialDefaultContacts();
     if (isDemoWorkspace()) {
       localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(seed));
+      localStorage.setItem(DEMO_SEED_MERGE_KEY, '1');
       loadDemoBulkContacts();
     }
     return seed;

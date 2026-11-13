@@ -7,6 +7,8 @@
 import {
   ALLOWED_ELEVENLABS_MODELS,
   ELEVENLABS_MODELS,
+  stripAudioTags,
+  supportsAudioTags,
   type VoiceErrorCode,
   voiceErrorMessage,
 } from '@/lib/elevenlabs/voiceEngine';
@@ -91,13 +93,17 @@ export async function synthesizeWithElevenLabs({
 
   let last: { code: VoiceErrorCode; status: number; detail: string } = { code: 'upstream', status: 502, detail: '' };
   for (const model of modelChain(modelId)) {
+    // Audio tags like [laughs] are performed by v3/v4 models; any other model would read them aloud.
+    const spoken = supportsAudioTags(model) ? text : stripAudioTags(text) || 'Ha.';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS);
     try {
-      const res = await fetch(`${TTS_URL}/${voice}?optimize_streaming_latency=4`, {
+      // v3/v4 models reject optimize_streaming_latency (400 unsupported_model); older ones use it.
+      const query = supportsAudioTags(model) ? '' : '?optimize_streaming_latency=4';
+      const res = await fetch(`${TTS_URL}/${voice}${query}`, {
         method: 'POST',
         headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-        body: JSON.stringify({ text, model_id: model, voice_settings: settings }),
+        body: JSON.stringify({ text: spoken, model_id: model, voice_settings: settings }),
         signal: controller.signal,
       });
       if (res.ok) {

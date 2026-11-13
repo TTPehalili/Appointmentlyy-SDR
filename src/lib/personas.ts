@@ -5,6 +5,8 @@
  * Includes real-time battle-tested ScriptAssist battlecards (A.R.M. Framework: Acknowledge, Respond, Move).
  */
 
+import { BPO_HITL_PERSONA, BPO_HITL_VOICE_MAP } from '@/lib/scriptPacks/bpoAiHitl';
+
 export interface SparringObjective {
   id: string;
   description: string;
@@ -128,7 +130,9 @@ export const PERSONA_VOICE_MAP: Record<string, {
     USA: { voiceId: 'iP95p4xoKVk53GoZ742B', label: 'American Fast Blunt Male (Chris)' },
     Australia: { voiceId: '9B2Vd5yQ7rKaqNmzGdy1', label: 'Australian Deep Gritty Male (Steve Hogan)' },
     UK: { voiceId: 'MnTN9XubPKNlI4AwhLj5', label: 'British Blunt Conversational Male (Craig)' }
-  }
+  },
+  // Demo Dialer prospect for the AI + Human-in-the-Loop BPO script pack.
+  'demo-dialer-hitl-buyer': BPO_HITL_VOICE_MAP
 };
 
 export function getPersonaVoiceByCountry(
@@ -604,3 +608,14 @@ HOW YOU REACT TO BAD BEHAVIOR:
     }
   }
 ];
+
+/**
+ * Prospects that only answer demo-workspace Dialer calls (script packs). Kept out of
+ * SPARRING_PERSONAS so the Practice and sparring persona lists stay as they are.
+ */
+export const DIALER_DEMO_PERSONAS: SparringPersona[] = [BPO_HITL_PERSONA];
+
+/** A persona by id: the sparring personas first, then the demo Dialer prospects. */
+export function findSparringPersona(id: unknown): SparringPersona | undefined {
+  return SPARRING_PERSONAS.find((p) => p.id === id) ?? DIALER_DEMO_PERSONAS.find((p) => p.id === id);
+}
