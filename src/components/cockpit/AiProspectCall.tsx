@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { AlertCircle, Mic, MicOff, RotateCcw, Send, Volume2 } from 'lucide-react';
-import { Button } from '@/components/ui';
+import { Button, SegmentedControl } from '@/components/ui';
 import { ElevenLabsAttribution } from '@/components/voice/ElevenLabsAttribution';
 import { ELEVENLABS_MODELS, displayAudioTags, elevenLabsModelLabel, isRetryableVoiceError, voiceErrorMessage } from '@/lib/elevenlabs/voiceEngine';
 
@@ -24,8 +24,14 @@ type Status = 'connecting' | 'prospect' | 'listening' | 'thinking' | 'paused';
 
 const STAGE_NAMES = ['opener', 'problem', 'solution', 'close'];
 
-/** How long the rep must be silent before their turn is sent to the prospect. */
-const SILENCE_MS = 2000;
+/**
+ * How long the rep must be silent before their turn is sent to the prospect. The rep picks it
+ * (remembered on this computer) so natural pauses mid-sentence don't make the prospect jump in;
+ * "Done talking" sends the turn straight away.
+ */
+const PAUSE_OPTIONS = { short: 1500, normal: 3000, long: 4500 } as const;
+type PauseLength = keyof typeof PAUSE_OPTIONS;
+const PAUSE_KEY = 'appy_ai_call_pause';
 
 type Recognition = {
   lang: string;
@@ -106,6 +112,25 @@ export function AiProspectCall({
   // Lines typed while the customer was speaking; sent as soon as they finish.
   const queuedLines = React.useRef<string[]>([]);
   const silenceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pause, setPause] = React.useState<PauseLength>('normal');
+  const pauseMsRef = React.useRef<number>(PAUSE_OPTIONS.normal);
+  // Ends the rep's current spoken turn now ("Done talking"); set while listening.
+  const finishRef = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PAUSE_KEY);
+      if (saved === 'short' || saved === 'normal' || saved === 'long') setPause(saved);
+    } catch {}
+  }, []);
+  React.useEffect(() => {
+    pauseMsRef.current = PAUSE_OPTIONS[pause];
+  }, [pause]);
+  const choosePause = (next: PauseLength) => {
+    setPause(next);
+    try {
+      localStorage.setItem(PAUSE_KEY, next);
+    } catch {}
+  };
 
   React.useEffect(() => {
     stepRef.current = scriptStep;
@@ -214,6 +239,7 @@ export function AiProspectCall({
     const finish = () => {
       if (!alive.current || finished) return;
       finished = true;
+      if (finishRef.current === finish) finishRef.current = null;
       clearTimeout(silenceTimer.current ?? undefined);
       silenceTimer.current = null;
       const said = `${pendingSpeech.current} ${liveText}`.replace(/\s+/g, ' ').trim();
@@ -237,7 +263,7 @@ export function AiProspectCall({
       liveText = live;
       setInterim(`${pendingSpeech.current} ${live}`.replace(/\s+/g, ' ').trim());
       clearTimeout(silenceTimer.current ?? undefined);
-      silenceTimer.current = setTimeout(finish, SILENCE_MS);
+      silenceTimer.current = setTimeout(finish, pauseMsRef.current);
     };
     rec.onerror = () => {};
     rec.onend = () => {
@@ -245,13 +271,30 @@ export function AiProspectCall({
       // carry on listening; the silence timer decides when the turn is over.
       if (!alive.current || recRef.current !== rec) return;
       recRef.current = null;
-      if (silenceTimer.current) return; // a pause is already being timed: finish() will send it
+      if (silenceTimer.current) {
+        // Chrome stopped mid-pause. Keep what was said and listen again at once, so words the rep
+        // adds after the pause are still heard; the new session times the pause from here.
+        pendingSpeech.current = `${pendingSpeech.current} ${liveText}`;
+        liveText = '';
+        finished = true;
+        if (finishRef.current === finish) finishRef.current = null;
+        clearTimeout(silenceTimer.current);
+        silenceTimer.current = null;
+        setTimeout(() => alive.current && listenRef.current(), 50);
+        return;
+      }
       setTimeout(() => alive.current && listenRef.current(), 250);
     };
     recRef.current = rec;
     setStatus('listening');
     try {
       rec.start();
+      finishRef.current = finish;
+      // Carrying on a turn after a restart: show it and keep timing the pause.
+      if (pendingSpeech.current.trim()) {
+        setInterim(pendingSpeech.current.replace(/\s+/g, ' ').trim());
+        silenceTimer.current = setTimeout(finish, pauseMsRef.current);
+      }
     } catch {
       // already started / mic busy: try again shortly
       setTimeout(() => alive.current && listenRef.current(), 600);
@@ -472,6 +515,30 @@ export function AiProspectCall({
           </p>
         )}
       </div>
+
+      {speechSupported && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-2 text-small text-fg-secondary" title="How long you can pause before the prospect answers. Short 1.5s, Normal 3s, Long 4.5s.">
+            Wait after you stop
+          <SegmentedControl
+            label="Wait after you stop"
+            size="sm"
+            value={pause}
+            onChange={(v) => choosePause(v as PauseLength)}
+            items={[
+              { value: 'short', label: 'Short' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'long', label: 'Long' },
+            ]}
+          />
+          </span>
+          {interim && status === 'listening' && (
+            <Button size="sm" variant="primary" icon={<Send className="size-4" />} onClick={() => finishRef.current?.()} data-testid="done-talking">
+              Done talking
+            </Button>
+          )}
+        </div>
+      )}
 
       <form onSubmit={sendTyped} className="mt-2 flex items-center gap-2">
         <input
