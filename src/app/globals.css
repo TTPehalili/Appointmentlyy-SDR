@@ -63,11 +63,11 @@
   --action-primary-fg: var(--ink-50);
   /* Selected state for toggles, segmented controls, tabs and "pick one" chips: one clear colour,
      the same meaning everywhere. Soft = light tint for selected rows and list items. */
-  --selected: var(--violet-600);
-  --selected-hover: #8A0EE3;
+  --selected: var(--ink-900);
+  --selected-hover: var(--ink-800);
   --selected-fg: #FFFFFF;
-  --selected-soft: #F4E8FF;
-  --selected-soft-fg: #6B0BB0;
+  --selected-soft: var(--ink-200);
+  --selected-soft-fg: var(--ink-900);
   --action-brand: var(--brand-600);
   --action-brand-hover: var(--brand-700);
   --action-brand-fg: var(--brand-contrast);
@@ -121,6 +121,7 @@
     --action-primary: var(--ink-50);
     --action-primary-hover: var(--ink-200);
     --action-primary-fg: var(--ink-900);
+    /* Dark theme: violet reads clearly on dark surfaces (light theme uses black). */
     --selected: var(--violet-600);
     --selected-hover: #A42CFF;
     --selected-fg: #FFFFFF;
@@ -141,6 +142,16 @@
     --chart-target: var(--ink-700);
     color-scheme: dark;
   }
+}
+
+/* Light theme: inside panels that are dark even in light mode, black selection would vanish, so
+   selection flips to white with dark text there. Custom properties cascade to the children. */
+:root:not([data-theme="dark"]) :is(.bg-inverse, .bg-ink-950, .bg-ink-900) {
+  --selected: var(--ink-50);
+  --selected-hover: var(--ink-200);
+  --selected-fg: var(--ink-900);
+  --selected-soft: rgba(255, 255, 255, 0.14);
+  --selected-soft-fg: #FFFFFF;
 }
 
 @theme inline {

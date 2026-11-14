@@ -6,10 +6,11 @@ import { Bell, HelpCircle, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { EmptyState, IconButton, Kbd } from '@/components/ui';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { ChatButton } from '@/components/chat/ChatButton';
 import { useShell } from './ShellContext';
 
 /**
- * Slim top bar (56px): ⌘K search · Help · Notifications · AI Copilot.
+ * Slim top bar (56px): ⌘K search · Help · Team chat · Notifications · AI Copilot.
  * No brand, domain pill, clock or tenant dropdown (redesign spec 4).
  */
 export function TopBar() {
@@ -43,6 +44,10 @@ export function TopBar() {
         >
           <HelpCircle className="size-5 stroke-[1.5]" />
         </Link>
+        {/* Reads the URL: in Suspense so dynamic routes can still prerender (Cache Components). */}
+        <React.Suspense fallback={<span className="size-9" aria-hidden />}>
+          <ChatButton />
+        </React.Suspense>
         <Notifications />
         <IconButton
           label={copilotOpen ? 'Close AI Copilot (Ctrl+J)' : 'Open AI Copilot (Ctrl+J)'}

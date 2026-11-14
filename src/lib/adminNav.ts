@@ -69,6 +69,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: 'Account',
     items: [
       { id: 'domains', label: 'Branding & domains', href: '/admin/domains', permission: 'adminOrg', keywords: 'custom domains white-label dns' },
+      { id: 'appearance', label: 'Appearance', href: '/admin/appearance', permission: 'adminOrg', keywords: 'selection colour color selected state toggles tabs chips theme light dark mode' },
       { id: 'billing', label: 'Billing', href: '/admin/billing', permission: 'platform', keywords: 'billing invoicing invoices plan' },
       { id: 'support', label: 'Support', href: '/admin/support', permission: 'admin', keywords: 'support tickets help desk' },
       { id: 'audit', label: 'Audit log', href: '/admin/audit', permission: 'adminOrg', controlSection: 'audit', keywords: 'audit trail security events' },

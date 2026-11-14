@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { applyBrand } from '@/lib/theme';
+import { applySelection } from '@/lib/selectionColour';
 import { DEMO_LOGIN, useServerAuth } from '@/lib/authClient';
 import { useWhiteLabel } from './WorkspaceSwitcher';
 
@@ -20,5 +21,15 @@ export function ThemeSync() {
   React.useEffect(() => {
     if (ready) applyBrand(brand);
   }, [brand, ready]);
+
+  // Selection colour (Admin › Appearance): the boot script re-applies the last workspace's colours
+  // before paint; once the server says who is signed in, apply this workspace's (or clear them).
+  const sel = identity?.branding?.selection;
+  const selLight = sel?.light ?? '';
+  const selDark = sel?.dark ?? '';
+  React.useEffect(() => {
+    if (status === 'unknown') return;
+    applySelection(status === 'signed-in' ? { light: selLight, dark: selDark } : null);
+  }, [status, selLight, selDark]);
   return null;
 }

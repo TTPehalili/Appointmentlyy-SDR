@@ -32,11 +32,13 @@ import {
   UploadCloud,
   Lightbulb,
   Sparkles,
-  SlidersHorizontal
+  SlidersHorizontal,
+  LifeBuoy
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, SegmentedControl, Select, Input, buttonClasses } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import { postWinBell, requestFloorHelp, useChatPresence } from '@/lib/chatClient';
 import {
   CADENCE_TOUCHES,
   CADENCE_PHONE_SCRIPTS,
@@ -375,6 +377,30 @@ export default function BorisCallingCockpit({
   const [activityToast, setActivityToast] = useState<string | null>(null);
 
   const callActive = viaVicidial ? telephony.agentState === 'in_call' : isCallingActive;
+  // Team chat presence: "On a call" (and chat do-not-disturb) during a real or demo call; practice calls don't count.
+  useChatPresence(callActive && !practiceMode ? 'on_call' : 'available');
+  // "Need help" on this call: busy while sending, then done until the call ends.
+  // The button itself is the confirmation (no banner, so the call bar never moves); errors show in a
+  // small popover anchored to it.
+  const [helpRequest, setHelpRequest] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [helpError, setHelpError] = useState<string | null>(null);
+  const [helpCallActive, setHelpCallActive] = useState(callActive);
+  if (helpCallActive !== callActive) {
+    // Each new call can ask for help again (adjusted during render, not in an effect).
+    setHelpCallActive(callActive);
+    if (!callActive) {
+      setHelpRequest('idle');
+      setHelpError(null);
+    }
+  }
+  const askFloorForHelp = async () => {
+    if (helpRequest !== 'idle') return;
+    setHelpRequest('sending');
+    setHelpError(null);
+    const r = await requestFloorHelp({ leadName: customerName || activeLead.name, company: partnerName || activeLead.company });
+    setHelpRequest(r.ok ? 'sent' : 'idle');
+    if (!r.ok) setHelpError(`Could not ask for help: ${r.error}`);
+  };
 
   // Script packs with beats (demo BPO script): short lines/questions with the prospect's answers as
   // buttons; they replace the qualify buttons. null everywhere else (unchanged UI).
@@ -1204,6 +1230,8 @@ export default function BorisCallingCockpit({
 
     // Booked: the outcome is logged above exactly as before; the AE handoff opens on top (skippable).
     if (getOutcomeRole(outcomeDef) === 'booked') {
+      // Win bell in Team chat #floor (practice calls returned above, so they never ring it).
+      void postWinBell({ leadName: customerName || activeLead.name, company: partnerName || activeLead.company });
       // The auto-built CRM summary is a fixed template (not facts from this call), so the AE's plan only
       // gets it when the rep wrote it themselves; otherwise just the rep's own notes go across.
       openBookingHandoff(dispName, repEditedNotes ? updatedNotes : customRepNotes);
@@ -1613,7 +1641,7 @@ export default function BorisCallingCockpit({
               >
                 <span className="text-caption text-fg-tertiary">Mode</span>
                 {/* Each mode has its own colour so the current one is obvious at a glance:
-                    green = real calls through your phone, violet = the AI prospect. */}
+                    green = real calls through your phone, black (white in dark mode) = the AI prospect. */}
                 <div
                   role="radiogroup"
                   aria-label="Call mode"
@@ -1622,7 +1650,7 @@ export default function BorisCallingCockpit({
                 >
                   {([
                     { value: 'phone', label: 'Real phone', Icon: PhoneCall, on: 'bg-success-700 text-white shadow-sm' },
-                    { value: 'ai', label: 'AI demo', Icon: Sparkles, on: 'bg-[var(--violet-600)] text-white shadow-sm' },
+                    { value: 'ai', label: 'AI demo', Icon: Sparkles, on: 'bg-selected text-selected-fg shadow-sm' },
                   ] as const).map(({ value, label, Icon, on }) => {
                     const selected = demoCallMode === value;
                     return (
@@ -1801,6 +1829,47 @@ export default function BorisCallingCockpit({
                     </span>
                   )}
                 </div>
+                {/* Reserved "Need help" slot (outside the call controls grid, always the same width), so
+                    starting or ending a call moves nothing. Posts to #managers in Team chat. */}
+                {!practiceMode && (
+                  <div className="relative flex w-9 shrink-0 justify-end sm:w-[7.5rem]">
+                    {callActive && (
+                      <Button
+                        variant="secondary"
+                        data-testid="need-help"
+                        icon={helpRequest === 'sent' ? <Check /> : <LifeBuoy />}
+                        loading={helpRequest === 'sending'}
+                        disabled={helpRequest === 'sent'}
+                        aria-label={helpRequest === 'sent' ? 'Help requested' : helpError ? `Need help. ${helpError}` : 'Need help'}
+                        title={
+                          helpRequest === 'sent'
+                            ? 'Help requested — a supervisor is on the way (#managers in Team chat)'
+                            : helpError ?? 'Ask a supervisor to help on this call (posts to #managers in Team chat)'
+                        }
+                        className={`h-9 w-9 px-0 sm:w-full sm:px-3 ${
+                          helpRequest === 'sent'
+                            ? 'disabled:opacity-100 border-success-500/50 bg-success-bg text-success-fg'
+                            : helpError
+                              ? 'border-warning-fg/40 bg-warning-bg text-warning-fg hover:bg-warning-bg'
+                              : ''
+                        }`}
+                        onClick={askFloorForHelp}
+                      >
+                        <span className="hidden sm:inline">{helpRequest === 'sent' ? 'Help asked' : 'Need help'}</span>
+                      </Button>
+                    )}
+                    {callActive && helpError && (
+                      // Anchored popover: floats over the content below, so nothing moves.
+                      <p
+                        role="alert"
+                        data-testid="need-help-error"
+                        className="absolute right-0 top-full z-20 mt-1 w-64 rounded-md border border-warning-fg/40 bg-surface px-2.5 py-1.5 text-caption text-warning-fg shadow-md"
+                      >
+                        {helpError}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* RIGHT: fixed-width controls, a 2 x 2 grid that never reflows:

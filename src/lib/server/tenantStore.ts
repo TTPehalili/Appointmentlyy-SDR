@@ -26,6 +26,8 @@ export interface TenantBranding {
   supportEmail?: string;
   /** Lead Finder pull progress style. Unset = 'playful'. */
   leadFinderAnimation?: 'playful' | 'professional';
+  /** Selected-state colour per theme (Admin › Appearance), `#RRGGBB`. Unset = platform default. */
+  selection?: { light?: string; dark?: string };
 }
 
 export interface Tenant {

@@ -7,6 +7,7 @@ import {
   Kanban,
   LifeBuoy,
   type LucideIcon,
+  MessagesSquare,
   Mic,
   Phone,
   Radio,
@@ -48,6 +49,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'reports', label: 'Reports', icon: BarChart3, href: '/reports', group: 'improve', keywords: 'performance analytics' },
 
   { id: 'live-floor', label: 'Live floor', icon: Radio, href: '/live-floor', group: 'team', permission: 'team', keywords: 'floor monitor listen whisper' },
+  // Everyone (reps too): #floor, #managers for Supervisor+, direct messages.
+  { id: 'chat', label: 'Team chat', icon: MessagesSquare, href: '/chat', group: 'team', keywords: 'chat messages dm direct floor managers help announcement' },
   { id: 'coaching', label: 'Coaching', icon: GraduationCap, href: '/coaching', group: 'team', permission: 'team', featureFlag: 'coaching' },
 
   { id: 'help', label: 'Help', icon: LifeBuoy, href: '/help', group: 'footer', keywords: 'guide playbooks' },
