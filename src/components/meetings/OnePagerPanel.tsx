@@ -222,7 +222,7 @@ export default function OnePagerPanel({
             </form>
             {polishError && <InlineError className="mt-3" message={polishError} onRetry={() => void polish(instruction)} />}
             {proposal && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-500/30 bg-selected px-3 py-2.5" role="status" data-testid="onepager-proposal">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-500/30 bg-brand-tint px-3 py-2.5" role="status" data-testid="onepager-proposal">
                 <span className="flex items-center gap-1.5 text-small text-fg">
                   <Eye className="size-4 text-brand-text" aria-hidden />
                   Suggestion ready: it&apos;s shown in the preview.

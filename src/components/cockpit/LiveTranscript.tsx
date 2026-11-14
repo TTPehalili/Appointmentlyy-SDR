@@ -57,7 +57,7 @@ export default function LiveTranscript({
                   className={`inline-flex h-5 shrink-0 items-center rounded-sm px-1.5 text-caption ${
                     isRep
                       ? 'bg-subtle text-fg-secondary'
-                      : 'bg-selected text-brand-text'
+                      : 'bg-brand-tint text-brand-text'
                   }`}
                 >
                   {isRep ? 'You' : 'Prospect'}

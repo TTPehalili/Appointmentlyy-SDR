@@ -308,7 +308,7 @@ export default function TemplateEditorDialog({ open, onClose, template, initial,
                     onClick={() => toggleTag(tag)}
                     className={cn(
                       'focus-ring rounded-full border px-2.5 py-1 text-small transition-colors',
-                      on ? 'border-action bg-action text-action-fg' : 'border-line bg-surface text-fg-secondary hover:bg-subtle hover:text-fg',
+                      on ? 'border-selected bg-selected text-selected-fg' : 'border-line bg-surface text-fg-secondary hover:bg-subtle hover:text-fg',
                     )}
                   >
                     {tag}

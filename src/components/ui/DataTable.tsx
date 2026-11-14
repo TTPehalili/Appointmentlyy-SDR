@@ -128,7 +128,7 @@ export function DataTable<T>({
                       'group/row border-t border-line transition-colors duration-150 focus-visible:bg-subtle focus-visible:outline-none',
                       rowH,
                       onRowClick && 'cursor-pointer hover:bg-subtle',
-                      isSel && 'bg-selected hover:bg-selected',
+                      isSel && 'bg-selected-soft hover:bg-selected-soft',
                     )}
                   >
                     {selectable && (
@@ -238,11 +238,11 @@ export function FilterChip({
       onClick={onClick}
       className={cn(
         'focus-ring inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-body transition-colors duration-150',
-        active ? 'border-action bg-subtle text-fg' : 'border-line-strong bg-surface text-fg-secondary hover:text-fg',
+        active ? 'border-selected bg-selected text-selected-fg' : 'border-line-strong bg-surface text-fg-secondary hover:text-fg',
       )}
     >
       <span>{label}</span>
-      {value && <span className="font-medium text-fg">{value}</span>}
+      {value && <span className={cn('font-medium', active ? 'text-selected-fg' : 'text-fg')}>{value}</span>}
     </button>
   );
 }

@@ -412,7 +412,7 @@ export function CallbacksPanel({
             onClick={() => setFilter(f.id)}
             aria-pressed={filter === f.id}
             className={`focus-ring h-7 cursor-pointer rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
-              filter === f.id ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+              filter === f.id ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             {f.label}

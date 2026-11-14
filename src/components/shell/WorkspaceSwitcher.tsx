@@ -177,12 +177,12 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       role="menuitemradio"
       aria-checked={code === tenantCode}
       onClick={() => switchTo(code)}
-      className="flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-body text-fg outline-none hover:bg-subtle focus-visible:bg-subtle"
+      className={cn('flex w-full items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-body text-fg outline-none hover:bg-subtle focus-visible:bg-subtle', code === tenantCode && 'bg-selected-soft font-medium text-selected-soft-fg hover:bg-selected-soft')}
     >
       <WorkspaceMark initials={code === HOME_WORKSPACE.code ? undefined : initialsOf(name)} size={20} />
       <span className="flex-1 truncate">{name}</span>
       {switching === code && <span className="size-3.5 animate-spin rounded-full border-2 border-line-strong border-t-transparent" aria-label="Switching" />}
-      {code === tenantCode && <Check className="size-4 text-fg-secondary" aria-hidden />}
+      {code === tenantCode && <Check className="size-4 text-selected-soft-fg" aria-hidden />}
     </button>
   );
 

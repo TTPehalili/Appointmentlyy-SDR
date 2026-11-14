@@ -374,7 +374,7 @@ export default function CustomDomainsManager() {
 
             {/* Active Simulation Banner if previewing a customer's custom domain */}
             {simulatedHost && (
-              <div className="px-4 py-3 rounded-lg bg-selected border border-brand-600/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-body">
+              <div className="px-4 py-3 rounded-lg bg-brand-tint border border-brand-600/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-body">
                 <div className="flex items-center gap-2.5">
                   <span className="size-2 rounded-full bg-success-500 animate-pulse-soft shrink-0" aria-hidden />
                   <span className="text-fg">
@@ -525,7 +525,7 @@ export default function CustomDomainsManager() {
                       type="checkbox"
                       checked={hidePoweredBy}
                       onChange={(e) => setHidePoweredBy(e.target.checked)}
-                      className="focus-ring size-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer"
+                      className="focus-ring size-4 rounded-sm border-line-strong accent-selected cursor-pointer"
                     />
                   </label>
 
@@ -583,7 +583,7 @@ export default function CustomDomainsManager() {
                       aria-pressed={subdomainPrefix === prefix}
                       className={`focus-ring h-7 px-2.5 rounded-full font-mono text-caption border transition-colors duration-150 cursor-pointer ${
                         subdomainPrefix === prefix
-                          ? 'bg-selected text-fg border-brand-600/30'
+                          ? 'bg-selected text-selected-fg border-selected'
                           : 'bg-surface text-fg-secondary border-line hover:bg-subtle'
                       }`}
                     >

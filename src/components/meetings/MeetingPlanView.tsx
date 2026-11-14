@@ -420,7 +420,7 @@ function PreparingState({ plan }: { plan: MeetingPlan }) {
   return (
     <div className="rounded-lg border border-line bg-surface p-6 shadow-xs md:p-8" role="status" aria-live="polite" data-testid="meeting-plan-preparing">
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
-        <span className="flex size-12 items-center justify-center rounded-full bg-selected text-brand-text">
+        <span className="flex size-12 items-center justify-center rounded-full bg-brand-tint text-brand-text">
           <Loader2 className="size-6 animate-spin" aria-hidden />
         </span>
         <p className="mt-4 text-h3 text-fg">Preparing the meeting plan</p>
@@ -444,7 +444,7 @@ function PreparingState({ plan }: { plan: MeetingPlan }) {
                 <span
                   className={cn(
                     'flex size-6 shrink-0 items-center justify-center rounded-full',
-                    state === 'done' ? 'bg-success-bg text-success-fg' : state === 'active' ? 'bg-selected text-brand-text' : 'bg-subtle text-fg-tertiary',
+                    state === 'done' ? 'bg-success-bg text-success-fg' : state === 'active' ? 'bg-brand-tint text-brand-text' : 'bg-subtle text-fg-tertiary',
                   )}
                 >
                   {state === 'done' ? <Check className="size-3.5" aria-hidden /> : state === 'active' ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Icon className="size-3.5" aria-hidden />}

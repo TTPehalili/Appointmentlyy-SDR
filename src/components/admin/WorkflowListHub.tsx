@@ -57,7 +57,7 @@ const menuItem =
 const menuItemDanger =
   'focus-ring w-full px-3 py-1.5 text-left text-body text-danger-fg hover:bg-danger-bg flex items-center gap-2 transition-colors cursor-pointer';
 const menuIcon = 'h-4 w-4 shrink-0 text-fg-secondary';
-const checkboxCls = 'focus-ring h-4 w-4 rounded-sm border-line-strong accent-ink-900 cursor-pointer';
+const checkboxCls = 'focus-ring h-4 w-4 rounded-sm border-line-strong accent-selected cursor-pointer';
 
 interface WorkflowListHubProps {
   onOpenCanvas: (workflowId?: string, opts?: { fromAssistant?: boolean }) => void;
@@ -390,7 +390,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
           <button
             onClick={() => setActiveTab('all')}
             className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer ${
-              activeTab === 'all' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+              activeTab === 'all' ? 'border-selected text-selected-soft-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
             }`}
           >
             <span>All workflows</span>
@@ -399,7 +399,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
           <button
             onClick={() => setActiveTab('needs_review')}
             className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'needs_review' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+              activeTab === 'needs_review' ? 'border-selected text-selected-soft-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
             }`}
           >
             <span>Needs review</span>
@@ -409,7 +409,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
           <button
             onClick={() => setActiveTab('deleted')}
             className={`focus-ring -mb-px h-10 border-b-2 transition-colors cursor-pointer ${
-              activeTab === 'deleted' ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
+              activeTab === 'deleted' ? 'border-selected text-selected-soft-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg'
             }`}
           >
             <span>Deleted</span>
@@ -471,7 +471,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                         setIsCreateMenuOpen(false);
                         setIsAssistantOpen(true);
                       }}
-                      className="focus-ring w-full rounded-md border border-brand-600/40 bg-selected px-3 py-2 text-left flex items-start gap-2.5 transition-colors hover:border-brand-600 cursor-pointer"
+                      className="focus-ring w-full rounded-md border border-brand-600/40 bg-brand-tint px-3 py-2 text-left flex items-start gap-2.5 transition-colors hover:border-brand-600 cursor-pointer"
                     >
                       <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-text" />
                       <span className="min-w-0">
@@ -782,7 +782,7 @@ export default function WorkflowListHub({ onOpenCanvas }: WorkflowListHubProps) 
                             onClick={() => handleToggleActive(wf)}
                             aria-label={wf.active ? `Switch off ${wf.name}` : `Switch on ${wf.name}`}
                             className={`focus-ring w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                              wf.active ? 'bg-action' : 'bg-ink-300'
+                              wf.active ? 'bg-selected' : 'bg-ink-300'
                             }`}
                           >
                             <div

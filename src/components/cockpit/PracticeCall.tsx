@@ -242,7 +242,7 @@ export function PracticeSummaryDialog({
                   aria-pressed={selected}
                   onClick={() => onOutcomeChange(o.value)}
                   className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${
-                    selected ? 'border-transparent bg-action text-action-fg' : 'border-line-strong bg-surface text-fg hover:bg-subtle'
+                    selected ? 'border-selected bg-selected text-selected-fg' : 'border-line-strong bg-surface text-fg hover:bg-subtle'
                   }`}
                 >
                   {selected && <Check className="size-3.5" aria-hidden />}

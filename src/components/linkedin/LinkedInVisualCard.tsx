@@ -367,8 +367,8 @@ export default function LinkedInVisualCard({
                 aria-pressed={activeVariant === 'primary'}
                 className={`focus-ring rounded-sm px-2.5 py-1 transition-colors ${
                   activeVariant === 'primary'
-                    ? 'bg-surface font-medium text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected font-medium text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
               >
                 {primaryButtonLabel}
@@ -379,8 +379,8 @@ export default function LinkedInVisualCard({
                 aria-pressed={activeVariant === 'alternative'}
                 className={`focus-ring flex items-center gap-1 rounded-sm px-2.5 py-1 transition-colors ${
                   activeVariant === 'alternative'
-                    ? 'bg-surface font-medium text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected font-medium text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
               >
                 <span>{alternativeImageLabel}</span>

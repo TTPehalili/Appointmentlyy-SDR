@@ -25,7 +25,7 @@ export default function OutreachLayout({ children }: { children: React.ReactNode
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'focus-ring -mb-px inline-flex h-11 items-center rounded-t-sm border-b-2 text-body transition-colors duration-150',
-                active ? 'border-action font-medium text-fg' : 'border-transparent text-fg-secondary hover:text-fg',
+                active ? 'border-selected font-medium text-selected-soft-fg' : 'border-transparent text-fg-secondary hover:text-fg',
               )}
             >
               {t.label}

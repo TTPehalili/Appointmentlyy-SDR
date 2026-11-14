@@ -644,7 +644,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                                 }}
                                 className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
                                   tenant.modules.borisCockpit
-                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    ? 'bg-selected text-selected-fg border-selected hover:bg-selected-hover'
                                     : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
                                 }`}
                                 title="Toggle AI Boris Cockpit access"
@@ -661,7 +661,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                                 }}
                                 className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
                                   tenant.modules.sparringArena
-                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    ? 'bg-selected text-selected-fg border-selected hover:bg-selected-hover'
                                     : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
                                 }`}
                                 title="Toggle AI Sparring Arena access"
@@ -678,7 +678,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                                 }}
                                 className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
                                   tenant.modules.certificationGate
-                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    ? 'bg-selected text-selected-fg border-selected hover:bg-selected-hover'
                                     : 'bg-surface text-fg-tertiary border-line hover:border-line-strong'
                                 }`}
                                 title="Enforce 80% passing certification gate"
@@ -695,7 +695,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                                 }}
                                 className={`focus-ring inline-flex h-6 items-center gap-1 rounded-sm border px-2 text-caption transition-colors cursor-pointer ${
                                   tenant.modules.crmCadence
-                                    ? 'bg-subtle text-fg border-line hover:border-line-strong'
+                                    ? 'bg-selected text-selected-fg border-selected hover:bg-selected-hover'
                                     : 'bg-surface text-fg-tertiary border-line line-through hover:border-line-strong'
                                 }`}
                                 title="Toggle Leads & Cadence CRM"
@@ -1084,7 +1084,7 @@ export default function AdminControlCentre({ section }: { section: AdminControlS
                                   key={lead.id}
                                   onClick={() => setSelectedLeadForCadence(lead)}
                                   className={`border-t border-line cursor-pointer transition-colors duration-150 ${
-                                    isSelected ? 'bg-selected' : 'hover:bg-subtle'
+                                    isSelected ? 'bg-selected-soft' : 'hover:bg-subtle'
                                   }`}
                                 >
                                   <td className="px-4 py-2.5">

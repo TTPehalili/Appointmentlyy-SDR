@@ -61,6 +61,13 @@
   --action-primary: var(--ink-900);
   --action-primary-hover: var(--ink-800);
   --action-primary-fg: var(--ink-50);
+  /* Selected state for toggles, segmented controls, tabs and "pick one" chips: one clear colour,
+     the same meaning everywhere. Soft = light tint for selected rows and list items. */
+  --selected: var(--violet-600);
+  --selected-hover: #8A0EE3;
+  --selected-fg: #FFFFFF;
+  --selected-soft: #F4E8FF;
+  --selected-soft-fg: #6B0BB0;
   --action-brand: var(--brand-600);
   --action-brand-hover: var(--brand-700);
   --action-brand-fg: var(--brand-contrast);
@@ -114,6 +121,11 @@
     --action-primary: var(--ink-50);
     --action-primary-hover: var(--ink-200);
     --action-primary-fg: var(--ink-900);
+    --selected: var(--violet-600);
+    --selected-hover: #A42CFF;
+    --selected-fg: #FFFFFF;
+    --selected-soft: rgba(152, 16, 250, 0.22);
+    --selected-soft-fg: #D9B3FF;
     --action-brand: var(--brand-500);
     --action-brand-hover: var(--brand-600);
     --brand-text: var(--brand-500);
@@ -172,7 +184,8 @@
   --color-surface: var(--bg-surface);
   --color-subtle: var(--bg-subtle);
   --color-inverse: var(--bg-inverse);
-  --color-selected: var(--bg-selected);
+  /* Pale brand tint for badges, icon tiles and callouts. Not a selection state: use bg-selected / bg-selected-soft. */
+  --color-brand-tint: var(--bg-selected);
   --color-fg: var(--text-primary);
   --color-fg-secondary: var(--text-secondary);
   --color-fg-tertiary: var(--text-tertiary);
@@ -184,6 +197,11 @@
   --color-action: var(--action-primary);
   --color-action-hover: var(--action-primary-hover);
   --color-action-fg: var(--action-primary-fg);
+  --color-selected: var(--selected);
+  --color-selected-hover: var(--selected-hover);
+  --color-selected-fg: var(--selected-fg);
+  --color-selected-soft: var(--selected-soft);
+  --color-selected-soft-fg: var(--selected-soft-fg);
   --color-action-brand: var(--action-brand);
   --color-action-brand-hover: var(--action-brand-hover);
   --color-action-brand-fg: var(--action-brand-fg);

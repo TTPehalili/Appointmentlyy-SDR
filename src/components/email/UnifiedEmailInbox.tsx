@@ -554,9 +554,9 @@ export default function UnifiedEmailInbox() {
                   <div
                     key={threadId}
                     onClick={() => setSelectedThreadId(threadId)}
-                    className={`cursor-pointer space-y-0.5 border-b border-l-2 border-b-line px-4 py-3 text-left transition-colors ${
+                    className={`cursor-pointer space-y-0.5 border-b border-l-[3px] border-b-line px-4 py-3 text-left transition-colors ${
                       isSelected
-                        ? 'border-l-action bg-selected'
+                        ? 'border-l-selected bg-selected-soft'
                         : 'border-l-transparent hover:bg-subtle'
                     }`}
                   >
@@ -565,7 +565,7 @@ export default function UnifiedEmailInbox() {
                         {hasUnreadInbound && (
                           <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-action" aria-label="Unread" />
                         )}
-                        <span className={`truncate text-body ${hasUnreadInbound ? 'font-semibold text-fg' : 'font-medium text-fg'}`}>
+                        <span className={`truncate text-body ${hasUnreadInbound ? 'font-semibold' : 'font-medium'} ${isSelected ? 'text-selected-soft-fg' : 'text-fg'}`}>
                           {latestEmail.leadName}
                         </span>
                       </div>
@@ -668,18 +668,18 @@ export default function UnifiedEmailInbox() {
                   return (
                     <div
                       key={msg.id}
-                      className={`space-y-2 rounded-lg border border-line p-4 text-left ${
-                        isInbound ? 'bg-surface shadow-xs' : 'bg-subtle'
+                      className={`space-y-2 rounded-lg border p-4 text-left ${
+                        isInbound ? 'border-line border-l-[3px] border-l-success-500 bg-surface shadow-xs sm:mr-10' : 'border-selected/30 bg-selected-soft sm:ml-10'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2">
                           {isInbound ? (
-                            <ArrowDownLeft className="h-4 w-4 shrink-0 text-fg-secondary" />
+                            <ArrowDownLeft className="h-4 w-4 shrink-0 text-success-fg" />
                           ) : (
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-fg-secondary" />
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-selected-soft-fg" />
                           )}
-                          <span className="shrink-0 text-small text-fg-secondary">
+                          <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-caption font-medium ${isInbound ? 'bg-success-bg text-success-fg' : 'bg-selected/15 text-selected-soft-fg'}`}>
                             {isInbound ? 'Reply from' : 'Sent by'}
                           </span>
                           <span className="truncate text-body-strong text-fg">

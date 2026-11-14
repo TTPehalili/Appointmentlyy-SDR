@@ -25,11 +25,11 @@ function NavLink({ item, collapsed, active }: { item: NavItem; collapsed: boolea
       className={cn(
         'focus-ring relative flex h-9 items-center gap-3 rounded-md text-body transition-colors duration-150',
         collapsed ? 'mx-auto w-10 justify-center' : 'px-2.5',
-        active ? 'bg-subtle font-medium text-fg' : 'text-fg-secondary hover:bg-subtle hover:text-fg',
+        active ? 'bg-selected-soft font-medium text-selected-soft-fg' : 'text-fg-secondary hover:bg-subtle hover:text-fg',
       )}
     >
-      {active && <span className="absolute inset-y-2 -left-2 w-0.5 rounded-full bg-brand-500" aria-hidden />}
-      <Icon className={cn('size-5 shrink-0 stroke-[1.5]', active ? 'text-brand-text' : 'text-fg-secondary')} aria-hidden />
+      {active && <span className="absolute inset-y-2 -left-2 w-0.5 rounded-full bg-selected" aria-hidden />}
+      <Icon className={cn('size-5 shrink-0 stroke-[1.5]', active ? 'text-selected-soft-fg' : 'text-fg-secondary')} aria-hidden />
       {!collapsed && <span className="truncate">{item.label}</span>}
     </Link>
   );

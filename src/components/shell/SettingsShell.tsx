@@ -55,10 +55,10 @@ function SubNav({
                       'focus-ring flex h-8 items-center rounded-md px-2 text-body transition-colors duration-150',
                       dark
                         ? active
-                          ? 'bg-ink-800 font-medium text-ink-50'
+                          ? 'bg-selected font-medium text-selected-fg'
                           : 'text-ink-400 hover:bg-ink-800 hover:text-ink-50'
                         : active
-                          ? 'bg-subtle font-medium text-fg'
+                          ? 'bg-selected-soft font-medium text-selected-soft-fg'
                           : 'text-fg-secondary hover:bg-subtle hover:text-fg',
                     )}
                   >

@@ -160,7 +160,7 @@ function ActionPlanRead({ plan }: { plan: MeetingPlan }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <section className="rounded-lg border border-line bg-selected/60 p-5" data-testid="plan-goal">
+        <section className="rounded-lg border border-line bg-brand-tint/60 p-5" data-testid="plan-goal">
           <p className="flex items-center gap-2 text-caption font-medium text-brand-text">
             <Target className="size-4" aria-hidden />
             Meeting goal

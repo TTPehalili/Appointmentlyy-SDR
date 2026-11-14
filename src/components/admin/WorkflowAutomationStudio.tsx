@@ -645,8 +645,8 @@ export default function WorkflowAutomationStudio({
             }}
             className={`focus-ring h-7 px-3 rounded-sm font-medium transition-colors ${
               viewMode === 'editor' && !isHistoryOpen
-                ? 'bg-surface text-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-selected text-selected-fg shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             Editor
@@ -659,8 +659,8 @@ export default function WorkflowAutomationStudio({
             }}
             className={`focus-ring h-7 px-3 rounded-sm font-medium transition-colors ${
               isHistoryOpen || viewMode === 'executions'
-                ? 'bg-surface text-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-selected text-selected-fg shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             Executions
@@ -684,7 +684,7 @@ export default function WorkflowAutomationStudio({
             <button
               onClick={handleToggleActive}
               className={`focus-ring w-9 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-                currentWorkflow?.active ? 'bg-action' : 'bg-ink-300'
+                currentWorkflow?.active ? 'bg-selected' : 'bg-ink-300'
               }`}
             >
               <div
@@ -813,7 +813,7 @@ export default function WorkflowAutomationStudio({
                               onClick={() => handleSelectWorkflow(wf)}
                               className={`group h-8 px-2 rounded-sm flex items-center justify-between text-body cursor-pointer transition-colors ${
                                 isSelected
-                                  ? 'bg-selected text-fg font-medium'
+                                  ? 'bg-selected-soft text-selected-soft-fg font-medium'
                                   : 'hover:bg-subtle text-fg-secondary'
                               }`}
                             >

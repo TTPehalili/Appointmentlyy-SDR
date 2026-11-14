@@ -284,7 +284,7 @@ export default function NewTicketModal({
                         onClick={() => setPriority(p)}
                         aria-pressed={isSelected}
                         className={`focus-ring h-8 px-2 rounded-[6px] text-small font-medium capitalize transition-colors duration-150 text-center ${
-                          isSelected ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+                          isSelected ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         {p}

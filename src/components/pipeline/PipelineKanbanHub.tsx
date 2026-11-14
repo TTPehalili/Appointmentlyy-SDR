@@ -856,7 +856,7 @@ export default function PipelineKanbanHub() {
                     onDrop={(e) => handleDrop(e, col.statusValue)}
                     className={`w-[280px] shrink-0 flex flex-col rounded-lg border transition-colors duration-150 ${
                       isDragTarget
-                        ? 'bg-selected border-line-strong'
+                        ? 'bg-brand-tint border-line-strong'
                         : 'bg-subtle/60 border-line'
                     }`}
                   >
@@ -1685,7 +1685,7 @@ export default function PipelineKanbanHub() {
                         aria-pressed={current}
                         className={`focus-ring h-9 px-2.5 rounded-md border text-left text-small transition-colors cursor-pointer flex items-center gap-2 ${
                           current
-                            ? 'bg-subtle text-fg border-action font-medium'
+                            ? 'bg-selected text-selected-fg border-selected font-medium'
                             : 'bg-surface text-fg-secondary border-line-strong hover:text-fg'
                         }`}
                       >

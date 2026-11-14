@@ -103,7 +103,7 @@ export default function AssignTemplateDialog({ open, onClose, templates, label, 
               key={value}
               className={cn(
                 'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-                mode === value ? 'border-action bg-selected' : 'border-line bg-surface hover:bg-subtle',
+                mode === value ? 'border-selected bg-selected-soft ring-1 ring-selected' : 'border-line bg-surface hover:bg-subtle',
               )}
             >
               <input type="radio" name="assign-mode" value={value} checked={mode === value} onChange={() => setMode(value)} className="focus-ring mt-1" />

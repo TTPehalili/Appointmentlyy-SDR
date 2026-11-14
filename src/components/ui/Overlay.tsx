@@ -364,10 +364,10 @@ export function CommandPalette({
                       onClick={() => run(item)}
                       className={cn(
                         'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-body text-fg [&_svg]:size-4',
-                        i === active && 'bg-subtle',
+                        i === active && 'bg-selected-soft text-selected-soft-fg',
                       )}
                     >
-                      {item.icon && <span className="text-fg-secondary">{item.icon}</span>}
+                      {item.icon && <span className={i === active ? 'text-selected-soft-fg' : 'text-fg-secondary'}>{item.icon}</span>}
                       <span className="flex-1 truncate">{item.label}</span>
                       {item.hint && <span className="text-small text-fg-tertiary">{item.hint}</span>}
                       {i === active && <CornerDownLeft className="text-fg-tertiary" aria-hidden />}

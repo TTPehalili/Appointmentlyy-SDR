@@ -98,8 +98,8 @@ export default function WorkflowsStandalonePage() {
                         onClick={() => setView('list')}
                         className={`focus-ring h-7 px-2.5 rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
                           view === 'list'
-                            ? 'bg-surface text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         <Layers className="h-3.5 w-3.5" />
@@ -109,8 +109,8 @@ export default function WorkflowsStandalonePage() {
                         onClick={() => setView('canvas')}
                         className={`focus-ring h-7 px-2.5 rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
                           view === 'canvas'
-                            ? 'bg-surface text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         <Workflow className="h-3.5 w-3.5" />

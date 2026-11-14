@@ -174,11 +174,11 @@ export default function UserGuideHub() {
                   aria-current={isCurrent ? 'step' : undefined}
                   className={`focus-ring p-3 rounded-lg border text-left transition-colors duration-150 cursor-pointer flex flex-col gap-2 shadow-xs ${
                     isCurrent
-                      ? 'bg-selected border-brand-600'
+                      ? 'bg-selected-soft border-selected ring-1 ring-selected'
                       : 'bg-surface border-line hover:bg-subtle'
                   }`}
                 >
-                  <span className={`text-caption tabular-nums ${isCurrent ? 'text-brand-text' : 'text-fg-tertiary'}`}>
+                  <span className={`text-caption tabular-nums ${isCurrent ? 'text-selected-soft-fg' : 'text-fg-tertiary'}`}>
                     Step {step.step}
                   </span>
                   <span className="text-body-strong text-fg leading-snug line-clamp-2">

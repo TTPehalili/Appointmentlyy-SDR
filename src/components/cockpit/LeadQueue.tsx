@@ -78,7 +78,7 @@ export default function LeadQueue({
               onClick={() => onSelectLead(lead.id)}
               className={`relative flex h-16 cursor-pointer flex-col justify-between border-b border-l-2 border-b-line px-3 py-2 transition-colors duration-150 ${
                 isSelected
-                  ? 'border-l-brand-600 bg-selected'
+                  ? 'border-l-selected bg-selected-soft'
                   : 'border-l-transparent hover:bg-subtle'
               }`}
             >

@@ -331,8 +331,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                   onClick={() => setViewPerspective('tenant')}
                   className={`focus-ring h-8 px-3 rounded-[6px] text-small font-medium transition-colors duration-150 ${
                     viewPerspective === 'tenant'
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                   }`}
                   title="Customer submission view"
                 >
@@ -342,8 +342,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                   onClick={() => setViewPerspective('admin')}
                   className={`focus-ring h-8 px-3 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center gap-1.5 ${
                     viewPerspective === 'admin'
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                   }`}
                   title="Full Admin Management Desk"
                 >
@@ -453,7 +453,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
               aria-pressed={statusFilter === pill.id}
               className={`focus-ring h-8 px-3 rounded-full border text-small font-medium transition-colors duration-150 whitespace-nowrap ${
                 statusFilter === pill.id
-                  ? 'bg-selected border-brand-600/30 text-fg'
+                  ? 'bg-selected border-selected text-selected-fg'
                   : 'bg-surface border-line text-fg-secondary hover:bg-subtle'
               }`}
             >
@@ -512,7 +512,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                     aria-current={isSelected ? 'true' : undefined}
                     className={`focus-ring w-full px-3 py-3 text-left transition-colors duration-150 flex flex-col gap-1.5 relative border-l-2 ${
                       isSelected
-                        ? 'bg-selected border-l-brand-600'
+                        ? 'bg-selected-soft border-l-selected'
                         : 'border-l-transparent hover:bg-subtle'
                     }`}
                   >
@@ -794,8 +794,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                         onClick={() => setIsInternalNote(false)}
                         className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center gap-1.5 ${
                           !isInternalNote
-                            ? 'bg-surface text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         <Mail className="h-3.5 w-3.5" aria-hidden />
@@ -806,8 +806,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                         onClick={() => setIsInternalNote(true)}
                         className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center gap-1.5 ${
                           isInternalNote
-                            ? 'bg-surface text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         <Lock className="h-3.5 w-3.5" aria-hidden />

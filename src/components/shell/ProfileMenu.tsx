@@ -102,10 +102,10 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
                 updateSession({ role: r });
                 setOpen(false);
               }}
-              className={cn(item, 'text-fg')}
+              className={cn(item, 'text-fg', role === r && 'bg-selected-soft font-medium text-selected-soft-fg hover:bg-selected-soft')}
             >
               <span className="flex-1">{ROLE_LABELS[r]}</span>
-              {role === r && <Check className="text-fg-secondary" aria-hidden />}
+              {role === r && <Check className="text-selected-soft-fg" aria-hidden />}
             </button>
           ))}
 

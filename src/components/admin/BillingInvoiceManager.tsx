@@ -266,7 +266,7 @@ export default function BillingInvoiceManager() {
   const presetClass = (active: boolean) =>
     `focus-ring flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-small transition-colors ${
       active
-        ? 'border-fg bg-selected text-fg font-medium'
+        ? 'border-selected bg-selected-soft text-selected-soft-fg font-medium ring-1 ring-selected'
         : 'border-line bg-surface text-fg hover:bg-subtle'
     }`;
 
@@ -366,7 +366,7 @@ export default function BillingInvoiceManager() {
                         }}
                         className={`focus-ring h-8 rounded-full border px-3 text-small transition-colors ${
                           active
-                            ? 'border-fg bg-selected text-fg font-medium'
+                            ? 'border-selected bg-selected text-selected-fg font-medium'
                             : 'border-line bg-surface text-fg-secondary hover:bg-subtle'
                         }`}
                       >

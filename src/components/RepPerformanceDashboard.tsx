@@ -1786,7 +1786,7 @@ export default function RepPerformanceDashboard() {
                     onClick={() => setViewMode('both')}
                     aria-pressed={viewMode === 'both'}
                     className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'both' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+                      viewMode === 'both' ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                   >
                     <Layers className="h-3.5 w-3.5" />
@@ -1797,7 +1797,7 @@ export default function RepPerformanceDashboard() {
                     onClick={() => setViewMode('graph')}
                     aria-pressed={viewMode === 'graph'}
                     className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'graph' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+                      viewMode === 'graph' ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                   >
                     <BarChart3 className="h-3.5 w-3.5" />
@@ -1808,7 +1808,7 @@ export default function RepPerformanceDashboard() {
                     onClick={() => setViewMode('table')}
                     aria-pressed={viewMode === 'table'}
                     className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                      viewMode === 'table' ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+                      viewMode === 'table' ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                   >
                     <List className="h-3.5 w-3.5" />
@@ -1828,7 +1828,7 @@ export default function RepPerformanceDashboard() {
                       }}
                       aria-pressed={sortField === 'appointmentsBooked'}
                       className={`focus-ring h-8 px-3 rounded-md border text-small font-medium cursor-pointer transition-colors ${
-                        sortField === 'appointmentsBooked' ? 'bg-subtle text-fg border-line-strong' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
+                        sortField === 'appointmentsBooked' ? 'bg-selected text-selected-fg border-selected' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
                       }`}
                     >
                       Bookings {sortField === 'appointmentsBooked' ? (sortAsc ? '↑' : '↓') : ''}
@@ -1841,7 +1841,7 @@ export default function RepPerformanceDashboard() {
                       }}
                       aria-pressed={sortField === 'callsMade'}
                       className={`focus-ring h-8 px-3 rounded-md border text-small font-medium cursor-pointer transition-colors ${
-                        sortField === 'callsMade' ? 'bg-subtle text-fg border-line-strong' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
+                        sortField === 'callsMade' ? 'bg-selected text-selected-fg border-selected' : 'bg-surface border-line text-fg-secondary hover:bg-subtle hover:text-fg'
                       }`}
                     >
                       Calls {sortField === 'callsMade' ? (sortAsc ? '↑' : '↓') : ''}
@@ -1866,8 +1866,8 @@ export default function RepPerformanceDashboard() {
                       aria-pressed={chartMetric === 'appointments'}
                       className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'appointments'
-                          ? 'bg-surface text-fg shadow-xs'
-                          : 'text-fg-secondary hover:text-fg'
+                          ? 'bg-selected text-selected-fg shadow-xs'
+                          : 'text-fg-secondary hover:bg-surface hover:text-fg'
                       }`}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1880,8 +1880,8 @@ export default function RepPerformanceDashboard() {
                       aria-pressed={chartMetric === 'outreach'}
                       className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'outreach'
-                          ? 'bg-surface text-fg shadow-xs'
-                          : 'text-fg-secondary hover:text-fg'
+                          ? 'bg-selected text-selected-fg shadow-xs'
+                          : 'text-fg-secondary hover:bg-surface hover:text-fg'
                       }`}
                     >
                       <PhoneCall className="h-3.5 w-3.5" />
@@ -1894,8 +1894,8 @@ export default function RepPerformanceDashboard() {
                       aria-pressed={chartMetric === 'connectRate'}
                       className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'connectRate'
-                          ? 'bg-surface text-fg shadow-xs'
-                          : 'text-fg-secondary hover:text-fg'
+                          ? 'bg-selected text-selected-fg shadow-xs'
+                          : 'text-fg-secondary hover:bg-surface hover:text-fg'
                       }`}
                     >
                       <Zap className="h-3.5 w-3.5" />
@@ -1908,8 +1908,8 @@ export default function RepPerformanceDashboard() {
                       aria-pressed={chartMetric === 'qaScore'}
                       className={`focus-ring h-7 px-2.5 rounded-[6px] text-small font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                         chartMetric === 'qaScore'
-                          ? 'bg-surface text-fg shadow-xs'
-                          : 'text-fg-secondary hover:text-fg'
+                          ? 'bg-selected text-selected-fg shadow-xs'
+                          : 'text-fg-secondary hover:bg-surface hover:text-fg'
                       }`}
                     >
                       <Award className="h-3.5 w-3.5" />

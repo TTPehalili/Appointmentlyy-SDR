@@ -48,7 +48,7 @@ export function TopBar() {
           label={copilotOpen ? 'Close AI Copilot (Ctrl+J)' : 'Open AI Copilot (Ctrl+J)'}
           aria-pressed={copilotOpen}
           onClick={() => setCopilotOpen(!copilotOpen)}
-          className={cn(copilotOpen && 'bg-subtle text-fg')}
+          className={cn(copilotOpen && 'bg-selected-soft text-selected-soft-fg hover:bg-selected-soft')}
         >
           <Sparkles className="size-5 stroke-[1.5]" />
         </IconButton>

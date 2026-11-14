@@ -13,7 +13,7 @@ export const ANNOUNCEMENT_KIND_META: Record<
   AnnouncementKind,
   { label: string; icon: React.ComponentType<{ className?: string }>; tile: string; accent: string }
 > = {
-  feature: { label: 'New feature', icon: Sparkles, tile: 'bg-selected text-brand-text', accent: 'bg-brand-500' },
+  feature: { label: 'New feature', icon: Sparkles, tile: 'bg-brand-tint text-brand-text', accent: 'bg-brand-500' },
   update: { label: 'Update', icon: RefreshCw, tile: 'bg-success-bg text-success-fg', accent: 'bg-success-500' },
   maintenance: { label: 'Maintenance', icon: Wrench, tile: 'bg-warning-bg text-warning-fg', accent: 'bg-warning-400' },
 };

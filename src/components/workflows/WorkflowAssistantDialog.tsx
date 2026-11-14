@@ -172,7 +172,7 @@ export default function WorkflowAssistantDialog({ open, onClose, onBuilt, folder
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-selected text-brand-text">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-tint text-brand-text">
               <Sparkles className="size-4" aria-hidden />
             </span>
             <div>
@@ -389,7 +389,7 @@ function QuestionsCard({
                     }}
                     className={cn(
                       'focus-ring inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-small transition-colors disabled:opacity-60',
-                      on ? 'border-brand-600 bg-selected text-brand-text' : 'border-line-strong bg-surface text-fg hover:bg-subtle',
+                      on ? 'border-selected bg-selected text-selected-fg' : 'border-line-strong bg-surface text-fg hover:bg-subtle',
                     )}
                   >
                     {on && <Check className="size-3.5" aria-hidden />}

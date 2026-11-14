@@ -77,7 +77,7 @@ export default function ExecutionHistoryDrawer({ isOpen, onClose, workflowId }: 
                   onClick={() => setSelectedExec(exec)}
                   className={`p-3 rounded-lg border text-small cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-surface border-brand-600 shadow-xs'
+                      ? 'bg-selected-soft border-selected ring-1 ring-selected shadow-xs'
                       : 'bg-surface border-line hover:border-line-strong'
                   }`}
                 >

@@ -212,7 +212,7 @@ export default function CompanyProfileForm() {
             {drafting && <p className="text-small text-fg-tertiary">This takes up to a minute. Nothing is saved until you click Save.</p>}
             {draftError && <InlineError message={draftError} onRetry={() => void draft()} />}
             {beforeDraft && !drafting && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-selected px-3 py-2 text-small text-fg">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-brand-tint px-3 py-2 text-small text-fg">
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="size-3.5 text-brand-text" aria-hidden />
                   Drafted by AI. Check every field before saving.

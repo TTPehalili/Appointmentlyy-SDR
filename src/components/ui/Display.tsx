@@ -11,7 +11,7 @@ const badgeTones: Record<Tone, string> = {
   success: 'bg-success-bg text-success-fg',
   warning: 'bg-warning-bg text-warning-fg',
   danger: 'bg-danger-bg text-danger-fg',
-  brand: 'bg-selected text-brand-text',
+  brand: 'bg-brand-tint text-brand-text',
 };
 
 export function Badge({

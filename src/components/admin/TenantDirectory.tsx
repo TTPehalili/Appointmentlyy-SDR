@@ -256,7 +256,7 @@ export function TenantDirectory() {
                           title={m.hint}
                           className={`focus-ring inline-flex h-6 cursor-pointer items-center gap-1 rounded-sm border px-2 text-caption transition-colors ${
                             t.modules[m.key]
-                              ? 'border-line bg-subtle text-fg hover:border-line-strong'
+                              ? 'border-selected bg-selected text-selected-fg hover:bg-selected-hover'
                               : 'border-line bg-surface text-fg-tertiary line-through hover:border-line-strong'
                           }`}
                         >

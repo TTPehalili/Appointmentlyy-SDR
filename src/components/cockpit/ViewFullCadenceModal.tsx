@@ -126,8 +126,8 @@ export default function ViewFullCadenceModal({
                   aria-pressed={filterChannel === ch}
                   className={`focus-ring inline-flex h-7 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${
                     filterChannel === ch
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                   }`}
                 >
                   {ch}

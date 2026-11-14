@@ -36,15 +36,15 @@ export function MobileTabBar() {
               href={item.href}
               aria-current={active ? 'page' : undefined}
               data-tour={item.id}
-              className={cn(tab, active ? 'text-fg' : 'text-fg-tertiary')}
+              className={cn(tab, active ? 'font-medium text-selected-soft-fg' : 'text-fg-tertiary')}
             >
-              <Icon className={cn('size-5 stroke-[1.5]', active && 'text-brand-text')} aria-hidden />
+              <Icon className={cn('size-5 stroke-[1.5]', active && 'text-selected-soft-fg')} aria-hidden />
               {item.label}
             </Link>
           );
         })}
-        <button type="button" onClick={() => setMoreOpen(true)} className={cn(tab, moreActive ? 'text-fg' : 'text-fg-tertiary')}>
-          <MoreHorizontal className={cn('size-5 stroke-[1.5]', moreActive && 'text-brand-text')} aria-hidden />
+        <button type="button" onClick={() => setMoreOpen(true)} className={cn(tab, moreActive ? 'font-medium text-selected-soft-fg' : 'text-fg-tertiary')}>
+          <MoreHorizontal className={cn('size-5 stroke-[1.5]', moreActive && 'text-selected-soft-fg')} aria-hidden />
           More
         </button>
       </nav>
@@ -64,7 +64,7 @@ export function MobileTabBar() {
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       'flex h-11 items-center gap-3 rounded-md px-2.5 text-body',
-                      active ? 'bg-subtle font-medium text-fg' : 'text-fg-secondary',
+                      active ? 'bg-selected-soft font-medium text-selected-soft-fg' : 'text-fg-secondary',
                     )}
                   >
                     <Icon className="size-5 stroke-[1.5]" aria-hidden />

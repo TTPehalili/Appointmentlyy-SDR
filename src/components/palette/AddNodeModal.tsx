@@ -88,7 +88,7 @@ export default function AddNodeModal({ isOpen, onClose, onSelectNode }: AddNodeM
                   onClick={() => setSelectedCategory(cat.value)}
                   className={`focus-ring flex items-center gap-1.5 h-7 px-2.5 rounded-full border whitespace-nowrap transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-action text-action-fg border-transparent'
+                      ? 'bg-selected text-selected-fg border-selected'
                       : 'bg-surface text-fg-secondary hover:bg-subtle hover:text-fg border-line'
                   }`}
                 >

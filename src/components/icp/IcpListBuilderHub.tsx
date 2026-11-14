@@ -1190,7 +1190,7 @@ export default function IcpListBuilderHub() {
                       onClick={() => setActiveTab(t.id)}
                       className={`focus-ring -mb-px inline-flex h-10 items-center gap-1.5 rounded-t-sm border-b-2 text-body transition-colors duration-150 cursor-pointer ${
                         selected
-                          ? 'border-action text-fg font-medium'
+                          ? 'border-selected text-selected-soft-fg font-medium'
                           : 'border-transparent text-fg-secondary hover:text-fg'
                       }`}
                     >
@@ -1313,7 +1313,7 @@ export default function IcpListBuilderHub() {
                       onClick={() => setActiveWizardStep(s.step)}
                       className={`focus-ring w-full text-left px-4 py-3 rounded-lg border transition-colors duration-150 flex flex-col justify-between gap-1.5 ${
                         isCurrent
-                          ? 'bg-surface border-action shadow-xs cursor-default'
+                          ? 'bg-selected-soft border-selected ring-1 ring-selected shadow-xs cursor-default'
                           : isDone
                           ? 'bg-surface border-line hover:border-line-strong hover:bg-subtle cursor-pointer'
                           : 'bg-app border-line cursor-not-allowed'
@@ -1326,7 +1326,7 @@ export default function IcpListBuilderHub() {
                               isDone
                                 ? 'border-action bg-action text-action-fg'
                                 : isCurrent
-                                ? 'border-action text-fg'
+                                ? 'border-selected text-selected-soft-fg'
                                 : 'border-line-strong text-fg-tertiary'
                             }`}
                           >
@@ -1477,7 +1477,7 @@ export default function IcpListBuilderHub() {
                         aria-pressed={selected}
                         className={`focus-ring text-left p-3.5 rounded-lg border transition-colors duration-150 cursor-pointer flex flex-col justify-between ${
                           selected
-                            ? 'bg-selected text-fg border-action'
+                            ? 'bg-selected-soft text-fg border-selected ring-1 ring-selected'
                             : 'bg-surface text-fg border-line hover:bg-subtle hover:border-line-strong'
                         }`}
                       >
@@ -1656,7 +1656,7 @@ export default function IcpListBuilderHub() {
                               aria-pressed={active}
                               className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
                                 active
-                                  ? 'bg-selected text-fg border-action'
+                                  ? 'bg-selected text-selected-fg border-selected'
                                   : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
                               }`}
                             >
@@ -1807,7 +1807,7 @@ export default function IcpListBuilderHub() {
                                     onClick={() => toggleInList(setRevenueBands, band)}
                                     className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
                                     on
-                                      ? 'bg-selected text-fg border-action'
+                                      ? 'bg-selected text-selected-fg border-selected'
                                       : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
                                   }`}
                                   >
@@ -1831,7 +1831,7 @@ export default function IcpListBuilderHub() {
                                     onClick={() => toggleInList(setFundingStages, stage.key)}
                                     className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full text-small font-medium border transition-colors duration-150 cursor-pointer ${
                                     on
-                                      ? 'bg-selected text-fg border-action'
+                                      ? 'bg-selected text-selected-fg border-selected'
                                       : 'bg-surface text-fg-secondary border-line hover:border-line-strong hover:text-fg'
                                   }`}
                                   >
@@ -1902,7 +1902,7 @@ export default function IcpListBuilderHub() {
                                 type="checkbox"
                                 checked={requireDirectDial}
                                 onChange={(e) => setRequireDirectDial(e.target.checked)}
-                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                               />
                             </label>
                             <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
@@ -1913,7 +1913,7 @@ export default function IcpListBuilderHub() {
                                 type="checkbox"
                                 checked={isHiring}
                                 onChange={(e) => setIsHiring(e.target.checked)}
-                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                               />
                             </label>
                           </div>
@@ -1935,7 +1935,7 @@ export default function IcpListBuilderHub() {
                         type="checkbox"
                         checked={requirePhone}
                         onChange={(e) => setRequirePhone(e.target.checked)}
-                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                       />
                     </label>
                     <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
@@ -1946,7 +1946,7 @@ export default function IcpListBuilderHub() {
                         type="checkbox"
                         checked={requireVerifiedEmail}
                         onChange={(e) => setRequireVerifiedEmail(e.target.checked)}
-                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                       />
                     </label>
                     <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line hover:bg-subtle cursor-pointer transition-colors duration-150">
@@ -1959,7 +1959,7 @@ export default function IcpListBuilderHub() {
                         onChange={(e) =>
                           setExcludePreviouslyPulled(e.target.checked)
                         }
-                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-action cursor-pointer"
+                        className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                       />
                     </label>
                   </div>
@@ -2331,17 +2331,17 @@ export default function IcpListBuilderHub() {
                                   type="button"
                                   onClick={() => toggleRepForPull(rep)}
                                   aria-pressed={isChecked}
-                                  className={`focus-ring p-2.5 rounded-md border text-left flex items-center justify-between bg-surface transition-colors duration-150 cursor-pointer ${
+                                  className={`focus-ring p-2.5 rounded-md border text-left flex items-center justify-between transition-colors duration-150 cursor-pointer ${
                                     isChecked
-                                      ? 'text-fg border-action'
-                                      : 'text-fg-secondary border-line hover:border-line-strong'
+                                      ? 'bg-selected-soft text-fg border-selected ring-1 ring-selected'
+                                      : 'bg-surface text-fg-secondary border-line hover:border-line-strong'
                                   }`}
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <span
                                       className={`w-4 h-4 rounded-[4px] flex items-center justify-center border shrink-0 ${
                                         isChecked
-                                          ? 'bg-action border-action text-action-fg'
+                                          ? 'bg-selected border-selected text-selected-fg'
                                           : 'border-line-strong bg-surface'
                                       }`}
                                     >
@@ -3037,7 +3037,7 @@ export default function IcpListBuilderHub() {
                       aria-pressed={active}
                       className={`focus-ring inline-flex items-center gap-1 h-8 px-3 rounded-full border text-small font-medium transition-colors duration-150 cursor-pointer ${
                         active
-                          ? 'bg-selected text-fg border-action'
+                          ? 'bg-selected text-selected-fg border-selected'
                           : 'bg-surface text-fg-secondary border-line hover:border-line-strong'
                       }`}
                     >

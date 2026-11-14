@@ -59,7 +59,7 @@ export function Tabs({
             onClick={() => onChange(t.value)}
             className={cn(
               'focus-ring -mb-px inline-flex h-10 items-center gap-1.5 rounded-t-sm border-b-2 text-body transition-colors duration-150',
-              selected ? 'border-action text-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg',
+              selected ? 'border-selected text-selected-soft-fg font-medium' : 'border-transparent text-fg-secondary hover:text-fg',
             )}
           >
             {t.label}
@@ -108,7 +108,7 @@ export function SegmentedControl({
             className={cn(
               'focus-ring inline-flex items-center gap-1.5 rounded-[6px] px-3 font-medium transition-colors duration-150',
               size === 'sm' ? 'h-7 text-small' : 'h-8 text-body',
-              selected ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg',
+              selected ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg',
             )}
           >
             {it.label}

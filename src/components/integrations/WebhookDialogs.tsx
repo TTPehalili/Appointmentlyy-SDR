@@ -153,7 +153,7 @@ export function WebhookEndpointDialog({
             {WEBHOOK_EVENT_TYPES.map((t) => (
               <label
                 key={t}
-                className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line px-3 py-2.5 hover:bg-subtle has-[:checked]:border-line-strong"
+                className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line px-3 py-2.5 hover:bg-subtle has-[:checked]:border-selected has-[:checked]:bg-selected-soft"
               >
                 <span className="pt-0.5">
                   <Checkbox checked={events.includes(t)} onChange={() => toggle(t)} data-testid={`webhook-event-${t}`} aria-describedby={`${urlId}-${t}`} />

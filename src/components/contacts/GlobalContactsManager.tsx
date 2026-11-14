@@ -729,7 +729,7 @@ export default function GlobalContactsManager() {
                             }
                           }}
                           title="Select all 25 leads on this page"
-                          className="focus-ring size-4 rounded-[4px] border-line-strong accent-ink-900 cursor-pointer"
+                          className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                         />
                       </th>
                     )}
@@ -765,7 +765,7 @@ export default function GlobalContactsManager() {
                           key={c.id}
                           onClick={() => setSelectedContact(c)}
                           className={`h-12 border-t border-line transition-colors duration-150 cursor-pointer group ${
-                            isRowSelected ? 'bg-selected' : 'hover:bg-subtle'
+                            isRowSelected ? 'bg-selected-soft' : 'hover:bg-subtle'
                           }`}
                         >
                           {/* Checkbox for Bulk Reassignment */}
@@ -787,7 +787,7 @@ export default function GlobalContactsManager() {
                                   }
                                 }}
                                 aria-label={`Select ${c.name}`}
-                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-ink-900 cursor-pointer"
+                                className="focus-ring size-4 rounded-[4px] border-line-strong accent-selected cursor-pointer"
                               />
                             </td>
                           )}

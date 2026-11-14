@@ -195,10 +195,10 @@ export default function QuotaTopUpModal({
                         type="button"
                         aria-pressed={isSelected}
                         onClick={() => setSelectedPack(pack)}
-                        className={`focus-ring text-left rounded-lg p-4 border bg-surface transition-colors duration-150 cursor-pointer flex flex-col justify-between ${
+                        className={`focus-ring text-left rounded-lg p-4 border transition-colors duration-150 cursor-pointer flex flex-col justify-between ${
                           isSelected
-                            ? 'border-action shadow-xs'
-                            : 'border-line hover:border-line-strong'
+                            ? 'border-selected bg-selected-soft ring-1 ring-selected shadow-xs'
+                            : 'border-line bg-surface hover:border-line-strong'
                         }`}
                       >
                         <div>

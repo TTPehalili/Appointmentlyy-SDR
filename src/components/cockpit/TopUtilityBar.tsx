@@ -109,8 +109,8 @@ export default function TopUtilityBar({
             aria-pressed={repStatus === 'on_dial'}
             className={`focus-ring h-7 rounded-[6px] px-2.5 transition-colors duration-150 ${
               repStatus === 'on_dial'
-                ? 'bg-surface text-success-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-success-700 text-white shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             On dial
@@ -120,8 +120,8 @@ export default function TopUtilityBar({
             aria-pressed={repStatus === 'break'}
             className={`focus-ring h-7 rounded-[6px] px-2.5 transition-colors duration-150 ${
               repStatus === 'break'
-                ? 'bg-surface text-warning-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-warning-400 text-ink-900 shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             Break

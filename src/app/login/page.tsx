@@ -260,7 +260,7 @@ function SdrLoginContent() {
   const segTrack = 'grid gap-0.5 p-0.5 rounded-md border border-line bg-subtle';
   const segBtn = (active: boolean) =>
     `focus-ring h-8 px-2 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
-      active ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+      active ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
     }`;
 
   const alerts = (
@@ -372,7 +372,7 @@ function SdrLoginContent() {
                     aria-pressed={email.toLowerCase().includes('emil')}
                     className={`focus-ring text-left px-3 py-2 rounded-md border transition-colors duration-150 cursor-pointer ${
                       email.toLowerCase().includes('emil')
-                        ? 'bg-selected border-brand-600/30'
+                        ? 'bg-selected-soft border-selected ring-1 ring-selected'
                         : 'bg-surface border-line hover:bg-subtle'
                     }`}
                   >
@@ -386,7 +386,7 @@ function SdrLoginContent() {
                     aria-pressed={email.toLowerCase().includes('julian')}
                     className={`focus-ring text-left px-3 py-2 rounded-md border transition-colors duration-150 cursor-pointer ${
                       email.toLowerCase().includes('julian')
-                        ? 'bg-selected border-brand-600/30'
+                        ? 'bg-selected-soft border-selected ring-1 ring-selected'
                         : 'bg-surface border-line hover:bg-subtle'
                     }`}
                   >
@@ -880,7 +880,7 @@ function RealLogin() {
     'focus-ring w-full h-10 rounded-sm border border-line-strong bg-surface text-body text-fg placeholder:text-fg-disabled focus:outline-none transition-colors';
   const segBtn = (active: boolean) =>
     `focus-ring h-8 px-2 rounded-[6px] text-small font-medium transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
-      active ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+      active ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
     }`;
 
   return (

@@ -118,14 +118,14 @@ export default function TemplateGalleryModal({
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`focus-ring h-7 px-2.5 rounded-full border text-small transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === cat.id
-                    ? 'bg-action text-action-fg border-transparent'
+                    ? 'bg-selected text-selected-fg border-selected'
                     : 'bg-surface text-fg-secondary border-line hover:bg-subtle hover:text-fg'
                 }`}
               >
                 <span>{cat.label}</span>
                 <span
                   className={`text-caption tabular-nums ${
-                    selectedCategory === cat.id ? 'text-ink-400' : 'text-fg-tertiary'
+                    selectedCategory === cat.id ? 'text-selected-fg/80' : 'text-fg-tertiary'
                   }`}
                 >
                   {cat.count}

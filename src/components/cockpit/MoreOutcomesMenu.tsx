@@ -58,7 +58,7 @@ export default function MoreOutcomesMenu({
           type="button"
           {...props}
           className={`focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${
-            isSelected ? 'bg-subtle text-fg border-fg' : 'bg-surface text-fg border-line-strong hover:bg-subtle'
+            isSelected ? 'bg-selected text-selected-fg border-selected' : 'bg-surface text-fg border-line-strong hover:bg-subtle'
           }`}
         >
           {isSelected && <Check className="size-3.5" />}

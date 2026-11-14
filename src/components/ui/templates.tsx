@@ -180,7 +180,7 @@ export function SettingsNav({
                   aria-current={active === it.id ? 'page' : undefined}
                   className={cn(
                     'focus-ring flex h-8 w-full items-center rounded-md px-2 text-left text-body transition-colors duration-150',
-                    active === it.id ? 'bg-subtle font-medium text-fg' : 'text-fg-secondary hover:bg-subtle hover:text-fg',
+                    active === it.id ? 'bg-selected-soft font-medium text-selected-soft-fg' : 'text-fg-secondary hover:bg-subtle hover:text-fg',
                   )}
                 >
                   {it.label}

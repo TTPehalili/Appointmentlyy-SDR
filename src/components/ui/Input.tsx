@@ -108,7 +108,7 @@ export function Checkbox({
         type="checkbox"
         className={cn(
           'focus-ring peer size-4 cursor-pointer appearance-none rounded-[4px] border border-line-strong bg-surface',
-          'checked:border-action checked:bg-action indeterminate:border-action indeterminate:bg-action',
+          'checked:border-selected checked:bg-selected indeterminate:border-selected indeterminate:bg-selected',
           className,
         )}
         {...props}
@@ -116,7 +116,7 @@ export function Checkbox({
       <Check
         aria-hidden
         strokeWidth={3}
-        className="pointer-events-none absolute inset-0.5 size-3 text-action-fg opacity-0 peer-checked:opacity-100"
+        className="pointer-events-none absolute inset-0.5 size-3 text-selected-fg opacity-0 peer-checked:opacity-100"
       />
     </span>
   );
@@ -150,7 +150,7 @@ export function Switch({
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         'focus-ring relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border border-transparent transition-colors duration-150',
-        checked ? 'bg-action' : 'bg-line-strong',
+        checked ? 'bg-selected' : 'bg-line-strong',
         'disabled:opacity-50',
       )}
     >
@@ -264,14 +264,14 @@ export function Combobox({
               onMouseEnter={() => setActive(i)}
               className={cn(
                 'flex cursor-pointer items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-body text-fg',
-                i === active && 'bg-subtle',
+                i === active && 'bg-subtle', o.value === value && 'bg-selected-soft font-medium text-selected-soft-fg',
               )}
             >
               <span className="min-w-0">
                 <span className="block truncate">{o.label}</span>
                 {o.description && <span className="block truncate text-small text-fg-tertiary">{o.description}</span>}
               </span>
-              {o.value === value && <Check className="size-4 text-fg-secondary" aria-hidden />}
+              {o.value === value && <Check className="size-4 text-selected-soft-fg" aria-hidden />}
             </li>
           ))}
         </ul>

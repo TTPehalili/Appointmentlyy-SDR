@@ -201,9 +201,9 @@ const nowMs = () => Date.now();
 const OUTCOME_OPTIONS = [
   { label: 'Booked', value: 'Meeting Booked', activeClass: 'bg-success-bg text-success-fg border-success-500/50', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
   { label: 'Callback', value: 'Call Back Later', activeClass: 'bg-warning-bg text-warning-fg border-warning-400', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-  { label: 'No answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
-  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-subtle text-fg border-fg', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Voicemail', value: 'Left Voicemail', activeClass: 'bg-selected text-selected-fg border-selected', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'No answer', value: 'No Answer / Gatekeeper', activeClass: 'bg-selected text-selected-fg border-selected', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
+  { label: 'Referral', value: 'Referral / Update Contact', activeClass: 'bg-selected text-selected-fg border-selected', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
   { label: 'Not interested', value: 'Not Interested / Quarantine', activeClass: 'bg-danger-bg text-danger-fg border-danger-fg/40', idleClass: 'bg-surface text-fg border-line-strong hover:bg-subtle' },
 ];
 const QUICK_OUTCOME_VALUES = OUTCOME_OPTIONS.map(o => o.value);
@@ -1599,7 +1599,7 @@ export default function BorisCallingCockpit({
               data-testid="demo-setup"
               role="group"
               aria-label="Demo setup"
-              className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-dashed border-line-strong bg-surface px-3 py-2"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-line-strong bg-surface px-3 py-2"
             >
               <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-secondary">
                 <SlidersHorizontal className="size-3.5" aria-hidden />
@@ -1612,19 +1612,39 @@ export default function BorisCallingCockpit({
                 title={isCallingActive ? 'Hang up to switch' : 'Real phone opens your phone app (e.g. Phone Link). AI demo starts the AI prospect call.'}
               >
                 <span className="text-caption text-fg-tertiary">Mode</span>
-                <SegmentedControl
-                  label="Call mode"
-                  size="sm"
-                  value={demoCallMode}
-                  onChange={(v) => {
-                    if (!isCallingActive) changeDemoCallMode(v === 'phone' ? 'phone' : 'ai');
-                  }}
-                  className={isCallingActive ? 'pointer-events-none opacity-60' : undefined}
-                  items={[
-                    { value: 'phone', label: 'Real phone' },
-                    { value: 'ai', label: 'AI demo' },
-                  ]}
-                />
+                {/* Each mode has its own colour so the current one is obvious at a glance:
+                    green = real calls through your phone, violet = the AI prospect. */}
+                <div
+                  role="radiogroup"
+                  aria-label="Call mode"
+                  data-testid="call-mode-toggle"
+                  className={`inline-flex items-center gap-0.5 rounded-md border border-line bg-surface p-0.5 ${isCallingActive ? 'pointer-events-none opacity-60' : ''}`}
+                >
+                  {([
+                    { value: 'phone', label: 'Real phone', Icon: PhoneCall, on: 'bg-success-700 text-white shadow-sm' },
+                    { value: 'ai', label: 'AI demo', Icon: Sparkles, on: 'bg-[var(--violet-600)] text-white shadow-sm' },
+                  ] as const).map(({ value, label, Icon, on }) => {
+                    const selected = demoCallMode === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        data-value={value}
+                        onClick={() => {
+                          if (!isCallingActive) changeDemoCallMode(value);
+                        }}
+                        className={`focus-ring inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-small font-medium transition-colors duration-150 ${
+                          selected ? on : 'text-fg-tertiary hover:bg-subtle hover:text-fg'
+                        }`}
+                      >
+                        <Icon className="size-3.5 shrink-0" aria-hidden />
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div
@@ -1634,7 +1654,7 @@ export default function BorisCallingCockpit({
                 <label htmlFor="dialer-script-pack" className="text-caption text-fg-tertiary">
                   Script
                 </label>
-                <span className="w-52">
+                <span className="w-40">
                   <Select
                     id="dialer-script-pack"
                     data-testid="script-pack-select"
@@ -1669,21 +1689,27 @@ export default function BorisCallingCockpit({
                     disabled={isCallingActive}
                     onChange={(e) => changeCallingAs(e.target.value)}
                     placeholder={sessionTenant || 'Company you call for'}
-                    className="h-8 w-40"
+                    className="h-8 w-32"
                   />
                 </div>
               )}
 
-              {activePack.id === 'bpo_ai_hitl' && !isCallingActive && activePack.sampleLeadId && activeLead?.id !== activePack.sampleLeadId && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  data-testid="go-to-sample-lead"
-                  onClick={goToPackSampleLead}
-                  title="This script's AI prospect plays the sample lead. Jump to them before calling."
-                >
-                  Go to {(activePack.persona?.name || 'sample lead').split(' ')[0]}
-                </Button>
+              {activePack.id === 'bpo_ai_hitl' && (
+                // Fixed-width slot: the button comes and goes without moving anything else.
+                <span className="inline-flex w-28 shrink-0">
+                  {!isCallingActive && activePack.sampleLeadId && activeLead?.id !== activePack.sampleLeadId && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      data-testid="go-to-sample-lead"
+                      onClick={goToPackSampleLead}
+                      className="w-full"
+                      title="This script's AI prospect plays the sample lead. Jump to them before calling."
+                    >
+                      Go to {(activePack.persona?.name || 'sample lead').split(' ')[0]}
+                    </Button>
+                  )}
+                </span>
               )}
 
               {isCallingActive && (
@@ -2085,8 +2111,8 @@ export default function BorisCallingCockpit({
                         onClick={() => goToStep(st.step)}
                         aria-pressed={isStepActive}
                         className={`focus-ring inline-flex h-8 cursor-pointer items-center rounded-[6px] px-3 text-small font-medium transition-colors duration-150 ${isStepActive
-                            ? 'bg-surface text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                           }`}
                       >
                         {st.name}
@@ -2135,7 +2161,7 @@ export default function BorisCallingCockpit({
                         onClick={() => setSelectedRebuttalId(isSelected ? null : reb.id)}
                         aria-pressed={isSelected}
                         className={`focus-ring inline-flex h-8 cursor-pointer items-center rounded-full border px-3 text-small font-medium transition-colors duration-150 ${isSelected
-                            ? 'border-transparent bg-action text-action-fg'
+                            ? 'border-selected bg-selected text-selected-fg'
                             : 'border-line-strong bg-surface text-fg hover:bg-subtle'
                           }`}
                       >
@@ -2264,7 +2290,7 @@ export default function BorisCallingCockpit({
                                         className={`focus-ring inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border px-2.5 text-small font-medium transition-colors duration-150 ${on
                                             ? ans.slot
                                               ? 'border-transparent bg-success-500 text-ink-900'
-                                              : 'border-transparent bg-ink-50 text-ink-900'
+                                              : 'border-transparent bg-selected text-selected-fg'
                                             : 'border-ink-700 bg-ink-800 text-ink-50 hover:bg-ink-700'
                                           }`}
                                       >
@@ -2327,7 +2353,7 @@ export default function BorisCallingCockpit({
                         type="button"
                         onClick={() => handleSetRole('promoted')}
                         className={`py-1.5 px-2.5 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'promoted'
-                            ? 'bg-action border-transparent text-action-fg'
+                            ? 'bg-selected border-selected text-selected-fg'
                             : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
@@ -2338,7 +2364,7 @@ export default function BorisCallingCockpit({
                         type="button"
                         onClick={() => handleSetRole('changed')}
                         className={`py-1.5 px-2.5 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-center gap-1 cursor-pointer ${roleStatus === 'changed'
-                            ? 'bg-action border-transparent text-action-fg'
+                            ? 'bg-selected border-selected text-selected-fg'
                             : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
@@ -2408,7 +2434,7 @@ export default function BorisCallingCockpit({
                         type="button"
                         onClick={() => handleSetOA(!recognizedOA)}
                         className={`py-1.5 px-3 rounded-md text-small font-medium transition-colors focus-ring border flex items-center justify-between cursor-pointer ${recognizedOA
-                            ? 'bg-action border-transparent text-action-fg'
+                            ? 'bg-selected border-selected text-selected-fg'
                             : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                           }`}
                       >
@@ -2457,7 +2483,7 @@ export default function BorisCallingCockpit({
                           type="button"
                           onClick={() => handleSetService(serv)}
                           className={`py-1.5 px-2 rounded-md text-small font-medium focus-ring border transition-colors cursor-pointer ${telemetry.primaryService === serv
-                              ? 'bg-action border-transparent text-action-fg'
+                              ? 'bg-selected border-selected text-selected-fg'
                               : 'bg-surface border-line-strong text-fg hover:bg-subtle'
                             }`}
                         >
@@ -2560,8 +2586,8 @@ export default function BorisCallingCockpit({
                   onClick={() => setActiveRightTab('notes')}
                   aria-pressed={activeRightTab === 'notes'}
                   className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'notes'
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                 >
                   <FileText className="size-4" />
@@ -2573,8 +2599,8 @@ export default function BorisCallingCockpit({
                   onClick={() => setActiveRightTab('footprint')}
                   aria-pressed={activeRightTab === 'footprint'}
                   className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'footprint'
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                 >
                   <Clock className="size-4" />
@@ -2591,8 +2617,8 @@ export default function BorisCallingCockpit({
                   onClick={() => setActiveRightTab('callbacks')}
                   aria-pressed={activeRightTab === 'callbacks'}
                   className={`focus-ring flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[6px] px-2 text-small font-medium transition-colors duration-150 ${activeRightTab === 'callbacks'
-                      ? 'bg-surface text-fg shadow-xs'
-                      : 'text-fg-secondary hover:text-fg'
+                      ? 'bg-selected text-selected-fg shadow-xs'
+                      : 'text-fg-secondary hover:bg-surface hover:text-fg'
                     }`}
                 >
                   <Calendar className="size-4" />

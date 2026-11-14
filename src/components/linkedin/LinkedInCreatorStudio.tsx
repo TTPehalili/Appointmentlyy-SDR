@@ -521,12 +521,12 @@ export default function LinkedInCreatorStudio() {
                         aria-pressed={isSelected}
                         className={`focus-ring flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-3 text-small transition-colors ${
                           isSelected
-                            ? 'bg-surface font-medium text-fg shadow-xs'
-                            : 'text-fg-secondary hover:text-fg'
+                            ? 'bg-selected font-medium text-selected-fg shadow-xs'
+                            : 'text-fg-secondary hover:bg-surface hover:text-fg'
                         }`}
                       >
                         <span>{p.dayLabel.split('•')[0].trim()}</span>
-                        <span className="tabular-nums text-fg-tertiary">{p.episodeNumber}</span>
+                        <span className={`tabular-nums ${isSelected ? 'text-selected-fg/80' : 'text-fg-tertiary'}`}>{p.episodeNumber}</span>
                       </button>
                     );
                   })}
@@ -559,7 +559,7 @@ export default function LinkedInCreatorStudio() {
                   size="sm"
                   onClick={() => toggleEditMode(activePost.id)}
                   aria-pressed={!!editingPostIds[activePost.id]}
-                  className={editingPostIds[activePost.id] ? 'bg-selected' : ''}
+                  className={editingPostIds[activePost.id] ? 'border-selected bg-selected text-selected-fg hover:bg-selected-hover' : ''}
                 >
                   <Pencil />
                   <span>{editingPostIds[activePost.id] ? 'Done' : 'Edit post'}</span>
@@ -881,7 +881,7 @@ export default function LinkedInCreatorStudio() {
                       aria-pressed={isSelected}
                       className={`focus-ring w-full cursor-pointer rounded-md border px-3 py-2 text-left transition-colors ${
                         isSelected
-                          ? 'border-line-strong bg-selected text-fg'
+                          ? 'border-selected bg-selected-soft text-selected-soft-fg ring-1 ring-selected'
                           : 'border-line bg-surface text-fg hover:bg-subtle'
                       }`}
                     >
@@ -1023,7 +1023,7 @@ export default function LinkedInCreatorStudio() {
                     aria-pressed={selectedAngle === angle}
                     className={`focus-ring cursor-pointer rounded-full border px-2.5 py-1 text-small transition-colors ${
                       selectedAngle === angle
-                        ? 'border-action bg-action text-action-fg'
+                        ? 'border-selected bg-selected text-selected-fg'
                         : 'border-line bg-surface text-fg-secondary hover:bg-subtle hover:text-fg'
                     }`}
                   >

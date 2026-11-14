@@ -251,7 +251,7 @@ export default function UploadLeadsCsvModal({
             onClick={() => fileInputRef.current?.click()}
             className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors duration-150 ${
               isDragging
-                ? 'border-brand-600 bg-selected'
+                ? 'border-brand-600 bg-brand-tint'
                 : 'border-line-strong bg-app hover:bg-subtle'
             }`}
           >

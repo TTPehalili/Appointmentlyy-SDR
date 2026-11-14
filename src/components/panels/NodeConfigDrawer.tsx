@@ -185,7 +185,7 @@ export default function NodeConfigDrawer({
                     <label
                       key={act.id}
                       className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-body cursor-pointer transition-colors ${
-                        isChecked ? 'bg-selected font-medium text-fg' : 'text-fg-secondary hover:bg-subtle'
+                        isChecked ? 'bg-selected-soft font-medium text-selected-soft-fg' : 'text-fg-secondary hover:bg-subtle'
                       }`}
                     >
                       <input
@@ -219,7 +219,7 @@ export default function NodeConfigDrawer({
                     <label
                       key={act.id}
                       className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-body cursor-pointer transition-colors ${
-                        isChecked ? 'bg-selected font-medium text-fg' : 'text-fg-secondary hover:bg-subtle'
+                        isChecked ? 'bg-selected-soft font-medium text-selected-soft-fg' : 'text-fg-secondary hover:bg-subtle'
                       }`}
                     >
                       <input

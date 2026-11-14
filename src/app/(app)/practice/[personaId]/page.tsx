@@ -835,8 +835,8 @@ function SparringRoomContent() {
                 aria-pressed={selectedRepAccent === 'arabic'}
                 className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepAccent === 'arabic'
-                    ? 'bg-surface text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
                 title="Rep Voice: Arabic Accent (Dubai / Middle East Hub)"
               >
@@ -848,8 +848,8 @@ function SparringRoomContent() {
                 aria-pressed={selectedRepAccent === 'filipino'}
                 className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepAccent === 'filipino'
-                    ? 'bg-surface text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
                 title="Rep Voice: Filipino Accent (Manila BPO Floor)"
               >
@@ -865,8 +865,8 @@ function SparringRoomContent() {
                 aria-pressed={selectedRepGender === 'male'}
                 className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepGender === 'male'
-                    ? 'bg-surface text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
                 title={selectedRepAccent === 'arabic' ? 'Tariq (Male)' : 'Paolo (Male)'}
               >
@@ -878,8 +878,8 @@ function SparringRoomContent() {
                 aria-pressed={selectedRepGender === 'female'}
                 className={`focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 ${
                   selectedRepGender === 'female'
-                    ? 'bg-surface text-fg shadow-xs'
-                    : 'text-fg-secondary hover:text-fg'
+                    ? 'bg-selected text-selected-fg shadow-xs'
+                    : 'text-fg-secondary hover:bg-surface hover:text-fg'
                 }`}
                 title={selectedRepAccent === 'arabic' ? 'Noor (Female)' : 'Lovely (Female)'}
               >
@@ -1385,7 +1385,7 @@ function SparringRoomContent() {
                       aria-hidden
                       className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors duration-150 ${
                         obj.completed
-                          ? 'border-action bg-action text-action-fg'
+                          ? 'border-selected bg-selected text-selected-fg'
                           : 'border-line-strong bg-surface'
                       }`}
                     >

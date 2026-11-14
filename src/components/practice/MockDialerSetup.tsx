@@ -118,7 +118,7 @@ export default function MockDialerSetup({ tabs }: { tabs?: React.ReactNode }) {
                     <label
                       key={o.id}
                       className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-small font-medium transition-colors duration-150 has-[:focus-visible]:shadow-[var(--focus-ring)] ${
-                        selected ? 'border-transparent bg-action text-action-fg' : 'border-line-strong bg-surface text-fg hover:bg-subtle'
+                        selected ? 'border-selected bg-selected text-selected-fg' : 'border-line-strong bg-surface text-fg hover:bg-subtle'
                       }`}
                     >
                       <input

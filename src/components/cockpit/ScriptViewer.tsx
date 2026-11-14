@@ -136,8 +136,8 @@ export default function ScriptViewer({
             onClick={() => setActiveChannel('call')}
             className={`focus-ring flex h-7 items-center gap-1.5 rounded-[6px] px-3 transition-colors duration-150 ${
               activeChannel === 'call'
-                ? 'bg-surface text-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-selected text-selected-fg shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             <Phone className="size-3.5" />
@@ -147,8 +147,8 @@ export default function ScriptViewer({
             onClick={() => setActiveChannel('email')}
             className={`focus-ring flex h-7 items-center gap-1.5 rounded-[6px] px-3 transition-colors duration-150 ${
               activeChannel === 'email'
-                ? 'bg-surface text-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-selected text-selected-fg shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             <Mail className="size-3.5" />
@@ -158,8 +158,8 @@ export default function ScriptViewer({
             onClick={() => setActiveChannel('linkedin')}
             className={`focus-ring flex h-7 items-center gap-1.5 rounded-[6px] px-3 transition-colors duration-150 ${
               activeChannel === 'linkedin'
-                ? 'bg-surface text-fg shadow-xs'
-                : 'text-fg-secondary hover:text-fg'
+                ? 'bg-selected text-selected-fg shadow-xs'
+                : 'text-fg-secondary hover:bg-surface hover:text-fg'
             }`}
           >
             <span>LinkedIn</span>
@@ -396,7 +396,7 @@ export default function ScriptViewer({
             onClick={() => onSetDisposition('Gatekeeper')}
             className={`focus-ring inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${
               activeDisposition === 'Gatekeeper'
-                ? 'border-fg bg-subtle text-fg'
+                ? 'border-selected bg-selected text-selected-fg'
                 : 'border-line-strong bg-surface text-fg hover:bg-subtle'
             }`}
           >
@@ -409,7 +409,7 @@ export default function ScriptViewer({
             onClick={() => onSetDisposition('Left Voicemail')}
             className={`focus-ring inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-small font-medium transition-colors duration-150 ${
               activeDisposition === 'Left Voicemail'
-                ? 'border-fg bg-subtle text-fg'
+                ? 'border-selected bg-selected text-selected-fg'
                 : 'border-line-strong bg-surface text-fg hover:bg-subtle'
             }`}
           >

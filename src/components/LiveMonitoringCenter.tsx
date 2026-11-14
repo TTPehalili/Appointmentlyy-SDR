@@ -1046,7 +1046,7 @@ export default function LiveMonitoringCenter() {
                 key={session.id}
                 className={`bg-surface border rounded-lg p-5 shadow-xs space-y-4 transition-colors duration-150 ${
                   isListening
-                    ? 'border-action ring-1 ring-action'
+                    ? 'border-selected ring-1 ring-selected'
                     : 'border-line hover:border-line-strong'
                 }`}
               >
@@ -1355,7 +1355,7 @@ export default function LiveMonitoringCenter() {
                       onClick={() => handleSelectTurn(idx)}
                       className={`p-3 rounded-md border transition-colors duration-150 cursor-pointer ${
                         isCurrentTurn
-                          ? 'border-ink-50/40 bg-ink-800 text-ink-50'
+                          ? 'border-selected bg-selected/30 text-ink-50'
                           : isRep
                             ? 'border-transparent text-ink-400 hover:bg-ink-800'
                             : 'border-transparent text-ink-50 hover:bg-ink-800'
@@ -1473,13 +1473,13 @@ export default function LiveMonitoringCenter() {
 /* Styling helpers (visual only) */
 function segmentClass(active: boolean) {
   return `focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 cursor-pointer ${
-    active ? 'bg-surface text-fg shadow-xs' : 'text-fg-secondary hover:text-fg'
+    active ? 'bg-selected text-selected-fg shadow-xs' : 'text-fg-secondary hover:bg-surface hover:text-fg'
   }`;
 }
 
 function darkSegmentClass(active: boolean) {
   return `focus-ring inline-flex h-7 items-center rounded-[6px] px-2.5 text-small font-medium transition-colors duration-150 cursor-pointer ${
-    active ? 'bg-ink-50 text-ink-900' : 'text-ink-400 hover:text-ink-50'
+    active ? 'bg-selected text-selected-fg' : 'text-ink-400 hover:bg-ink-800 hover:text-ink-50'
   }`;
 }
 
