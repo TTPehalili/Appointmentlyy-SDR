@@ -87,6 +87,11 @@ export interface ScriptPack {
   neutralCrmNotes: boolean;
   /** The demo sample lead the Dialer opens when this pack is picked. */
   sampleLeadId: string;
+  /**
+   * Demo sample leads the Dialer's call queue starts with while this pack is active, in order (only
+   * the queue's order changes; stored contacts keep theirs). Empty: the queue keeps its own order.
+   */
+  queueFirstLeadIds: readonly string[];
 }
 
 /** The demo workspace's own script (the platform owner's pitch). */
@@ -124,6 +129,8 @@ export const APPOINTMENTLYY_DEMO_STEPS: PhoneScriptStep[] = [
 /** Demo sample leads each pack opens on (see DEMO_INITIAL_DEFAULT_CONTACTS in leadStore). */
 export const APPOINTMENTLYY_SAMPLE_LEAD_ID = 'lead_fresh_d2';
 export const BPO_HITL_SAMPLE_LEAD_ID = 'lead_saas_priya_d1';
+/** The BPO script's second sample buyer (Daniel Okafor, KestrelCart). */
+export const BPO_HITL_SECOND_LEAD_ID = 'lead_saas_kestrel_d1';
 
 const PACKS: Record<ScriptPackId, ScriptPack> = {
   appointmentlyy: {
@@ -135,6 +142,7 @@ const PACKS: Record<ScriptPackId, ScriptPack> = {
     persona: null,
     neutralCrmNotes: false,
     sampleLeadId: APPOINTMENTLYY_SAMPLE_LEAD_ID,
+    queueFirstLeadIds: [],
   },
   bpo_ai_hitl: {
     id: 'bpo_ai_hitl',
@@ -145,6 +153,7 @@ const PACKS: Record<ScriptPackId, ScriptPack> = {
     persona: BPO_HITL_PERSONA,
     neutralCrmNotes: true,
     sampleLeadId: BPO_HITL_SAMPLE_LEAD_ID,
+    queueFirstLeadIds: [BPO_HITL_SAMPLE_LEAD_ID, BPO_HITL_SECOND_LEAD_ID],
   },
 };
 

@@ -31,7 +31,8 @@ import {
   FileText,
   UploadCloud,
   Lightbulb,
-  Sparkles
+  Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button, IconButton, PageHeader, Badge, EmptyState, Dialog, SegmentedControl, Select, Input, buttonClasses } from '@/components/ui';
@@ -171,6 +172,21 @@ const DEMO_PROSPECT_PERSONA =
  * The rep's hand-edited CRM summary, with the outcome line updated to the outcome just picked
  * (the rest of their edit is kept as typed).
  */
+/**
+ * The call queue the Dialer walks: the given leads first (in that order, when present), then the rest
+ * in their own order. Returns the same array when nothing moves. Leads are not copied.
+ */
+function frontLoadQueue<T extends { id?: string } | null | undefined>(queue: T[], firstIds: readonly string[]): T[] {
+  if (firstIds.length === 0 || queue.length === 0) return queue;
+  const first: T[] = [];
+  for (const id of firstIds) {
+    const lead = queue.find((l) => l?.id === id);
+    if (lead && !first.includes(lead)) first.push(lead);
+  }
+  if (first.length === 0 || first.every((lead, i) => queue[i] === lead)) return queue;
+  return [...first, ...queue.filter((l) => !first.includes(l))];
+}
+
 function withOutcomeLine(notes: string, dispName: string): string {
   const line = `OUTCOME / DISPOSITION: ${dispName.toUpperCase()}`;
   if (/^OUTCOME \/ DISPOSITION:.*$/m.test(notes)) return notes.replace(/^OUTCOME \/ DISPOSITION:.*$/m, line);
@@ -274,15 +290,42 @@ export default function BorisCallingCockpit({
   const [leadNoteInput, setLeadNoteInput] = useState<string>('');
   const [leadNoteSavedToast, setLeadNoteSavedToast] = useState<boolean>(false);
 
-  // Queue & Leads State
-  const [leadsQueue, setLeadsQueue] = useState<any[]>(() => {
+  // Real calls through the rep's VICIdial agent session when it's set up (Admin › Phone system +
+  // Settings); otherwise the original tel: link. Call state then comes from VICIdial, not a local timer.
+  const telephony = useTelephony();
+  const viaVicidial = !practiceMode && telephony.mode === 'vicidial';
+
+  // Script pack: only the demo workspace's own Dialer (not practice, not VICIdial) uses the picker;
+  // everywhere else the default pack applies, i.e. exactly the previous behaviour.
+  const showScriptPicker = isDemo && !practiceMode && !viaVicidial;
+  const activePack = getScriptPack(showScriptPicker ? scriptPackChoice : DEFAULT_SCRIPT_PACK_ID);
+
+  // Queue & Leads State. queueSource is the stored order (what gets saved); leadsQueue is the order
+  // the Dialer walks: the demo BPO script starts with its sample buyers (Priya, then Daniel), every
+  // other pack and workspace keeps the stored order. Indexes (currentLeadIndex) point into leadsQueue.
+  const [queueSource, setLeadsQueue] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       const stored = getStoredContacts();
       if (stored && stored.length > 0) return stored;
     }
     return isDemoWorkspace() ? DEMO_CADENCE_LEADS : [];
   });
+  const walkPackId = activePack.id;
+  const leadsQueue = useMemo(
+    () => frontLoadQueue(queueSource, getScriptPack(walkPackId).queueFirstLeadIds),
+    [queueSource, walkPackId]
+  );
   const [currentLeadIndex, setCurrentLeadIndex] = useState<number>(0);
+  // The walk order changes with the script pack. Keep the lead on screen selected by moving the index
+  // with it (adjusted during render, so no frame shows a mismatched lead); the pack effect further down
+  // may then jump to the pack's sample lead.
+  const [orderedForPackId, setOrderedForPackId] = useState<ScriptPackId>(walkPackId);
+  if (orderedForPackId !== walkPackId) {
+    setOrderedForPackId(walkPackId);
+    const shown = frontLoadQueue(queueSource, getScriptPack(orderedForPackId).queueFirstLeadIds)[currentLeadIndex];
+    const idx = shown ? leadsQueue.indexOf(shown) : -1;
+    if (idx >= 0 && idx !== currentLeadIndex) setCurrentLeadIndex(idx);
+  }
 
   // Active Lead Object
   const activeLead = practiceLead ?? (leadsQueue[currentLeadIndex] || (isDemo ? DEMO_CADENCE_LEADS[0] : EMPTY_LEAD));
@@ -331,16 +374,8 @@ export default function BorisCallingCockpit({
   const [dispositionNotes, setDispositionNotes] = useState<string>('');
   const [activityToast, setActivityToast] = useState<string | null>(null);
 
-  // Real calls through the rep's VICIdial agent session when it's set up (Admin › Phone system +
-  // Settings); otherwise the original tel: link. Call state then comes from VICIdial, not a local timer.
-  const telephony = useTelephony();
-  const viaVicidial = !practiceMode && telephony.mode === 'vicidial';
   const callActive = viaVicidial ? telephony.agentState === 'in_call' : isCallingActive;
 
-  // Script pack: only the demo workspace's own Dialer (not practice, not VICIdial) uses the picker;
-  // everywhere else the default pack applies, i.e. exactly the previous behaviour.
-  const showScriptPicker = isDemo && !practiceMode && !viaVicidial;
-  const activePack = getScriptPack(showScriptPicker ? scriptPackChoice : DEFAULT_SCRIPT_PACK_ID);
   // Script packs with beats (demo BPO script): short lines/questions with the prospect's answers as
   // buttons; they replace the qualify buttons. null everywhere else (unchanged UI).
   const packBeats = activePack.beats;
@@ -526,7 +561,7 @@ export default function BorisCallingCockpit({
         const parsed = JSON.parse(storedLeads);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setLeadsQueue(parsed);
-          const first = parsed[0];
+          const first = frontLoadQueue(parsed, activePack.queueFirstLeadIds)[0];
           setCustomerName(first.name);
           setPartnerName(first.company);
           setTitle(first.title);
@@ -815,13 +850,19 @@ export default function BorisCallingCockpit({
   // qualify state and CRM summary, on that pack's sample lead when it's in the queue. Runs after the
   // render that switched packs, so the notes template, steps and queue are the new pack's.
   const appliedScriptPackRef = useRef<ScriptPackId>(DEFAULT_SCRIPT_PACK_ID);
+  // The demo queue fills in after the page loads (the 1,000 sample leads arrive a moment later), so a
+  // saved pack can be applied before its sample lead is in the queue. Remember it and jump when it
+  // arrives, for a short while only, so a rep who has already moved on isn't pulled back.
+  const pendingSampleJumpRef = useRef<{ id: string; until: number } | null>(null);
   useEffect(() => {
     if (!showScriptPicker || appliedScriptPackRef.current === activePack.id) return;
     appliedScriptPackRef.current = activePack.id;
     const sampleIndex = leadsQueue.findIndex(l => l && l.id === activePack.sampleLeadId);
     if (sampleIndex >= 0) {
+      pendingSampleJumpRef.current = null;
       selectLeadAtIndex(sampleIndex); // resets step, objection, qualify state and notes
     } else {
+      pendingSampleJumpRef.current = activePack.sampleLeadId ? { id: activePack.sampleLeadId, until: Date.now() + 20000 } : null;
       setCurrentStep(1);
       setSelectedRebuttalId(null);
       handleResetTelemetry();
@@ -829,6 +870,25 @@ export default function BorisCallingCockpit({
     // Only a pack change triggers this (the handlers read the current render's state).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePack.id, showScriptPicker]);
+  useEffect(() => {
+    const pending = pendingSampleJumpRef.current;
+    if (!pending || isCallingActive) return;
+    if (Date.now() > pending.until) {
+      pendingSampleJumpRef.current = null;
+      return;
+    }
+    const idx = leadsQueue.findIndex(l => l && l.id === pending.id);
+    if (idx >= 0) {
+      pendingSampleJumpRef.current = null;
+      selectLeadAtIndex(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadsQueue]);
+  const goToPackSampleLead = () => {
+    const idx = leadsQueue.findIndex(l => l && l.id === activePack.sampleLeadId);
+    if (idx >= 0) selectLeadAtIndex(idx);
+    else alert(`${activePack.persona?.name || 'The sample lead'} isn't in your call queue. Check Contacts (it may be assigned to another rep).`);
+  };
 
   // GLOBAL EMAIL CONFIRMATION SYNC
   const handleConfirmedEmailChange = (newEmail: string) => {
@@ -841,11 +901,9 @@ export default function BorisCallingCockpit({
     }
 
     if (leadsQueue.length > 0 && currentLeadIndex >= 0 && currentLeadIndex < leadsQueue.length) {
-      const updatedQueue = [...leadsQueue];
-      updatedQueue[currentLeadIndex] = {
-        ...updatedQueue[currentLeadIndex],
-        email: newEmail
-      };
+      // Update the lead in the stored order (the walk order may put demo sample leads first).
+      const target = leadsQueue[currentLeadIndex];
+      const updatedQueue = queueSource.map(l => (l === target ? { ...l, email: newEmail } : l));
       setLeadsQueue(updatedQueue);
       try {
         localStorage.setItem('sdr_active_csv_leads', JSON.stringify(updatedQueue));
@@ -1533,251 +1591,173 @@ export default function BorisCallingCockpit({
             </div>
           ) : (<>
           {/* ========================================================================= */}
-          {/* SECTION 1: UNIFIED LEAD HEADER, INLINE DIALER & 1-CLICK DISPOSITIONS      */}
+          {/* DEMO SETUP (demo workspace only): call mode, script and who the rep calls */}
+          {/* for. Kept apart from the call bar; locked while a call is live.           */}
           {/* ========================================================================= */}
-          <div className="bg-surface border border-line rounded-lg p-4 shadow-xs space-y-3">
+          {showScriptPicker && (
+            <div
+              data-testid="demo-setup"
+              role="group"
+              aria-label="Demo setup"
+              className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-dashed border-line-strong bg-surface px-3 py-2"
+            >
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-caption text-fg-secondary">
+                <SlidersHorizontal className="size-3.5" aria-hidden />
+                Demo setup
+              </span>
+              <span aria-hidden className="h-5 w-px shrink-0 bg-line" />
 
-            {/* Main Unified Lead & Dialer Row */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-
-              {/* LEFT: Prospect Identity */}
-              <div className="flex flex-wrap items-center gap-4 min-w-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-subtle text-body-strong text-ink-700">
-                    {customerName.charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="truncate text-h2 text-fg">
-                        {customerName}
-                      </h2>
-                      {practiceMode ? (
-                        <Badge tone="warning">Practice lead</Badge>
-                      ) : leadsQueue.length > 0 ? (
-                        <Badge tone="neutral">
-                          Lead {(currentLeadIndex + 1).toLocaleString('en-US')} of {leadsQueue.length.toLocaleString('en-US')}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-3 text-small text-fg-secondary">
-                      <span className="truncate">
-                        {title} at <span className="text-body-strong text-fg">{partnerName}</span>
-                      </span>
-                      {companySize(headcount) && (
-                        <span
-                          className="flex items-center gap-1 tabular-nums"
-                          title={`Company size: ${companySize(headcount)!.exact}`}
-                        >
-                          <Users className="size-3.5" />
-                          <span>{companySize(headcount)!.short}</span>
-                        </span>
-                      )}
-                      {leadWebsite && (
-                        <a
-                          href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
-                        >
-                          <Globe className="size-3.5" />
-                          <span>Website</span>
-                        </a>
-                      )}
-                      {leadLinkedinUrl && (
-                        <a
-                          href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="focus-ring flex items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
-                        >
-                          <LinkedinIcon className="size-3.5" />
-                          <span>LinkedIn</span>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
+              <div
+                className="flex shrink-0 items-center gap-2"
+                title={isCallingActive ? 'Hang up to switch' : 'Real phone opens your phone app (e.g. Phone Link). AI demo starts the AI prospect call.'}
+              >
+                <span className="text-caption text-fg-tertiary">Mode</span>
+                <SegmentedControl
+                  label="Call mode"
+                  size="sm"
+                  value={demoCallMode}
+                  onChange={(v) => {
+                    if (!isCallingActive) changeDemoCallMode(v === 'phone' ? 'phone' : 'ai');
+                  }}
+                  className={isCallingActive ? 'pointer-events-none opacity-60' : undefined}
+                  items={[
+                    { value: 'phone', label: 'Real phone' },
+                    { value: 'ai', label: 'AI demo' },
+                  ]}
+                />
               </div>
 
-              {/* RIGHT: Click-to-Call + Compact Email Input + Send Invite + Prev/Next Lead */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* INLINE CLICK-TO-CALL (the one crimson action on this screen) */}
-                <div className="flex items-center gap-2">
-                  {viaVicidial ? (
-                    <button
-                      type="button"
-                      disabled={callActive}
-                      onClick={async () => {
-                        if (!phone) {
-                          alert('No phone number entered for this prospect.');
-                          return;
-                        }
-                        const r = await telephony.dial(phone, activeLead.id);
-                        if (!r.ok) showTelephonyNotice(r.message);
-                      }}
-                      className="focus-ring inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover disabled:cursor-default"
-                    >
-                      {callActive ? (
-                        <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
-                      ) : (
-                        <PhoneCall className="size-4 shrink-0" />
-                      )}
-                      <span className="tabular-nums" aria-live="polite">{callActive ? `On call (${callTimerSeconds}s)` : 'Call'}</span>
-                      <span className="border-l border-action-brand-fg/30 pl-2 font-mono text-small">
-                        {phone || 'No phone'}
-                      </span>
-                    </button>
-                  ) : simulatedCall ? (
-                    <button
-                      type="button"
-                      disabled={isCallingActive}
-                      onClick={() => {
-                        if (!phone) {
-                          alert('No phone number entered for this prospect.');
-                          return;
-                        }
-                        startSimulatedCall();
-                      }}
-                      className={`focus-ring relative inline-flex h-10 cursor-pointer items-center gap-2 rounded-md px-3.5 text-body font-medium transition-colors duration-300 disabled:cursor-default ${
-                        isCallingActive
-                          ? 'bg-success-500 text-white'
-                          : 'bg-action-brand text-action-brand-fg hover:bg-action-brand-hover'
-                      }`}
-                    >
-                      {isCallingActive && demoCallPhase === 'ringing' && (
-                        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-success-500 motion-safe:animate-ping" />
-                      )}
-                      {isCallingActive ? (
-                        demoCallPhase === 'ringing' ? (
-                          <PhoneCall className="size-4 shrink-0 motion-safe:animate-pulse-soft" />
-                        ) : (
-                          <span className="size-2 shrink-0 rounded-full bg-white motion-safe:animate-pulse-soft" aria-hidden />
-                        )
-                      ) : (
-                        <PhoneCall className="size-4 shrink-0" />
-                      )}
-                      <span className="tabular-nums" aria-live="polite">
-                        {!isCallingActive
-                          ? 'Call'
-                          : demoCallPhase === 'ringing'
-                            ? 'Ringing…'
-                            : `Connected ${String(Math.floor(callTimerSeconds / 60)).padStart(2, '0')}:${String(callTimerSeconds % 60).padStart(2, '0')}`}
-                      </span>
-                      <span className={`border-l pl-2 font-mono text-small ${isCallingActive ? 'border-white/30' : 'border-action-brand-fg/30'}`}>
-                        {phone || 'No phone'}
-                      </span>
-                    </button>
-                  ) : (
-                  <a
-                    href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
-                    onClick={() => {
-                      if (!phone) {
-                        alert('No phone number entered for this prospect.');
-                        return;
-                      }
-                      setIsCallingActive(true);
+              <div
+                className="flex shrink-0 items-center gap-2"
+                title={isCallingActive ? 'Hang up to switch' : 'The call script, objections and AI prospect for this demo.'}
+              >
+                <label htmlFor="dialer-script-pack" className="text-caption text-fg-tertiary">
+                  Script
+                </label>
+                <span className="w-52">
+                  <Select
+                    id="dialer-script-pack"
+                    data-testid="script-pack-select"
+                    className="h-8"
+                    value={scriptPackChoice}
+                    disabled={isCallingActive}
+                    onChange={(e) => {
+                      if (!isCallingActive) changeScriptPack(parseScriptPackId(e.target.value));
                     }}
-                    className="focus-ring inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover"
                   >
-                    {isCallingActive ? (
-                      <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
-                    ) : (
-                      <PhoneCall className="size-4 shrink-0" />
-                    )}
-                    <span className="tabular-nums" aria-live="polite">{isCallingActive ? `Calling (${callTimerSeconds}s)` : 'Call'}</span>
-                    <span className="border-l border-action-brand-fg/30 pl-2 font-mono text-small">
-                      {phone || 'No phone'}
-                    </span>
-                  </a>
-                  )}
+                    {SCRIPT_PACK_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+              </div>
 
-                  {isDemo && !practiceMode && !viaVicidial && (
-                    <span title={isCallingActive ? 'Hang up to switch' : 'Real phone opens your phone app (e.g. Phone Link). AI demo starts the AI prospect call.'}>
-                      <SegmentedControl
-                        label="Call mode"
-                        size="sm"
-                        value={demoCallMode}
-                        onChange={(v) => {
-                          if (!isCallingActive) changeDemoCallMode(v === 'phone' ? 'phone' : 'ai');
-                        }}
-                        className={isCallingActive ? 'pointer-events-none opacity-60' : undefined}
-                        items={[
-                          { value: 'phone', label: 'Real phone' },
-                          { value: 'ai', label: 'AI demo' },
-                        ]}
-                      />
-                    </span>
-                  )}
+              {activePack.id === 'bpo_ai_hitl' && (
+                <div
+                  className="flex shrink-0 items-center gap-2"
+                  title={isCallingActive ? 'Hang up to switch' : 'The company you say you call for in the script.'}
+                >
+                  <label htmlFor="dialer-calling-as" className="text-caption text-fg-tertiary">
+                    Calling as
+                  </label>
+                  <Input
+                    id="dialer-calling-as"
+                    data-testid="calling-as-input"
+                    value={callingAsValue}
+                    disabled={isCallingActive}
+                    onChange={(e) => changeCallingAs(e.target.value)}
+                    placeholder={sessionTenant || 'Company you call for'}
+                    className="h-8 w-40"
+                  />
+                </div>
+              )}
 
-                  {showScriptPicker && (
-                    <span
-                      className="inline-flex items-center gap-1.5"
-                      title={isCallingActive ? 'Hang up to switch' : 'The call script, objections and AI prospect for this demo.'}
-                    >
-                      <label htmlFor="dialer-script-pack" className="text-caption text-fg-tertiary">
-                        Script
-                      </label>
-                      <span className="w-64">
-                        <Select
-                          id="dialer-script-pack"
-                          data-testid="script-pack-select"
-                          value={scriptPackChoice}
-                          disabled={isCallingActive}
-                          onChange={(e) => {
-                            if (!isCallingActive) changeScriptPack(parseScriptPackId(e.target.value));
-                          }}
-                        >
-                          {SCRIPT_PACK_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </Select>
+              {activePack.id === 'bpo_ai_hitl' && !isCallingActive && activePack.sampleLeadId && activeLead?.id !== activePack.sampleLeadId && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-testid="go-to-sample-lead"
+                  onClick={goToPackSampleLead}
+                  title="This script's AI prospect plays the sample lead. Jump to them before calling."
+                >
+                  Go to {(activePack.persona?.name || 'sample lead').split(' ')[0]}
+                </Button>
+              )}
+
+              {isCallingActive && (
+                <span className="ml-auto text-caption text-fg-tertiary">Hang up to change the setup</span>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* SECTION 1: UNIFIED LEAD HEADER, INLINE DIALER & 1-CLICK DISPOSITIONS      */}
+          {/* ========================================================================= */}
+          <div className="@container bg-surface border border-line rounded-lg p-4 shadow-xs space-y-3">
+
+            {/* Main Unified Lead & Dialer Row. Fixed grid: the identity column flexes and truncates, the
+                controls column has a fixed width, so nothing moves between leads or when a call starts. */}
+            <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-[minmax(0,1fr)_30rem] @4xl:items-center">
+
+              {/* LEFT: Prospect Identity (one line each for name and title/company: constant height) */}
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-subtle text-body-strong text-ink-700">
+                  {customerName.charAt(0)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h2 className="min-w-0 truncate text-h2 text-fg" title={customerName}>
+                      {customerName}
+                    </h2>
+                    {practiceMode ? (
+                      <Badge tone="warning" className="shrink-0">Practice lead</Badge>
+                    ) : leadsQueue.length > 0 ? (
+                      <Badge tone="neutral" className="shrink-0 tabular-nums">
+                        Lead {(currentLeadIndex + 1).toLocaleString('en-US')} of {leadsQueue.length.toLocaleString('en-US')}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-0.5 flex min-w-0 items-center gap-3 text-small text-fg-secondary">
+                    <span className="min-w-0 truncate" title={`${title} at ${partnerName}`}>
+                      {title} at <span className="text-body-strong text-fg">{partnerName}</span>
+                    </span>
+                    {companySize(headcount) && (
+                      <span
+                        className="flex shrink-0 items-center gap-1 tabular-nums"
+                        title={`Company size: ${companySize(headcount)!.exact}`}
+                      >
+                        <Users className="size-3.5" />
+                        <span>{companySize(headcount)!.short}</span>
                       </span>
-                      {activePack.id === 'bpo_ai_hitl' && (
-                        <>
-                          <label htmlFor="dialer-calling-as" className="ml-1 text-caption text-fg-tertiary">
-                            Calling as
-                          </label>
-                          <Input
-                            id="dialer-calling-as"
-                            data-testid="calling-as-input"
-                            value={callingAsValue}
-                            disabled={isCallingActive}
-                            onChange={(e) => changeCallingAs(e.target.value)}
-                            placeholder={sessionTenant || 'Company you call for'}
-                            className="w-40"
-                          />
-                        </>
-                      )}
-                    </span>
-                  )}
-
-                  {callActive && (
-                    <IconButton
-                      label="Hang up"
-                      variant="danger"
-                      className="size-10"
-                      onClick={async () => {
-                        if (practiceMode) {
-                          endPracticeCall(null);
-                          return;
-                        }
-                        if (viaVicidial) {
-                          const r = await telephony.hangup();
-                          if (!r.ok) showTelephonyNotice(r.message);
-                        }
-                        if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
-                        setIsCallingActive(false);
-                      }}
-                    >
-                      <PhoneOff />
-                    </IconButton>
-                  )}
-
+                    )}
+                    {leadWebsite && (
+                      <a
+                        href={leadWebsite.startsWith('http') ? leadWebsite : `https://${leadWebsite}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="focus-ring flex shrink-0 items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
+                      >
+                        <Globe className="size-3.5" />
+                        <span>Website</span>
+                      </a>
+                    )}
+                    {leadLinkedinUrl && (
+                      <a
+                        href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="focus-ring flex shrink-0 items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
+                      >
+                        <LinkedinIcon className="size-3.5" />
+                        <span>LinkedIn</span>
+                      </a>
+                    )}
+                  </div>
                   {viaVicidial && (
                     <span
-                      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line px-2.5 text-caption text-fg-secondary"
+                      className="mt-1.5 inline-flex h-6 items-center gap-1.5 rounded-full border border-line px-2.5 text-caption text-fg-secondary"
                       title={telephony.problem || `VICIdial agent ${telephony.agentUser}`}
                     >
                       <span
@@ -1795,23 +1775,149 @@ export default function BorisCallingCockpit({
                     </span>
                   )}
                 </div>
+              </div>
+
+              {/* RIGHT: fixed-width controls, a 2 x 2 grid that never reflows:
+                  row 1 = Call (with the number in a fixed slot) | End call (reserved slot, shown during a call)
+                  row 2 = email + send | previous / Next lead */}
+              <div
+                data-testid="call-controls"
+                className="grid w-full max-w-[30rem] grid-cols-[minmax(0,1fr)_8rem] items-center gap-2"
+              >
+                {/* INLINE CLICK-TO-CALL (the one crimson action on this screen) */}
+                {viaVicidial ? (
+                  <button
+                    type="button"
+                    disabled={callActive}
+                    onClick={async () => {
+                      if (!phone) {
+                        alert('No phone number entered for this prospect.');
+                        return;
+                      }
+                      const r = await telephony.dial(phone, activeLead.id);
+                      if (!r.ok) showTelephonyNotice(r.message);
+                    }}
+                    className="focus-ring inline-flex h-10 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover disabled:cursor-default"
+                  >
+                    {callActive ? (
+                      <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
+                    ) : (
+                      <PhoneCall className="size-4 shrink-0" />
+                    )}
+                    <span className="w-[7.5rem] shrink-0 whitespace-nowrap text-left tabular-nums" aria-live="polite">{callActive ? `On call (${callTimerSeconds}s)` : 'Call'}</span>
+                    <span className="min-w-0 flex-1 truncate border-l border-action-brand-fg/30 pl-2 text-left font-mono text-small" title={phone || undefined}>
+                      {phone || 'No phone'}
+                    </span>
+                  </button>
+                ) : simulatedCall ? (
+                  <button
+                    type="button"
+                    disabled={isCallingActive}
+                    onClick={() => {
+                      if (!phone) {
+                        alert('No phone number entered for this prospect.');
+                        return;
+                      }
+                      startSimulatedCall();
+                    }}
+                    className={`focus-ring relative inline-flex h-10 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-3.5 text-body font-medium transition-colors duration-300 disabled:cursor-default ${
+                      isCallingActive
+                        ? 'bg-success-500 text-white'
+                        : 'bg-action-brand text-action-brand-fg hover:bg-action-brand-hover'
+                    }`}
+                  >
+                    {isCallingActive && demoCallPhase === 'ringing' && (
+                      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-success-500 motion-safe:animate-ping" />
+                    )}
+                    {isCallingActive ? (
+                      demoCallPhase === 'ringing' ? (
+                        <PhoneCall className="size-4 shrink-0 motion-safe:animate-pulse-soft" />
+                      ) : (
+                        <span className="size-2 shrink-0 rounded-full bg-white motion-safe:animate-pulse-soft" aria-hidden />
+                      )
+                    ) : (
+                      <PhoneCall className="size-4 shrink-0" />
+                    )}
+                    <span className="w-[7.5rem] shrink-0 whitespace-nowrap text-left tabular-nums" aria-live="polite">
+                      {!isCallingActive
+                        ? 'Call'
+                        : demoCallPhase === 'ringing'
+                          ? 'Ringing…'
+                          : `Connected ${String(Math.floor(callTimerSeconds / 60)).padStart(2, '0')}:${String(callTimerSeconds % 60).padStart(2, '0')}`}
+                    </span>
+                    <span
+                      className={`min-w-0 flex-1 truncate border-l pl-2 text-left font-mono text-small ${isCallingActive ? 'border-white/30' : 'border-action-brand-fg/30'}`}
+                      title={phone || undefined}
+                    >
+                      {phone || 'No phone'}
+                    </span>
+                  </button>
+                ) : (
+                <a
+                  href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
+                  onClick={() => {
+                    if (!phone) {
+                      alert('No phone number entered for this prospect.');
+                      return;
+                    }
+                    setIsCallingActive(true);
+                  }}
+                  className="focus-ring inline-flex h-10 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover"
+                >
+                  {isCallingActive ? (
+                    <span className="size-2 shrink-0 rounded-full bg-action-brand-fg animate-pulse-soft" aria-hidden />
+                  ) : (
+                    <PhoneCall className="size-4 shrink-0" />
+                  )}
+                  <span className="w-[7.5rem] shrink-0 whitespace-nowrap text-left tabular-nums" aria-live="polite">{isCallingActive ? `Calling (${callTimerSeconds}s)` : 'Call'}</span>
+                  <span className="min-w-0 flex-1 truncate border-l border-action-brand-fg/30 pl-2 text-left font-mono text-small" title={phone || undefined}>
+                    {phone || 'No phone'}
+                  </span>
+                </a>
+                )}
+
+                {/* Reserved End call slot: always takes its column, so starting/ending a call moves nothing. */}
+                <div className="h-10 min-w-0">
+                  {callActive && (
+                    <Button
+                      variant="danger"
+                      data-testid="end-call"
+                      icon={<PhoneOff />}
+                      className="h-10 w-full"
+                      onClick={async () => {
+                        if (practiceMode) {
+                          endPracticeCall(null);
+                          return;
+                        }
+                        if (viaVicidial) {
+                          const r = await telephony.hangup();
+                          if (!r.ok) showTelephonyNotice(r.message);
+                        }
+                        if (demoRingTimer.current) clearTimeout(demoRingTimer.current);
+                        setIsCallingActive(false);
+                      }}
+                    >
+                      End call
+                    </Button>
+                  )}
+                </div>
 
                 {!practiceMode && (<>
-                <div className="flex h-9 items-center gap-1 rounded-md border border-line-strong bg-surface pr-1 focus-within:border-brand-600">
-                  <div className="relative flex items-center">
-                    <Mail className="ml-2.5 mr-2 size-4 shrink-0 text-fg-tertiary" />
-                    <input
-                      type="email"
-                      value={directEmail}
-                      onChange={(e) => handleConfirmedEmailChange(e.target.value)}
-                      placeholder="prospect@company.com"
-                      className="w-52 bg-transparent py-1 pr-2 font-mono text-small text-fg placeholder:text-fg-disabled focus:outline-none"
-                      title="Edit email to sync globally across Cold Email Studio, Inbox & Calendly"
-                    />
-                    {emailSavedToast && (
-                      <Check className="mr-1.5 size-4 shrink-0 text-success-fg" />
-                    )}
-                  </div>
+                <div className="flex h-9 w-full min-w-0 items-center gap-1 rounded-md border border-line-strong bg-surface pr-1 focus-within:border-brand-600">
+                  <Mail className="ml-2.5 mr-1 size-4 shrink-0 text-fg-tertiary" />
+                  <input
+                    type="email"
+                    value={directEmail}
+                    onChange={(e) => handleConfirmedEmailChange(e.target.value)}
+                    placeholder="prospect@company.com"
+                    aria-label="Prospect email"
+                    className="min-w-0 flex-1 bg-transparent py-1 pr-1 font-mono text-small text-fg placeholder:text-fg-disabled focus:outline-none"
+                    title="Edit email to sync globally across Cold Email Studio, Inbox & Calendly"
+                  />
+                  {/* Fixed-size slot for the saved tick so the send button never moves. */}
+                  <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+                    {emailSavedToast && <Check className="size-4 text-success-fg" />}
+                  </span>
                   <IconButton
                     label="Email prospect"
                     size="sm"
@@ -1824,7 +1930,7 @@ export default function BorisCallingCockpit({
                 </div>
 
                 {/* Lead Queue Navigation */}
-                <div className="flex items-center gap-1">
+                <div className="flex min-w-0 items-center gap-1">
                   <IconButton
                     label="Previous lead"
                     variant="secondary"
@@ -1835,6 +1941,7 @@ export default function BorisCallingCockpit({
                   </IconButton>
                   <Button
                     variant="primary"
+                    className="min-w-0 flex-1"
                     onClick={handleProceedToNextLead}
                     disabled={!nextLeadCandidate}
                     title={nextLeadCandidate ? `Next lead: ${nextLeadCandidate.name || 'Unnamed lead'}` : 'No more leads in your queue'}
@@ -2994,7 +3101,7 @@ export default function BorisCallingCockpit({
             if (imported.length > 0) {
               setLeadsQueue(imported);
               setCurrentLeadIndex(0);
-              const first = imported[0];
+              const first = frontLoadQueue(imported, activePack.queueFirstLeadIds)[0];
               setCustomerName(first.name);
               setPartnerName(first.company);
               setTitle(first.title);

@@ -634,7 +634,12 @@ CRITICAL SPARRING & OBJECTION ROLEPLAY RULES:
 
 ${liveCallBlock}
 
-Return STRICT JSON only:
+${liveCall ? `Return STRICT JSON only, with just these three fields (the reply is spoken live, so keep the JSON short; no coaching, no script assist):
+{
+  "reply": "Your spoken in-character reply",
+  "completedObjectiveIds": ["id_of_completed_objective_if_earned"],
+  "sentiment": "hostile" | "skeptical" | "neutral" | "softened" | "agreed"
+}` : `Return STRICT JSON only:
 {
   "reply": "Your spoken in-character pushback/objection directly challenging the rep",
   "completedObjectiveIds": ["id_of_completed_objective_if_earned"],
@@ -650,7 +655,7 @@ Return STRICT JSON only:
       "move": "The low-friction closing question"
     }
   }
-}`;
+}`}`;
 
     let personaReply = '';
     let completedIds: string[] = [];
