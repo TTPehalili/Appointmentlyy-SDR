@@ -64,43 +64,9 @@ export function StatusDot({
   );
 }
 
-/* ---------- Avatar ---------- */
+/* ---------- Avatar (client component: falls back to initials if the photo fails) ---------- */
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
-}
-
-export function Avatar({
-  name,
-  src,
-  size = 'md',
-  className,
-}: {
-  name: string;
-  src?: string;
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
-}) {
-  const dims = { sm: 'size-6 text-[10px]', md: 'size-8 text-caption', lg: 'size-10 text-body-strong' }[size];
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-subtle font-medium text-fg-secondary',
-        dims,
-        className,
-      )}
-      title={name}
-    >
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={name} className="size-full object-cover" />
-      ) : (
-        <span aria-label={name}>{initials(name)}</span>
-      )}
-    </span>
-  );
-}
+export { Avatar, type AvatarSize } from './Avatar';
 
 /* ---------- Card ---------- */
 

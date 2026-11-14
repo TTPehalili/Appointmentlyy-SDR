@@ -14,6 +14,7 @@ import { getTenantStore, nowIso } from '@/lib/server/tenantStore';
 import { displayNameFor } from '@/lib/server/tenancy';
 import { chatChannelId, dmKey, getChatStore, isChatId } from '@/lib/server/chatStore';
 import { publishChat } from '@/lib/server/chatBus';
+import { avatarSrcs } from '@/lib/server/avatars';
 import {
   canSeeChannel,
   type ChatChannel,
@@ -93,16 +94,24 @@ export async function workspaceDirectory(tenantCode: string): Promise<ChatMember
       byEmail.set(email, { email, name: cur?.name ?? displayNameFor(email), role: 'Super Admin' });
     }
   }
+  const avatars = await avatarSrcs(tenantCode, [...byEmail.values()]);
+  for (const m of byEmail.values()) m.avatar = avatars[m.email] ?? null;
   const members = [...byEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
   directoryCache.set(tenantCode, { at: Date.now(), members });
   return members;
+}
+
+/** Forget the cached directory (a profile photo changed). */
+export function invalidateDirectory(tenantCode: string) {
+  directoryCache.delete(tenantCode);
 }
 
 /** The directory with the signed-in person in it (platform staff may not have a member row). */
 export async function directoryFor(ctx: ChatCtx): Promise<ChatMember[]> {
   const members = await workspaceDirectory(ctx.tenantCode);
   if (members.some((m) => m.email === ctx.me.email)) return members;
-  return [...members, { email: ctx.me.email, name: ctx.me.name, role: ctx.me.role }];
+  const avatar = (await avatarSrcs(ctx.tenantCode, [ctx.me]))[ctx.me.email] ?? null;
+  return [...members, { email: ctx.me.email, name: ctx.me.name, role: ctx.me.role, avatar }];
 }
 
 /** People who can read a channel (for @mentions). */

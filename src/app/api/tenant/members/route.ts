@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GRANTABLE, PLATFORM_TENANT_CODE } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
-import { seatsUsed } from '@/lib/server/tenancy';
+import { displayNameFor, seatsUsed } from '@/lib/server/tenancy';
+import { avatarSrcs } from '@/lib/server/avatars';
 import { getServerSession, hasRank } from '@/lib/server/session';
 
 /**
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   const tenant = session.identity.tenant;
   const members = await store.listMembers({ tenantCode: tenant.code });
   const visible = members.filter((m) => m.status !== 'removed');
+  const avatars = await avatarSrcs(tenant.code, visible.map((m) => ({ email: m.email, name: displayNameFor(m.email, m.name) })));
 
   return NextResponse.json(
     {
@@ -37,6 +39,7 @@ export async function GET(req: NextRequest) {
         invitedAt: m.invitedAt,
         joinedAt: m.joinedAt,
         lastLoginAt: m.lastLoginAt,
+        avatar: avatars[m.email.toLowerCase()] ?? null,
       })),
     },
     { headers: { 'Cache-Control': 'no-store' } },

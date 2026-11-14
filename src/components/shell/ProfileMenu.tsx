@@ -3,10 +3,12 @@
 import { DEMO_LOGIN, canViewAsRoles, setViewAsRole, signOutOnServer, useServerAuth } from '@/lib/authClient';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronsUpDown, KeyRound, LogOut, Mail, Settings } from 'lucide-react';
+import { Camera, Check, ChevronsUpDown, KeyRound, LogOut, Mail, Settings } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { changeUserPassword, useSession, type UserRole } from '@/lib/session';
 import { Avatar, Button, Dialog, Field, Input } from '@/components/ui';
+import { AvatarDialog } from '@/components/profile/AvatarDialog';
+import { useMyAvatar } from '@/lib/avatarClient';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   Rep: 'Rep',
@@ -18,11 +20,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const TEST_ROLES: UserRole[] = ['Rep', 'Supervisor', 'Manager', 'Admin', 'Super Admin'];
 
-function avatarSrc(name: string) {
-  // Kept from the old header: the founder's profile photo.
-  return name.toLowerCase().includes('emil') ? '/images/emil-halili.gif' : undefined;
-}
-
 export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const { repName, email, role, updateSession, logout } = useSession();
@@ -31,6 +28,10 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
   const canViewAs = DEMO_LOGIN || canViewAsRoles(server.identity);
   const [open, setOpen] = React.useState(false);
   const [pwdOpen, setPwdOpen] = React.useState(false);
+  const [photoOpen, setPhotoOpen] = React.useState(false);
+  // Your photo in this workspace (the server applies defaults such as the founder's photo).
+  const photo = useMyAvatar().src;
+  const signedIn = server.status === 'signed-in';
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -57,13 +58,14 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
+        data-profile-menu
         title={collapsed ? `${repName} · ${ROLE_LABELS[role]}` : undefined}
         className={cn(
           'focus-ring flex h-11 w-full items-center gap-2.5 rounded-md transition-colors duration-150 hover:bg-subtle',
           collapsed ? 'justify-center' : 'px-2',
         )}
       >
-        <Avatar name={repName} src={avatarSrc(repName)} size="sm" />
+        <Avatar name={repName} src={photo} size="sm" decorative={!collapsed} />
         {!collapsed && (
           <>
             <span className="min-w-0 flex-1 text-left">
@@ -82,7 +84,25 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
           className="absolute bottom-full left-0 z-50 mb-1 w-64 animate-fade-in rounded-lg border border-line bg-surface p-1 shadow-md"
         >
           <div className="flex items-center gap-2.5 border-b border-line px-2 pb-2 pt-1.5">
-            <Avatar name={repName} src={avatarSrc(repName)} />
+            {signedIn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setPhotoOpen(true);
+                }}
+                className="focus-ring group relative shrink-0 rounded-full"
+                aria-label="Change photo"
+                title="Change photo"
+              >
+                <Avatar name={repName} src={photo} decorative />
+                <span className="absolute inset-0 hidden items-center justify-center rounded-full bg-ink-950/45 text-white group-hover:flex" aria-hidden>
+                  <Camera className="size-3.5" />
+                </span>
+              </button>
+            ) : (
+              <Avatar name={repName} src={photo} decorative />
+            )}
             <div className="min-w-0">
               <p className="truncate text-body-strong text-fg">{repName}</p>
               <p className="truncate text-small text-fg-tertiary">{email}</p>
@@ -110,6 +130,21 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
           ))}
 
           <div className="mt-1 border-t border-line pt-1">
+            {signedIn && (
+              <button
+                type="button"
+                role="menuitem"
+                data-change-photo
+                onClick={() => {
+                  setOpen(false);
+                  setPhotoOpen(true);
+                }}
+                className={cn(item, 'text-fg')}
+              >
+                <Camera className="text-fg-secondary" aria-hidden />
+                Change photo
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -181,6 +216,7 @@ export function ProfileMenu({ collapsed }: { collapsed: boolean }) {
       )}
 
       <ChangePasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} email={email} />
+      {signedIn && <AvatarDialog open={photoOpen} onClose={() => setPhotoOpen(false)} name={repName} currentSrc={photo} />}
     </div>
   );
 }

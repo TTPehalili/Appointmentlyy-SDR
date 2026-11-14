@@ -35,7 +35,7 @@ export function publishChat(tenantCode: string, event: ChatEvent) {
   const set = bus.get(tenantCode);
   if (!set) return;
   for (const l of [...set]) {
-    if (event.type !== 'presence' && !canSeeChannel(event.channel, l)) continue;
+    if (event.type !== 'presence' && event.type !== 'member' && !canSeeChannel(event.channel, l)) continue;
     try {
       l.send(event);
     } catch {

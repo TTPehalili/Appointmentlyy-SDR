@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Copy, Mail, Plus, Send, Trash2, Users } from 'lucide-react';
+import { Camera, Copy, Mail, Plus, Send, Trash2, Users } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -21,6 +21,9 @@ import {
   useToast,
 } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
+import { primeAvatars, useAvatarSrc } from '@/lib/avatarClient';
+import { AvatarDialog } from '@/components/profile/AvatarDialog';
+import { MemberAvatar } from '@/components/profile/MemberAvatar';
 import { EMAIL_RE, ROLE_RANK, type Role } from '@/lib/roles';
 
 interface MemberRow {
@@ -33,6 +36,8 @@ interface MemberRow {
   invitedAt: string;
   joinedAt: string | null;
   lastLoginAt: string | null;
+  /** Photo to show (null = initials). */
+  avatar?: string | null;
 }
 
 interface MembersReply {
@@ -61,6 +66,7 @@ export function MembersManager() {
   const [removing, setRemoving] = React.useState<MemberRow | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [linkFor, setLinkFor] = React.useState<{ email: string; url: string } | null>(null);
+  const [photoFor, setPhotoFor] = React.useState<MemberRow | null>(null);
 
   const load = React.useCallback(async () => {
     const res = await apiJson<MembersReply>('/api/tenant/members');
@@ -70,6 +76,7 @@ export function MembersManager() {
     }
     setError(null);
     setData(res);
+    primeAvatars(res.members);
   }, []);
 
   React.useEffect(() => {
@@ -109,6 +116,9 @@ export function MembersManager() {
   const q = query.trim().toLowerCase();
   const members = (data?.members ?? []).filter((m) => !q || `${m.name} ${m.email} ${m.role}`.toLowerCase().includes(q));
   const myRank = data ? ROLE_RANK[data.members.find((m) => m.email === data.me)?.role ?? 'Rep'] : 0;
+  // Photos: admins change anyone at or below their rank (platform staff may have no member row here).
+  const myRole = data?.members.find((m) => m.email === data.me)?.role;
+  const photoRank = myRole ? ROLE_RANK[myRole] : data?.canManage ? ROLE_RANK['Super Admin'] : 0;
   const seatLimit = data?.tenant.seatLimit ?? 0;
   const seatsFull = seatLimit > 0 && (data?.seatsUsed ?? 0) >= seatLimit;
   const canInvite = Boolean(data && data.grantable.length > 0);
@@ -196,14 +206,21 @@ export function MembersManager() {
                   {members.map((m) => {
                     const isMe = m.email === data.me;
                     const editable = data.canManage && !isMe && ROLE_RANK[m.role] <= myRank;
+                    const photoEditable = data.canManage && (isMe || ROLE_RANK[m.role] <= photoRank);
+                    const display = m.name || m.email.split('@')[0];
                     return (
-                      <tr key={m.id} className={TR}>
+                      <tr key={m.id} className={TR} data-member-row={m.email}>
                         <td className="px-4 py-2.5">
-                          <div className="text-body-strong text-fg">
-                            {m.name || m.email.split('@')[0]}
-                            {isMe && <span className="ml-1.5 text-small font-normal text-fg-tertiary">(you)</span>}
+                          <div className="flex items-center gap-3">
+                            <MemberAvatar email={m.email} name={display} src={m.avatar} size="lg" decorative />
+                            <div className="min-w-0">
+                              <div className="text-body-strong text-fg">
+                                {display}
+                                {isMe && <span className="ml-1.5 text-small font-normal text-fg-tertiary">(you)</span>}
+                              </div>
+                              <div className="text-small text-fg-secondary">{m.email}</div>
+                            </div>
                           </div>
-                          <div className="text-small text-fg-secondary">{m.email}</div>
                         </td>
                         <td className="px-4 py-2.5">
                           {editable ? (
@@ -236,6 +253,11 @@ export function MembersManager() {
                         <td className="px-4 py-2.5 text-small text-fg-secondary">{when(m.lastLoginAt)}</td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="inline-flex items-center gap-0.5">
+                            {photoEditable && (
+                              <IconButton label={`Change photo for ${display}`} size="sm" onClick={() => setPhotoFor(m)} data-member-photo={m.email}>
+                                <Camera className="h-4 w-4" />
+                              </IconButton>
+                            )}
                             {m.status === 'invited' && canInvite && (
                               <IconButton label={`Re-send invite to ${m.email}`} size="sm" onClick={() => resend(m)} disabled={busy === m.id}>
                                 <Mail className="h-4 w-4" />
@@ -295,10 +317,37 @@ export function MembersManager() {
         icon={<Trash2 className="h-4 w-4" />}
       />
 
+      {photoFor && (
+        <MemberPhotoDialog
+          member={photoFor}
+          self={photoFor.email === data?.me}
+          onClose={() => setPhotoFor(null)}
+          onSaved={() => {
+            toast({ message: `Photo updated for ${photoFor.name || photoFor.email}.` });
+            load();
+          }}
+        />
+      )}
+
       <Dialog open={linkFor !== null} onClose={() => setLinkFor(null)} title="Invite email didn’t send" size="md">
         {linkFor && <CopyLink text={`Share this invite link with ${linkFor.email} directly. It works for 7 days.`} url={linkFor.url} onDone={() => setLinkFor(null)} />}
       </Dialog>
     </div>
+  );
+}
+
+/** The photo dialog for one member (their current photo from the shared cache). Your own row edits your own photo. */
+function MemberPhotoDialog({ member, self, onClose, onSaved }: { member: MemberRow; self: boolean; onClose: () => void; onSaved: () => void }) {
+  const cached = useAvatarSrc(member.email);
+  return (
+    <AvatarDialog
+      open
+      onClose={onClose}
+      name={member.name || member.email.split('@')[0]}
+      email={self ? undefined : member.email}
+      currentSrc={cached !== undefined ? cached : member.avatar}
+      onSaved={onSaved}
+    />
   );
 }
 

@@ -25,6 +25,8 @@ import {
   X
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
+import { OWNER_PHOTO, avatarImageSrc } from '@/lib/avatar';
+import { useMyAvatar } from '@/lib/avatarClient';
 import {
   Button,
   EmptyState,
@@ -78,6 +80,9 @@ export default function LinkedInCreatorStudio() {
     ? 'CEO & Founder at Appointmentlyy | AI Outbound & BPO Systems'
     : tenantName;
   const authorInitials = authorName.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase() || 'Y';
+  // The demo author is the founder; everyone else sees their own profile photo (initials if none).
+  const myPhoto = avatarImageSrc(useMyAvatar().src);
+  const authorPhoto = isDemo ? OWNER_PHOTO : myPhoto;
   const router = useRouter();
   const searchParams = useSearchParams();
   const campaign = useCampaignMessage();
@@ -592,10 +597,13 @@ export default function LinkedInCreatorStudio() {
               <div className="flex items-start justify-between px-5 pb-2 pt-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-subtle text-small font-medium text-fg-secondary">
-                    {isDemo ? (
+                    {authorPhoto ? (
                       <img
-                        src="/images/emil-halili.gif"
+                        src={authorPhoto}
                         alt={authorName}
+                        width={40}
+                        height={40}
+                        loading="lazy"
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -790,10 +798,13 @@ export default function LinkedInCreatorStudio() {
                     {activePost.injectedComments.map((comment, cIdx) => (
                       <div key={cIdx} className="flex items-start gap-2.5">
                         <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-subtle text-caption font-medium text-fg-secondary">
-                          {isDemo ? (
+                          {authorPhoto ? (
                             <img
-                              src="/images/emil-halili.gif"
+                              src={authorPhoto}
                               alt={authorName}
+                              width={32}
+                              height={32}
+                              loading="lazy"
                               className="h-full w-full object-cover"
                             />
                           ) : (

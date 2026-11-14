@@ -23,6 +23,7 @@ import {
   type ChatPresence,
   type ChatPresenceStatus,
 } from '@/lib/chat';
+import { primeAvatars, setAvatarLocal } from '@/lib/avatarClient';
 
 export type ChatTransport = 'off' | 'connecting' | 'live' | 'polling';
 export type ChatStatus = 'idle' | 'loading' | 'ready' | 'error' | 'unavailable' | 'signed-out';
@@ -229,6 +230,7 @@ async function loadPresence() {
   if (!r.ok) return handleAuthFailure(r.status, r.error);
   noteServerTime(r.serverTime);
   setState({ people: r.people });
+  primeAvatars(r.people);
 }
 
 /** Status to show for someone right now (Away once their heartbeat is ~2 minutes old). */
@@ -411,6 +413,7 @@ export function loadChannels(): Promise<void> {
       messages: s.messages,
     }));
     r.channels.filter((c) => isViewing(c.id) && c.unread).forEach((c) => markRead(c.id));
+    primeAvatars(r.channels.flatMap((c) => (c.dmWith ? [c.dmWith] : [])));
   })().finally(() => {
     loadingChannels = null;
   });
@@ -589,6 +592,18 @@ function openStream() {
     try {
       const d = JSON.parse((e as MessageEvent).data) as { email: string; status: ChatPresenceStatus; at: string };
       setState((s) => ({ people: s.people.map((p) => (p.email === d.email ? { ...p, status: d.status, lastSeenAt: d.at } : p)) }));
+    } catch {}
+  });
+  // Someone changed their profile photo: show it everywhere straight away.
+  source.addEventListener('member', (e) => {
+    try {
+      const d = JSON.parse((e as MessageEvent).data) as { email: string; avatar: string | null };
+      if (!d?.email) return;
+      setAvatarLocal(d.email, d.avatar ?? null);
+      setState((s) => ({
+        people: s.people.map((p) => (p.email === d.email ? { ...p, avatar: d.avatar ?? null } : p)),
+        channels: s.channels.map((c) => (c.dmWith?.email === d.email ? { ...c, dmWith: { ...c.dmWith, avatar: d.avatar ?? null } } : c)),
+      }));
     } catch {}
   });
   source.onerror = () => {

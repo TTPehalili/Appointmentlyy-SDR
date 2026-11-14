@@ -22,8 +22,9 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { Avatar, Button, ConfirmDialog, EmptyState, IconButton, InlineError, SearchInput, Skeleton, useToast } from '@/components/ui';
+import { Button, ConfirmDialog, EmptyState, IconButton, InlineError, SearchInput, Skeleton, useToast } from '@/components/ui';
 import { EmojiPicker, rememberEmoji } from './EmojiPicker';
+import { MemberAvatar } from '@/components/profile/MemberAvatar';
 import { QUICK_REACTIONS, emojiEntry, emojiOrder, searchEmoji, shortcodeOf, type EmojiEntry } from '@/lib/emoji';
 import {
   CHAT_BODY_MAX,
@@ -350,7 +351,7 @@ function ChannelList({
         >
           {c.kind === 'dm' ? (
             <span className="relative">
-              <Avatar name={c.dmWith?.name ?? '?'} size="sm" />
+              <MemberAvatar email={c.dmWith?.email} name={c.dmWith?.name ?? '?'} src={c.dmWith?.avatar} size="sm" decorative />
               <PresenceDot status={presenceOf(person)} className="absolute -bottom-0.5 -right-0.5 size-2" />
             </span>
           ) : (
@@ -479,7 +480,7 @@ function PeoplePicker({ state: s, onBack, onPicked }: { state: ChatState; onBack
               className="focus-ring flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-subtle disabled:opacity-60"
             >
               <span className="relative">
-                <Avatar name={p.name} size="sm" />
+                <MemberAvatar email={p.email} name={p.name} src={p.avatar} size="sm" decorative />
                 <PresenceDot status={presenceOf(p)} className="absolute -bottom-0.5 -right-0.5 size-2" />
               </span>
               <span className="min-w-0 flex-1">
@@ -569,7 +570,7 @@ function Conversation({ state: s, channel, onBack, onClose }: { state: ChatState
         leading={
           channel.kind === 'dm' ? (
             <span className="relative">
-              <Avatar name={channel.dmWith?.name ?? '?'} size="sm" />
+              <MemberAvatar email={channel.dmWith?.email} name={channel.dmWith?.name ?? '?'} src={channel.dmWith?.avatar} size="sm" decorative />
               <PresenceDot status={presenceOf(person)} className="absolute -bottom-0.5 -right-0.5 size-2" />
             </span>
           ) : null
@@ -878,7 +879,7 @@ function MessageRow({
       onClick={onRowClick}
       className={cn('group relative flex gap-2.5 rounded-md px-2', grouped ? 'py-0.5' : 'pt-2 pb-0.5', mentioned ? 'bg-selected-soft' : 'hover:bg-subtle/60', showActions && !mentioned && 'bg-subtle/60')}
     >
-      <div className="w-8 shrink-0">{!grouped && <Avatar name={m.senderName} size="md" />}</div>
+      <div className="w-8 shrink-0">{!grouped && <MemberAvatar email={m.senderEmail} name={m.senderName} size="md" decorative />}</div>
       <div className="min-w-0 flex-1 pr-2">
         {!grouped && (
           <p className="flex flex-wrap items-baseline gap-x-2">
@@ -1123,7 +1124,7 @@ function Composer({
                 }}
                 className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body', i === suggest.index ? 'bg-selected-soft text-selected-soft-fg' : 'text-fg hover:bg-subtle')}
               >
-                <Avatar name={p.name} size="sm" />
+                <MemberAvatar email={p.email} name={p.name} src={p.avatar} size="sm" decorative />
                 <span className="truncate font-medium">{p.name}</span>
                 <span className="ml-auto truncate text-caption text-fg-tertiary">{p.role}</span>
               </button>

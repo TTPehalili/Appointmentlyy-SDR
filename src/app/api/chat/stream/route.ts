@@ -17,6 +17,7 @@ const MAX_LIFETIME_MS = 30 * 60_000;
  *   event: message   { message, channel }   new or changed message in a channel they can read
  *   event: channel   { channel, pinned }    #floor pin changed
  *   event: presence  { email, status, at }
+ *   event: member    { email, avatar, at }    someone's profile photo changed
  * Every request runs at request time (session cookie, connection()): nothing here is cached.
  */
 export async function GET(req: NextRequest) {
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
         send: (e: ChatEvent) => {
           if (e.type === 'message') send('message', { message: tombstone(e.message), channel: e.channel });
           else if (e.type === 'channel') send('channel', { channel: e.channel, pinned: e.pinned ?? null });
+          else if (e.type === 'member') send('member', { email: e.email, avatar: e.avatar, at: e.at });
           else send('presence', { email: e.email, status: e.status, at: e.at });
         },
       });

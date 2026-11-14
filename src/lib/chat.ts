@@ -125,6 +125,8 @@ export interface ChatMember {
   email: string;
   name: string;
   role: string;
+  /** Profile photo to show (preset file, site path or /api/profile/avatar/image URL); null = initials. */
+  avatar?: string | null;
 }
 
 export interface ChatPresence extends ChatMember {
@@ -156,7 +158,9 @@ export interface ChatMe extends ChatMember {
 export type ChatEvent =
   | { type: 'message'; message: ChatMessage; channel: ChatChannelRef }
   | { type: 'channel'; channel: ChatChannelRef; pinned?: ChatMessage | null }
-  | { type: 'presence'; email: string; status: ChatPresenceStatus; at: string };
+  | { type: 'presence'; email: string; status: ChatPresenceStatus; at: string }
+  /** Someone's profile photo changed (src to show, null = initials). Sent to the whole workspace. */
+  | { type: 'member'; email: string; avatar: string | null; at: string };
 
 /** Just enough about a channel for the bus to decide who may receive an event. */
 export interface ChatChannelRef {
