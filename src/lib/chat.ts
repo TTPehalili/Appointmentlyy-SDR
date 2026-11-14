@@ -38,6 +38,60 @@ export interface ChatMessageMeta {
   win?: ChatWinMeta;
   /** System line linked to another message, e.g. "Sam is on it" for a help request. */
   replyTo?: string;
+  /** Emoji reactions: emoji (from the picker set) -> emails of the people who reacted, oldest first. */
+  reactions?: ChatReactions;
+}
+
+export type ChatReactions = Record<string, string[]>;
+
+/** Distinct emojis one message can carry. */
+export const CHAT_REACTIONS_MAX = 20;
+/** Safety cap on people per emoji (a workspace is far smaller). */
+export const CHAT_REACTORS_MAX = 500;
+
+/** The reactions on a message, cleaned of anything malformed (stored JSON is never trusted blindly). */
+export function reactionsOf(m: Pick<ChatMessage, 'meta'> | null | undefined): ChatReactions {
+  const raw = m?.meta?.reactions;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: ChatReactions = {};
+  for (const [emoji, who] of Object.entries(raw)) {
+    if (!Array.isArray(who)) continue;
+    const emails = who.filter((e): e is string => typeof e === 'string' && e.length > 0);
+    if (emails.length) out[emoji] = emails;
+  }
+  return out;
+}
+
+/**
+ * Add or remove one person's reaction. Pure: returns the new meta (every other field kept as is),
+ * 'unchanged' when there is nothing to do, or 'limit' when a new emoji would pass the cap.
+ * `on` undefined toggles.
+ */
+export function withReaction(
+  meta: ChatMessageMeta,
+  email: string,
+  emoji: string,
+  on?: boolean,
+): { meta: ChatMessageMeta; on: boolean } | 'unchanged' | 'limit' {
+  const who = email.toLowerCase();
+  const reactions = reactionsOf({ meta });
+  const cur = reactions[emoji] ?? [];
+  const has = cur.includes(who);
+  const want = on ?? !has;
+  if (want === has) return 'unchanged';
+  if (want) {
+    if (!cur.length && Object.keys(reactions).length >= CHAT_REACTIONS_MAX) return 'limit';
+    if (cur.length >= CHAT_REACTORS_MAX) return 'limit';
+    reactions[emoji] = [...cur, who];
+  } else {
+    const next = cur.filter((e) => e !== who);
+    if (next.length) reactions[emoji] = next;
+    else delete reactions[emoji];
+  }
+  const next: ChatMessageMeta = { ...meta };
+  delete next.reactions;
+  if (Object.keys(reactions).length) next.reactions = reactions;
+  return { meta: next, on: want };
 }
 
 export interface ChatMessage {
@@ -51,7 +105,7 @@ export interface ChatMessage {
   body: string;
   meta: ChatMessageMeta;
   createdAt: string;
-  /** Bumped on delete or claim, so polling with ?since= picks up changes too. */
+  /** Bumped on delete, claim or reaction, so polling with ?since= picks up changes too. */
   updatedAt: string;
   deletedAt: string | null;
 }

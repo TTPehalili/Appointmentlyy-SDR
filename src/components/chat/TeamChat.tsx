@@ -14,6 +14,8 @@ import {
   Pin,
   PinOff,
   SendHorizontal,
+  Smile,
+  SmilePlus,
   Trash2,
   Volume2,
   VolumeX,
@@ -21,10 +23,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Avatar, Button, ConfirmDialog, EmptyState, IconButton, InlineError, SearchInput, Skeleton, useToast } from '@/components/ui';
+import { EmojiPicker, rememberEmoji } from './EmojiPicker';
+import { QUICK_REACTIONS, emojiEntry, emojiOrder, searchEmoji, shortcodeOf, type EmojiEntry } from '@/lib/emoji';
 import {
   CHAT_BODY_MAX,
   MANAGER_ROLES,
   PRESENCE_LABEL,
+  reactionsOf,
   tokenizeBody,
   type ChatChannelSummary,
   type ChatMember,
@@ -41,6 +46,7 @@ import {
   openDm,
   pinMessage,
   presenceOf,
+  reactToMessage,
   requestFloorHelp,
   retryChat,
   sendMessage,
@@ -503,7 +509,20 @@ function Conversation({ state: s, channel, onBack, onClose }: { state: ChatState
   const lastId = items[items.length - 1]?.id;
   const prevHeight = React.useRef<{ firstId?: string; height: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<ChatMessage | null>(null);
+  /** Touch screens: the message whose action bar was opened with a tap (desktop uses hover). */
+  const [tapped, setTapped] = React.useState<string | null>(null);
+  /** The message the full emoji picker is reacting to. */
+  const [reactFor, setReactFor] = React.useState<ChatMessage | null>(null);
   const person = channel.kind === 'dm' ? s.people.find((p) => p.email === channel.dmWith?.email) : undefined;
+
+  const names = React.useMemo(() => new Map(s.people.map((p) => [p.email, p.name])), [s.people]);
+  const nameOf = React.useCallback((email: string) => names.get(email) ?? email.split('@')[0], [names]);
+
+  const react = async (m: ChatMessage, emoji: string, on: boolean) => {
+    if (on) rememberEmoji(emoji);
+    const r = await reactToMessage(channel.id, m.id, emoji, on);
+    if (!r.ok) toast({ message: r.error });
+  };
 
   const audience: ChatMember[] = React.useMemo(() => {
     if (channel.kind === 'floor') return s.people;
@@ -627,6 +646,17 @@ function Conversation({ state: s, channel, onBack, onClose }: { state: ChatState
                 canManage={me.canManage}
                 mentionNames={mentionNames}
                 pinned={channel.pinned?.id === m.id}
+                nameOf={nameOf}
+                showActions={tapped === m.id}
+                onTap={() => setTapped((cur) => (cur === m.id ? null : m.id))}
+                onReact={(emoji, on) => {
+                  setTapped(null);
+                  void react(m, emoji, on);
+                }}
+                onMoreReactions={() => {
+                  setTapped(null);
+                  setReactFor(m);
+                }}
                 onDelete={canDelete(m) ? () => setConfirmDelete(m) : undefined}
                 onPin={canPin(m) ? () => pin(m.id) : undefined}
                 onClaim={async () => {
@@ -639,7 +669,21 @@ function Conversation({ state: s, channel, onBack, onClose }: { state: ChatState
         })}
       </div>
 
-      <Composer channel={channel} audience={audience} meEmail={me.email} canManage={me.canManage} />
+      <Composer
+        channel={channel}
+        audience={audience}
+        meEmail={me.email}
+        canManage={me.canManage}
+        reactFor={reactFor}
+        onReactPick={(emoji) => {
+          const target = reactFor && (items.find((x) => x.id === reactFor.id) ?? reactFor);
+          setReactFor(null);
+          if (!target) return;
+          const mine = (reactionsOf(target)[emoji] ?? []).includes(me.email);
+          void react(target, emoji, !mine);
+        }}
+        onReactClose={() => setReactFor(null)}
+      />
 
       <ConfirmDialog
         open={!!confirmDelete}
@@ -665,6 +709,11 @@ function MessageRow({
   canManage,
   mentionNames,
   pinned,
+  nameOf,
+  showActions,
+  onTap,
+  onReact,
+  onMoreReactions,
   onDelete,
   onPin,
   onClaim,
@@ -675,13 +724,60 @@ function MessageRow({
   canManage: boolean;
   mentionNames: { name: string; me: boolean }[];
   pinned: boolean;
+  nameOf: (email: string) => string;
+  /** Touch screens: show the action bar (opened with a tap on the message). */
+  showActions: boolean;
+  onTap: () => void;
+  onReact: (emoji: string, on: boolean) => void;
+  onMoreReactions: () => void;
   onDelete?: () => void;
   onPin?: () => void;
   onClaim: () => void;
 }) {
   const time = timeOf(m.createdAt);
-  const actions = (onDelete || onPin) && (
-    <span className="absolute right-1 top-1 flex gap-0.5 rounded-md border border-line bg-surface opacity-0 shadow-xs transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+  const reactions = reactionsOf(m);
+  const canReact = !m.deletedAt && m.kind !== 'system';
+  // Hover (desktop) or keyboard focus shows the bar; touch screens open it with a tap. Hidden, it
+  // takes no taps, so nobody reacts by accident.
+  const actions = (canReact || onDelete || onPin) && (
+    <span
+      role="toolbar"
+      aria-label="Message actions"
+      className={cn(
+        'absolute -top-3 right-2 z-10 flex items-center gap-0.5 rounded-md border border-line bg-surface p-0.5 shadow-sm transition-opacity duration-100',
+        showActions
+          ? 'opacity-100'
+          : 'pointer-events-none opacity-0 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100',
+      )}
+    >
+      {canReact &&
+        QUICK_REACTIONS.map((e) => {
+          const mine = (reactions[e] ?? []).includes(meEmail);
+          const name = emojiEntry(e)?.name ?? e;
+          return (
+            <button
+              key={e}
+              type="button"
+              data-quick-reaction={e}
+              aria-pressed={mine}
+              aria-label={mine ? `Remove your ${name} reaction` : `React with ${name}`}
+              title={mine ? `Remove your ${name} reaction` : `React with ${name}`}
+              onClick={() => onReact(e, !mine)}
+              className={cn(
+                'focus-ring flex size-7 items-center justify-center rounded-md text-base leading-none transition-colors duration-100 hover:bg-subtle',
+                mine && 'bg-selected-soft',
+              )}
+            >
+              <span aria-hidden>{e}</span>
+            </button>
+          );
+        })}
+      {canReact && (
+        <IconButton label="Add a reaction" size="sm" onClick={onMoreReactions} className="size-7">
+          <SmilePlus className="size-3.5" />
+        </IconButton>
+      )}
+      {canReact && (onDelete || (onPin && !pinned)) && <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />}
       {onPin && !pinned && (
         <IconButton label="Pin to #floor" size="sm" onClick={onPin} className="size-7">
           <Pin className="size-3.5" />
@@ -694,6 +790,14 @@ function MessageRow({
       )}
     </span>
   );
+  const chips = canReact && (
+    <ReactionChips reactions={reactions} meEmail={meEmail} nameOf={nameOf} onReact={onReact} onMore={onMoreReactions} />
+  );
+  // Touch screens only: a tap on the message (not on a link or button in it) opens its action bar.
+  const onRowClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('a, button, input, textarea, [role="toolbar"]')) return;
+    if (window.matchMedia('(hover: none)').matches) onTap();
+  };
 
   if (m.deletedAt) {
     return (
@@ -716,12 +820,13 @@ function MessageRow({
 
   if (m.kind === 'win') {
     return (
-      <div className="group relative flex justify-center px-2 py-1.5">
+      <div className="group relative flex flex-col items-center px-2 py-1.5" onClick={onRowClick}>
         <p className="inline-flex max-w-full items-center gap-2 rounded-full bg-success-bg px-3.5 py-1.5 text-body font-medium text-success-fg">
           <span className="min-w-0 break-words">{m.body}</span>
           <span className="shrink-0 text-caption font-normal opacity-80">{time}</span>
         </p>
-        {onDelete && actions}
+        {chips && <div className="flex justify-center">{chips}</div>}
+        {actions}
       </div>
     );
   }
@@ -729,7 +834,7 @@ function MessageRow({
   if (m.kind === 'help') {
     const h = m.meta.help;
     return (
-      <div className="group relative px-1 py-1.5">
+      <div className="group relative px-1 py-1.5" onClick={onRowClick}>
         <div className="rounded-lg border border-warning-fg/25 bg-warning-bg px-3.5 py-3 text-warning-fg">
           <div className="flex items-start gap-2.5">
             <LifeBuoy className="mt-0.5 size-5 shrink-0" aria-hidden />
@@ -761,16 +866,20 @@ function MessageRow({
             </div>
           </div>
         </div>
-        {onDelete && actions}
+        {chips && <div className="px-1">{chips}</div>}
+        {actions}
       </div>
     );
   }
 
   const mentioned = (m.meta.mentions ?? []).includes(meEmail);
   return (
-    <div className={cn('group relative flex gap-2.5 rounded-md px-2', grouped ? 'py-0.5' : 'pt-2 pb-0.5', mentioned ? 'bg-selected-soft' : 'hover:bg-subtle/60')}>
+    <div
+      onClick={onRowClick}
+      className={cn('group relative flex gap-2.5 rounded-md px-2', grouped ? 'py-0.5' : 'pt-2 pb-0.5', mentioned ? 'bg-selected-soft' : 'hover:bg-subtle/60', showActions && !mentioned && 'bg-subtle/60')}
+    >
       <div className="w-8 shrink-0">{!grouped && <Avatar name={m.senderName} size="md" />}</div>
-      <div className="min-w-0 flex-1 pr-14">
+      <div className="min-w-0 flex-1 pr-2">
         {!grouped && (
           <p className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-body-strong text-fg">{m.senderName}</span>
@@ -786,31 +895,116 @@ function MessageRow({
           </p>
         )}
         <MessageBody body={m.body} mentionNames={mentionNames} />
+        {chips}
       </div>
       {actions}
     </div>
   );
 }
 
+/** "🔥 3" chips under a message. Yours use the selected colours; the tooltip lists who reacted. */
+function ReactionChips({
+  reactions,
+  meEmail,
+  nameOf,
+  onReact,
+  onMore,
+}: {
+  reactions: Record<string, string[]>;
+  meEmail: string;
+  nameOf: (email: string) => string;
+  onReact: (emoji: string, on: boolean) => void;
+  onMore: () => void;
+}) {
+  const list = Object.entries(reactions).sort((a, b) => emojiOrder(a[0]) - emojiOrder(b[0]));
+  if (!list.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {list.map(([emoji, who]) => {
+        const mine = who.includes(meEmail);
+        const people = who.map((e) => (e === meEmail ? 'You' : nameOf(e)));
+        const shown = people.length > 12 ? `${people.slice(0, 12).join(', ')} and ${people.length - 12} more` : people.join(', ');
+        const name = emojiEntry(emoji)?.name ?? emoji;
+        const tip = `${shown} reacted with ${name}`;
+        return (
+          <button
+            key={emoji}
+            type="button"
+            data-reaction={emoji}
+            data-count={who.length}
+            data-mine={mine ? 'true' : undefined}
+            aria-pressed={mine}
+            aria-label={`${name} ${who.length}. ${tip}. ${mine ? 'Remove your reaction' : 'Add yours'}`}
+            title={tip}
+            onClick={() => onReact(emoji, !mine)}
+            className={cn(
+              'focus-ring inline-flex h-6 items-center gap-1 rounded-full border px-2 text-small leading-none tabular-nums transition-colors duration-100',
+              mine ? 'border-selected bg-selected-soft font-medium text-selected-soft-fg' : 'border-line bg-surface text-fg-secondary hover:bg-subtle hover:text-fg',
+            )}
+          >
+            <span aria-hidden className="text-[15px] leading-none">
+              {emoji}
+            </span>{' '}
+            <span>{who.length}</span>
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        onClick={onMore}
+        aria-label="Add a reaction"
+        title="Add a reaction"
+        className="focus-ring inline-flex h-6 items-center rounded-full border border-line bg-surface px-1.5 text-fg-tertiary transition-colors duration-100 hover:bg-subtle hover:text-fg"
+      >
+        <SmilePlus className="size-3.5" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ composer
 
-function Composer({ channel, audience, meEmail, canManage }: { channel: ChatChannelSummary; audience: ChatMember[]; meEmail: string; canManage: boolean }) {
+/** Autocomplete under the caret: "@na" for people, ":fi" for emoji shortcodes. */
+type Suggest = { kind: 'mention' | 'emoji'; query: string; start: number; index: number };
+
+function Composer({
+  channel,
+  audience,
+  meEmail,
+  canManage,
+  reactFor,
+  onReactPick,
+  onReactClose,
+}: {
+  channel: ChatChannelSummary;
+  audience: ChatMember[];
+  meEmail: string;
+  canManage: boolean;
+  /** A message to react to with the full picker (opened from its action bar or chips). */
+  reactFor: ChatMessage | null;
+  onReactPick: (emoji: string) => void;
+  onReactClose: () => void;
+}) {
   const toast = useToast();
   const [text, setText] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [suggest, setSuggest] = React.useState<{ query: string; start: number; index: number } | null>(null);
+  const [suggest, setSuggest] = React.useState<Suggest | null>(null);
+  const [emojiOpen, setEmojiOpen] = React.useState(false);
   const ref = React.useRef<HTMLTextAreaElement>(null);
+  const emojiButton = React.useRef<HTMLButtonElement>(null);
   const tooLong = text.length > CHAT_BODY_MAX;
 
   const matches = React.useMemo(() => {
-    if (!suggest) return [];
+    if (suggest?.kind !== 'mention') return [];
     const q = suggest.query.toLowerCase();
     return audience
       .filter((p) => p.email !== meEmail)
       .filter((p) => !q || p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) || p.email.toLowerCase().startsWith(q))
       .slice(0, 6);
   }, [suggest, audience, meEmail]);
+  const emojiMatches = React.useMemo(() => (suggest?.kind === 'emoji' ? searchEmoji(suggest.query, 6) : []), [suggest]);
+  const suggestCount = suggest?.kind === 'emoji' ? emojiMatches.length : matches.length;
 
   // Grow with the text, up to about six lines.
   React.useLayoutEffect(() => {
@@ -821,9 +1015,42 @@ function Composer({ channel, audience, meEmail, canManage }: { channel: ChatChan
   }, [text]);
 
   const updateSuggest = (value: string, caret: number) => {
-    const m = /(^|\s)@([^\s@]{0,30})$/.exec(value.slice(0, caret));
-    setSuggest(m ? { query: m[2], start: caret - m[2].length - 1, index: 0 } : null);
+    const before = value.slice(0, caret);
+    const m = /(^|\s)@([^\s@]{0,30})$/.exec(before);
+    if (m) return setSuggest({ kind: 'mention', query: m[2], start: caret - m[2].length - 1, index: 0 });
+    // ":fi" after a space or at the start (not "10:30" or "re:fire"): emoji shortcodes.
+    const e = /(^|\s):([a-z][a-z0-9_]{1,29})$/i.exec(before);
+    setSuggest(e ? { kind: 'emoji', query: e[2], start: caret - e[2].length - 1, index: 0 } : null);
   };
+
+  /** Put text at the caret (or over the selection) and keep typing after it. */
+  const insertAt = (from: number, to: number, insert: string) => {
+    setText((cur) => `${cur.slice(0, from)}${insert}${cur.slice(to)}`);
+    requestAnimationFrame(() => {
+      const pos = from + insert.length;
+      ref.current?.focus();
+      ref.current?.setSelectionRange(pos, pos);
+    });
+  };
+
+  const insertShortcode = (e: EmojiEntry) => {
+    if (!suggest || !ref.current) return;
+    const caret = ref.current.selectionStart ?? text.length;
+    setSuggest(null);
+    rememberEmoji(e.emoji);
+    insertAt(suggest.start, caret, e.emoji);
+  };
+
+  /** From the picker: the textarea keeps its selection while the picker has focus. */
+  const insertEmoji = (emoji: string) => {
+    const el = ref.current;
+    const from = el?.selectionStart ?? text.length;
+    const to = el?.selectionEnd ?? from;
+    setEmojiOpen(false);
+    insertAt(from, to, emoji);
+  };
+
+  const closePicker = React.useCallback(() => setEmojiOpen(false), []);
 
   const insertMention = (p: ChatMember) => {
     if (!suggest || !ref.current) return;
@@ -853,7 +1080,38 @@ function Composer({ channel, audience, meEmail, canManage }: { channel: ChatChan
 
   return (
     <div className="relative shrink-0 border-t border-line px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-      {suggest && matches.length > 0 && (
+      {(reactFor || emojiOpen) && (
+        <EmojiPicker
+          key={reactFor ? `react:${reactFor.id}` : 'insert'}
+          title={reactFor ? `React to ${reactFor.senderEmail === meEmail ? 'your' : `${reactFor.senderName.split(' ')[0]}'s`} message` : undefined}
+          anchor={reactFor ? undefined : emojiButton}
+          onPick={reactFor ? onReactPick : insertEmoji}
+          onClose={reactFor ? onReactClose : closePicker}
+          className="absolute bottom-full right-3 z-30 mb-1 max-sm:inset-x-2 max-sm:w-auto max-sm:max-w-none"
+        />
+      )}
+      {suggest?.kind === 'emoji' && emojiMatches.length > 0 && (
+        <ul role="listbox" aria-label="Emoji" className="absolute inset-x-3 bottom-full mb-1 max-h-60 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-md">
+          {emojiMatches.map((e, i) => (
+            <li key={e.emoji} role="option" aria-selected={i === suggest.index}>
+              <button
+                type="button"
+                onMouseDown={(ev) => {
+                  ev.preventDefault();
+                  insertShortcode(e);
+                }}
+                className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body', i === suggest.index ? 'bg-selected-soft text-selected-soft-fg' : 'text-fg hover:bg-subtle')}
+              >
+                <span className="w-6 text-center text-lg leading-none" aria-hidden>
+                  {e.emoji}
+                </span>
+                <span className="truncate">:{shortcodeOf(e)}:</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {suggest?.kind === 'mention' && matches.length > 0 && (
         <ul role="listbox" aria-label="Mention someone" className="absolute inset-x-3 bottom-full mb-1 max-h-60 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-md">
           {matches.map((p, i) => (
             <li key={p.email} role="option" aria-selected={i === suggest.index}>
@@ -892,16 +1150,17 @@ function Composer({ channel, audience, meEmail, canManage }: { channel: ChatChan
             updateSuggest(e.target.value, e.target.selectionStart ?? e.target.value.length);
           }}
           onKeyDown={(e) => {
-            if (suggest && matches.length) {
+            if (suggest && suggestCount) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 const d = e.key === 'ArrowDown' ? 1 : -1;
-                setSuggest({ ...suggest, index: (suggest.index + d + matches.length) % matches.length });
+                setSuggest({ ...suggest, index: (suggest.index + d + suggestCount) % suggestCount });
                 return;
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
-                insertMention(matches[suggest.index]);
+                if (suggest.kind === 'emoji') insertShortcode(emojiMatches[suggest.index]);
+                else insertMention(matches[suggest.index]);
                 return;
               }
               if (e.key === 'Escape') {
@@ -930,12 +1189,27 @@ function Composer({ channel, audience, meEmail, canManage }: { channel: ChatChan
             <LifeBuoy className="size-4" />
           </IconButton>
         )}
+        <IconButton
+          ref={emojiButton}
+          label="Add emoji"
+          variant="ghost"
+          aria-haspopup="dialog"
+          aria-expanded={emojiOpen}
+          onClick={() => {
+            if (reactFor) onReactClose();
+            setSuggest(null);
+            setEmojiOpen((o) => !o);
+          }}
+          className={cn(emojiOpen && 'bg-selected-soft text-selected-soft-fg hover:bg-selected-soft')}
+        >
+          <Smile className="size-4" />
+        </IconButton>
         <IconButton type="submit" label="Send message" variant="primary" disabled={sending || !text.trim() || tooLong}>
           <SendHorizontal className="size-4" />
         </IconButton>
       </form>
       <div className="mt-1 flex min-h-4 items-center justify-between gap-2 text-caption">
-        <span className={error ? 'text-danger-fg' : 'text-fg-tertiary'}>{error ?? <span className="hidden sm:inline">Enter to send · Shift+Enter for a new line · @ to mention</span>}</span>
+        <span className={error ? 'text-danger-fg' : 'text-fg-tertiary'}>{error ?? <span className="hidden sm:inline">Enter to send · Shift+Enter for a new line · @ to mention · : for emoji</span>}</span>
         {text.length > CHAT_BODY_MAX - 200 && (
           <span className={cn('tabular-nums', tooLong ? 'text-danger-fg' : 'text-fg-tertiary')}>
             {text.length}/{CHAT_BODY_MAX}

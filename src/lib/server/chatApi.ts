@@ -218,12 +218,18 @@ export async function summarize(ctx: ChatCtx, channels: ChatChannel[]): Promise<
 // ------------------------------------------------------------------ sending
 
 const rate = (g.__appyChatRate ??= new Map());
-const RATE_BURST = 3;
-const RATE_PER_SECOND = 1;
+
+/** Token buckets per person: messages ~1/s with a burst of 3; reactions (cheap, clicky) ~4/s with a burst of 6. */
+const RATE_LIMITS = {
+  message: { burst: 3, perSecond: 1 },
+  reaction: { burst: 6, perSecond: 4 },
+} as const;
+export type ChatRateBucket = keyof typeof RATE_LIMITS;
 
 /** ~1 message per second per person, with a small burst. Returns seconds to wait, or 0 to go ahead. */
-export function rateLimited(ctx: ChatCtx): number {
-  const key = `${ctx.tenantCode}|${ctx.me.email}`;
+export function rateLimited(ctx: ChatCtx, bucket: ChatRateBucket = 'message'): number {
+  const { burst: RATE_BURST, perSecond: RATE_PER_SECOND } = RATE_LIMITS[bucket];
+  const key = `${bucket === 'message' ? '' : `${bucket}:`}${ctx.tenantCode}|${ctx.me.email}`;
   const now = Date.now();
   const cur = rate.get(key) ?? { tokens: RATE_BURST, at: now };
   const tokens = Math.min(RATE_BURST, cur.tokens + ((now - cur.at) / 1000) * RATE_PER_SECOND);
@@ -236,7 +242,7 @@ export function rateLimited(ctx: ChatCtx): number {
   return 0;
 }
 
-export const tooFast = (wait: number) => fail(429, 'You are sending messages too quickly. Wait a moment.', { 'Retry-After': String(wait) });
+export const tooFast = (wait: number, what = 'sending messages') => fail(429, `You are ${what} too quickly. Wait a moment.`, { 'Retry-After': String(wait) });
 
 /** Store a message and push it to everyone in the workspace who can see the channel. */
 export async function postMessage(
@@ -263,7 +269,7 @@ export function publishUpdate(tenantCode: string, channel: ChatChannel, message:
   publishChat(tenantCode, { type: 'message', message, channel: refOf(channel) });
 }
 
-/** What a deleted message looks like to everyone: no body, no meta. */
+/** What a deleted message looks like to everyone: no body, no meta (so no reactions either). */
 export const tombstone = (m: ChatMessage): ChatMessage => (m.deletedAt ? { ...m, body: '', meta: {} } : m);
 
 // ------------------------------------------------------------------ presence

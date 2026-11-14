@@ -15,6 +15,7 @@ import {
   CHAT_POLL_MS,
   PRESENCE_AWAY_AFTER_MS,
   PRESENCE_HEARTBEAT_MS,
+  withReaction,
   type ChatChannelRef,
   type ChatChannelSummary,
   type ChatMe,
@@ -334,6 +335,8 @@ function applyMessage(m: ChatMessage, ref: ChatChannelRef | null) {
     if (ref || state.status === 'ready') scheduleChannelsRefresh();
     return;
   }
+  // A change to a message already on screen (reaction, claim, delete) is never a new unread one.
+  const known = !!state.messages[m.channelId]?.items.some((x) => x.id === m.id);
   setState((s) => {
     const cur = s.messages[m.channelId];
     let messages = s.messages;
@@ -354,7 +357,7 @@ function applyMessage(m: ChatMessage, ref: ChatChannelRef | null) {
     return { messages, channels };
   });
 
-  const isNew = !m.deletedAt && !counted.has(m.id) && ms(m.createdAt) > countsAsOf && m.senderEmail !== me?.email;
+  const isNew = !known && !m.deletedAt && !counted.has(m.id) && ms(m.createdAt) > countsAsOf && m.senderEmail !== me?.email;
   if (!isNew) return;
   counted.add(m.id);
   if (counted.size > 2000) counted.delete(counted.values().next().value as string);
@@ -475,6 +478,41 @@ export async function deleteMessage(id: string) {
   const r = await call<{ message: ChatMessage }>(`/api/chat/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (r.ok) applyMessage(r.message, null);
   return r.ok ? { ok: true as const } : { ok: false as const, error: r.error };
+}
+
+/** Swap one message in the loaded list without touching unread counts (optimistic updates). */
+function replaceLocal(m: ChatMessage) {
+  setState((s) => {
+    const cur = s.messages[m.channelId];
+    if (!cur?.loaded || !cur.items.some((x) => x.id === m.id)) return {};
+    return { messages: { ...s.messages, [m.channelId]: { ...cur, items: cur.items.map((x) => (x.id === m.id ? m : x)) } } };
+  });
+}
+
+const findLocal = (channelId: string, id: string) => state.messages[channelId]?.items.find((x) => x.id === id) ?? null;
+
+/**
+ * Add or remove my emoji reaction. Shown at once; the server's answer (or the live stream) then
+ * replaces it, and a failure puts the message back as it was.
+ */
+export async function reactToMessage(channelId: string, messageId: string, emoji: string, on: boolean) {
+  const me = state.me;
+  const before = findLocal(channelId, messageId);
+  if (me && before && !before.deletedAt) {
+    const next = withReaction(before.meta, me.email, emoji, on);
+    if (next === 'limit') return { ok: false as const, error: 'This message already has the most reactions it can take.' };
+    if (next !== 'unchanged') replaceLocal({ ...before, meta: next.meta });
+  }
+  const r = await post<{ message: ChatMessage }>(`/api/chat/messages/${encodeURIComponent(messageId)}/reactions`, { emoji, on });
+  if (r.ok) {
+    applyMessage(r.message, null);
+    return { ok: true as const };
+  }
+  // Put it back, unless something newer (e.g. the live stream) already replaced it.
+  const now = findLocal(channelId, messageId);
+  if (before && now && ms(now.updatedAt) <= ms(before.updatedAt)) replaceLocal(before);
+  if (r.status === 404 || r.status === 410) void catchUp();
+  return { ok: false as const, error: r.error };
 }
 
 export async function pinMessage(messageId: string | null) {

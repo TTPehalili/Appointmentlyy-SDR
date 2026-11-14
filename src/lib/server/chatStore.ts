@@ -11,13 +11,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { nowIso } from '@/lib/server/tenantStore';
-import type {
-  ChatChannel,
-  ChatChannelKind,
-  ChatMessage,
-  ChatMessageKind,
-  ChatMessageMeta,
-  ChatPresenceStatus,
+import {
+  withReaction,
+  type ChatChannel,
+  type ChatChannelKind,
+  type ChatMessage,
+  type ChatMessageKind,
+  type ChatMessageMeta,
+  type ChatPresenceStatus,
 } from '@/lib/chat';
 
 export type NewChatMessage = Pick<ChatMessage, 'channelId' | 'senderEmail' | 'senderName' | 'senderRole' | 'kind' | 'body' | 'meta'>;
@@ -27,6 +28,9 @@ export interface PresenceRow {
   status: ChatPresenceStatus;
   updatedAt: string;
 }
+
+/** Result of a reaction change: the message (changed or not), or why it could not be applied. */
+export type ReactResult = { message: ChatMessage; changed: boolean } | 'deleted' | 'limit' | null;
 
 export interface UnreadCount {
   unread: number;
@@ -51,6 +55,11 @@ export interface ChatStore {
   updateMessage(tenantCode: string, id: string, patch: { meta?: ChatMessageMeta; body?: string; deletedAt?: string | null }): Promise<ChatMessage | null>;
   /** Claim an open help request. 'taken' if someone else got there first. */
   claimHelp(tenantCode: string, id: string, by: { email: string; name: string }): Promise<ChatMessage | 'taken' | null>;
+  /**
+   * Add or remove one person's emoji reaction (meta.reactions) and bump updatedAt. Every other meta
+   * field is kept. 'deleted' for a deleted message, 'limit' past the distinct-emoji cap.
+   */
+  react(tenantCode: string, id: string, email: string, emoji: string, on: boolean | undefined): Promise<ReactResult>;
   lastMessages(tenantCode: string, channelIds: string[]): Promise<Map<string, ChatMessage>>;
   /** Unread (and @mention) counts after each channel's read marker, not counting the reader's own messages. */
   unreadCounts(tenantCode: string, email: string, channels: { id: string; after: string | null }[]): Promise<Map<string, UnreadCount>>;
@@ -217,6 +226,19 @@ class FileChatStore implements ChatStore {
       m.meta = { ...m.meta, help: { ...m.meta.help, claimedBy: { ...by, at: nowIso() } } };
       m.updatedAt = this.stamp();
       return { ...m };
+    });
+  }
+  react(tenantCode: string, id: string, email: string, emoji: string, on: boolean | undefined) {
+    return this.mutate((d): ReactResult => {
+      const m = d.messages.find((x) => x.tenantCode === tenantCode && x.id === id);
+      if (!m) return null;
+      if (m.deletedAt) return 'deleted';
+      const next = withReaction(m.meta ?? {}, email, emoji, on);
+      if (next === 'limit') return 'limit';
+      if (next === 'unchanged') return { message: { ...m }, changed: false };
+      m.meta = next.meta;
+      m.updatedAt = this.stamp();
+      return { message: { ...m }, changed: true };
     });
   }
   async lastMessages(tenantCode: string, channelIds: string[]) {
@@ -400,6 +422,29 @@ class SupabaseChatStore implements ChatStore {
         .maybeSingle(),
     ) as Row | null;
     return r ? messageFromRow(r) : ('taken' as const);
+  }
+  async react(tenantCode: string, id: string, email: string, emoji: string, on: boolean | undefined): Promise<ReactResult> {
+    // Read-modify-write on meta (only meta.reactions changes; help, win, mentions are carried
+    // over), guarded by updated_at: if anything else changed the row in between (another
+    // reaction, a claim, a delete), no row matches, so we re-read and retry and the concurrent
+    // change is kept. The last try is unguarded so a reaction always lands.
+    const ATTEMPTS = 6;
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      const raw = this.check(await this.db.from(MESSAGES).select('*').eq('tenant_code', tenantCode).eq('id', id).maybeSingle()) as Row | null;
+      if (!raw) return null;
+      const cur = messageFromRow(raw);
+      if (cur.deletedAt) return 'deleted';
+      const next = withReaction(cur.meta, email, emoji, on);
+      if (next === 'limit') return 'limit';
+      if (next === 'unchanged') return { message: cur, changed: false };
+      let q = this.db.from(MESSAGES).update({ meta: next.meta, updated_at: nowIso() }).eq('tenant_code', tenantCode).eq('id', id).is('deleted_at', null);
+      if (attempt < ATTEMPTS) q = q.eq('updated_at', String(raw.updated_at));
+      const r = this.check(await q.select().maybeSingle()) as Row | null;
+      if (r) return { message: messageFromRow(r), changed: true };
+      await new Promise((res) => setTimeout(res, 15 + Math.random() * 50));
+    }
+    // Deleted between the read and the write.
+    return 'deleted';
   }
   async lastMessages(tenantCode: string, channelIds: string[]) {
     const out = new Map<string, ChatMessage>();
