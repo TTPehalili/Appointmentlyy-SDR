@@ -74,15 +74,18 @@ export default function LinkedInCreatorStudio() {
 
   // The sample leads and the author profile are the platform owner's: demo workspace only.
   const isDemo = useDemoWorkspace();
-  const { repName, tenantName } = useSession();
-  const authorName = isDemo ? 'Emil Halili' : repName || 'You';
-  const authorHeadline = isDemo
+  const { repName, tenantName, role } = useSession();
+  // The post author is always the signed-in person. Only the founder (demo workspace) gets the
+  // founder headline; everyone else shows "<role> at <workspace>".
+  const isFounder = isDemo && /^emil halili$/i.test((repName || '').trim());
+  const authorName = repName || 'You';
+  const authorHeadline = isFounder
     ? 'CEO & Founder at Appointmentlyy | AI Outbound & BPO Systems'
-    : tenantName;
+    : [role, tenantName].filter(Boolean).join(' at ');
   const authorInitials = authorName.split(/\s+/).map((w) => w.charAt(0)).join('').slice(0, 2).toUpperCase() || 'Y';
-  // The demo author is the founder; everyone else sees their own profile photo (initials if none).
+  // Your own profile photo (initials if none); the founder falls back to the built-in photo.
   const myPhoto = avatarImageSrc(useMyAvatar().src);
-  const authorPhoto = isDemo ? OWNER_PHOTO : myPhoto;
+  const authorPhoto = myPhoto || (isFounder ? OWNER_PHOTO : undefined);
   const router = useRouter();
   const searchParams = useSearchParams();
   const campaign = useCampaignMessage();
