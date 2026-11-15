@@ -21,7 +21,10 @@ import type {
   IcpSearchRequestPayload,
   SanitizedIcpProspect,
 } from '@/lib/leadData/types';
-import { REVENUE_BAND_OPTIONS } from '@/lib/leadData/types';
+import { JOB_FUNCTION_OPTIONS, REVENUE_BAND_OPTIONS } from '@/lib/leadData/types';
+import { COMPANY_SIZE_BANDS, companySizeBandKeys } from '@/lib/leadData/companySize';
+import { normalizeLinkedinCompanyUrl, normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
+import { cleanCommittee, committeePerCompany, committeeRoleFor, committeeTitles } from '@/lib/leadData/committee';
 import {
   ENRICH_PROGRESS_MIN_INTERVAL_MS,
   MAX_PULL_PER_REQUEST,
@@ -99,6 +102,11 @@ async function callGetLeads(cfg: GetLeadsConfig, method: 'GET' | 'POST', path: s
       ? 'quota'
       : classifyProviderError(res.ok ? 400 : res.status, `${code} ${message}`);
     return { ok: false, kind, status: res.status, message };
+  }
+  // Local evaluation only: the credit fields GetLeads reports on paid calls (numbers only).
+  if (process.env.LEAD_DATA_DEBUG_FILTERS === '1' && path === '/contacts/search') {
+    const credits = Object.fromEntries(Object.entries(json).filter(([k, v]) => /credit/i.test(k) && typeof v !== 'object'));
+    console.info(`[lf-credits] ${JSON.stringify({ returned: Array.isArray(json.contacts) ? json.contacts.length : null, ...credits })}`);
   }
   return { ok: true, json };
 }
@@ -210,27 +218,7 @@ function mapSeniority(list: string[]): string[] {
 }
 
 /** GetLeads job_functions (from the spec / filter-values). */
-const JOB_FUNCTIONS = [
-  'Operations & Supply Chain',
-  'Information Technology & Engineering',
-  'Consulting & Strategy',
-  'Sales & Business Development',
-  'Finance & Accounting',
-  'Marketing & Product Management',
-  'Customer Service & Support',
-  'Education & Training',
-  'Design & Creative Services',
-  'Healthcare & Medical Services',
-  'Legal & Compliance',
-  'Human Resources',
-  'Media, Publishing & Journalism',
-  'Trades & Skilled Labor',
-  'Real Estate & Property Management',
-  'Program & Project Management',
-  'Banking & Financial Services',
-  'Public Relations & Communications',
-  'Quality Assurance & Control',
-];
+const JOB_FUNCTIONS: readonly string[] = JOB_FUNCTION_OPTIONS;
 
 /** Only an exact (case-insensitive) job function, or a single unambiguous department word. */
 function mapDepartment(dept?: string): string[] {
@@ -252,17 +240,15 @@ function mapDepartment(dept?: string): string[] {
   return hit ? [hit[1]] : [];
 }
 
-/** Lead Finder headcount option -> GetLeads company_size bands. */
+/**
+ * Lead Finder size label -> GetLeads company_size bands. One band ("51-200 employees"), a range
+ * spanning bands ("51-500 employees" -> 51 to 200 + 201 to 500) or an open range ("1,000+").
+ */
 function mapCompanySize(hc?: string): string[] {
-  const clean = (hc || '').replace(/employees|seats|,/gi, '').trim();
-  if (!clean) return [];
-  if (clean === '1000+') return ['1001 to 5000', '5001 to 10000', '10001+'];
-  if (clean === '10001+') return ['10001+'];
-  const m = clean.match(/^(\d+)\s*(?:-|to)\s*(\d+)$/);
-  if (!m) return [];
-  const band = `${m[1]} to ${m[2]}`;
-  const bands = ['1 to 10', '11 to 50', '51 to 200', '201 to 500', '501 to 1000', '1001 to 5000', '5001 to 10000'];
-  return bands.includes(band) ? [band] : [];
+  const keys = companySizeBandKeys(hc);
+  return COMPANY_SIZE_BANDS.filter((b) => keys.includes(b.key)).map((b) =>
+    b.hi === Infinity ? `${b.lo}+` : `${b.lo} to ${b.hi}`
+  );
 }
 
 const COUNTRY_ALIASES: Record<string, string> = {
@@ -448,7 +434,8 @@ export async function buildGetLeadsFilters(f: IcpFilters, cfg: GetLeadsConfig): 
     const sen = mapSeniority(f.seniority?.length ? f.seniority : ['C-Suite', 'VP', 'Director', 'Owner']);
     if (sen.length) out.seniority = sen;
   } else {
-    const titles = splitList(f.titles);
+    // A buying committee's titles are always searched, even if the title box was edited.
+    const titles = Array.from(new Set([...splitList(f.titles), ...committeeTitles(cleanCommittee(f.committee))]));
     if (titles.length) out.job_titles = titles;
     const excludeTitles = splitList(f.excludeTitles);
     if (excludeTitles.length) out.exclude_job_titles = excludeTitles;
@@ -478,6 +465,10 @@ export async function buildGetLeadsFilters(f: IcpFilters, cfg: GetLeadsConfig): 
       const industries = await resolveIndustries(cfg, f.industry, notes);
       if (industries.length) out.industries = industries;
     }
+    if (f.excludeIndustries?.trim()) {
+      const excluded = await resolveIndustries(cfg, f.excludeIndustries, notes);
+      if (excluded.length) out.exclude_industries = excluded;
+    }
     if (words.length) out.company_description = words.join(' ');
 
     // "Tools they use": tool names only (a website is not a technology).
@@ -505,6 +496,9 @@ export async function buildGetLeadsFilters(f: IcpFilters, cfg: GetLeadsConfig): 
   if (bio) out.person_description = bio;
   if (f.requireDirectDial === true) out.require_direct_dial = true;
   if (f.isHiring === true) out.is_hiring = true;
+
+  // Local evaluation only: show the exact provider filters a search sends (no keys, no PII).
+  if (process.env.LEAD_DATA_DEBUG_FILTERS === '1') console.info(`[lf-filters] ${JSON.stringify(out)}`);
 
   return { filters: out, notes };
 }
@@ -689,8 +683,10 @@ export function parseGetLeadsContact(row: Json): SanitizedIcpProspect {
   // A "work email" at a free mailbox or at another company's domain is dropped: the phone stays.
   const email = rawEmailOk && emailMatchesCompany(rawEmailOk, domain) ? rawEmailOk : '';
   const emailVerified = Boolean(email) && verifiedStatus;
-  const linkedinUrl = absoluteUrl(text(row, 'linkedin_url'));
-  const companyLinkedinUrl = absoluteUrl(text(row, 'company_linkedin_url'));
+  // Only the person's own profile (https://www.linkedin.com/in/<slug>, tracking stripped); a
+  // company, school or non-LinkedIn URL in the person's column is dropped, never shown as theirs.
+  const linkedinUrl = normalizeLinkedinProfileUrl(text(row, 'linkedin_url'));
+  const companyLinkedinUrl = normalizeLinkedinCompanyUrl(text(row, 'company_linkedin_url'));
 
   const location =
     text(row, 'location') || [text(row, 'city'), text(row, 'state'), text(row, 'country')].filter(Boolean).join(', ');
@@ -777,12 +773,23 @@ export async function runGetLeadsRequest(
   }
 
   const { filters: searchFilters, notes } = await buildGetLeadsFilters(filters, cfg);
+  // With a buying committee: up to 3 people per company (one per role), each tagged with its role.
+  const committee = cleanCommittee(filters.committee);
+  const perCompany = committeePerCompany(committee, MAX_PER_COMPANY);
 
   // ------------------------------------------------------------------ size: free count only
   if (mode !== 'pull') {
     const res = await callGetLeads(cfg, 'POST', '/contacts/search/count', searchFilters);
     if (!res.ok) return errorResult(res.kind, res.message);
-    const { total, isMinimum } = totalFrom(res.json.total_matching, res.json.total_matching_is_minimum);
+    let { total, isMinimum } = totalFrom(res.json.total_matching, res.json.total_matching_is_minimum);
+    if (total === null) {
+      // A first (cold) count of a new filter set sometimes comes back without a total; counts are
+      // free, so ask once more before showing "unknown".
+      if (process.env.LEAD_DATA_DEBUG_FILTERS === '1') console.info(`[lf-count] no total, retrying; keys: ${Object.keys(res.json).join(',')}`);
+      await sleep(1200);
+      const again = await callGetLeads(cfg, 'POST', '/contacts/search/count', searchFilters);
+      if (again.ok) ({ total, isMinimum } = totalFrom(again.json.total_matching, again.json.total_matching_is_minimum));
+    }
     return {
       status: 200,
       body: {
@@ -843,7 +850,7 @@ export async function runGetLeadsRequest(
       ...searchFilters,
       limit,
       offset,
-      max_per_company: MAX_PER_COMPANY,
+      max_per_company: perCompany,
       columns: GETLEADS_COLUMNS,
     });
     batches++;
@@ -869,6 +876,10 @@ export async function runGetLeadsRequest(
       if (found + pageProspects.length >= target) break;
       const p = parseGetLeadsContact(row && typeof row === 'object' ? row : {});
       if (seen.has(p.id)) continue;
+      if (committee.length) {
+        const role = committeeRoleFor(p.title, committee);
+        if (role) p.committeeRole = role;
+      }
       seen.add(p.id);
       pageProspects.push(p);
     }
@@ -914,6 +925,16 @@ export async function runGetLeadsRequest(
   }
 
   if (stoppedBy && prospects.length === 0) return errorResult(stoppedBy);
+  // A committee list reads per organisation: each company's people next to each other.
+  if (committee.length) {
+    const firstAt = new Map<string, number>();
+    prospects.forEach((p, i) => {
+      const k = (p.companyDomain || p.company).toLowerCase();
+      if (!firstAt.has(k)) firstAt.set(k, i);
+    });
+    const key = (p: SanitizedIcpProspect) => firstAt.get((p.companyDomain || p.company).toLowerCase()) ?? 0;
+    prospects.sort((a, b) => key(a) - key(b));
+  }
 
   return {
     status: 200,

@@ -80,6 +80,7 @@ import {
 import { useCallbackTasks } from '@/components/cockpit/CallbackTasks';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { stageDotClass, stagePaletteLabel } from '@/lib/stageColors';
+import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 import {
   normalizeTenantKey,
   getTenantQuota,
@@ -976,9 +977,9 @@ export default function PipelineKanbanHub() {
                                     <span className="text-body-strong text-fg truncate">
                                       {lead.name}
                                     </span>
-                                    {lead.linkedinUrl && (
+                                    {normalizeLinkedinProfileUrl(lead.linkedinUrl) && (
                                       <a
-                                        href={lead.linkedinUrl}
+                                        href={normalizeLinkedinProfileUrl(lead.linkedinUrl)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
@@ -1852,9 +1853,9 @@ export default function PipelineKanbanHub() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-small text-fg-tertiary">LinkedIn</span>
-                  {activeLead.linkedinUrl ? (
+                  {normalizeLinkedinProfileUrl(activeLead.linkedinUrl) ? (
                     <a
-                      href={activeLead.linkedinUrl}
+                      href={normalizeLinkedinProfileUrl(activeLead.linkedinUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="focus-ring inline-flex items-center gap-1 rounded-sm text-small text-fg hover:underline"

@@ -40,6 +40,8 @@ export interface ContactRecord {
   folderName?: string;
   industry?: string;
   location?: string;
+  /** Buying-committee role from a Lead Finder committee pull (Decision maker / Champion / Influencer). */
+  committeeRole?: string;
   status: string; // 'New Lead' | 'In Cadence' | 'Meeting Booked' | 'Call Back Later' | 'Left Voicemail' | 'Disqualified'
   dealValue?: number; // Deal value in USD (unset: the demo estimate in the demo workspace, else 0)
   cadenceDay: number;
@@ -942,11 +944,29 @@ export function createIcpFolderWithLeads(params: {
   filtersSummary: IcpFolder['filtersSummary'];
   newLeads: Omit<ContactRecord, 'folderId' | 'folderName' | 'assignedRep'>[];
   selectedReps: string[];
+  /**
+   * Buying-committee lists: keep each company's people with one rep (the rep with the fewest
+   * leads so far gets the next company), so one rep works the whole committee.
+   */
+  keepCompaniesTogether?: boolean;
 }): { folder: IcpFolder; addedContacts: ContactRecord[] } {
   const folderId = `folder_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const cleanReps = params.selectedReps.filter(Boolean);
   const repCounts: Record<string, number> = {};
   cleanReps.forEach((r) => (repCounts[r] = 0));
+  const companyRep = new Map<string, string>();
+  const plannedCounts: Record<string, number> = Object.fromEntries(cleanReps.map((r) => [r, 0]));
+  const repFor = (lead: { company?: string; website?: string }, idx: number): string => {
+    if (!params.keepCompaniesTogether || !cleanReps.length) return cleanReps[idx % cleanReps.length];
+    const key = (lead.website || lead.company || `#${idx}`).toLowerCase();
+    let rep = companyRep.get(key);
+    if (!rep) {
+      rep = cleanReps.reduce((best, r) => (plannedCounts[r] < plannedCounts[best] ? r : best), cleanReps[0]);
+      companyRep.set(key, rep);
+    }
+    plannedCounts[rep] += 1;
+    return rep;
+  };
 
   const now = new Date();
   const formattedDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -956,7 +976,7 @@ export function createIcpFolderWithLeads(params: {
   const stampedLeads: ContactRecord[] = params.newLeads.map((lead, idx) => {
     const assignedRep =
       cleanReps.length > 0
-        ? cleanReps[idx % cleanReps.length]
+        ? repFor(lead, idx)
         : params.createdBy || 'Unassigned';
 
     if (cleanReps.length > 0) {

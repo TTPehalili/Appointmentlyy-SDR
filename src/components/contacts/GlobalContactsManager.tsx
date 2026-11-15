@@ -65,6 +65,7 @@ import {
   updateTenantRepsRoster,
 } from '@/lib/icpQuotaStore';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
+import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
@@ -1061,6 +1062,9 @@ export default function GlobalContactsManager() {
                   <p className="text-small text-fg-secondary truncate">
                     {selectedContact.title} at <span className="text-fg">{selectedContact.company}</span>
                   </p>
+                  {selectedContact.committeeRole && (
+                    <p className="text-caption text-fg-tertiary">Buying committee: {selectedContact.committeeRole}</p>
+                  )}
                 </div>
               </div>
 
@@ -1189,7 +1193,7 @@ export default function GlobalContactsManager() {
                   </div>
                 </div>
 
-                {(selectedContact.website || selectedContact.linkedinUrl) && (
+                {(selectedContact.website || normalizeLinkedinProfileUrl(selectedContact.linkedinUrl)) && (
                 <div className="flex items-center gap-3 pt-3 border-t border-line">
                   {selectedContact.website && (
                     <a
@@ -1203,9 +1207,10 @@ export default function GlobalContactsManager() {
                       <ExternalLink className="size-3" aria-hidden />
                     </a>
                   )}
-                  {selectedContact.linkedinUrl && (
+                  {normalizeLinkedinProfileUrl(selectedContact.linkedinUrl) && (
                     <a
-                      href={selectedContact.linkedinUrl.startsWith('http') ? selectedContact.linkedinUrl : `https://${selectedContact.linkedinUrl}`}
+                      href={normalizeLinkedinProfileUrl(selectedContact.linkedinUrl)}
+                      data-testid="contact-linkedin"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="focus-ring rounded-sm text-small text-fg-secondary hover:text-fg hover:underline flex items-center gap-1.5 ml-auto"

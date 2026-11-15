@@ -12,8 +12,13 @@ export interface IcpFilters {
   titles?: string;
   excludeTitles?: string;
   seniority?: string[];
+  /** Job function (department), one of JOB_FUNCTION_OPTIONS; anything else is ignored. */
   department?: string;
+  /** Industry preset or comma-separated industry labels. */
   industry?: string;
+  /** Comma-separated industry labels to leave out (GetLeads only). */
+  excludeIndustries?: string;
+  /** One size band ("51-200 employees"), a range spanning bands ("51-500 employees") or "N+". */
   headcountRange?: string;
   country?: string;
   state?: string;
@@ -36,6 +41,18 @@ export interface IcpFilters {
   requireDirectDial?: boolean;
   /** Only people showing LinkedIn's Hiring badge. */
   isHiring?: boolean;
+  /**
+   * Buying committee (from the brainstorm): role groups whose titles are all searched. When set,
+   * a pull allows up to 3 people per company and tags each lead with its role.
+   */
+  committee?: BuyingCommitteeRole[];
+}
+
+/** One buying-committee role group, e.g. Champion: Head of Operations, VP of Operations. */
+export interface BuyingCommitteeRole {
+  role: string;
+  titles: string[];
+  seniority: string[];
 }
 
 export interface IcpSearchRequestPayload {
@@ -78,6 +95,8 @@ export interface SanitizedIcpProspect {
   linkedinUrl: string;         // Accurate personal LinkedIn URL (https://www.linkedin.com/in/...)
   companyLinkedinUrl?: string; // Accurate company LinkedIn URL (https://www.linkedin.com/company/...)
   technologies: string[];
+  /** Buying-committee role this person's title matches (only when the search had a committee). */
+  committeeRole?: string;
 }
 
 /** Live progress of a pull, emitted while the server searches and enriches. */
@@ -143,3 +162,65 @@ export const NEW_IN_ROLE_OPTIONS = [
   { months: 6, label: 'Started in the last 6 months' },
   { months: 12, label: 'Started in the last 12 months' },
 ] as const;
+
+/** Job functions (departments) GetLeads can filter on, its exact labels. */
+export const JOB_FUNCTION_OPTIONS = [
+  'Operations & Supply Chain',
+  'Information Technology & Engineering',
+  'Consulting & Strategy',
+  'Sales & Business Development',
+  'Finance & Accounting',
+  'Marketing & Product Management',
+  'Customer Service & Support',
+  'Education & Training',
+  'Design & Creative Services',
+  'Healthcare & Medical Services',
+  'Legal & Compliance',
+  'Human Resources',
+  'Media, Publishing & Journalism',
+  'Trades & Skilled Labor',
+  'Real Estate & Property Management',
+  'Program & Project Management',
+  'Banking & Financial Services',
+  'Public Relations & Communications',
+  'Quality Assurance & Control',
+] as const;
+
+/**
+ * Lead Finder filters built by AI from plain English (POST /api/intelligence/icp/ai-parse, and the
+ * final step of the brainstorm). Every field maps to one visible Lead Finder control.
+ */
+export interface AiParsedFilters {
+  titles: string;
+  excludeTitles: string;
+  seniority: string[];
+  /** One of JOB_FUNCTION_OPTIONS, or ''. */
+  department: string;
+  /** Comma-separated industry labels ('' = any). */
+  industry: string;
+  excludeIndustries: string;
+  /** Company size label ('' = any size); may span several bands, e.g. "51-500 employees". */
+  headcountRange: string;
+  country: string;
+  state: string;
+  city: string;
+  technologies: string;
+  revenue: string[];
+  fundingStages: string[];
+  /** 0 = any start date, else 3, 6 or 12. */
+  newInRoleMonths: number;
+  personKeywords: string;
+  companyKeywords: string;
+  requireDirectDial: boolean;
+  isHiring: boolean;
+  requirePhone: boolean;
+  requireVerifiedEmail: boolean;
+  suggestedFolderName: string;
+  /** One or two sentences: how the request was understood. */
+  interpretation: string;
+  /** Adjustments the server made (values mapped to allowed ones, defaults applied, things left out). */
+  notes: string[];
+  /** Buying committee (brainstorm only; [] otherwise). */
+  committee: BuyingCommitteeRole[];
+  source: 'ai' | 'keyword';
+}

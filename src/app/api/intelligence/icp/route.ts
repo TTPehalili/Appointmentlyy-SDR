@@ -21,6 +21,8 @@ import {
 } from '@/lib/server/leadData/provider';
 import { getLeadsConfigFromEnv, runGetLeadsRequest } from '@/lib/server/leadData/getleads';
 import { OA_DIRECTORY_BPO_DOMAINS, isOaBpoDirectorySearch } from '@/lib/server/leadData/oaDirectory';
+import { companySizeBandKeys } from '@/lib/leadData/companySize';
+import { normalizeLinkedinCompanyUrl, normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 
 export type {
   IcpPullLastLead,
@@ -162,7 +164,9 @@ function normalizeEmployeeRangeEnum(hc?: string): string[] | undefined {
   ];
   if (valid.includes(clean)) return [clean];
   if (clean === '1000+') return ['1001-5000', '5001-10000', '10001+'];
-  return undefined;
+  // A range spanning several bands ("51-500 employees") or an open range ("501+").
+  const keys = companySizeBandKeys(hc).filter((k) => valid.includes(k));
+  return keys.length ? keys : undefined;
 }
 
 function buildUpstreamFilterObject(
@@ -312,12 +316,14 @@ function parseLeadOceanRecord(
     'Decision Maker';
 
   // Accurate Personal LinkedIn URL from LeadOcean
-  const personalLinkedinUrl =
+  // (normalised: only a personal /in/ profile, tracking stripped; a company page is never used)
+  const personalLinkedinUrl = normalizeLinkedinProfileUrl(
     profile.profile_url ||
-    row.profile_data?.profile_url ||
-    (typeof row.meta?.key === 'string' && row.meta.key.includes('linkedin.com')
-      ? row.meta.key
-      : '');
+      row.profile_data?.profile_url ||
+      (typeof row.meta?.key === 'string' && row.meta.key.includes('linkedin.com')
+        ? row.meta.key
+        : '')
+  );
 
   // Accurate Company Website & Company LinkedIn URL from LeadOcean
   const companyName = exp.company_name || 'Enterprise Account';
@@ -327,7 +333,7 @@ function parseLeadOceanRecord(
     .trim();
   const companyWebsite = rawDomain ? `https://${rawDomain}` : '';
   const companyLinkedinUrl =
-    exp.company_social_links?.linkedin?.url || undefined;
+    normalizeLinkedinCompanyUrl(exp.company_social_links?.linkedin?.url) || undefined;
 
   // Missing fields stay empty. They are never copied from the search filters or filled with a
   // plausible default: a lead list must only hold what the provider actually returned.

@@ -115,6 +115,7 @@ import {
   useCallbackTasks
 } from '@/components/cockpit/CallbackTasks';
 import { companySize } from '@/lib/companySize';
+import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 
 const DEMO_CALL_MODE_KEY = 'appy_demo_call_mode';
 
@@ -1797,9 +1798,11 @@ export default function BorisCallingCockpit({
                         <span>Website</span>
                       </a>
                     )}
-                    {leadLinkedinUrl && (
+                    {/* Only the person's own LinkedIn profile; a company page or broken URL shows no link. */}
+                    {normalizeLinkedinProfileUrl(leadLinkedinUrl) && (
                       <a
-                        href={leadLinkedinUrl.startsWith('http') ? leadLinkedinUrl : `https://${leadLinkedinUrl}`}
+                        href={normalizeLinkedinProfileUrl(leadLinkedinUrl)}
+                        data-testid="dialer-linkedin"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="focus-ring flex shrink-0 items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg hover:underline"
