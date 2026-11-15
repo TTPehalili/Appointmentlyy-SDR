@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthToken } from '@/lib/authToken';
 import { getTenantStore } from '@/lib/server/tenantStore';
-import { recordLogin, resolveIdentity } from '@/lib/server/tenancy';
+import { PLATFORM_TENANT_CODE } from '@/lib/roles';
+import { isPlatformAdmin, recordLogin, resolveIdentity } from '@/lib/server/tenancy';
 import { publicIdentity, setSessionCookie } from '@/lib/server/session';
 
 const fail = (error: string, status = 401) => NextResponse.json({ success: false, error }, { status });
@@ -30,6 +31,11 @@ export async function POST(req: NextRequest) {
       // An accepted invite stays usable briefly (double-clicks, a second tab), then sign-in links take over.
       if (member.status === 'active' && (!member.joinedAt || Date.now() - Date.parse(member.joinedAt) > 10 * 60_000)) {
         return fail('This invite was already used. Sign in with your email instead.');
+      }
+      // Staff status never comes from a client workspace's invite (it was minted at a client's
+      // request): staff sign in with their own sign-in link or password.
+      if (payload.tenantCode !== PLATFORM_TENANT_CODE && (await isPlatformAdmin(payload.email))) {
+        return fail('This invite can’t be used. Sign in with your email instead.', 403);
       }
     }
 

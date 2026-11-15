@@ -144,11 +144,13 @@ Return strictly this JSON (no markdown):
 }
 
 export async function POST(req: NextRequest) {
+  // Live session check (not just a signed cookie): removed members and suspended workspaces stop here.
+  const session = await getServerSession(req);
+  if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
   try {
     const payload: LinkedInStudioPayload = await req.json();
     const { action = 'generate_series' } = payload;
     const googleApiKey = process.env.GOOGLE_API_KEY;
-    const session = await getServerSession(req);
     // The demo workspace keeps the platform owner's BPO point of view and sample fallbacks.
     const demo = isDemoSession(session);
     const campaign = readCampaign(payload.campaign);

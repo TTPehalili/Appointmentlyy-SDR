@@ -45,7 +45,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
-import { Button, IconButton, Kbd } from '@/components/ui';
+import { Button, IconButton, Kbd, useToast } from '@/components/ui';
 import { WorkflowCanvasNode } from '../canvas/WorkflowCanvasNode';
 import AddNodeModal from '../palette/AddNodeModal';
 import NodeConfigDrawer from '../panels/NodeConfigDrawer';
@@ -88,6 +88,7 @@ export default function WorkflowAutomationStudio({
   onAutoAssistDone
 }: WorkflowAutomationStudioProps) {
   const { role } = useSession();
+  const toast = useToast();
   // Only platform staff can switch workflows on or run them; workspace admins build drafts.
   const isStaff = role === 'Super Admin';
   const isDemo = useDemoWorkspace();
@@ -387,10 +388,13 @@ export default function WorkflowAutomationStudio({
         })
       });
       const data = await res.json();
+      setIsSaving(false);
       if (data.success) {
-        setIsSaving(false);
         setWorkflows((prev) => prev.map((w) => (w.id === currentWorkflow.id ? data.data : w)));
         setCurrentWorkflow(data.data);
+      } else {
+        // e.g. the platform's workflows (staff only) or a Code step from a non-staff author.
+        toast({ message: data.error || 'Could not save this workflow.' });
       }
     } catch (err) {
       console.error('Failed to save workflow:', err);

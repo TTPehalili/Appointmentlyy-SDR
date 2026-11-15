@@ -398,6 +398,17 @@ const TRAINING_FAQS = [
   },
 ];
 
+/** Pull sizes offered in step 3 (sizes above the server's per-pull cap are hidden). */
+const PULL_SIZE_OPTIONS: [number, string][] = [
+  [10, '10 records'],
+  [25, '25 records (1 page)'],
+  [50, '50 records (2 pages)'],
+  [100, '100 records (4 pages)'],
+  [250, '250 records'],
+  [500, '500 records'],
+  [1000, '1,000 records'],
+];
+
 type PullStreamFinal = { success?: boolean; error?: string; prospects?: SanitizedIcpProspect[] } & Record<string, unknown>;
 
 /**
@@ -575,6 +586,8 @@ export default function IcpListBuilderHub() {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   // Which provider answers Lead Finder (from GET /api/intelligence/icp); null until known.
   const [leadProvider, setLeadProvider] = useState<LeadDataProviderId | null>(null);
+  // The largest pull the server accepts (server-side cap); bigger sizes are hidden.
+  const [maxPullPerRequest, setMaxPullPerRequest] = useState<number | null>(null);
   const extraFiltersAvailable = leadProvider === 'getleads';
   // Providers that charge per returned profile (GetLeads) preview the free count only.
   const previewRowsAvailable = leadProvider !== 'getleads';
@@ -679,6 +692,11 @@ export default function IcpListBuilderHub() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d && (d.provider === 'getleads' || d.provider === 'leadocean')) setLeadProvider(d.provider);
+        if (!cancelled && d && typeof d.maxPullPerRequest === 'number' && d.maxPullPerRequest > 0) {
+          const max = d.maxPullPerRequest;
+          setMaxPullPerRequest(max);
+          setPullCount((n) => (n <= max ? n : PULL_SIZE_OPTIONS.filter(([v]) => v <= max).pop()?.[0] ?? n));
+        }
       })
       .catch(() => {});
     return () => {
@@ -1042,10 +1060,12 @@ export default function IcpListBuilderHub() {
       if (patch.phase) livePhase = patch.phase;
       setPullProgress((prev) => (prev ? { ...prev, ...patch } : prev));
     };
-    const failProgress = (message: string) => {
+    const failProgress = (message: string, errorTitle: string | null = null) => {
       const failedPhase = livePhase;
-      setPullProgress((prev) => (prev ? { ...prev, phase: 'error', error: message, failedPhase } : prev));
+      setPullProgress((prev) => (prev ? { ...prev, phase: 'error', error: message, failedPhase, errorTitle } : prev));
     };
+    // Set when the server's lead caps stopped the pull (429 lead_pull_limit), so the panel names it.
+    let limitHit = false;
     setPullProgress({
       phase: 'connecting',
       requested: pullCount,
@@ -1117,6 +1137,7 @@ export default function IcpListBuilderHub() {
           : await res.json();
 
       if (!res.ok || !data.success || !Array.isArray(data.prospects)) {
+        limitHit = res.status === 429 && data.code === 'lead_pull_limit';
         throw new Error(data.error || 'Failed to pull ICP records');
       }
 
@@ -1224,7 +1245,7 @@ export default function IcpListBuilderHub() {
         type: 'error',
         message,
       });
-      failProgress(message);
+      failProgress(message, limitHit ? 'Lead limit reached' : null);
     } finally {
       setPullingList(false);
     }
@@ -2629,13 +2650,13 @@ export default function IcpListBuilderHub() {
                               onChange={(e) => setPullCount(Number(e.target.value))}
                               className="focus-ring w-full h-9 px-2.5 rounded-sm border border-line-strong bg-surface text-body tabular-nums text-fg cursor-pointer"
                             >
-                              <option value={10}>10 records</option>
-                              <option value={25}>25 records (1 page)</option>
-                              <option value={50}>50 records (2 pages)</option>
-                              <option value={100}>100 records (4 pages)</option>
-                              <option value={250}>250 records</option>
-                              <option value={500}>500 records</option>
-                              <option value={1000}>1,000 records</option>
+                              {PULL_SIZE_OPTIONS.filter(
+                                ([n]) => maxPullPerRequest === null || n <= maxPullPerRequest || n === pullCount
+                              ).map(([n, label]) => (
+                                <option key={n} value={n}>
+                                  {label}
+                                </option>
+                              ))}
                             </select>
                           </div>
                         </div>

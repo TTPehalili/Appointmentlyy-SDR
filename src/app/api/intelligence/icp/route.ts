@@ -20,6 +20,7 @@ import {
   type ProviderErrorKind,
 } from '@/lib/server/leadData/provider';
 import { getLeadsConfigFromEnv, runGetLeadsRequest } from '@/lib/server/leadData/getleads';
+import { leadPullLimits, reserveLeadPull, type LeadPullReservation } from '@/lib/server/leadData/pullCaps';
 import { OA_DIRECTORY_BPO_DOMAINS, isOaBpoDirectorySearch } from '@/lib/server/leadData/oaDirectory';
 import { companySizeBandKeys } from '@/lib/leadData/companySize';
 import { normalizeLinkedinCompanyUrl, normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
@@ -791,7 +792,11 @@ async function runIcpRequest(
  * NDJSON stream for a pull: one JSON object per line, flushed as each event happens.
  * The work is the same runIcpRequest call the JSON path makes.
  */
-function streamIcpPull(body: IcpSearchRequestPayload, tenantCode: string): Response {
+function streamIcpPull(
+  body: IcpSearchRequestPayload,
+  tenantCode: string,
+  reservation: LeadPullReservation | null
+): Response {
   const encoder = new TextEncoder();
   let closed = false;
 
@@ -819,6 +824,7 @@ function streamIcpPull(body: IcpSearchRequestPayload, tenantCode: string): Respo
       void (async () => {
         try {
           const { status, body: out } = await runIcpRequest(body, tenantCode, send);
+          reservation?.settle(leadsCharged(status, out));
           if (status === 200 && out.success === true) {
             send({ type: 'result', ...out });
           } else {
@@ -851,6 +857,23 @@ function streamIcpPull(body: IcpSearchRequestPayload, tenantCode: string): Respo
   });
 }
 
+/** Leads a pull will actually buy: the request, never past the hard maximum or the balance sent. */
+function plannedPullCount(body: IcpSearchRequestPayload): number {
+  const requested = Math.max(1, Math.floor(Number(body.pullCount)) || 25);
+  const balanceCap =
+    typeof body.maxRecords === 'number' && Number.isFinite(body.maxRecords)
+      ? Math.max(0, Math.floor(body.maxRecords))
+      : Infinity;
+  return Math.min(requested, MAX_PULL_PER_REQUEST, balanceCap);
+}
+
+/** Leads returned (and so charged) by a finished pull or enrich; 0 when it failed. */
+function leadsCharged(status: number, out: Record<string, unknown>): number {
+  if (status !== 200 || out.success !== true) return 0;
+  if (out.mode === 'enrich_url') return out.prospect ? 1 : 0;
+  return Array.isArray(out.prospects) ? out.prospects.length : 0;
+}
+
 /** Which provider answers Lead Finder, so the UI only offers filters that provider applies. */
 export async function GET(req: NextRequest) {
   const session = await requireApiSession(req);
@@ -863,6 +886,8 @@ export async function GET(req: NextRequest) {
       // GetLeads charges per returned profile, so its free preview is the count only.
       previewRows: provider !== 'getleads',
       extraFilters: provider === 'getleads',
+      // The largest pull the server accepts (the UI hides bigger sizes).
+      maxPullPerRequest: Math.min(leadPullLimits().perRequest, MAX_PULL_PER_REQUEST),
     },
     { headers: { 'Cache-Control': 'no-store' } }
   );
@@ -876,11 +901,29 @@ export async function POST(req: NextRequest) {
     const tenantCode = session.tenantCode;
     const body = (await req.json()) as IcpSearchRequestPayload;
 
-    if (body?.stream === true && (body.mode ?? 'size') === 'pull') {
-      return streamIcpPull(body, tenantCode);
+    // Paid calls (a pull, or one LinkedIn-URL enrich) go through the server-side caps first; free
+    // counts never do. The planned count only ever shrinks the request, never grows it.
+    let reservation: LeadPullReservation | null = null;
+    const mode = body?.mode ?? 'size';
+    const paid = mode === 'pull' ? plannedPullCount(body) : mode === 'enrich_url' && body.linkedinUrlToEnrich?.trim() ? 1 : 0;
+    if (paid > 0) {
+      if (mode === 'pull') body.pullCount = paid;
+      const r = reserveLeadPull(tenantCode, session.email, paid);
+      if (!r.ok) {
+        return NextResponse.json(
+          { success: false, error: r.error, code: r.code, limit: r.limit, retryAfterSeconds: r.retryAfterSeconds },
+          { status: r.status, headers: { 'Retry-After': String(r.retryAfterSeconds), 'Cache-Control': 'no-store' } }
+        );
+      }
+      reservation = r.reservation;
+    }
+
+    if (body?.stream === true && mode === 'pull') {
+      return streamIcpPull(body, tenantCode, reservation);
     }
 
     const { status, body: out } = await runIcpRequest(body, tenantCode);
+    reservation?.settle(leadsCharged(status, out));
     return status === 200 ? NextResponse.json(out) : NextResponse.json(out, { status });
   } catch (err: unknown) {
     console.error('[Appointmentlyy Data Cloud Error]:', err);

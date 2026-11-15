@@ -1,7 +1,36 @@
 import type { NextConfig } from "next";
 
+/**
+ * Baseline security headers on every response (pages, API, static files). No full CSP yet (that
+ * comes report-only first). Nothing embeds our own pages in a frame (the Calendly and email-preview
+ * frames load other origins or srcdoc), so framing is denied outright. The microphone stays allowed
+ * for our own origin: AI practice and demo calls use it.
+ */
+const SECURITY_HEADERS = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
+  // HTTPS only, so production only (local http servers would ignore it anyway).
+  ...(process.env.NODE_ENV === "production"
+    ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+    : []),
+];
+
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  poweredByHeader: false,
+  async headers() {
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      // A config header replaces the route's own, so the uploaded-photo route (which sets a stricter
+      // sandboxing CSP that already includes frame-ancestors) is left out here.
+      {
+        source: "/:path((?!api/profile/avatar/image).*)",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'none'" }],
+      },
+    ];
+  },
   /**
    * Redesign Phase 2: old URLs resolve to the new IA (query strings are preserved).
    * Temporary (307) for now so bookmarks keep working while the IA settles.

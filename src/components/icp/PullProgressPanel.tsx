@@ -62,6 +62,8 @@ export interface PullProgressPanelProps {
   error: string | null;
   /** The phase that was active when the error happened, so its step is marked as failed. */
   failedPhase?: PullProgressPhase | null;
+  /** Error headline to show instead of the default ones (e.g. a lead limit, not a provider outage). */
+  errorTitle?: string | null;
   /** Date.now() when the pull started; the panel ticks its own elapsed clock. */
   startedAt: number;
   /** Shown as a Dismiss button in the error state. */
@@ -1015,6 +1017,7 @@ export default function PullProgressPanel(props: PullProgressPanelProps) {
     folderName,
     error,
     failedPhase,
+    errorTitle,
     startedAt,
     onDismiss,
     className,
@@ -1153,7 +1156,9 @@ export default function PullProgressPanel(props: PullProgressPanelProps) {
 
   /* ---- copy ---- */
   const quipLines = COPY.quips[view];
-  const titleLines: Line[] = foundEcho
+  const titleLines: Line[] = view === 'error' && errorTitle
+    ? [errorTitle]
+    : foundEcho
     ? [playful ? FOUND_FUN : FOUND_PRO]
     : playful
     ? view === 'done' || view === 'error'

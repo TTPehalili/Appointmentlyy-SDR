@@ -274,6 +274,12 @@ export async function inviteMember(
   if (tenantCode !== PLATFORM_TENANT_CODE && !CLIENT_ROLES.includes(input.role)) {
     throw new TenancyError('Super Admin is only for Appointmentlyy staff. Pick Admin for the client’s lead.', 400);
   }
+  // Platform staff already reach every workspace. An invite for a staff address into a client
+  // workspace would be a sign-in link for that staff identity minted by someone else, so refuse it
+  // for everyone (re-invites come through here too).
+  if (tenantCode !== PLATFORM_TENANT_CODE && (await isPlatformAdmin(input.email))) {
+    throw new TenancyError('That email address can’t be invited to this workspace.', 403);
+  }
 
   const store = getTenantStore();
   const tenant = await store.getTenant(tenantCode);

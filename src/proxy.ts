@@ -5,8 +5,8 @@ import { getServerSession } from '@/lib/server/session';
 import { ADMIN_NAV, findNavItem } from '@/lib/adminNav';
 import type { Permission } from '@/lib/permissions';
 import { parseRole, ROLE_RANK, type Role } from '@/lib/roles';
-
-const DEMO_LOGIN = process.env.NEXT_PUBLIC_DEMO_LOGIN === '1';
+// Guarded flag: ignored when NODE_ENV=production unless ALLOW_DEMO_LOGIN_IN_PROD=1 (see demoMode).
+import { DEMO_LOGIN } from '@/lib/demoMode';
 
 /** Pages anyone can open. Everything else in the app needs a signed-in session. */
 function isPublicPage(pathname: string): boolean {

@@ -208,12 +208,18 @@ export async function researchCompany(input: { lead: LeadSnapshot; call: CallCon
     });
     if (grounded) {
       const parsed = parseJsonObject(grounded.text)!;
-      if (!grounded.sources.length) notes.push('Search ran but returned no citable sources; treat recent signals with care.');
+      if (!grounded.grounded) {
+        notes.push(
+          site
+            ? 'Live web search isn’t available with the current AI provider; research is from the company website and call notes only, so recent news may be missing.'
+            : 'Live web search isn’t available with the current AI provider; research is from the call notes and CRM fields only.',
+        );
+      } else if (!grounded.sources.length) notes.push('Search ran but returned no citable sources; treat recent signals with care.');
       return {
         ...fromAi(parsed),
         sources: mergeSources(grounded.sources, siteSources(site)),
         websiteRead: !!site,
-        searched: true,
+        searched: grounded.grounded,
         ...(notes.length ? { limitations: notes.join(' ') } : {}),
       };
     }

@@ -38,6 +38,7 @@ import { useSession } from '@/lib/session';
 import { PageHeader, SegmentedControl, Button, StatTile, Badge, Tooltip, EmptyState, buttonClasses } from '@/components/ui';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { getStoredActivities, subscribeToActivities, type CadenceActivityRecord } from '@/lib/activityStore';
+import { csvCell } from '@/lib/csv';
 
 export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
@@ -1494,10 +1495,11 @@ export default function RepPerformanceDashboard() {
   // Export CSV Report Action
   const handleExportCSV = () => {
     const headers = ['Rep Name', 'Tenant', 'Campaign', 'Calls Made', 'Connect Rate %', 'Emails Sent', 'LinkedIn Touches', 'Booked', 'Quota Target', 'Attainment %', 'DNC', 'Not Interested', 'Callbacks', 'QA Score'];
+    // Quoted and formula-safe (lib/csv): names and campaigns can't run as spreadsheet formulas.
     const rows = filteredReps.map((r) => [
-      `"${r.name}"`,
-      `"${r.tenant}"`,
-      `"${r.campaign}"`,
+      r.name,
+      r.tenant,
+      r.campaign,
       r.callsMade,
       `${r.connectRate}%`,
       r.emailsSent,
@@ -1509,7 +1511,7 @@ export default function RepPerformanceDashboard() {
       r.notInterested,
       r.callbacksScheduled,
       r.qaSparringScore
-    ]);
+    ].map(csvCell));
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { blockUnconnectedSending } from '@/lib/server/sendingPolicy';
+import { requireSendingSession, serverSender } from '@/lib/server/sendingPolicy';
 import { formatEmailToParagraphs } from '@/lib/coldEmailStudio';
-import { getResendApiKey, getResendInboundEmail, getResendFromEmail } from '@/lib/resendConfig';
+import { getResendApiKey } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
 import { getServerSession } from '@/lib/server/session';
 import { onePagerFileName } from '@/lib/onePagerRender';
@@ -34,21 +34,20 @@ async function meetingPlanAttachment(req: NextRequest, meetingPlanId: unknown): 
 
 export async function POST(req: NextRequest) {
   // Safety switch: client workspaces can't send until their own mailbox is connected.
-  const blocked = await blockUnconnectedSending(req);
-  if (blocked) return blocked;
+  const gate = await requireSendingSession(req);
+  if ('blocked' in gate) return gate.blocked;
   try {
     const payload = await req.json();
-    const { 
-      to, 
-      from = getResendFromEmail(), 
-      subject, 
-      body, 
-      leadName = 'Prospect', 
+    // From, Reply-To and the sending key are decided on the server: any `from`,
+    // `customSendingDomain` or `customResendApiKey` in the body is ignored.
+    const {
+      to,
+      subject,
+      body,
+      leadName = 'Prospect',
       leadCompany = 'Target Company',
       leadTitle = 'Decision Maker',
       threadId,
-      customResendApiKey,
-      customSendingDomain,
       meetingPlanId
     } = payload;
 
@@ -83,30 +82,12 @@ export async function POST(req: NextRequest) {
       </div>
     `.trim();
 
-    // Parse sender display name & email
-    const emailMatch = from.match(/<([^>]+)>/);
-    const rawEmail = emailMatch ? emailMatch[1].trim() : from.trim();
-    const nameMatch = from.match(/^([^<]+)</);
-    const senderName = nameMatch ? nameMatch[1].trim() : 'Emil Halili';
+    // The sender comes from the signed-in person and the workspace's configured sender only.
+    const sender = serverSender(gate.session);
+    const sanitizedFrom = sender.from;
 
-    // BYOK Domain Check: If customer brought custom Resend key + verified domain, allow sending from their domain!
-    const isCustomerDomain = customSendingDomain && rawEmail.toLowerCase().endsWith(customSendingDomain.toLowerCase().trim());
-    const isPlatformDomain = rawEmail.toLowerCase().endsWith('@appointmentlyy.com');
-
-    let sanitizedFrom: string;
-    let replyTo: string | undefined = undefined;
-
-    if (customResendApiKey && isCustomerDomain) {
-      sanitizedFrom = `${senderName} <${rawEmail}>`;
-    } else if (isPlatformDomain) {
-      sanitizedFrom = `${senderName} <${rawEmail}>`;
-    } else {
-      sanitizedFrom = `${senderName} <emil@appointmentlyy.com>`;
-      replyTo = rawEmail;
-    }
-
-    // Determine active Resend API key (Customer BYOK key or Platform fallback)
-    const activeResendKey = getResendApiKey(customResendApiKey);
+    // The workspace's (platform) sending key. Per-workspace keys will come from Admin › Integrations.
+    const activeResendKey = getResendApiKey();
     if (!activeResendKey) {
       return NextResponse.json(
         { error: 'RESEND_API_KEY is not configured or could not be loaded. Live dispatch cannot proceed.' },
@@ -115,22 +96,19 @@ export async function POST(req: NextRequest) {
     }
 
     let liveSendResult: any = null;
-    let fallbackEngaged = false;
 
     try {
-      const inboundAddress = getResendInboundEmail();
       const resendPayload: any = {
         from: sanitizedFrom,
         to: Array.isArray(to) ? to : [to],
         subject: subject,
         text: formattedText,
         html: formattedHtml,
-        reply_to: replyTo ? [inboundAddress, replyTo] : [inboundAddress, 'emil@appointmentlyy.com'],
+        reply_to: sender.replyTo,
         ...(attachments ? { attachments } : {})
       };
 
-      // Attempt 1: Send with active key
-      let resendRes = await fetch('https://api.resend.com/emails', {
+      const resendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${activeResendKey}`,
@@ -138,28 +116,6 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify(resendPayload)
       });
-
-      // If customer BYOK key failed (e.g. 401 Unauthorized or unverified domain), engage seamless platform fallback
-      if (!resendRes.ok && customResendApiKey) {
-        console.warn('[BYOK FALLBACK] Customer Resend key failed. Engaging platform fallback key to ensure zero delivery failure.');
-        fallbackEngaged = true;
-        const platformKey = getResendApiKey(); // falls back to platform key
-        const fallbackFrom = `${senderName} <emil@appointmentlyy.com>`;
-        const fallbackPayload = {
-          ...resendPayload,
-          from: fallbackFrom,
-          reply_to: [inboundAddress, rawEmail]
-        };
-
-        resendRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${platformKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(fallbackPayload)
-        });
-      }
 
       if (resendRes.ok) {
         liveSendResult = await resendRes.json();

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         'Cache-Control': fresh ? 'private, max-age=31536000, immutable' : 'private, no-cache',
         ETag: `"${img.version}"`,
         'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'Content-Security-Policy': "default-src 'none'; sandbox; frame-ancestors 'none'",
       },
     });
   } catch (err) {

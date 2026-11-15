@@ -3,7 +3,7 @@ import { parseRole } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { TenancyError, changeMemberRole, inviteMember, removeMember } from '@/lib/server/tenancy';
 import { getServerSession } from '@/lib/server/session';
-import { sendInvite } from '@/lib/server/authLinks';
+import { inviteDelivery, sendInvite } from '@/lib/server/authLinks';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,11 +36,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       if (member.status !== 'invited') throw new TenancyError('Only pending invites can be re-sent.');
       const { member: m, nonce } = await inviteMember(session, member.tenantCode, { email: member.email, name: member.name, role: member.role });
       const sent = await sendInvite({ member: m, tenant: session.identity.tenant, nonce, inviterName: session.name, requestOrigin: req.nextUrl.origin });
-      return NextResponse.json({
-        success: true,
-        emailDelivered: sent.delivered,
-        ...(sent.delivered ? {} : { inviteUrl: sent.inviteUrl, deliveryError: sent.error }),
-      });
+      return NextResponse.json({ success: true, ...inviteDelivery(sent, { staff: session.isPlatformAdmin, memberId: m.id }) });
     }
     const role = parseRole(body?.role);
     if (!role) throw new TenancyError('Pick a role.');

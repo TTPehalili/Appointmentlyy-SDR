@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { blockUnconnectedSending } from '@/lib/server/sendingPolicy';
+import { requireSendingSession, serverSender } from '@/lib/server/sendingPolicy';
 import { getResendApiKey } from '@/lib/resendConfig';
 
 export async function POST(req: NextRequest) {
   // Safety switch: client workspaces can't send until their own mailbox is connected.
-  const blocked = await blockUnconnectedSending(req);
-  if (blocked) return blocked;
+  const gate = await requireSendingSession(req);
+  if ('blocked' in gate) return gate.blocked;
   try {
     const payload = await req.json();
-    const { lead_id, to, from, subject, body, cadence_day, touch_number } = payload;
+    // The sender is decided on the server; a `from` in the body is ignored.
+    const { to, subject, body, cadence_day, touch_number } = payload;
+    const sender = serverSender(gate.session);
 
     if (!to || !subject || !body) {
       return NextResponse.json(
@@ -29,7 +31,8 @@ export async function POST(req: NextRequest) {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            from: from || 'Appointmently AI <emil@appointmentlyy.com>',
+            from: sender.from,
+            reply_to: sender.replyTo,
             to: [to],
             subject: subject,
             text: body

@@ -7,7 +7,6 @@
  * Gemini 3+ models is a PAID-tier feature (5,000 search queries/month free across Gemini 3+, then billed
  * per search query; free-tier keys get an error), so it runs models one at a time, never in parallel.
  */
-import https from 'https';
 import type { ResearchSource } from '@/lib/meetingPlan';
 
 export interface GeminiOptions {
@@ -42,65 +41,49 @@ interface GeminiResponse {
 
 type GeminiResult = { ok: true; data: GeminiResponse } | { ok: false; status: number; body: string };
 
-function requestGemini(model: string, apiKey: string, prompt: string, opts: GeminiOptions = {}): Promise<GeminiResult> {
-  return new Promise((resolve) => {
-    try {
-      const payload = JSON.stringify({
-        ...(opts.systemInstruction ? { systemInstruction: { parts: [{ text: opts.systemInstruction }] } } : {}),
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        ...(opts.googleSearch ? { tools: [{ google_search: {} }] } : {}),
-        generationConfig: {
-          temperature: opts.temperature ?? 0.35,
-          maxOutputTokens: opts.maxTokens ?? 4096,
-          ...(opts.json && !opts.googleSearch ? { responseMimeType: 'application/json' } : {}),
-        },
-      });
-
-      const req = https.request(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload),
-            'x-goog-api-key': apiKey,
-          },
-          family: 4,
-          timeout: opts.timeoutMs ?? 18000,
-        },
-        (res) => {
-          let rawData = '';
-          res.on('data', (chunk) => {
-            rawData += chunk;
-          });
-          res.on('end', () => {
-            try {
-              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve({ ok: true, data: JSON.parse(rawData) as GeminiResponse });
-              } else {
-                console.warn(`[Gemini ${model}] Status:`, res.statusCode, rawData.substring(0, 120));
-                resolve({ ok: false, status: res.statusCode || 0, body: rawData.substring(0, 2000) });
-              }
-            } catch {
-              resolve({ ok: false, status: 0, body: 'parse' });
-            }
-          });
-        },
-      );
-      req.on('timeout', () => {
-        req.destroy();
-        resolve({ ok: false, status: 0, body: 'timeout' });
-      });
-      req.on('error', (err) => {
-        console.warn(`[Gemini ${model}] Request error:`, err.message);
-        resolve({ ok: false, status: 0, body: 'network' });
-      });
-      req.write(payload);
-      req.end();
-    } catch {
-      resolve({ ok: false, status: 0, body: 'exception' });
+/**
+ * One generateContent call. Uses `globalThis.fetch` on purpose: with AI_PROVIDER=anthropic the Claude
+ * bridge (anthropicBridge.ts) replaces fetch at start-up and answers these calls, so they must not go
+ * through a lower-level client (https.request bypassed the bridge and hit Gemini directly).
+ */
+async function requestGemini(model: string, apiKey: string, prompt: string, opts: GeminiOptions = {}): Promise<GeminiResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 18000);
+  try {
+    const payload = JSON.stringify({
+      ...(opts.systemInstruction ? { systemInstruction: { parts: [{ text: opts.systemInstruction }] } } : {}),
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      ...(opts.googleSearch ? { tools: [{ google_search: {} }] } : {}),
+      generationConfig: {
+        temperature: opts.temperature ?? 0.35,
+        maxOutputTokens: opts.maxTokens ?? 4096,
+        ...(opts.json && !opts.googleSearch ? { responseMimeType: 'application/json' } : {}),
+      },
+    });
+    const res = await globalThis.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: payload,
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    const rawData = await res.text();
+    if (!res.ok) {
+      console.warn(`[Gemini ${model}] Status:`, res.status, rawData.substring(0, 120));
+      return { ok: false, status: res.status, body: rawData.substring(0, 2000) };
     }
-  });
+    try {
+      return { ok: true, data: JSON.parse(rawData) as GeminiResponse };
+    } catch {
+      return { ok: false, status: 0, body: 'parse' };
+    }
+  } catch (err) {
+    if (controller.signal.aborted) return { ok: false, status: 0, body: 'timeout' };
+    console.warn(`[Gemini ${model}] Request error:`, err instanceof Error ? err.message : String(err));
+    return { ok: false, status: 0, body: 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Answer text without thought-summary parts. */
@@ -200,7 +183,7 @@ export async function groundedGemini(
   apiKey: string | undefined,
   prompt: string,
   opts: GeminiOptions & { accept?: (text: string) => boolean } = {},
-): Promise<{ model: string; text: string; sources: ResearchSource[]; searchQueries: string[] } | null> {
+): Promise<{ model: string; text: string; sources: ResearchSource[]; searchQueries: string[]; grounded: boolean } | null> {
   if (!apiKey || Date.now() < groundingBlockedUntil) return null;
   const deadline = Date.now() + Math.min(opts.timeoutMs ?? 25000, 25000);
   let quota429 = 0;
@@ -227,6 +210,9 @@ export async function groundedGemini(
       text,
       sources: groundingSources(r.data),
       searchQueries: (meta?.webSearchQueries || []).filter((q) => typeof q === 'string').slice(0, 10),
+      // No grounding metadata at all: the answer didn't come from a search (e.g. the Claude bridge
+      // answered, which has no Google Search tool), so callers must not claim one ran.
+      grounded: Boolean(meta),
     };
   }
   return null;

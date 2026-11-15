@@ -11,6 +11,7 @@ import { getStoredSession, normalizeUserRole, canUserReassignLeads, formatRepNam
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { cleanDemoPlaybookKeys, cleanStoredDemoText } from '@/lib/demoTextCleanup';
 import { emitActivityEvent, emitContactsCreated, eventContact } from '@/lib/activityEvents';
+import { csvCell } from '@/lib/csv';
 
 export interface LeadFootprintItem {
   id: string;
@@ -1817,11 +1818,8 @@ export function exportContactsToCsv(contacts: ContactRecord[], customFilenamePre
     'Latest Footprint Summary'
   ];
 
-  const escapeCsv = (str: unknown) => {
-    if (str === null || str === undefined) return '""';
-    const clean = String(str).replace(/"/g, '""');
-    return `"${clean}"`;
-  };
+  // Quoted, and formula-safe: lead data can't run as a spreadsheet formula (see lib/csv).
+  const escapeCsv = csvCell;
 
   const rows = contacts.map(c => {
     const latestTouch = c.footprint && c.footprint.length > 0 ? c.footprint[0] : null;

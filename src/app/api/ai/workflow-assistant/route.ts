@@ -4,6 +4,8 @@ import { isDemoSession } from '@/lib/demoMode';
 import { parseJsonObject, raceGemini } from '@/lib/server/gemini';
 import { getIntegrationStore } from '@/lib/server/integrationStore';
 import { workflowDbForTenant } from '@/lib/db';
+import { PLATFORM_TENANT_CODE } from '@/lib/roles';
+import { PLATFORM_WORKFLOWS_STAFF_ONLY } from '@/lib/server/workflowAccess';
 import { scrubDemoText, type AssistantAnswer, type AssistantResponse, type WorkflowSpec } from '@/lib/workflowAssistant';
 import {
   buildProposal,
@@ -205,6 +207,10 @@ export async function POST(req: NextRequest) {
       const compiled = compileSpec(spec, ctx);
       if (stage === 'plan') return reply({ ok: true, type: 'plan', spec, plan: compiled.plan });
 
+      // The platform store is the one that runs: only staff may add to it (see workflowAccess).
+      if (session.tenantCode === PLATFORM_TENANT_CODE && !session.isPlatformAdmin) {
+        return reply({ ok: false, error: PLATFORM_WORKFLOWS_STAFF_ONLY, retryable: false }, 403);
+      }
       const store = workflowDbForTenant(session.tenantCode);
       const buildKey = `${session.tenantCode}|${s(body.buildKey, 80)}`;
       const prior = s(body.buildKey, 80) ? recentBuilds.get(buildKey) : undefined;

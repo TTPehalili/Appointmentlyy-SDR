@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cleanGraph, cleanName, requireWorkflowAdmin } from '@/lib/server/workflowAccess';
+import { cleanGraph, cleanName, requireWorkflowAdmin, serverAccessRejection } from '@/lib/server/workflowAccess';
 
 export async function GET(request: NextRequest) {
   const access = await requireWorkflowAdmin(request);
@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { nodes, edges } = cleanGraph(body.nodes, body.edges);
+    const rejected = serverAccessRejection(nodes, access.isStaff);
+    if (rejected) return NextResponse.json({ success: false, error: rejected }, { status: 403 });
     // Only platform staff may create a workflow that is already switched on.
     const active = access.isStaff ? body.active ?? true : false;
     const workflow = await access.store.saveWorkflow({

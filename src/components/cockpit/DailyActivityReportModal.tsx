@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { Button, IconButton, EmptyState, Dialog } from '@/components/ui';
+import { csvCell } from '@/lib/csv';
 import { 
   getStoredActivities, 
   getDailyActivitySummary, 
@@ -83,20 +84,21 @@ _Generated via Appointmentlyy AI Boris Calling Cockpit_`;
   // Export CSV
   const handleExportCsv = () => {
     const headers = ['Timestamp', 'Rep', 'Prospect', 'Company', 'Channel', 'Cadence Day', 'Touch #', 'Step Name', 'Disposition', 'Website', 'LinkedIn', 'Notes'];
+    // Quoted and formula-safe (lib/csv): prospect data can't run as a spreadsheet formula.
     const rows = summary.activities.map(a => [
-      `"${a.timestamp}"`,
-      `"${a.repName}"`,
-      `"${a.prospectName}"`,
-      `"${a.companyName}"`,
-      `"${a.channel}"`,
+      a.timestamp,
+      a.repName,
+      a.prospectName,
+      a.companyName,
+      a.channel,
       a.cadenceDay,
       a.touchNumber,
-      `"${a.stepName}"`,
-      `"${a.disposition}"`,
-      `"${a.website || ''}"`,
-      `"${a.linkedinUrl || ''}"`,
-      `"${(a.notesSnippet || '').replace(/"/g, '""')}"`
-    ]);
+      a.stepName,
+      a.disposition,
+      a.website || '',
+      a.linkedinUrl || '',
+      a.notesSnippet || ''
+    ].map(csvCell));
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);

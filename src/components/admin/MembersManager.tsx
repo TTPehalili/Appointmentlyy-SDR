@@ -65,7 +65,8 @@ export function MembersManager() {
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [removing, setRemoving] = React.useState<MemberRow | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
-  const [linkFor, setLinkFor] = React.useState<{ email: string; url: string } | null>(null);
+  // The invite email failed. Platform staff get the link back to pass on; everyone else gets Resend.
+  const [linkFor, setLinkFor] = React.useState<{ email: string; url?: string; memberId?: string } | null>(null);
   const [photoFor, setPhotoFor] = React.useState<MemberRow | null>(null);
 
   const load = React.useCallback(async () => {
@@ -93,7 +94,7 @@ export function MembersManager() {
     load();
   };
 
-  const resend = async (m: MemberRow) => {
+  const resend = async (m: Pick<MemberRow, 'id' | 'email'>) => {
     setBusy(m.id);
     const res = await apiJson<{ emailDelivered: boolean; inviteUrl?: string }>(`/api/tenant/members/${m.id}`, {
       method: 'PATCH',
@@ -101,8 +102,10 @@ export function MembersManager() {
     });
     setBusy(null);
     if (!res.success) return toast({ message: res.error || 'Could not re-send the invite.' });
-    if (res.emailDelivered) toast({ message: `Invite re-sent to ${m.email}.` });
-    else if (res.inviteUrl) setLinkFor({ email: m.email, url: res.inviteUrl });
+    if (res.emailDelivered) {
+      setLinkFor(null);
+      toast({ message: `Invite re-sent to ${m.email}.` });
+    } else setLinkFor({ email: m.email, url: res.inviteUrl, memberId: m.id });
     load();
   };
 
@@ -296,7 +299,7 @@ export function MembersManager() {
           grantable={data.grantable}
           workspaceName={data.tenant.name}
           onInvited={load}
-          onLink={(email, url) => setLinkFor({ email, url })}
+          onNotSent={(email, url, memberId) => setLinkFor({ email, url, memberId })}
         />
       )}
 
@@ -330,7 +333,30 @@ export function MembersManager() {
       )}
 
       <Dialog open={linkFor !== null} onClose={() => setLinkFor(null)} title="Invite email didn’t send" size="md">
-        {linkFor && <CopyLink text={`Share this invite link with ${linkFor.email} directly. It works for 7 days.`} url={linkFor.url} onDone={() => setLinkFor(null)} />}
+        {linkFor?.url && <CopyLink text={`Share this invite link with ${linkFor.email} directly. It works for 7 days.`} url={linkFor.url} onDone={() => setLinkFor(null)} />}
+        {linkFor && !linkFor.url && (
+          <div className="space-y-3">
+            <p className="text-body text-fg-secondary">
+              The invite for {linkFor.email} is saved, but the email didn’t go out. Try sending it again in a few minutes. You can also
+              use the envelope button next to their name in the list later. If it keeps failing, contact support.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setLinkFor(null)}>
+                Done
+              </Button>
+              {linkFor.memberId && (
+                <Button
+                  variant="primary"
+                  icon={<Mail className="h-4 w-4" />}
+                  disabled={busy === linkFor.memberId}
+                  onClick={() => resend({ id: linkFor.memberId!, email: linkFor.email })}
+                >
+                  Resend invite
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   );
@@ -381,14 +407,15 @@ function InviteDialog({
   grantable,
   workspaceName,
   onInvited,
-  onLink,
+  onNotSent,
 }: {
   open: boolean;
   onClose: () => void;
   grantable: Role[];
   workspaceName: string;
   onInvited: () => void;
-  onLink: (email: string, url: string) => void;
+  /** The email failed: `url` is only there for platform staff. */
+  onNotSent: (email: string, url: string | undefined, memberId: string | undefined) => void;
 }) {
   const toast = useToast();
   const defaultRole: Role = grantable.includes('Rep') ? 'Rep' : grantable[grantable.length - 1];
@@ -404,7 +431,7 @@ function InviteDialog({
     if (!EMAIL_RE.test(clean)) return setError('Enter a valid email address.');
     setSending(true);
     setError(null);
-    const res = await apiJson<{ emailDelivered: boolean; inviteUrl?: string; reinvited: boolean }>('/api/auth/invite', {
+    const res = await apiJson<{ emailDelivered: boolean; inviteUrl?: string; reinvited: boolean; member?: { id: string } }>('/api/auth/invite', {
       method: 'POST',
       body: { email: clean, name: name.trim(), role },
     });
@@ -413,7 +440,7 @@ function InviteDialog({
     onInvited();
     onClose();
     if (res.emailDelivered) toast({ message: `${res.reinvited ? 'Invite re-sent' : 'Invite sent'} to ${clean}.` });
-    else if (res.inviteUrl) onLink(clean, res.inviteUrl);
+    else onNotSent(clean, res.inviteUrl, res.member?.id);
   };
 
   return (

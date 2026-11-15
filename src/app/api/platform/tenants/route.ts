@@ -3,7 +3,7 @@ import { EMAIL_RE, PLATFORM_TENANT_CODE } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { TenancyError, createTenant, inviteMember, seatsUsed } from '@/lib/server/tenancy';
 import { getServerSession } from '@/lib/server/session';
-import { sendInvite } from '@/lib/server/authLinks';
+import { inviteDelivery, sendInvite } from '@/lib/server/authLinks';
 
 const forbidden = () => NextResponse.json({ success: false, error: 'Platform staff only.' }, { status: 403 });
 
@@ -69,8 +69,7 @@ export async function POST(req: NextRequest) {
       success: true,
       tenant,
       admin: { email: member.email, name: member.name },
-      emailDelivered: sent.delivered,
-      ...(sent.delivered ? {} : { inviteUrl: sent.inviteUrl, deliveryError: sent.error }),
+      ...inviteDelivery(sent, { staff: session.isPlatformAdmin, memberId: member.id }),
     });
   } catch (err) {
     if (err instanceof TenancyError) return NextResponse.json({ success: false, error: err.message }, { status: err.status });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cleanGraph, cleanName, requireWorkflowAdmin } from '@/lib/server/workflowAccess';
+import { cleanGraph, cleanName, requireWorkflowAdmin, serverAccessRejection } from '@/lib/server/workflowAccess';
 
 export async function GET(
   request: NextRequest,
@@ -51,6 +51,10 @@ export async function PUT(
     const graph = cleanGraph(body.nodes, body.edges);
     const nodes = Array.isArray(body.nodes) ? graph.nodes : existing.nodes;
     const edges = Array.isArray(body.edges) ? graph.edges : existing.edges;
+    if (Array.isArray(body.nodes)) {
+      const rejected = serverAccessRejection(nodes, access.isStaff);
+      if (rejected) return NextResponse.json({ success: false, error: rejected }, { status: 403 });
+    }
     // Only platform staff may switch a workflow on; anyone else's save keeps it a draft.
     const active = access.isStaff ? (typeof body.active === 'boolean' ? body.active : existing.active) : false;
 

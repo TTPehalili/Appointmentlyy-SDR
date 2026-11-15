@@ -4,7 +4,7 @@ import { EMAIL_RE, PLATFORM_TENANT_CODE, parseRole } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { TenancyError, inviteMember } from '@/lib/server/tenancy';
 import { getServerSession, hasRank } from '@/lib/server/session';
-import { sendInvite } from '@/lib/server/authLinks';
+import { inviteDelivery, sendInvite } from '@/lib/server/authLinks';
 
 /**
  * POST /api/auth/invite  { email, name?, role, tenantCode? }
@@ -46,9 +46,8 @@ export async function POST(req: NextRequest) {
       success: true,
       member: { id: member.id, email: member.email, name: member.name, role: member.role, status: member.status },
       reinvited,
-      emailDelivered: sent.delivered,
-      // Only when the email failed, so the admin can pass the link on another way.
-      ...(sent.delivered ? {} : { inviteUrl: sent.inviteUrl, deliveryError: sent.error }),
+      // The link itself is only ever returned to platform staff (see inviteDelivery).
+      ...inviteDelivery(sent, { staff: session.isPlatformAdmin, memberId: member.id }),
     });
   } catch (err) {
     if (err instanceof TenancyError) return NextResponse.json({ success: false, error: err.message }, { status: err.status });
