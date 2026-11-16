@@ -7,7 +7,9 @@ import { mailStatus } from '@/lib/server/agreements/mail';
  * Agreements settings (platform owner only): notification address, the owner's name and title for
  * the Execution page, the sender identity for every agreement email, and the saved countersignature.
  * GET /api/agreements/settings
- * PUT /api/agreements/settings { ownerEmail, ownerName, ownerTitle, senderName, senderEmail, replyTo, savedSignature?: dataUrl | null }
+ * PUT /api/agreements/settings { ownerEmail, ownerName, ownerTitle, senderName, senderEmail, replyTo, savedSignature?: dataUrl | null,
+ *   billing statement defaults: paymentLink (Wise), bankName, bankAccountName, bankAccountNumber, bankSwift, bankBranch,
+ *   bankCurrency, paypalLink, paypalFeeNote, paymentQr, paymentInstructions (note) }
  */
 export async function GET(req: NextRequest) {
   const owner = await requireOwner(req);
@@ -35,7 +37,8 @@ export async function PUT(req: NextRequest) {
     const { settings } = await loadSettings();
     return json({ success: true, settings });
   } catch (err) {
-    console.error('[agreements/settings PUT]', err);
+    // Message only: a database error could echo the row (bank details are sensitive, never logged).
+    console.error('[agreements/settings PUT]', err instanceof Error ? err.message.slice(0, 200) : 'error');
     return fail(500, 'Could not save the settings.');
   }
 }

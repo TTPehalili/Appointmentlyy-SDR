@@ -13,6 +13,7 @@ import { getAgreementStore, sha256Hex, type StoredAgreementSettings } from '@/li
 import { seal, open } from '@/lib/server/secretBox';
 import { getAppBaseUrl } from '@/lib/authToken';
 import { isPaymentLinkKey, isPaymentQrKey, safePaymentLink, safeQrDataUrl } from '@/lib/server/agreements/payment';
+import { BANK_KEYS, PAYMENT_LIMITS, cleanBank, hasBank, oneLine, paymentOptionsProblem } from '@/lib/agreements/paymentOptions';
 import {
   AGREEMENT_LIMITS,
   DEFAULT_AGREEMENT_SETTINGS,
@@ -85,8 +86,14 @@ export function validateSettings(raw: Record<string, unknown>): { ok: true; valu
     paymentInstructions: String(raw.paymentInstructions ?? '').replace(/\r\n/g, '\n').trim().slice(0, 2000),
     paymentLink: String(raw.paymentLink ?? '').trim(),
     paymentQr: String(raw.paymentQr ?? ''),
+    ...cleanBank(raw),
+    paypalLink: String(raw.paypalLink ?? '').trim(),
+    paypalFeeNote: oneLine(raw.paypalFeeNote, PAYMENT_LIMITS.paypalFeeNote),
   };
   if (value.paymentLink && !safePaymentLink(value.paymentLink)) return { ok: false, error: 'The payment link must be a full https:// address.' };
+  // Bank transfer + PayPal: checked on the raw input so over-long values are refused, not cut.
+  const payProblem = paymentOptionsProblem(raw);
+  if (payProblem) return { ok: false, error: payProblem };
   if (value.paymentQr) {
     const qr = safeQrDataUrl(value.paymentQr);
     if (!qr) return { ok: false, error: 'The QR code must be a PNG or JPEG image under 1 MB.' };
@@ -282,10 +289,14 @@ export function cleanFieldValues(t: AgreementTemplate, raw: unknown): Record<str
     }
     // Billing statements: the QR image is re-checked and rebuilt on the server; anything else is dropped.
     if (isPaymentQrKey(f.key)) out[f.key] = safeQrDataUrl(v) ?? '';
+    // Bank transfer details and the PayPal fee note are single-line (format and length checked at send).
+    else if (SINGLE_LINE_PAY_KEYS.has(f.key)) out[f.key] = oneLine(v, 1000);
     else out[f.key] = String(v).slice(0, AGREEMENT_LIMITS.fieldValueMax);
   }
   return out;
 }
+
+const SINGLE_LINE_PAY_KEYS = new Set<string>([...BANK_KEYS, 'paypalLink', 'paypalFeeNote']);
 
 export function fieldProblems(t: AgreementTemplate, values: Record<string, string>): string | null {
   for (const f of t.fields) {
@@ -296,6 +307,14 @@ export function fieldProblems(t: AgreementTemplate, values: Record<string, strin
     if (f.type === 'email' && !EMAIL_RE.test(v)) return `“${f.label}” must be an email address.`;
     if ((f.type === 'number' || f.type === 'money') && Number.isNaN(Number(v.replace(/[,\s]/g, '')))) return `“${f.label}” must be a number.`;
     if (f.type === 'select' && f.options?.length && !f.options.includes(v)) return `Pick one of the options for “${f.label}”.`;
+  }
+  // Billing statements: bank transfer details (all or nothing, formats) and the PayPal link (paypal.me / paypal.com).
+  if (t.fields.some((f) => SINGLE_LINE_PAY_KEYS.has(f.key))) {
+    const p = paymentOptionsProblem(values);
+    if (p) return p;
+    // The note used to be required; a statement still needs at least one way to pay.
+    const any = ['paymentLink', 'paypalLink', 'paymentQr', 'paymentInstructions'].some((k) => (values[k] ?? '').trim()) || hasBank(values);
+    if (t.action === 'view' && !any) return 'Add at least one way to pay: a Wise link, bank transfer details, a PayPal link, a QR code or a payment note.';
   }
   return null;
 }

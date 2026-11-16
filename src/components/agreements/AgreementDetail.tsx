@@ -75,7 +75,7 @@ const EVENT_TEXT: Record<string, string> = {
   payment_recorded: 'Payment recorded',
   payment_emailed: 'Payment receipt emailed',
   completion_retried: 'Completion retried',
-  pay_link_clicked: 'Client clicked Pay now',
+  pay_link_clicked: 'Client clicked Pay now (Wise)',
 };
 
 export function AgreementDetail({ id }: { id: string }) {
@@ -398,7 +398,9 @@ function DetailInner({ id }: { id: string }) {
               <ol className="flex flex-col gap-3" data-testid="timeline">
                 {[...d.events].reverse().map((ev) => (
                   <li key={ev.id} className="flex flex-col">
-                    <span className="text-body text-fg">{EVENT_TEXT[ev.type] ?? ev.type}</span>
+                    <span className="text-body text-fg">
+                      {ev.type === 'pay_link_clicked' && ev.data?.provider === 'paypal' ? 'Client clicked Pay with PayPal' : EVENT_TEXT[ev.type] ?? ev.type}
+                    </span>
                     <span className="text-small text-fg-tertiary">
                       {fmtManila(ev.at, true)}
                       {ev.ip ? ` · ${ev.ip}` : ''}

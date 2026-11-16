@@ -3,15 +3,16 @@
  * (NOT a BIR invoice; the BIR invoice is issued when payment arrives). action 'view': no signature,
  * tracked viewing; the platform manages unpaid/paid/overdue and stamps "PAID".
  *
- * Bank details are never hard-coded: `paymentInstructions` defaults to a highlighted placeholder and
- * the platform pre-fills it from the owner's Agreements settings. `statementNo` is filled by the
- * platform's sequential numbering (APY-SOA-2026-0001).
+ * Payment details are never hard-coded: the Wise link, bank transfer details, PayPal link, QR and
+ * note are pre-filled from the owner's Agreements settings, each optional and printed only when
+ * filled. `statementNo` is filled by the platform's sequential numbering (APY-SOA-2026-0001).
  */
 import { Image, Link, View } from '@react-pdf/renderer';
 import { registerTemplate } from './index';
 import type { TemplateField } from './types';
 import type { AgreementTemplateDef } from './signerForm';
 import { addBusinessDaysIso, blankMark, formatAmount, formatDate, lines, parseMoney, valueOrMark, withDefaults } from './pdf/format';
+import { PAYMENT_LIMITS, bankProblem, bankRows, hasBank, oneLine, safePaypalLink } from '../paymentOptions';
 import { AgreementDocument, C, ContentPage, FRAME, HAIR, Lockup, T, breakable, docDate, em, renderPdf, rich, sty, type Style } from './pdf/kit';
 
 const FIELDS: TemplateField[] = [
@@ -29,17 +30,32 @@ const FIELDS: TemplateField[] = [
     default: 'Custom build fee, first 50% (due on signing) | 1 | 7500',
     help: 'One per line: description | qty | unit price (USD). Example: "Monthly platform and support, December 2026 | 1 | 1500".',
   },
+  // Payment options (all optional, shown only when filled), in "How to pay" order. Defaults come from Agreements settings.
   {
-    group: 'Payment', key: 'paymentInstructions', label: 'Payment instructions (Wise USD account)', type: 'textarea', required: true, default: '',
-    help: 'Pre-filled from Agreements settings. One line per detail (account name, account number, routing, bank, address).',
+    group: 'Pay now (Wise)', key: 'paymentLink', label: 'Wise payment link (https://)', type: 'text', required: false, default: '',
+    help: 'Shown as a red "Pay now" button and printed in full. https:// only.',
+  },
+  { group: 'Bank transfer', key: 'bankName', label: 'Bank name', type: 'text', required: false, default: '', help: 'Leave all bank fields empty to hide bank transfer.' },
+  { group: 'Bank transfer', key: 'bankAccountName', label: 'Account name', type: 'text', required: false, default: '' },
+  { group: 'Bank transfer', key: 'bankAccountNumber', label: 'Account number', type: 'text', required: false, default: '', help: 'Digits, spaces and dashes only.' },
+  { group: 'Bank transfer', key: 'bankSwift', label: 'SWIFT/BIC', type: 'text', required: false, default: '', help: '8 or 11 letters and digits.' },
+  { group: 'Bank transfer', key: 'bankBranch', label: 'Branch / address (optional)', type: 'text', required: false, default: '' },
+  { group: 'Bank transfer', key: 'bankCurrency', label: 'Account currency', type: 'text', required: false, default: '', help: '3-letter code. Blank means USD.' },
+  {
+    group: 'PayPal', key: 'paypalLink', label: 'PayPal link (https://paypal.me/...)', type: 'text', required: false, default: '',
+    help: 'paypal.me or paypal.com only. Shown as a "Pay with PayPal" button and printed in full.',
   },
   {
-    group: 'Payment', key: 'paymentLink', label: 'Payment link (https://)', type: 'text', required: false, default: '',
-    help: 'e.g. a Wise payment link. Shown as a "Pay now" button and printed in full. https:// only.',
+    group: 'PayPal', key: 'paypalFeeNote', label: 'PayPal fee note', type: 'text', required: false, default: '',
+    help: 'Optional, printed under the PayPal button, e.g. "PayPal payments: please add 4.5% to cover PayPal fees".',
   },
   {
-    group: 'Payment', key: 'paymentQr', label: 'Payment QR code', type: 'text', required: false, default: '',
+    group: 'QR code and note', key: 'paymentQr', label: 'Payment QR (any provider)', type: 'text', required: false, default: '',
     help: 'Set by the platform from the uploaded image: a data:image/png;base64 or data:image/jpeg;base64 string. Anything else is ignored.',
+  },
+  {
+    group: 'QR code and note', key: 'paymentInstructions', label: 'Payment note (optional)', type: 'textarea', required: false, default: '',
+    help: 'Any extra payment instructions, printed last in "How to pay". Pre-filled from Agreements settings.',
   },
   { group: 'Issuer', key: 'appyProprietor', label: 'Issuer legal name', type: 'text', required: true, default: 'Emil Libatique Halili' },
   { group: 'Issuer', key: 'appySignerTitle', label: 'Issuer capacity', type: 'text', required: true, default: 'Independent Contractor (Appointmentlyy)' },
@@ -49,6 +65,13 @@ const FIELDS: TemplateField[] = [
 
 /** QR printed at about 32 mm square. */
 const QR_SIZE = 90.7;
+/** Bank block widths: row 1 bank / account name / account number; row 2 SWIFT / branch (when set) / currency. */
+function bankCellWidth(key: string, withBranch: boolean): string {
+  if (key === 'bankBranch') return '58%';
+  if (key === 'bankCurrency') return withBranch ? '16%' : '74%';
+  return key === 'bankName' ? '30%' : key === 'bankAccountName' ? '40%' : key === 'bankSwift' ? '26%' : '30%';
+}
+
 /** Largest accepted QR data URL (a 1 MB image is about 1.37 MB as base64). */
 const QR_MAX_CHARS = 1_500_000;
 
@@ -104,7 +127,7 @@ const FOOTER_LINES = (days: string) => [
 export const billingStatementV1: AgreementTemplateDef = {
   id: 'billing-statement-v1',
   name: 'Billing Statement',
-  description: 'A one-page payment request (USD, via Wise). Not a BIR invoice: that is issued when payment is received.',
+  description: 'A one-page payment request (USD; Wise, bank transfer or PayPal). Not a BIR invoice: that is issued when payment is received.',
   action: 'view',
   countersign: false,
   fields: FIELDS,
@@ -152,9 +175,31 @@ export const billingStatementV1: AgreementTemplateDef = {
       lines(v.clientAddress).join('\n') || blankMark('[client address]'),
       v.clientTin ? `TIN ${v.clientTin}` : '',
     ].filter(Boolean).join('\n');
+    // How to pay: 1 Wise (Pay now), 2 bank transfer, 3 PayPal, 4 QR, 5 note. Each only when filled;
+    // the whole box is hidden only when all five are empty. Invalid values print a highlighted mark, never the value.
     const pay = lines(v.paymentInstructions);
     const link = safePaymentLink(v.paymentLink);
     const qr = safeQrDataUrl(values.paymentQr ?? '');
+    const bankUsed = hasBank(v);
+    const bank = bankRows(v);
+    const paypal = safePaypalLink(v.paypalLink);
+    const paypalNote = oneLine(v.paypalFeeNote, PAYMENT_LIMITS.paypalFeeNote);
+    const anyAbove = Boolean(v.paymentLink.trim() || bankUsed || v.paypalLink.trim() || qr);
+    const showPay = anyAbove || pay.length > 0;
+    const optLabel: Style = { fontSize: 7, fontWeight: 600, letterSpacing: em(0.14, 7), textTransform: 'uppercase', color: C.muted, lineHeight: 1.4 };
+    const button = (href: string, text: string, bg: string) => (
+      <View style={{ alignItems: 'flex-start' }}>
+        <Link src={href} style={{ textDecoration: 'none' }}>
+          <View style={{ backgroundColor: bg, borderRadius: 3, paddingVertical: 4, paddingHorizontal: 14 }}>
+            <T style={{ color: '#FFFFFF', fontSize: 10, fontWeight: 700, letterSpacing: em(0.02, 10), lineHeight: 1.3 }}>{text}</T>
+          </View>
+        </Link>
+        <Link src={href} style={{ textDecoration: 'none', marginTop: 2 }}>
+          <T style={{ fontSize: 7.5, lineHeight: 1.35, color: C.muted }}>{breakable(href)}</T>
+        </Link>
+      </View>
+    );
+    const bad = (text: string) => <T style={{ fontSize: 8.5, marginTop: 2 }}>{rich(blankMark(text))}</T>;
 
     return renderPdf(
       <AgreementDocument title={`Billing Statement ${v.statementNo}`.trim()} subject={`Appointmentlyy x ${client}`} date={docDate(v.statementDate)}>
@@ -210,39 +255,61 @@ export const billingStatementV1: AgreementTemplateDef = {
             </View>
           </View>
 
-          {/* Payment instructions */}
-          <View wrap={false} style={{ marginTop: 24, backgroundColor: C.paper2, borderTopWidth: HAIR, borderTopColor: C.rule2, padding: 14, flexDirection: 'row' }}>
-            <View style={{ flex: 1, paddingRight: qr ? 16 : 0 }}>
-              <T style={{ fontSize: 10.5, fontWeight: 600, marginBottom: 4 }}>How to pay</T>
-              <T style={{ fontSize: 9.5, lineHeight: 1.55, color: C.ink2 }}>
-                {pay.length
-                  ? breakable(pay.join('\n'))
-                  : rich(blankMark('[Wise USD account details: set the default in Agreements settings]'))}
-              </T>
-              <T style={{ fontSize: 9, lineHeight: 1.5, color: C.ink2, marginTop: 6 }}>{rich(`Please quote **${valueOrMark(v.statementNo, 'statement no.')}** as the payment reference.`)}</T>
-              {link ? (
-                <View style={{ marginTop: 12, alignItems: 'flex-start' }}>
-                  <Link src={link} style={{ textDecoration: 'none' }}>
-                    <View style={{ backgroundColor: C.red, borderRadius: 3, paddingVertical: 6, paddingHorizontal: 16 }}>
-                      <T style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: 700, letterSpacing: em(0.02, 10.5), lineHeight: 1.3 }}>Pay now</T>
+          {/* How to pay */}
+          {showPay ? (
+            <View wrap={false} style={{ marginTop: 14, backgroundColor: C.paper2, borderTopWidth: HAIR, borderTopColor: C.rule2, paddingHorizontal: 14, paddingVertical: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                <T style={{ fontSize: 10.5, fontWeight: 600 }}>How to pay</T>
+                <T style={{ fontSize: 8.5, color: C.ink2 }}>{rich(`Please quote **${valueOrMark(v.statementNo, 'statement no.')}** as the payment reference.`)}</T>
+              </View>
+              <View style={{ flexDirection: 'row' }}>
+                <View style={{ flex: 1, paddingRight: qr ? 16 : 0 }}>
+                  {/* 1. Wise */}
+                  {link ? button(link, 'Pay now', C.red) : v.paymentLink.trim() ? bad('[Wise payment link must be a valid https:// URL]') : null}
+                  {/* 2. Bank transfer */}
+                  {bankUsed ? (
+                    <View style={{ marginTop: link || v.paymentLink.trim() ? 6 : 0 }}>
+                      <T style={[optLabel, { color: C.ink, marginBottom: 2 }]}>Bank transfer</T>
+                      {bank.length ? (
+                        // Labelled block, three per row: bank, account name, account number / SWIFT, branch, currency.
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                          {bank.map((r) => (
+                            <View key={r.key} style={{ width: bankCellWidth(r.key, bank.some((x) => x.key === 'bankBranch')), paddingRight: 8, marginBottom: 3 }}>
+                              <T style={{ fontSize: 7, lineHeight: 1.3, color: C.muted }}>{r.label}</T>
+                              <T style={{ fontSize: 9, lineHeight: 1.3, color: C.ink, fontWeight: r.key === 'bankAccountNumber' || r.key === 'bankSwift' ? 600 : 400 }}>{r.value}</T>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        bad(`[bank details: ${bankProblem(v)?.replace(/^Bank transfer: /, '') ?? 'check them'}]`)
+                      )}
                     </View>
-                  </Link>
-                  <Link src={link} style={{ textDecoration: 'none', marginTop: 4 }}>
-                    <T style={{ fontSize: 7.5, lineHeight: 1.4, color: C.muted }}>{breakable(link)}</T>
-                  </Link>
+                  ) : null}
+                  {/* 3. PayPal */}
+                  {v.paypalLink.trim() ? (
+                    <View style={{ marginTop: link || v.paymentLink.trim() || bankUsed ? 5 : 0 }}>
+                      {paypal ? button(paypal, 'Pay with PayPal', '#003087') : bad('[PayPal link must be https:// on paypal.me or paypal.com]')}
+                      {paypal && paypalNote ? <T style={{ fontSize: 8, lineHeight: 1.4, color: C.ink2, marginTop: 2 }}>{paypalNote}</T> : null}
+                    </View>
+                  ) : null}
                 </View>
-              ) : v.paymentLink ? (
-                <T style={{ fontSize: 9, marginTop: 10 }}>{rich(blankMark('[payment link must be a valid https:// URL]'))}</T>
+                {/* 4. QR (any provider) */}
+                {qr ? (
+                  <View style={{ width: QR_SIZE, alignItems: 'center' }}>
+                    {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt; captioned below */}
+                    <Image src={qr} style={{ width: QR_SIZE, height: QR_SIZE, objectFit: 'contain' }} />
+                    <T style={{ fontSize: 8, color: C.ink2, marginTop: 3, fontWeight: 600 }}>Scan to pay</T>
+                  </View>
+                ) : null}
+              </View>
+              {/* 5. Note */}
+              {pay.length ? (
+                <T style={anyAbove ? { fontSize: 8.5, lineHeight: 1.45, color: C.ink2, marginTop: 5, paddingTop: 4, borderTopWidth: HAIR, borderTopColor: C.rule2 } : { fontSize: 8.5, lineHeight: 1.45, color: C.ink2 }}>
+                  {breakable(pay.join('\n'))}
+                </T>
               ) : null}
             </View>
-            {qr ? (
-              <View style={{ width: QR_SIZE, alignItems: 'center' }}>
-                {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt; captioned below */}
-                <Image src={qr} style={{ width: QR_SIZE, height: QR_SIZE, objectFit: 'contain' }} />
-                <T style={{ fontSize: 8, color: C.ink2, marginTop: 4, fontWeight: 600 }}>Scan to pay</T>
-              </View>
-            ) : null}
-          </View>
+          ) : null}
 
           {/* Footer notes */}
           <View fixed style={{ position: 'absolute', left: FRAME.side, right: FRAME.side, top: 842 - 66 - 50, borderLeftWidth: 3, borderLeftColor: C.red, paddingLeft: 12, paddingVertical: 2 }}>

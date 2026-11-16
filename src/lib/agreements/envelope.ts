@@ -147,11 +147,21 @@ export interface AgreementSettings {
   replyTo: string;
   /** Owner has a saved countersignature (the image itself is never sent to the browser list). */
   hasSavedSignature: boolean;
-  /** Default payment instructions (Wise USD account) for billing statements. Never hard-coded. */
+  /** Default free-text payment note for billing statements (optional; printed last in "How to pay"). Never hard-coded. */
   paymentInstructions: string;
-  /** Default "Pay now" link (https:// only) and QR image (PNG data URL) for billing statements. */
+  /** Default Wise "Pay now" link (https:// only) and QR image (PNG data URL, any provider) for billing statements. */
   paymentLink: string;
   paymentQr: string;
+  /** Default bank transfer details for billing statements (sensitive: never logged). Currency defaults to USD. */
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  bankSwift: string;
+  bankBranch: string;
+  bankCurrency: string;
+  /** Default PayPal link (https://paypal.me or paypal.com only) and an optional fee note printed under it. */
+  paypalLink: string;
+  paypalFeeNote: string;
 }
 
 /** Owner decision 2026-11-16: emails go out as Emil Halili <emil@appointmentlyy.com>. Editable in settings. */
@@ -166,6 +176,14 @@ export const DEFAULT_AGREEMENT_SETTINGS: AgreementSettings = {
   paymentInstructions: '',
   paymentLink: '',
   paymentQr: '',
+  bankName: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  bankSwift: '',
+  bankBranch: '',
+  bankCurrency: 'USD',
+  paypalLink: '',
+  paypalFeeNote: '',
 };
 
 export const AGREEMENT_LIMITS = {

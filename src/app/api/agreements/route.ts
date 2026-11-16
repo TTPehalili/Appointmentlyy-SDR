@@ -21,6 +21,7 @@ import {
 import { AgreementError, newEnvelopeRecord, sendEnvelope, sweep } from '@/lib/server/agreements/service';
 import { mailStatus } from '@/lib/server/agreements/mail';
 import { AGREEMENT_LIMITS, toEnvelopeView } from '@/lib/agreements/envelope';
+import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, hasBank } from '@/lib/agreements/paymentOptions';
 
 /**
  * Agreements (platform owner only).
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
   const values = cleanFieldValues(t, body.values);
   let sourceEnvelopeId: string | null = null;
   if (t.action === 'view') {
-    // Billing statements: the owner's saved payment instructions (Wise) fill an empty field.
+    // Billing statements: today's date and the owner's saved payment note fill empty fields.
     const sdf = statementDateField(t);
     if (sdf && !(values[sdf.key] ?? '').trim()) values[sdf.key] = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const pf = paymentField(t);
@@ -70,9 +71,15 @@ export async function POST(req: NextRequest) {
       const { settings } = await loadSettings();
       if (settings.paymentInstructions) values[pf.key] = settings.paymentInstructions;
     }
+    // Payment options (Wise link, bank transfer, PayPal, QR): the settings fill empty fields. The bank
+    // details are one block: filled only when the statement has none of its own (never mixed).
     const defaults = (await loadSettings()).settings;
-    if (t.fields.some((f) => f.key === 'paymentLink') && !values.paymentLink && defaults.paymentLink) values.paymentLink = defaults.paymentLink;
-    if (t.fields.some((f) => f.key === 'paymentQr') && !values.paymentQr && defaults.paymentQr) values.paymentQr = defaults.paymentQr;
+    const bankEmpty = !hasBank(values);
+    for (const k of PAYMENT_DEFAULT_KEYS) {
+      if (k === 'paymentInstructions' || !t.fields.some((f) => f.key === k) || (values[k] ?? '').trim() || !defaults[k]) continue;
+      if ((BANK_KEYS as readonly string[]).includes(k) && k !== 'bankCurrency' && !bankEmpty) continue;
+      values[k] = defaults[k];
+    }
     const src = typeof body.sourceEnvelopeId === 'string' && isEnvelopeId(body.sourceEnvelopeId) ? await getAgreementStore().getEnvelope(body.sourceEnvelopeId) : null;
     sourceEnvelopeId = src ? src.id : null;
   }

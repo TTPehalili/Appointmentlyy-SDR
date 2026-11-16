@@ -12,15 +12,21 @@ import type { AgreementTemplate, TemplateField } from '@/lib/agreements/template
 import { MANILA_TZ, balanceOf, fmtMoney, paidSoFar, type BillingInfo, type Envelope } from '@/lib/agreements/envelope';
 import { getAgreementStore } from '@/lib/server/agreementStore';
 import { ansi } from '@/lib/server/agreements/finalPdf';
+import { PAYMENT_DEFAULT_KEYS } from '@/lib/agreements/paymentOptions';
 
 const byName = (fields: TemplateField[], re: RegExp) => fields.find((f) => re.test(f.key) || re.test(f.label));
 
 export const numberField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /(statement|soa|invoice|billing).?(no|num|number)\b|^statementNo$|^number$/i);
 export const dueField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /due.?date|^due$/i);
-export const currencyField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /currency/i);
+/** Fields that are not payment options (bank transfer, PayPal, Wise link, QR): their names say "bank", "currency", "Wise". */
+const OPTION_KEYS = new Set<string>(PAYMENT_DEFAULT_KEYS.filter((k) => k !== 'paymentInstructions'));
+const nonOption = (fields: TemplateField[]) => fields.filter((f) => !OPTION_KEYS.has(f.key));
+
+export const currencyField = (t: Pick<AgreementTemplate, 'fields'>) => byName(nonOption(t.fields), /currency/i);
 export const totalField = (t: Pick<AgreementTemplate, 'fields'>) => t.fields.find((f) => /^(total|amount|amountDue|totalDue|total_due)$/i.test(f.key));
 export const linesField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /line.?items|^items$/i);
-export const paymentField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /payment.?(instructions|details)|wise|bank/i);
+export const paymentField = (t: Pick<AgreementTemplate, 'fields'>) =>
+  t.fields.find((f) => f.key === 'paymentInstructions') ?? byName(nonOption(t.fields), /payment.?(instructions|details)|wise|bank/i);
 
 const num = (s: string) => {
   const n = Number(String(s ?? '').replace(/[^0-9.-]/g, ''));

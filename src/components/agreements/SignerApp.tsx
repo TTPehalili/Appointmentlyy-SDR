@@ -6,7 +6,7 @@
  * against the owner's access rules on the server.
  */
 import * as React from 'react';
-import { CheckCircle2, Clock, Download, FileSignature, Lock, Mail, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Copy, Download, FileSignature, Lock, Mail, XCircle } from 'lucide-react';
 import { Badge, Button, Card, Checkbox, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
 import { PdfViewer } from '@/components/agreements/PdfViewer';
 import { SignaturePad, type SignatureValue } from '@/components/agreements/SignaturePad';
@@ -30,6 +30,60 @@ interface Doc {
   expiresAt?: string;
   payLink?: string | null;
   hasQr?: boolean;
+  paypalLink?: string | null;
+  paypalFeeNote?: string | null;
+  bank?: { key: string; label: string; value: string }[];
+  payNote?: string | null;
+}
+
+/** Payment links are checked on the server; never render anything but https:// (no javascript:, data:). */
+const isHttps = (u: string | null | undefined): u is string => typeof u === 'string' && /^https:\/\//i.test(u);
+
+/** One bank detail with its own Copy button (values are plain text; React escapes them). */
+function CopyRow({ label, value, testId }: { label: string; value: string; testId: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const copy = async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(value);
+      ok = true;
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        ta.remove();
+      } catch {
+        ok = false;
+      }
+    }
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5" data-testid={testId}>
+      <dl className="min-w-0">
+        <dt className="text-caption text-fg-tertiary">{label}</dt>
+        <dd className="break-words text-body text-fg" data-testid={`${testId}-value`}>{value}</dd>
+      </dl>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={`Copy ${label}`}
+        className="focus-ring inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-line px-2 text-caption text-fg-secondary hover:bg-subtle"
+      >
+        {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
 }
 
 type State =
@@ -93,6 +147,10 @@ export function SignerApp({ token }: { token: string }) {
   const [state, setState] = React.useState<State>({ s: 'loading' });
   const [visit, setVisit] = React.useState<string | null>(null);
   const [pdf, setPdf] = React.useState<ArrayBuffer | null>(null);
+  /** Billing statements: track which payment link was clicked (the link itself opens in a new tab). */
+  const payClicked = (provider: 'wise' | 'paypal') => {
+    void fetch(`${base}/paylink`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visit, provider }), keepalive: true });
+  };
 
   const load = React.useCallback(async () => {
     const stored = typeof window !== 'undefined' ? sessionStorage.getItem(visitKey) : null;
@@ -315,21 +373,46 @@ export function SignerApp({ token }: { token: string }) {
               {state.doc.action === 'view' ? (
                 <Card className="flex flex-col gap-3 p-5">
                   <h2 className="text-h3 text-fg">{state.doc.title}</h2>
-                  {state.doc.payLink && (
+                  {/* How to pay, in order: Wise (Pay now), bank transfer, PayPal, QR, note. Each only when set. */}
+                  {isHttps(state.doc.payLink) && (
                     <a
                       href={state.doc.payLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       data-testid="pay-now"
-                      onClick={() => {
-                        void fetch(`${base}/paylink`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visit }), keepalive: true });
-                      }}
-                      className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-danger-fg px-5 text-body font-semibold text-white hover:opacity-90"
+                      onClick={() => payClicked('wise')}
+                      className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-brand-600 px-5 text-body font-semibold text-brand-contrast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
                     >
                       Pay now
                     </a>
                   )}
-                  {state.doc.payLink && <p className="break-all text-caption text-fg-tertiary">{state.doc.payLink}</p>}
+                  {isHttps(state.doc.payLink) && <p className="break-all text-caption text-fg-tertiary">{state.doc.payLink}</p>}
+                  {state.doc.bank && state.doc.bank.length > 0 && (
+                    <section aria-label="Bank transfer" className="rounded-md border border-line p-3" data-testid="pay-bank">
+                      <h3 className="text-body-strong text-fg">Bank transfer</h3>
+                      <div className="mt-1 divide-y divide-line">
+                        {state.doc.bank.map((r) => (
+                          <CopyRow key={r.key} label={r.label} value={r.value} testId={`bank-${r.key}`} />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {isHttps(state.doc.paypalLink) && (
+                    <div className="flex flex-col gap-1">
+                      <a
+                        href={state.doc.paypalLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="pay-paypal"
+                        onClick={() => payClicked('paypal')}
+                        className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#003087] px-5 text-body font-semibold text-white hover:bg-[#00246B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
+                      >
+                        Pay with PayPal
+                      </a>
+                      <p className="break-all text-caption text-fg-tertiary">{state.doc.paypalLink}</p>
+                      {state.doc.paypalFeeNote && <p className="text-small text-fg-secondary" data-testid="paypal-fee-note">{state.doc.paypalFeeNote}</p>}
+                    </div>
+                  )}
                   {state.doc.hasQr && (
                     <figure className="flex flex-col items-center gap-1 self-center">
                       {/* eslint-disable-next-line @next/next/no-img-element -- same-origin, token-checked image */}
@@ -337,6 +420,7 @@ export function SignerApp({ token }: { token: string }) {
                       <figcaption className="text-caption text-fg-secondary">Scan to pay</figcaption>
                     </figure>
                   )}
+                  {state.doc.payNote && <p className="whitespace-pre-line break-words text-small text-fg-secondary" data-testid="pay-note">{state.doc.payNote}</p>}
                   <p className="text-body text-fg-secondary">Questions about this statement? Reply to the email from {state.contact}.</p>
                   <a
                     href={`${base}/download?visit=${encodeURIComponent(visit ?? '')}`}

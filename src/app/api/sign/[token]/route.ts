@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkVisit, clientNameOf, evaluateAccess, json, loadSettings, maskEmail, opensExhausted } from '@/lib/server/agreements/core';
 import { loadByToken } from '@/lib/server/agreements/publicApi';
 import { qrBytes, safePaymentLink } from '@/lib/server/agreements/payment';
+import { PAYMENT_LIMITS, bankRows, oneLine, safePaypalLink } from '@/lib/agreements/paymentOptions';
 
 type Ctx = { params: Promise<{ token: string }> };
 
@@ -53,7 +54,15 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             pageCount: e.pageCount,
             expiresAt: e.access.expiresAt,
             ...(meta?.action === 'view'
-              ? { payLink: safePaymentLink(e.fieldValues.paymentLink) ?? null, hasQr: Boolean(qrBytes(e.fieldValues.paymentQr)) }
+              ? {
+                  payLink: safePaymentLink(e.fieldValues.paymentLink) ?? null,
+                  hasQr: Boolean(qrBytes(e.fieldValues.paymentQr)),
+                  paypalLink: safePaypalLink(e.fieldValues.paypalLink) ?? null,
+                  paypalFeeNote: safePaypalLink(e.fieldValues.paypalLink) ? oneLine(e.fieldValues.paypalFeeNote, PAYMENT_LIMITS.paypalFeeNote) || null : null,
+                  // Bank details and the note are sensitive: only during a live visit (like the PDF itself).
+                  bank: visitValid ? bankRows(e.fieldValues).map(({ key, label, value }) => ({ key, label, value })) : [],
+                  payNote: visitValid ? String(e.fieldValues.paymentInstructions ?? '').trim().slice(0, 2000) || null : null,
+                }
               : {}),
           }),
     },

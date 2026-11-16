@@ -19,6 +19,7 @@ import {
 } from '@/lib/server/agreements/core';
 import { loadByToken } from '@/lib/server/agreements/publicApi';
 import { qrBytes, safePaymentLink } from '@/lib/server/agreements/payment';
+import { safePaypalLink } from '@/lib/agreements/paymentOptions';
 import { AgreementError, declineEnvelope, recordHeartbeat, recordOpen, requestOtp, signEnvelope, verifyOtp } from '@/lib/server/agreements/service';
 import { AGREEMENT_LIMITS } from '@/lib/agreements/envelope';
 
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
  * POST open        { grant? }                -> { visit }   starts a visit; NOT counted as an open
  * POST viewed      { visit }                               the PDF rendered in a visible tab: one "opened" event per visit
  * POST heartbeat   { visit, seconds, page, pages }          time on page, pages seen (every 10 s while visible)
+ * POST paylink     { provider?: 'wise'|'paypal' }           billing statements: a payment link was clicked (tracked)
  * POST otp         { purpose: 'view'|'sign', visit? }       email a 6-digit code
  * POST verify      { code }                  -> { grant }   view code (when the owner requires one to open)
  * POST sign        { visit, name, title, authorised, consent, otp, answers, signature?, outcome?, concern? }
@@ -119,9 +121,13 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         return json({ success: true, counted: true });
       }
       case 'paylink': {
-        if (e.templateMeta?.action !== 'view' || !safePaymentLink(e.fieldValues.paymentLink)) return fail(404, 'No payment link.');
-        if (rateLimit(`agr-pay-click:${e.id}:${c.meta.ip}`, 5, 10 * 60_000)) {
-          await getAgreementStore().addEvent({ envelopeId: e.id, type: 'pay_link_clicked', ip: c.meta.ip, userAgent: c.meta.userAgent, data: {} });
+        // { provider: 'wise' | 'paypal' } (default 'wise', the "Pay now" link). Only a link the statement has.
+        const provider = body.provider === undefined || body.provider === 'wise' ? 'wise' : body.provider === 'paypal' ? 'paypal' : null;
+        if (!provider) return fail(400, 'Bad request.');
+        const has = provider === 'paypal' ? safePaypalLink(e.fieldValues.paypalLink) : safePaymentLink(e.fieldValues.paymentLink);
+        if (e.templateMeta?.action !== 'view' || !has) return fail(404, 'No payment link.');
+        if (rateLimit(`agr-pay-click:${e.id}:${provider}:${c.meta.ip}`, 5, 10 * 60_000)) {
+          await getAgreementStore().addEvent({ envelopeId: e.id, type: 'pay_link_clicked', ip: c.meta.ip, userAgent: c.meta.userAgent, data: { provider } });
         }
         return json({ success: true });
       }

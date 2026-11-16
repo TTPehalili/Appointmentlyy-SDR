@@ -9,9 +9,10 @@ import { Button, Card, Field, InlineError, Input, Select, Skeleton, Stepper, Swi
 import { apiJson } from '@/lib/authClient';
 import { cn } from '@/lib/cn';
 import type { TemplateField } from '@/lib/agreements/templates/types';
-import type { EnvelopeView } from '@/lib/agreements/envelope';
+import type { AgreementSettings, EnvelopeView } from '@/lib/agreements/envelope';
 import { PdfViewer } from '@/components/agreements/PdfViewer';
-import { PaymentLinkInput, PaymentQrInput } from '@/components/agreements/PaymentInputs';
+import { BankFieldInput, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
+import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, PAYMENT_LIMITS, hasBank, type BankKey } from '@/lib/agreements/paymentOptions';
 import { OwnerGate, copyText, fetchPdf, fromLocalInput, toLocalInput, type ListResponse, type TemplateSummary } from '@/components/agreements/ownerShared';
 
 const STEPS = ['Template', 'Details', 'Preview', 'Send'];
@@ -19,16 +20,28 @@ const STEPS = ['Template', 'Details', 'Preview', 'Send'];
 const find = (fields: TemplateField[], re: RegExp) => fields.find((f) => re.test(f.key) || re.test(f.label));
 const isNumberField = (f: TemplateField) => /(statement|soa|invoice|billing).?(no|num|number)|^statementNo$/i.test(f.key) || /statement no/i.test(f.label);
 
-/** Billing statements: today's date and the saved payment instructions fill empty fields. */
-function withStatementDefaults(t: TemplateSummary, values: Record<string, string>, payment: string, extra?: { paymentLink?: string; paymentQr?: string }): Record<string, string> {
+/**
+ * Billing statements: today's date, and the saved payment options (Wise link, bank transfer, PayPal, QR,
+ * note) fill empty fields of the same key. The bank details are one block: filled only when none is set.
+ */
+function withStatementDefaults(t: TemplateSummary, values: Record<string, string>, settings?: Partial<AgreementSettings>): Record<string, string> {
   if (t.action !== 'view') return values;
   const out = { ...values };
   const sd = find(t.fields, /statement.?date/i);
   if (sd && !out[sd.key]) out[sd.key] = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-  const pf = find(t.fields, /payment.?(instructions|details)|wise/i);
-  if (pf && !out[pf.key] && payment) out[pf.key] = payment;
-  if (extra?.paymentLink && t.fields.some((f) => f.key === 'paymentLink') && !out.paymentLink) out.paymentLink = extra.paymentLink;
-  if (extra?.paymentQr && t.fields.some((f) => f.key === 'paymentQr') && !out.paymentQr) out.paymentQr = extra.paymentQr;
+  if (!settings) return out;
+  const bankEmpty = !hasBank(out);
+  for (const k of PAYMENT_DEFAULT_KEYS) {
+    const d = settings[k];
+    if (!d || !t.fields.some((f) => f.key === k) || (out[k] ?? '').trim()) continue;
+    if ((BANK_KEYS as readonly string[]).includes(k) && k !== 'bankCurrency' && !bankEmpty) continue;
+    out[k] = d;
+  }
+  // Older templates may name their payment note differently.
+  if (!t.fields.some((f) => f.key === 'paymentInstructions')) {
+    const pf = find(t.fields.filter((f) => !(PAYMENT_DEFAULT_KEYS as readonly string[]).includes(f.key)), /payment.?(instructions|details)|wise/i);
+    if (pf && !out[pf.key] && settings.paymentInstructions) out[pf.key] = settings.paymentInstructions;
+  }
   return out;
 }
 
@@ -76,6 +89,15 @@ function FieldInput({ f, value, onChange }: { f: TemplateField; value: string; o
   const label = f.label + (f.required ? ' *' : '');
   if (f.key === 'paymentLink') return <PaymentLinkInput id={id} label={label} value={value} onChange={onChange} hint={f.help} />;
   if (f.key === 'paymentQr') return <PaymentQrInput label={f.label} value={value} onChange={onChange} />;
+  if (f.key === 'paypalLink') return <PaypalLinkInput id={id} label={label} value={value} onChange={onChange} hint={f.help} />;
+  if ((BANK_KEYS as readonly string[]).includes(f.key)) return <BankFieldInput id={id} k={f.key as BankKey} label={label} value={value} onChange={onChange} hint={f.help} />;
+  if (f.key === 'paypalFeeNote') {
+    return (
+      <Field label={label} htmlFor={id} hint={f.help}>
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={PAYMENT_LIMITS.paypalFeeNote} />
+      </Field>
+    );
+  }
   const input =
     f.type === 'textarea' ? (
       <Textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} rows={4} />
@@ -159,7 +181,7 @@ function Wizard() {
           setSource(sr.envelope);
           setTemplateId(bt.id);
           const opts = amountOptions(sr.envelope);
-          setValues(withStatementDefaults(bt, { ...defaultsOf(bt), ...billingPrefill(bt, sr.envelope, opts[0]?.line ?? '') }, r.settings.paymentInstructions, r.settings));
+          setValues(withStatementDefaults(bt, { ...defaultsOf(bt), ...billingPrefill(bt, sr.envelope, opts[0]?.line ?? '') }, r.settings));
           setRecipient(sr.envelope.recipient);
           setStep(1);
         } else if (!bt) setError('The billing statement template is not installed yet.');
@@ -175,7 +197,7 @@ function Wizard() {
 
   const pick = (tpl: TemplateSummary) => {
     setTemplateId(tpl.id);
-    setValues(withStatementDefaults(tpl, defaultsOf(tpl), list?.settings.paymentInstructions ?? '', list?.settings));
+    setValues(withStatementDefaults(tpl, defaultsOf(tpl), list?.settings));
   };
 
   const groups = React.useMemo(() => {

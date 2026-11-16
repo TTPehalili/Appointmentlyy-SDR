@@ -6,7 +6,8 @@ import { Button, Dialog, Field, InlineError, Input, Textarea, useToast } from '@
 import { apiJson } from '@/lib/authClient';
 import type { AgreementSettings } from '@/lib/agreements/envelope';
 import { SignaturePad, type SignatureValue } from '@/components/agreements/SignaturePad';
-import { PaymentLinkInput, PaymentQrInput } from '@/components/agreements/PaymentInputs';
+import { BankTransferInputs, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
+import { PAYMENT_LIMITS } from '@/lib/agreements/paymentOptions';
 
 type Form = Omit<AgreementSettings, 'hasSavedSignature'>;
 
@@ -100,11 +101,27 @@ export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: bool
               <Input id="agr-reply-to" type="email" value={form.replyTo} onChange={set('replyTo')} />
             </Field>
           </section>
-          <Field label="Payment instructions for billing statements" htmlFor="agr-payment" hint="Your Wise USD account details. Filled in on new billing statements.">
-            <Textarea id="agr-payment" value={form.paymentInstructions} onChange={set('paymentInstructions')} rows={5} maxLength={2000} />
-          </Field>
-          <PaymentLinkInput id="agr-pay-link" label="Default payment link (Pay now)" hint="e.g. your Wise payment link. https:// only." value={form.paymentLink} onChange={(v) => setForm((f) => (f ? { ...f, paymentLink: v } : f))} />
-          <PaymentQrInput label="Default payment QR code" value={form.paymentQr} onChange={(v) => setForm((f) => (f ? { ...f, paymentQr: v } : f))} />
+          <section className="flex flex-col gap-4" aria-label="Billing statement payment options">
+            <div>
+              <p className="text-body-strong text-fg">Billing statement payment options</p>
+              <p className="text-small text-fg-tertiary">Each is optional and shown only when filled, in this order. You can change them on each statement.</p>
+            </div>
+            <PaymentLinkInput id="agr-pay-link" label="1. Wise payment link (Pay now)" hint="https:// only." value={form.paymentLink} onChange={(v) => setForm((f) => (f ? { ...f, paymentLink: v } : f))} />
+            <BankTransferInputs
+              value={{ bankName: form.bankName, bankAccountName: form.bankAccountName, bankAccountNumber: form.bankAccountNumber, bankSwift: form.bankSwift, bankBranch: form.bankBranch, bankCurrency: form.bankCurrency }}
+              onChange={(k, v) => setForm((f) => (f ? { ...f, [k]: v } : f))}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <PaypalLinkInput id="agr-paypal-link" label="3. PayPal link" hint="paypal.me or paypal.com, https:// only." value={form.paypalLink} onChange={(v) => setForm((f) => (f ? { ...f, paypalLink: v } : f))} />
+              <Field label="PayPal fee note" htmlFor="agr-paypal-fee" hint='Optional, e.g. "PayPal payments: please add 4.5% to cover PayPal fees".'>
+                <Input id="agr-paypal-fee" value={form.paypalFeeNote} onChange={set('paypalFeeNote')} maxLength={PAYMENT_LIMITS.paypalFeeNote} />
+              </Field>
+            </div>
+            <PaymentQrInput label="Payment QR (any provider)" value={form.paymentQr} onChange={(v) => setForm((f) => (f ? { ...f, paymentQr: v } : f))} />
+            <Field label="Payment note (optional)" htmlFor="agr-payment" hint="Any extra payment instructions, printed last. Filled in on new billing statements.">
+              <Textarea id="agr-payment" value={form.paymentInstructions} onChange={set('paymentInstructions')} rows={3} maxLength={2000} />
+            </Field>
+          </section>
           <section className="flex flex-col gap-2">
             <p className="text-body-strong text-fg">Saved countersignature</p>
             {saved && !clearSig && !drawing && (
