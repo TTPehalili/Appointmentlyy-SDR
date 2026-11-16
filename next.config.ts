@@ -29,6 +29,15 @@ const nextConfig: NextConfig = {
         source: "/:path((?!api/profile/avatar/image).*)",
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'none'" }],
       },
+      // Agreements signer pages and APIs: private links, never indexed, never leaked in a Referer.
+      ...["/s/:path*", "/api/sign/:path*"].map((source) => ({
+        source,
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      })),
     ];
   },
   /**

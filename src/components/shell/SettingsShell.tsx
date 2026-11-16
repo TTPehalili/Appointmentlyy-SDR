@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown, Lock } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useSession } from '@/lib/session';
+import { useServerAuth } from '@/lib/authClient';
 import { can, type Permission } from '@/lib/permissions';
 import { findNavItem, type AdminNavGroup } from '@/lib/adminNav';
 import AdminControlCentre from '@/components/AdminControlCentre';
@@ -14,8 +15,11 @@ import { Button, EmptyState, Skeleton, useToast } from '@/components/ui';
 /** Nav groups filtered to what the current role may see (hidden, never disabled). */
 export function useVisibleGroups(groups: AdminNavGroup[]): AdminNavGroup[] {
   const { role } = useSession();
+  const { identity } = useServerAuth();
+  // Owner-only sections (Agreements) hide while staff are viewing a client workspace.
+  const inOwnerWorkspace = Boolean(identity?.isPlatformAdmin && identity.tenantCode === 'APPOINTMENTLYY');
   return groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => can(role, i.permission)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => can(role, i.permission) && (!i.ownerWorkspaceOnly || inOwnerWorkspace)) }))
     .filter((g) => g.items.length > 0);
 }
 

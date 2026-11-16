@@ -10,6 +10,8 @@ export interface AdminNavItem {
   controlSection?: AdminControlSection;
   /** Old names, so ⌘K finds them. */
   keywords?: string;
+  /** Only for platform staff signed in to the Appointmentlyy workspace itself (not while viewing a client). */
+  ownerWorkspaceOnly?: boolean;
 }
 
 export interface AdminNavGroup {
@@ -86,6 +88,7 @@ export const PLATFORM_NAV: AdminNavGroup[] = [
       { id: 'support-desk', label: 'Support desk', href: '/platform/support', permission: 'platform', keywords: 'ticket triage admin desk' },
       { id: 'ops-intel', label: 'Operations intel', href: '/platform/ops-intel', permission: 'platform', keywords: 'executive assistant' },
       { id: 'job-signals', label: 'Job signals radar', href: '/platform/job-signals', permission: 'platform', keywords: 'job radar hiring signals' },
+      { id: 'agreements', label: 'Agreements', href: '/platform/agreements', permission: 'platform', ownerWorkspaceOnly: true, keywords: 'agreements e-signature esign sign contract proposal uat certificate delivery report countersign docusign' },
       { id: 'announcements', label: 'Announcements', href: '/platform/announcements', permission: 'platform', keywords: 'announcements release notes updates maintenance ribbon banner' },
       { id: 'flags', label: 'Feature flags', href: '/platform/flags', permission: 'platform', keywords: 'flags rollout' },
     ],
