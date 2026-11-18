@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
     clearSessionCookie(res);
     return res;
   }
-  const workspaces = (await listWorkspacesFor(session.email)).map((t) => ({
+  // Both reads are independent: one round trip instead of two in a row.
+  const [tenants, cred] = await Promise.all([listWorkspacesFor(session.email), getTenantStore().getCredential(session.email)]);
+  const workspaces = tenants.map((t) => ({
     code: t.code,
     name: t.name,
     displayName: t.branding.displayName || t.name,
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
     status: t.status,
   }));
   // Everyone must create a password on first sign-in; the app sends them to /login/set-password until they do.
-  const hasPassword = Boolean(await getTenantStore().getCredential(session.email));
+  const hasPassword = Boolean(cred);
   return NextResponse.json(
     { success: true, identity: publicIdentity(session.identity), workspaces, hasPassword },
     { headers: { 'Cache-Control': 'no-store' } },

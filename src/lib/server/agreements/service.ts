@@ -63,12 +63,14 @@ async function notifyOwner(e: Envelope, settings: AgreementSettings, subject: st
 }
 
 /**
- * Housekeeping on every owner list: links past their expiry become `expired`, and the owner hears
- * about unsigned documents expiring within 24 hours (once per envelope).
+ * Housekeeping after an owner list: links past their expiry become `expired`, and the owner hears
+ * about unsigned documents expiring within 24 hours (once per envelope). `listed` reuses the rows
+ * the caller has just read instead of reading every envelope again. Every write is guarded by the
+ * envelope's current status, as before.
  */
-export async function sweep(origin?: string): Promise<void> {
+export async function sweep(origin?: string, listed?: Envelope[]): Promise<void> {
   const now = Date.now();
-  const rows = await store().listEnvelopes();
+  const rows = listed ?? (await store().listEnvelopes());
   let settings: AgreementSettings | null = null;
   for (const e of rows) {
     if (e.status !== 'sent' && e.status !== 'opened') continue;
@@ -87,6 +89,17 @@ export async function sweep(origin?: string): Promise<void> {
       ], origin);
     }
   }
+}
+
+/** Minimum time between two list sweeps on one server. Reads still enforce expiry themselves. */
+export const SWEEP_MIN_GAP_MS = 60_000;
+const sweepClock = globalThis as unknown as { __appyAgreementsLastSweep?: number };
+
+/** True (and the clock is set) when the last list sweep on this server was over a minute ago. */
+export function sweepDue(now = Date.now()): boolean {
+  if (now - (sweepClock.__appyAgreementsLastSweep ?? 0) < SWEEP_MIN_GAP_MS) return false;
+  sweepClock.__appyAgreementsLastSweep = now;
+  return true;
 }
 
 async function markExpired(e: Envelope) {

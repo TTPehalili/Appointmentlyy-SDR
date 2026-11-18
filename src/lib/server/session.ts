@@ -10,6 +10,7 @@ import { ROLE_RANK, type Role } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { resolveIdentity, type Actor, type ResolvedIdentity } from '@/lib/server/tenancy';
 import { credentialFingerprint } from '@/lib/server/passwords';
+import { forgetSession, memoSession } from '@/lib/server/sessionMemo';
 
 export const SESSION_TTL_SECONDS = 7 * 24 * 3600;
 
@@ -20,9 +21,26 @@ export interface ServerSession extends Actor {
 type CookieSource = { cookies: { get(name: string): { value: string } | undefined } };
 
 export async function getServerSession(req: NextRequest | CookieSource): Promise<ServerSession | null> {
-  const payload = verifyAuthToken(req.cookies.get(AUTH_COOKIE_NAME)?.value, ['session']);
-  if (!payload) return null;
-  const identity = await resolveIdentity(payload.email, payload.tenantCode, payload.repName);
+  const cookie = req.cookies.get(AUTH_COOKIE_NAME)?.value;
+  // Signature and expiry are verified on every call; only the storage check behind them is shared.
+  const payload = verifyAuthToken(cookie, ['session']);
+  if (!payload || !cookie) return null;
+  // The proxy gate, the route handler and a page's parallel API calls all ask the same question
+  // within moments: they share one storage check for up to 3 seconds (trade-off in sessionMemo.ts).
+  return memoSession(cookie, () => checkSession(payload));
+}
+
+/** Stop reusing the storage check for this request's session cookie (logout, workspace switch). */
+export function forgetSessionOf(req: NextRequest | CookieSource) {
+  forgetSession(req.cookies.get(AUTH_COOKIE_NAME)?.value);
+}
+
+/** The live check against storage. Everything the session depends on is read in one round trip. */
+async function checkSession(payload: NonNullable<ReturnType<typeof verifyAuthToken>>): Promise<ServerSession | null> {
+  const [identity, cred] = await Promise.all([
+    resolveIdentity(payload.email, payload.tenantCode, payload.repName),
+    getTenantStore().getCredential(payload.email),
+  ]);
   if (!identity) return null;
 
   const member = identity.member;
@@ -33,7 +51,6 @@ export async function getServerSession(req: NextRequest | CookieSource): Promise
     if (member.joinedAt && payload.iat * 1000 < Date.parse(member.joinedAt) - 5000) return null;
   }
   // A password change or reset signs out every other session.
-  const cred = await getTenantStore().getCredential(payload.email);
   if (payload.nonce !== credentialFingerprint(cred)) return null;
 
   return {

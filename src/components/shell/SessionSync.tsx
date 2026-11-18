@@ -75,9 +75,15 @@ export function SessionSync() {
       if (wiped || changedElsewhere) window.location.reload();
     };
 
+    // On focus the check runs at most once a minute (focus and visibilitychange often fire together).
+    // Every API call still re-checks the session on the server, so this only paces the browser's copy.
+    const FOCUS_SYNC_MIN_GAP_MS = 60_000;
+    let lastSync = Date.now();
     sync();
     const onFocus = () => {
-      if (document.visibilityState === 'visible') sync();
+      if (document.visibilityState !== 'visible' || Date.now() - lastSync < FOCUS_SYNC_MIN_GAP_MS) return;
+      lastSync = Date.now();
+      sync();
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_OWNER_KEY && tabOwner !== null && e.newValue !== tabOwner) window.location.reload();

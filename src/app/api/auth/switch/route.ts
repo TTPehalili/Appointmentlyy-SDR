@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PLATFORM_TENANT_CODE } from '@/lib/roles';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { resolveIdentity } from '@/lib/server/tenancy';
-import { getServerSession, publicIdentity, setSessionCookie } from '@/lib/server/session';
+import { forgetSessionOf, getServerSession, publicIdentity, setSessionCookie } from '@/lib/server/session';
 
 /**
  * POST /api/auth/switch  { tenantCode }
@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // The old cookie points at the previous workspace: stop reusing its check on this server.
+  forgetSessionOf(req);
   const res = NextResponse.json({ success: true, identity: publicIdentity(identity) });
   await setSessionCookie(res, identity);
   return res;

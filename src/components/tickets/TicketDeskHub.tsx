@@ -97,10 +97,21 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
 
   useEffect(() => {
     fetchTickets();
+    // Poll every 30s for live updates, only while the tab is visible; catch up on return.
     const interval = setInterval(() => {
-      fetchTickets();
-    }, 15000); // Poll every 15s for live communication updates
-    return () => clearInterval(interval);
+      if (document.visibilityState === 'visible') fetchTickets();
+    }, 30000);
+    let hiddenSince: number | null = null;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenSince = Date.now();
+      else if (hiddenSince !== null && Date.now() - hiddenSince >= 30000) fetchTickets();
+      if (document.visibilityState === 'visible') hiddenSince = null;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // Check URL param ?id=TKT-XXXX

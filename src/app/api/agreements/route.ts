@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import { getAgreementStore, AgreementStorageError, isEnvelopeId } from '@/lib/server/agreementStore';
 import { paymentField, statementDateField } from '@/lib/server/agreements/billing';
@@ -12,13 +12,14 @@ import {
   json,
   loadSettings,
   metaOf,
+  pastExpiry,
   readJson,
   requireOwner,
   templateSummary,
   userAgentOf,
   validateAccess,
 } from '@/lib/server/agreements/core';
-import { AgreementError, newEnvelopeRecord, sendEnvelope, sweep } from '@/lib/server/agreements/service';
+import { AgreementError, newEnvelopeRecord, sendEnvelope, sweep, sweepDue } from '@/lib/server/agreements/service';
 import { mailStatus } from '@/lib/server/agreements/mail';
 import { AGREEMENT_LIMITS, toEnvelopeView } from '@/lib/agreements/envelope';
 import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, hasBank } from '@/lib/agreements/paymentOptions';
@@ -32,12 +33,17 @@ export async function GET(req: NextRequest) {
   const owner = await requireOwner(req);
   if (owner instanceof NextResponse) return owner;
   try {
-    await sweep(req.nextUrl.origin).catch((err) => console.error('[agreements sweep]', err));
     const store = getAgreementStore();
     const [rows, { settings }] = await Promise.all([store.listEnvelopes(), loadSettings()]);
+    // Housekeeping (mark expired links, "expiring soon" notices) runs after the response, at most
+    // once a minute per server, on the rows just read.
+    const origin = req.nextUrl.origin;
+    if (sweepDue()) after(() => sweep(origin, rows).catch((err) => console.error('[agreements sweep]', err)));
+    const now = Date.now();
     return json({
       success: true,
-      envelopes: rows.map(toEnvelopeView),
+      // A link past its expiry shows as expired straight away, even before the sweep has recorded it.
+      envelopes: rows.map((e) => toEnvelopeView((e.status === 'sent' || e.status === 'opened') && pastExpiry(e, now) ? { ...e, status: 'expired' } : e)),
       templates: allTemplates().map(templateSummary),
       settings,
       mail: mailStatus(),

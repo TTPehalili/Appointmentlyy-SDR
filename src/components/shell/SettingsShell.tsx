@@ -52,8 +52,11 @@ function SubNav({
               const active = it.id === activeId;
               return (
                 <li key={it.id}>
+                  {/* No prefetch: each console page prefetch pays the server-side staff gate (a storage
+                      check), and the whole sub-nav entering the viewport fired them all at once. */}
                   <Link
                     href={it.href}
+                    prefetch={false}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       'focus-ring flex h-8 items-center rounded-md px-2 text-body transition-colors duration-150',
@@ -98,7 +101,7 @@ function MobileSectionPicker({ groups, activeLabel }: { groups: AdminNavGroup[];
             <div key={g.label}>
               <p className="px-2 pb-1 text-group text-fg-tertiary">{g.label}</p>
               {g.items.map((it) => (
-                <Link key={it.id} href={it.href} onClick={() => setOpen(false)} className="flex h-11 items-center rounded-md px-2 text-body text-fg-secondary">
+                <Link key={it.id} href={it.href} prefetch={false} onClick={() => setOpen(false)} className="flex h-11 items-center rounded-md px-2 text-body text-fg-secondary">
                   {it.label}
                 </Link>
               ))}

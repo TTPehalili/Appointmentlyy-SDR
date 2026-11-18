@@ -14,20 +14,26 @@ export async function GET(req: NextRequest) {
   if (!session.isPlatformAdmin) return forbidden();
 
   const store = getTenantStore();
-  const tenants = await store.listTenants();
-  const rows = await Promise.all(
-    tenants.map(async (t) => {
-      const members = await store.listMembers({ tenantCode: t.code });
-      const admins = members.filter((m) => m.role === 'Admin' && m.status !== 'removed');
-      return {
-        ...t,
-        seatsUsed: seatsUsed(members),
-        activeMembers: members.filter((m) => m.status === 'active').length,
-        pendingInvites: members.filter((m) => m.status === 'invited').length,
-        admins: admins.map((m) => ({ email: m.email, name: m.name, status: m.status })),
-      };
-    }),
-  );
+  // One read for the workspaces and one for all their members (grouped here), instead of one
+  // members query per workspace.
+  const [tenants, allMembers] = await Promise.all([store.listTenants(), store.listAllMembers()]);
+  const byTenant = new Map<string, typeof allMembers>();
+  for (const m of allMembers) {
+    const list = byTenant.get(m.tenantCode);
+    if (list) list.push(m);
+    else byTenant.set(m.tenantCode, [m]);
+  }
+  const rows = tenants.map((t) => {
+    const members = byTenant.get(t.code) ?? [];
+    const admins = members.filter((m) => m.role === 'Admin' && m.status !== 'removed');
+    return {
+      ...t,
+      seatsUsed: seatsUsed(members),
+      activeMembers: members.filter((m) => m.status === 'active').length,
+      pendingInvites: members.filter((m) => m.status === 'invited').length,
+      admins: admins.map((m) => ({ email: m.email, name: m.name, status: m.status })),
+    };
+  });
   return NextResponse.json(
     { success: true, tenants: rows.filter((t) => t.code !== PLATFORM_TENANT_CODE), storage: store.backend },
     { headers: { 'Cache-Control': 'no-store' } },

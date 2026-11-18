@@ -7,6 +7,7 @@ import type { Permission } from '@/lib/permissions';
 import { parseRole, ROLE_RANK, type Role } from '@/lib/roles';
 // Guarded flag: ignored when NODE_ENV=production unless ALLOW_DEMO_LOGIN_IN_PROD=1 (see demoMode).
 import { DEMO_LOGIN } from '@/lib/demoMode';
+import { warnIfSlow } from '@/lib/server/slowLog';
 
 /** Pages anyone can open. Everything else in the app needs a signed-in session. */
 function isPublicPage(pathname: string): boolean {
@@ -184,6 +185,19 @@ const KNOWN_CUSTOM_DOMAINS: Record<
 };
 
 export async function proxy(request: NextRequest) {
+  // Slow-request log for this proxy pass (route pattern and duration only, see slowLog.ts). Whole
+  // API requests are timed separately (slowRequestLog.ts): an after() here runs when the proxy's
+  // own pass-through response is done, before the route handler has finished.
+  const startedAt = performance.now();
+  const { pathname } = request.nextUrl;
+  try {
+    return await routeRequest(request);
+  } finally {
+    warnIfSlow('proxy', request.method, pathname, startedAt);
+  }
+}
+
+async function routeRequest(request: NextRequest) {
   const blocked = await authGate(request);
   if (blocked) return blocked;
 

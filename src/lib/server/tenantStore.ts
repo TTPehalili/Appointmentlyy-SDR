@@ -12,6 +12,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Role } from '@/lib/roles';
+import { clearSessionMemo } from '@/lib/server/sessionMemo';
 
 export type TenantStatus = 'active' | 'suspended';
 export type MemberStatus = 'invited' | 'active' | 'removed';
@@ -83,6 +84,8 @@ export interface TenantStore {
   insertTenant(t: Tenant): Promise<Tenant>;
   updateTenant(code: string, patch: Partial<Omit<Tenant, 'code' | 'createdAt' | 'createdBy'>>): Promise<Tenant | null>;
   listMembers(filter: { tenantCode?: string; email?: string }): Promise<Member[]>;
+  /** Every member of every workspace in one read (oldest invite first), for platform-wide lists. */
+  listAllMembers(): Promise<Member[]>;
   getMember(id: string): Promise<Member | null>;
   insertMember(m: Member): Promise<Member>;
   updateMember(id: string, patch: Partial<Omit<Member, 'id' | 'tenantCode' | 'email'>>): Promise<Member | null>;
@@ -169,6 +172,9 @@ class FileTenantStore implements TenantStore {
     return this.read().members.filter(
       (m) => (!filter.tenantCode || m.tenantCode === filter.tenantCode) && (!filter.email || m.email === filter.email),
     );
+  }
+  async listAllMembers() {
+    return this.read().members;
   }
   async getMember(id: string) {
     return this.read().members.find((m) => m.id === id) ?? null;
@@ -301,6 +307,18 @@ class SupabaseTenantStore implements TenantStore {
     if (filter.email) q = q.eq('email', filter.email);
     return (this.check(await q.order('invited_at')) as Row[]).map(memberFromRow);
   }
+  async listAllMembers() {
+    // The API returns at most 1000 rows per request, so read in pages until a short one.
+    const PAGE = 1000;
+    const out: Member[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const rows = this.check(
+        await this.db.from('tenant_members').select('*').order('invited_at').order('id').range(from, from + PAGE - 1),
+      ) as Row[];
+      out.push(...rows.map(memberFromRow));
+      if (rows.length < PAGE) return out;
+    }
+  }
   async getMember(id: string) {
     const r = this.check(await this.db.from('tenant_members').select('*').eq('id', id).maybeSingle()) as Row | null;
     return r ? memberFromRow(r) : null;
@@ -345,12 +363,68 @@ class SupabaseTenantStore implements TenantStore {
 
 let store: TenantStore | null = null;
 
+/** Writes that can change who is signed in, to which workspace, with which role or branding. */
+const AUTH_WRITES = ['insertTenant', 'updateTenant', 'insertMember', 'updateMember', 'setCredential'] as const;
+const ALL_CALLS = [
+  'listTenants', 'getTenant', 'insertTenant', 'updateTenant', 'listMembers', 'listAllMembers', 'getMember',
+  'insertMember', 'updateMember', 'addAudit', 'listAudit', 'getCredential', 'setCredential',
+] as const;
+
+type AnyCall = (...args: unknown[]) => Promise<unknown>;
+
+/**
+ * Every write that can change auth state clears the short session memo (see sessionMemo.ts), so a
+ * removed member, a suspended workspace or a changed password is refused on the very next request
+ * served by this process. Doing it here covers every present and future code path that writes
+ * through the store.
+ */
+function instrument(s: TenantStore): TenantStore {
+  const target = s as unknown as Record<string, AnyCall>;
+  for (const name of AUTH_WRITES) {
+    const orig = target[name].bind(s);
+    target[name] = async (...args) => {
+      try {
+        return await orig(...args);
+      } finally {
+        clearSessionMemo();
+      }
+    };
+  }
+  // Test-only: one log line per store call (the method name only, never arguments), so
+  // tools/perf_check.mjs can count storage calls and sequential round trips per request ("wave":
+  // calls started in the same tick). PERF_STORE_DELAY_MS adds latency to stand in for a remote
+  // database. Off unless PERF_STORE_LOG=1 (never set in production).
+  // Fails closed: ignored whenever any production credential or Railway marker is present.
+  const perfTestServer = ![process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.RESEND_API_KEY, process.env.RAILWAY_ENVIRONMENT, process.env.RAILWAY_PROJECT_ID, process.env.RAILWAY_SERVICE_ID].some((v) => (v || '').trim()) && Boolean(process.env.TENANCY_DATA_DIR);
+  if (process.env.PERF_STORE_LOG === '1' && perfTestServer) {
+    const delay = Math.min(Math.max(Number(process.env.PERF_STORE_DELAY_MS) || 0, 0), 5000);
+    const w = globalThis as unknown as { __appyPerfWave?: { n: number; open: boolean } };
+    const wave = (w.__appyPerfWave ??= { n: 0, open: false });
+    for (const name of ALL_CALLS) {
+      const orig = target[name].bind(s);
+      target[name] = async (...args) => {
+        if (!wave.open) {
+          wave.n += 1;
+          wave.open = true;
+          setImmediate(() => {
+            wave.open = false;
+          });
+        }
+        console.log(`[store-call] w${wave.n} ${name}`);
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        return orig(...args);
+      };
+    }
+  }
+  return s;
+}
+
 export function getTenantStore(): TenantStore {
   if (store) return store;
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
   const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   if (url && key) {
-    store = new SupabaseTenantStore(createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }));
+    store = instrument(new SupabaseTenantStore(createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })));
   } else {
     // In production the file store is only allowed when someone chose a persistent folder on
     // purpose; otherwise a redeploy would silently wipe every workspace, member and password.
@@ -359,7 +433,7 @@ export function getTenantStore(): TenantStore {
         '[tenantStore] No database configured. Set SUPABASE_SERVICE_ROLE_KEY (recommended) or TENANCY_DATA_DIR pointing at a persistent disk.',
       );
     }
-    store = new FileTenantStore(process.env.TENANCY_DATA_DIR || path.join(process.cwd(), '.data'));
+    store = instrument(new FileTenantStore(process.env.TENANCY_DATA_DIR || path.join(process.cwd(), '.data')));
   }
   return store;
 }

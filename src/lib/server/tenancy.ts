@@ -106,14 +106,27 @@ export function displayNameFor(email: string, ...candidates: (string | null | un
  */
 export async function resolveIdentity(email: string, tenantCode: string, fallbackName = ''): Promise<ResolvedIdentity | null> {
   const store = getTenantStore();
-  await ensurePlatformTenant();
-  const platform = await isPlatformAdmin(email);
-  const tenant = await store.getTenant(tenantCode);
+  // Every read below is independent of the others, so they go out together: one storage round
+  // trip instead of four or five in a row. The rules applied to the rows are unchanged.
+  const envAdmin = getAdminEmails().includes(email);
+  const isPlatformWorkspace = tenantCode === PLATFORM_TENANT_CODE;
+  const [platformTenant, otherTenant, platformRows, otherRows] = await Promise.all([
+    ensurePlatformTenant(),
+    // The platform workspace row is already being read: don't read it twice.
+    isPlatformWorkspace ? null : store.getTenant(tenantCode),
+    // Decides staff status (same rule as isPlatformAdmin) and is the staff member's own record.
+    store.listMembers({ tenantCode: PLATFORM_TENANT_CODE, email }),
+    // Membership of the requested workspace; not needed for AUTH_ADMIN_EMAILS staff. (An empty code
+    // would be an unfiltered read: skipped, as no workspace has one.)
+    isPlatformWorkspace || envAdmin || !tenantCode ? null : store.listMembers({ tenantCode, email }),
+  ]);
+  const platform = envAdmin || platformRows.some((m) => m.status === 'active' && m.role === 'Super Admin');
+  const tenant = isPlatformWorkspace ? platformTenant : otherTenant;
 
   if (platform) {
     // Platform staff may open any workspace (suspended ones too, to fix them).
-    const target = tenant ?? (await store.getTenant(PLATFORM_TENANT_CODE))!;
-    const own = (await store.listMembers({ tenantCode: PLATFORM_TENANT_CODE, email }))[0] ?? null;
+    const target = tenant ?? platformTenant;
+    const own = platformRows[0] ?? null;
     return {
       email,
       name: displayNameFor(email, own?.name, fallbackName),
@@ -125,7 +138,8 @@ export async function resolveIdentity(email: string, tenantCode: string, fallbac
   }
 
   if (!tenant || tenant.status !== 'active') return null;
-  const member = (await store.listMembers({ tenantCode, email })).find((m) => m.status !== 'removed') ?? null;
+  const rows = isPlatformWorkspace ? platformRows : (otherRows ?? []);
+  const member = rows.find((m) => m.status !== 'removed') ?? null;
   if (!member) return null;
   return { email, name: displayNameFor(email, member.name, fallbackName), role: member.role, tenant, isPlatformAdmin: false, member };
 }
@@ -133,8 +147,10 @@ export async function resolveIdentity(email: string, tenantCode: string, fallbac
 /** Workspaces this email can use: every tenant for platform staff, otherwise live memberships. */
 export async function listWorkspacesFor(email: string): Promise<Tenant[]> {
   const store = getTenantStore();
-  if (await isPlatformAdmin(email)) return store.listTenants();
-  const memberships = (await store.listMembers({ email })).filter((m) => m.status !== 'removed');
+  // The staff check and the membership read are independent: read both at once.
+  const [staff, rows] = await Promise.all([isPlatformAdmin(email), store.listMembers({ email })]);
+  if (staff) return store.listTenants();
+  const memberships = rows.filter((m) => m.status !== 'removed');
   const tenants = await Promise.all(memberships.map((m) => store.getTenant(m.tenantCode)));
   return tenants.filter((t): t is Tenant => !!t && t.status === 'active');
 }

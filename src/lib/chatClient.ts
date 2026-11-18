@@ -225,6 +225,33 @@ async function heartbeat() {
   if (!r.ok) handleAuthFailure(r.status, r.error);
 }
 
+/**
+ * The periodic heartbeat: report this person's status and read everyone else's in one request.
+ * While the tab is hidden only the status is sent (that keeps this person Available to others);
+ * the list is read again as soon as the tab is visible.
+ */
+async function heartbeatAndPresence() {
+  if (state.status !== 'ready') return;
+  const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  if (hidden) {
+    presenceStale = true;
+    return heartbeat();
+  }
+  const r = await post<{ status: ChatPresenceStatus; people?: ChatPresence[]; serverTime?: string }>('/api/chat/presence', {
+    status: effectiveStatus(),
+    people: true,
+  });
+  if (!r.ok) return handleAuthFailure(r.status, r.error);
+  presenceStale = false;
+  if (!r.people) return loadPresence(); // an older server without the combined reply
+  noteServerTime(r.serverTime);
+  setState({ people: r.people });
+  primeAvatars(r.people);
+}
+
+/** The people list was not refreshed while the tab was hidden. */
+let presenceStale = false;
+
 async function loadPresence() {
   const r = await call<{ people: ChatPresence[]; serverTime: string }>('/api/chat/presence');
   if (!r.ok) return handleAuthFailure(r.status, r.error);
@@ -639,6 +666,10 @@ const onVisible = () => {
   // Back on the tab: whatever the open view shows is now read.
   viewing.forEach((n, id) => n > 0 && markRead(id));
   void catchUp();
+  if (presenceStale) {
+    presenceStale = false;
+    void loadPresence();
+  }
 };
 
 let started = false;
@@ -675,14 +706,16 @@ function afterLoad() {
   }
   if (state.status !== 'ready' || heartbeatTimer) return;
   openStream();
-  void heartbeat().then(loadPresence);
+  void heartbeatAndPresence();
   heartbeatTimer = setInterval(() => {
-    void heartbeat().then(loadPresence);
+    void heartbeatAndPresence();
   }, PRESENCE_HEARTBEAT_MS);
-  // Safety net: re-read unread counts now and then (and more often without the live stream).
+  // Safety net: re-read unread counts now and then (and more often without the live stream). The
+  // live stream keeps a hidden tab up to date, so the safety read waits until the tab is visible.
   let tick = 0;
   refreshTimer = setInterval(() => {
     tick += 1;
+    if (state.transport === 'live' && document.visibilityState === 'hidden') return;
     if (state.transport !== 'live' || tick % 4 === 0) void loadChannels();
   }, 30_000);
 }

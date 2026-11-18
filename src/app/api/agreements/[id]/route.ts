@@ -14,7 +14,7 @@ import {
   userAgentOf,
   validateAccess,
 } from '@/lib/server/agreements/core';
-import { AgreementError, changeAccess, needsCompletion } from '@/lib/server/agreements/service';
+import { AgreementError, changeAccess, expireIfDue, needsCompletion } from '@/lib/server/agreements/service';
 import { AGREEMENT_LIMITS, toEnvelopeView, viewRows } from '@/lib/agreements/envelope';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,8 +27,10 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
   if (!isEnvelopeId(id)) return notFound();
   const store = getAgreementStore();
-  const e = await store.getEnvelope(id);
-  if (!e) return notFound();
+  const found = await store.getEnvelope(id);
+  if (!found) return notFound();
+  // Expiry is enforced on read (the list sweep runs at most once a minute, after the response).
+  const e = await expireIfDue(found);
   const events = await store.listEvents(id);
   const t = findTemplate(e.templateId);
   return json({
