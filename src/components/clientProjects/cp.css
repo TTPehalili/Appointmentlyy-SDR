@@ -243,10 +243,14 @@ body.cp-dragging, body.cp-dragging * { cursor: grabbing !important; user-select:
   .ai-write { grid-template-columns: 1fr; }
 }
 
+/* Ask Copilot: a brief highlight when the header button brings the panel into view. */
+@keyframes cp-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand, #FF0943) 45%, transparent); } }
+.cp-copilot.cp-flash { animation: cp-flash 1.4s ease-out 1; }
+
 /* Reduced motion: transforms off on drag; loops removed (not shortened); things jump to the end state. */
 @media (prefers-reduced-motion: reduce) {
   .cp-card, .cp-card:hover, .cp-card.is-ghost { transform: none !important; transition: none; }
   .cp-count > span, .cp-track > .fill, .cp-track .dia::after, .cp-card.just-done .cp-donemark,
-  .ai-beam, .ai-orb::before, .ai-scan, .ai-pages i.on, .ai-msc, .ai-card, .ai-card.is-skeleton, .ai-ready, .ai-sent, .ai-caret-t { animation: none !important; }
+  .ai-beam, .ai-orb::before, .ai-scan, .ai-pages i.on, .ai-msc, .ai-card, .ai-card.is-skeleton, .ai-ready, .ai-sent, .ai-caret-t, .cp-copilot.cp-flash { animation: none !important; }
   .ai-scan { display: none; }
 }

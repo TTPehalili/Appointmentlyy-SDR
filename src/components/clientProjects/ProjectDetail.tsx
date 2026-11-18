@@ -377,7 +377,29 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <NotificationsBell projectId={id} />
-          <Button variant="ghost" icon={<Sparkles />} onClick={() => setTab('dashboard')} data-testid="cp-ask-copilot">
+          <Button
+            variant="ghost"
+            icon={<Sparkles />}
+            onClick={() => {
+              // The Ask Copilot panel lives on the Dashboard tab, below the charts: switch tab, then bring it into view and focus it.
+              setTab('dashboard');
+              let tries = 0;
+              const reveal = () => {
+                const panel = document.querySelector<HTMLElement>('[data-testid="cp-copilot"]');
+                if (!panel) {
+                  if (++tries < 40) window.setTimeout(reveal, 50);
+                  return;
+                }
+                panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                panel.querySelector<HTMLInputElement>('[data-testid="cp-copilot-input"]')?.focus({ preventScroll: true });
+                panel.classList.remove('cp-flash');
+                void panel.offsetWidth;
+                panel.classList.add('cp-flash');
+              };
+              window.setTimeout(reveal, 0);
+            }}
+            data-testid="cp-ask-copilot"
+          >
             Ask Copilot
           </Button>
           <Button variant="secondary" icon={<Share2 />} onClick={() => setSharing(true)} data-testid="cp-share" disabled={p.status === 'archived'}>
