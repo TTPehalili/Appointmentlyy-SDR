@@ -30,7 +30,8 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'none'" }],
       },
       // Agreements signer pages and APIs: private links, never indexed, never leaked in a Referer.
-      ...["/s/:path*", "/api/sign/:path*"].map((source) => ({
+      // Client Projects shared board (/b, /api/board): the same private-link treatment.
+      ...["/s/:path*", "/api/sign/:path*", "/b/:path*", "/api/board/:path*"].map((source) => ({
         source,
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },

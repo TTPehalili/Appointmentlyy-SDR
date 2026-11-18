@@ -187,3 +187,31 @@ export function installAnthropicBridge(): void {
   globalThis.fetch = bridged as typeof fetch;
   console.info(`[ai-bridge] AI calls go to Claude (${process.env.ANTHROPIC_MODEL || DEFAULT_MODEL}).`);
 }
+
+/**
+ * One direct Claude call for a server feature that needs its own, longer timeout than the bridge's
+ * 60 seconds (the Client Projects planner reads whole contracts). It uses the same request
+ * translation, model, effort and fallbacks as the bridge (askClaude), with a client of its own, so the
+ * bridge's client and timeout for every other caller are untouched. It works whenever
+ * ANTHROPIC_API_KEY is set; AI_PROVIDER does not have to be "anthropic". Resolves to the reply text
+ * (JSON when `json` is set), or null when Claude is not configured or could not answer.
+ */
+export async function askClaudeDirect(input: { system: string; user: string; json?: boolean; schema?: unknown; maxOutputTokens?: number; timeoutMs: number }): Promise<{ text: string; model: string } | null> {
+  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!apiKey) return null;
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: input.timeoutMs });
+  const request: GeminiRequest = {
+    systemInstruction: { parts: [{ text: input.system }] },
+    contents: [{ role: 'user', parts: [{ text: input.user }] }],
+    generationConfig: { maxOutputTokens: input.maxOutputTokens, ...(input.json ? { responseMimeType: 'application/json', responseSchema: input.schema } : {}) },
+  };
+  const reply = await askClaude(client, JSON.stringify(request));
+  if (!reply) return null;
+  try {
+    const data = JSON.parse(reply.body) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; modelVersion?: string };
+    const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+    return text ? { text, model: data.modelVersion || process.env.ANTHROPIC_MODEL || DEFAULT_MODEL } : null;
+  } catch {
+    return null;
+  }
+}

@@ -89,6 +89,7 @@ export const PLATFORM_NAV: AdminNavGroup[] = [
       { id: 'ops-intel', label: 'Operations intel', href: '/platform/ops-intel', permission: 'platform', keywords: 'executive assistant' },
       { id: 'job-signals', label: 'Job signals radar', href: '/platform/job-signals', permission: 'platform', keywords: 'job radar hiring signals' },
       { id: 'agreements', label: 'Agreements', href: '/platform/agreements', permission: 'platform', ownerWorkspaceOnly: true, keywords: 'agreements e-signature esign sign contract proposal uat certificate delivery report countersign docusign' },
+      { id: 'client-projects', label: 'Client Projects', href: '/platform/client-projects', permission: 'platform', ownerWorkspaceOnly: true, keywords: 'client projects onboarding project board roadmap sop tasks milestones uat defects delivery jira trello kanban' },
       { id: 'announcements', label: 'Announcements', href: '/platform/announcements', permission: 'platform', keywords: 'announcements release notes updates maintenance ribbon banner' },
       { id: 'flags', label: 'Feature flags', href: '/platform/flags', permission: 'platform', keywords: 'flags rollout' },
     ],

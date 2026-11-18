@@ -10,7 +10,7 @@ import { DEMO_LOGIN } from '@/lib/demoMode';
 
 /** Pages anyone can open. Everything else in the app needs a signed-in session. */
 function isPublicPage(pathname: string): boolean {
-  return ['/login', '/design'].some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.startsWith('/certificate/') || pathname.startsWith('/s/');
+  return ['/login', '/design'].some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.startsWith('/certificate/') || pathname.startsWith('/s/') || pathname.startsWith('/b/');
 }
 
 /** API routes that work without a session (they authenticate some other way, or are sign-in itself). */
@@ -33,6 +33,8 @@ function isPublicApi(pathname: string, method: string): boolean {
   if (pathname.startsWith('/api/webhooks/') && !pathname.startsWith('/api/webhooks/test')) return true;
   // Agreements signer routes: the link token is the credential (checked and rate-limited there).
   if (pathname.startsWith('/api/sign/')) return true;
+  // Client Projects shared board: the board link token is the credential (checked and rate-limited there).
+  if (pathname.startsWith('/api/board/')) return true;
   // Resend delivers inbound mail here.
   if (pathname === '/api/email/inbound' && method === 'POST') return true;
   return false;
@@ -62,6 +64,8 @@ const STAFF_ONLY_API_PREFIXES = [
   '/api/platform/',
   // Agreements: the platform owner's e-signature tool (handlers also require the Appointmentlyy workspace).
   '/api/agreements',
+  // Client Projects: the platform owner's onboarding board (handlers also require the Appointmentlyy workspace).
+  '/api/client-projects',
 ];
 
 /**
