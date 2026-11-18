@@ -10,12 +10,17 @@ import { loadSettings } from '@/lib/server/agreements/core';
 import { mailStatus, sendAgreementMail, type AgreementMail } from '@/lib/server/agreements/mail';
 import { getClientProjectStore, isCpId } from '@/lib/server/clientProjectStore';
 import { isLocalTestServer } from '@/lib/server/agreements/mail';
-import { draftStatus } from '@/lib/server/clientProjects/ai';
+import { draftStatus, noLinks } from '@/lib/server/clientProjects/ai';
 import { buildClientReminder, buildReadinessNotice } from '@/lib/server/clientProjects/statusText';
+import { pdfPageCount } from '@/lib/server/clientProjects/pdfText';
+import { eventText } from '@/components/clientProjects/eventText';
 import {
+  attachmentName,
   blankTask,
   clientCanTick,
   consoleUrl,
+  detectAttachment,
+  openBlockers,
   defaultGoLive,
   defectFixDue,
   deliverableRef,
@@ -34,8 +39,12 @@ import { newId, nowIso } from '@/lib/server/tenantStore';
 import {
   AUTOMATION_RULES,
   CP_LIMITS,
+  LABEL_COLORS,
   PHASES,
+  PHASE_END_OFFSET,
   PHASE_LABEL,
+  PRIORITIES,
+  mentionedPeople,
   PROJECT_KEY_RE,
   PROJECT_STATUSES,
   SEVERITIES,
@@ -54,9 +63,16 @@ import {
   typeFor,
   type AiRun,
   type AutomationRule,
+  type ChecklistItem,
   type CpEvent,
   type CpEventType,
+  type CpFileMeta,
+  type CpNotification,
+  type Label,
+  type LabelColor,
+  type Person,
   type Phase,
+  type Priority,
   type Project,
   type ProjectStatus,
   type Proposal,
@@ -70,6 +86,8 @@ export class CpError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Extra fields for the JSON error body (e.g. `code` and the open blockers). */
+    public extra: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -79,6 +97,22 @@ export interface Ctx {
   /** 'owner:<email>', 'client:<name>' or 'system'. */
   actor: string;
   origin?: string;
+  /** The signed-in owner's display name (seeds the project's people). */
+  ownerName?: string;
+  /**
+   * Fast endpoints (kanban move, bulk) pass next/server `after` here: automations and notifications then
+   * run after the response, so the request stays within its round-trip budget. Without it they run inline.
+   */
+  defer?: (fn: () => Promise<void>) => void;
+}
+
+/** Automations and notifications: inline by default, after the response when the route asks. Never throws. */
+function later(ctx: Ctx, what: string, fn: () => Promise<void>): Promise<void> {
+  if (ctx.defer) {
+    ctx.defer(() => safely(what, fn));
+    return Promise.resolve();
+  }
+  return safely(what, fn);
 }
 
 const store = () => getClientProjectStore();
@@ -97,11 +131,13 @@ type MailOutcome = { emailed: boolean; note: string };
  * `budget`: hourly allowance per project. Defect reports have their own, so a burst of ticks or comments
  * can never starve "a client reported a defect".
  */
-async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client', to: string, subject: string, lines: string[], cta?: { label: string; url: string }, budget: 'general' | 'defect' = 'general'): Promise<MailOutcome> {
+async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client' | 'cp-person', to: string, subject: string, lines: string[], cta?: { label: string; url: string }, budget: 'general' | 'defect' | 'assign' | 'mention' = 'general', who?: string): Promise<MailOutcome> {
   try {
     if (!to || !EMAIL_RE.test(to)) return { emailed: false, note: 'email not sent: no address' };
     if (!mailStatus().configured) return { emailed: false, note: 'email not sent: mail not configured' };
-    if (!rateLimit(`cp-mail-${budget}:${p.id}`, budget === 'defect' ? 30 : 40, 60 * 60_000)) return { emailed: false, note: 'email not sent: hourly limit reached' };
+    // Assignment and mention emails reach third parties: each has its own, smaller allowance, so a burst of
+    // mentions from the shared board can never use up the owner's assignment emails (or the reverse).
+    if (!rateLimit(`cp-mail-${budget}:${p.id}`, budget === 'defect' ? 30 : budget === 'assign' || budget === 'mention' ? 20 : 40, 60 * 60_000)) return { emailed: false, note: 'email not sent: hourly limit reached' };
     const { settings } = await loadSettings();
     const body = lines.map((l) => `<p style="margin:0 0 10px;font-size:15px;line-height:1.5;color:#1f2937">${esc(l)}</p>`).join('');
     const button = cta ? `<p style="margin:18px 0"><a href="${esc(cta.url)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:600;font-size:15px">${esc(cta.label)}</a></p>` : '';
@@ -114,7 +150,7 @@ async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client', to: string, 
       text: `${lines.join('\n')}\n${cta ? `\n${cta.url}\n` : ''}`,
     };
     const res = await sendAgreementMail(mail, settings);
-    return res.ok ? { emailed: true, note: `emailed ${kind === 'cp-owner' ? 'the owner' : 'the client contact'}` } : { emailed: false, note: `email not sent: ${res.error}`.slice(0, 300) };
+    return res.ok ? { emailed: true, note: `emailed ${who ?? (kind === 'cp-owner' ? 'the owner' : 'the client contact')}` } : { emailed: false, note: `email not sent: ${res.error}`.slice(0, 300) };
   } catch (err) {
     console.error('[client-projects mail]', err instanceof Error ? err.message : err);
     return { emailed: false, note: 'email not sent: mail error' };
@@ -197,6 +233,10 @@ export async function createProject(raw: Record<string, unknown>, ctx: Ctx): Pro
     uatOverride: null,
     clientContactEmail: '',
     automations: {},
+    people: [ownerPerson(ctx)].filter((x): x is Person => Boolean(x)),
+    labels: [],
+    settings: { peopleSeeded: true } as Project['settings'],
+    notifSeenAt: now,
     tokenHash: null,
     tokenSealed: null,
     shareEnabled: false,
@@ -207,15 +247,212 @@ export async function createProject(raw: Record<string, unknown>, ctx: Ctx): Pro
   const s = store();
   const created = await s.createProject(p);
   let count = 0;
-  if (fromSop) {
-    const cards = sopTasks(created, 1);
-    const first = await s.nextTaskNums(created.id, cards.length);
-    cards.forEach((c, i) => (c.num = first + i));
-    await s.insertTasks(cards);
-    count = cards.length;
+  // ATOMIC: a project row never outlives a failed seed. If the cards (or the first event) cannot be
+  // written, the project row is removed again (its cards and events go with it) and the error is reported.
+  try {
+    if (fromSop) count = await seedSop(created, clientName);
+    await log(created, null, ctx.actor, 'project_created', { key, fromSop, cards: count, kickoffDate: p.kickoffDate });
+  } catch (err) {
+    console.error('[client-projects create] seeding failed; removing the project row:', err instanceof Error ? err.message : err);
+    let removed = false;
+    try {
+      removed = await s.deleteProject(created.id);
+    } catch (e2) {
+      console.error('[client-projects create] ROLLBACK FAILED, an empty project may remain:', created.id, e2 instanceof Error ? e2.message : e2);
+    }
+    throw new CpError(500, removed ? 'The project could not be created (its cards could not be saved). Nothing was kept. Try again.' : 'The project could not be created, and the empty project could not be removed. Open it and use “Load SOP cards”, or delete the draft.');
   }
-  await log(created, null, ctx.actor, 'project_created', { key, fromSop, cards: count, kickoffDate: p.kickoffDate });
   return (await s.getProject(created.id)) ?? created;
+}
+
+/** The signed-in owner as a project person (our side), from the request context. */
+function ownerPerson(ctx: Ctx): Person | null {
+  if (!ctx.actor.startsWith('owner:')) return null;
+  const email = ctx.actor.slice(6).toLowerCase();
+  if (!EMAIL_RE.test(email)) return null;
+  return { id: newId(), name: line(ctx.ownerName, CP_LIMITS.personName) || email.split('@')[0], email, side: 'us', role: 'Project owner', createdAt: nowIso() };
+}
+
+/**
+ * Write the whole SOP board for a project that has no cards. Returns how many were written. A local
+ * test server can force a failure (client name marker) so the rollback can be tested; never in production.
+ */
+async function seedSop(p: Project, marker = ''): Promise<number> {
+  const s = store();
+  const cards = sopTasks(p, 1);
+  const first = await s.nextTaskNums(p.id, cards.length);
+  cards.forEach((c, i) => (c.num = first + i));
+  if (marker.includes('CP_TEST_SEED_FAIL') && process.env.CP_AI_STUB === '1' && isLocalTestServer()) throw new Error('test: forced seed failure');
+  await s.insertTasks(cards);
+  return cards.length;
+}
+
+/** "Load SOP cards": only for a project with no cards at all (an empty shell, or one created without the SOP). */
+export async function loadSop(p: Project, ctx: Ctx): Promise<number> {
+  const s = store();
+  const cards = sopTasks(p, 1);
+  // One round trip for the check and the number reservation. If the project is not empty after all, the
+  // reserved numbers are simply not used (a gap in the keys; nothing else changes).
+  const [existing, first] = await Promise.all([s.listTasks(p.id), s.nextTaskNums(p.id, cards.length)]);
+  if (existing.length > 0) throw new CpError(409, 'This project already has cards. The SOP can only be loaded into an empty project.');
+  cards.forEach((c, i) => (c.num = first + i));
+  await Promise.all([s.insertTasks(cards), log(p, null, ctx.actor, 'sop_loaded', { cards: cards.length })]);
+  return cards.length;
+}
+
+/** Projects from before v2 have no people: seed the signed-in owner once (never again after they edit the list). */
+export async function ensureOwnerSeed(p: Project, ctx: Ctx): Promise<Project> {
+  const settings = (p.settings ?? {}) as Project['settings'] & { peopleSeeded?: boolean };
+  if (settings.peopleSeeded || (p.people ?? []).length) return p;
+  const me = ownerPerson(ctx);
+  if (!me) return p;
+  return (await store().updateProject(p.id, { people: [me], settings: { ...settings, peopleSeeded: true } as Project['settings'] })) ?? p;
+}
+
+// ------------------------------------------------------------------ people and labels (owner)
+
+const isSide = (v: unknown): v is 'us' | 'client' => v === 'us' || v === 'client';
+const personOf = (p: Pick<Project, 'people'>, id: unknown): Person | null => (typeof id === 'string' ? ((p.people ?? []).find((x) => x.id === id) ?? null) : null);
+
+/** Our own people may carry the company name; personName() refuses it (that rule is for the client side). */
+function ownName(v: unknown): string {
+  return line(v, CP_LIMITS.personName).replace(/[<>"`\\{}[\]|:;=]/g, '').trim();
+}
+
+/** A person from owner input: every field cleaned and capped; `base` supplies the fields not sent (a patch). */
+function cleanPerson(raw: Record<string, unknown>, base?: Person): Omit<Person, 'id' | 'createdAt'> {
+  const side = 'side' in raw || !base ? raw.side : base.side;
+  if (!isSide(side)) throw new CpError(400, 'A person is on our side (Us) or the client’s side.');
+  const name = 'name' in raw || !base ? (side === 'us' ? ownName(raw.name) : personName(raw.name)) : side === 'client' ? personName(base.name) : base.name;
+  if (name.length < 2) throw new CpError(400, side === 'client' ? 'Enter the person’s name (a client contact cannot be named after us).' : 'Enter the person’s name.');
+  const email = 'email' in raw || !base ? line(raw.email, 254).toLowerCase() : base.email;
+  if (email && !EMAIL_RE.test(email)) throw new CpError(400, 'Enter a valid email address, or leave it empty.');
+  const role = 'role' in raw || !base ? line(raw.role, CP_LIMITS.roleLabel) : base.role;
+  return { name, side, email, role };
+}
+
+export interface ProjectAndTasks {
+  project: Project;
+  tasks: Task[];
+}
+
+export async function addPerson(p: Project, raw: Record<string, unknown>, ctx: Ctx): Promise<ProjectAndTasks> {
+  const people = p.people ?? [];
+  if (people.length >= CP_LIMITS.people) throw new CpError(409, `A project holds at most ${CP_LIMITS.people} people.`);
+  const clean = cleanPerson(raw);
+  if (people.some((x) => x.name.toLowerCase() === clean.name.toLowerCase())) throw new CpError(409, 'A person with that name is already on this project.');
+  const person: Person = { id: newId(), createdAt: nowIso(), ...clean };
+  const s = store();
+  const [updated, tasks] = await Promise.all([
+    s.updateProject(p.id, { people: [...people, person], settings: { ...(p.settings ?? {}), peopleSeeded: true } as Project['settings'] }),
+    s.listTasks(p.id),
+    log(p, null, ctx.actor, 'person_added', { personId: person.id, name: person.name, side: person.side, hasEmail: Boolean(person.email) }),
+  ]);
+  if (!updated) throw new CpError(404, 'Project not found.');
+  return { project: updated, tasks };
+}
+
+export async function patchPerson(p: Project, personId: string, raw: Record<string, unknown>, ctx: Ctx): Promise<ProjectAndTasks> {
+  const people = p.people ?? [];
+  const cur = people.find((x) => x.id === personId);
+  if (!cur) throw new CpError(404, 'Person not found.');
+  const c = cleanPerson(raw, cur);
+  if (people.some((x) => x.id !== cur.id && x.name.toLowerCase() === c.name.toLowerCase())) throw new CpError(409, 'Another person on this project has that name.');
+  const next: Person = { ...cur, ...c };
+  const s = store();
+  const tasks = await s.listTasks(p.id);
+  // The card's Us/Client side follows its assignee: when a person changes side, so do their cards.
+  const writes: Promise<unknown>[] = [];
+  const after = tasks.map((t) => {
+    if (next.side === cur.side || t.assigneeId !== cur.id || t.type === 'defect' || t.ownerSide === next.side) return t;
+    const gate = t.type === 'milestone';
+    const patch: Partial<Task> = { ownerSide: next.side, type: typeFor(next.side, gate), ...(!gate || next.side !== 'us' ? { autoComplete: false } : {}), ...(gate || next.side !== 'client' ? { clientMayTick: false } : {}) };
+    writes.push(s.updateTask(t.id, patch));
+    return { ...t, ...patch };
+  });
+  const [updated] = await Promise.all([
+    s.updateProject(p.id, { people: people.map((x) => (x.id === cur.id ? next : x)) }),
+    ...writes,
+    log(p, null, ctx.actor, 'person_updated', { personId: cur.id, name: next.name, side: next.side, changed: (['name', 'side', 'email', 'role'] as const).filter((k) => cur[k] !== next[k]), cardsMoved: writes.length }),
+  ]);
+  if (!updated) throw new CpError(404, 'Project not found.');
+  return { project: updated as Project, tasks: after };
+}
+
+/** Remove a person: their cards become unassigned and they stop watching. The cards themselves are untouched. */
+export async function removePerson(p: Project, personId: string, ctx: Ctx): Promise<ProjectAndTasks> {
+  const people = p.people ?? [];
+  const cur = people.find((x) => x.id === personId);
+  if (!cur) throw new CpError(404, 'Person not found.');
+  const s = store();
+  const tasks = await s.listTasks(p.id);
+  const writes: Promise<unknown>[] = [];
+  let unassigned = 0;
+  const after = tasks.map((t) => {
+    const patch: Partial<Task> = {};
+    if (t.assigneeId === cur.id) patch.assigneeId = null;
+    if ((t.watchers ?? []).includes(cur.id)) patch.watchers = t.watchers.filter((w) => w !== cur.id);
+    if (!Object.keys(patch).length) return t;
+    if ('assigneeId' in patch) unassigned++;
+    writes.push(s.updateTask(t.id, patch));
+    return { ...t, ...patch };
+  });
+  const [updated] = await Promise.all([
+    s.updateProject(p.id, { people: people.filter((x) => x.id !== cur.id), settings: { ...(p.settings ?? {}), peopleSeeded: true } as Project['settings'] }),
+    ...writes,
+    log(p, null, ctx.actor, 'person_removed', { personId: cur.id, name: cur.name, side: cur.side, unassigned }),
+  ]);
+  if (!updated) throw new CpError(404, 'Project not found.');
+  return { project: updated as Project, tasks: after };
+}
+
+const isLabelColor = (v: unknown): v is LabelColor => (LABEL_COLORS as readonly unknown[]).includes(v);
+
+/** Replace the project's label list: [{ id?, name, color }]. Ids that disappear are taken off every card. */
+export async function setLabels(p: Project, rawList: unknown, ctx: Ctx): Promise<ProjectAndTasks> {
+  if (!Array.isArray(rawList)) throw new CpError(400, 'Send the labels as a list.');
+  if (rawList.length > CP_LIMITS.labels) throw new CpError(400, `A project holds at most ${CP_LIMITS.labels} labels.`);
+  const have = new Map((p.labels ?? []).map((l) => [l.id, l]));
+  const next: Label[] = [];
+  for (const x of rawList) {
+    const r = x && typeof x === 'object' ? (x as Record<string, unknown>) : {};
+    const name = line(r.name, CP_LIMITS.labelName);
+    if (!name) throw new CpError(400, 'Every label needs a name.');
+    if (!isLabelColor(r.color)) throw new CpError(400, 'Pick one of the label colours.');
+    if (next.some((l) => l.name.toLowerCase() === name.toLowerCase())) throw new CpError(400, `There are two labels called “${name}”.`);
+    const id = typeof r.id === 'string' && have.has(r.id) && !next.some((l) => l.id === r.id) ? r.id : newId();
+    next.push({ id, name, color: r.color });
+  }
+  const s = store();
+  const keep = new Set(next.map((l) => l.id));
+  const tasks = await s.listTasks(p.id);
+  const writes: Promise<unknown>[] = [];
+  const after = tasks.map((t) => {
+    const ids = (t.labelIds ?? []).filter((id) => keep.has(id));
+    if (ids.length === (t.labelIds ?? []).length) return t;
+    writes.push(s.updateTask(t.id, { labelIds: ids }));
+    return { ...t, labelIds: ids };
+  });
+  const [updated] = await Promise.all([s.updateProject(p.id, { labels: next }), ...writes, log(p, null, ctx.actor, 'project_updated', { changed: ['labels'], labels: next.length })]);
+  if (!updated) throw new CpError(404, 'Project not found.');
+  return { project: updated as Project, tasks: after };
+}
+
+/**
+ * Delete a project for good (owner, any status). The owner must type the client name. A content-free
+ * tombstone (key, client name, who, when, card count) is written FIRST; only then is the project row
+ * removed, which removes its cards, comments, events, documents, attachments, AI runs and people (and
+ * with the row, the share link's token: the board link is a 404 at once).
+ */
+export async function deleteProjectForever(p: Project, confirmName: unknown, ctx: Ctx) {
+  const typed = typeof confirmName === 'string' ? confirmName.trim() : '';
+  if (typed !== p.clientName.trim()) throw new CpError(409, `Type the client name (${p.clientName}) to delete this project for good.`, { code: 'confirm_name' });
+  const s = store();
+  const counts = await s.countAll(p.id);
+  // No tombstone, no delete.
+  await s.addDeletion({ projectId: p.id, key: p.key, clientName: p.clientName, deletedBy: ctx.actor.replace(/^owner:/, ''), cardCount: counts.cards });
+  if (!(await s.deleteProject(p.id))) throw new CpError(404, 'Project not found.');
+  return { ...counts, people: (p.people ?? []).length };
 }
 
 /** Owner edits to the project itself. Changing kickoff re-dates every open card that still follows its offset. */
@@ -232,9 +469,18 @@ export async function patchProject(p: Project, raw: Record<string, unknown>, ctx
     if (!v) throw new CpError(400, 'Enter a title.');
     patch.title = v;
   }
+  let archivedLinkOff = false;
   if ('status' in raw) {
     if (!(PROJECT_STATUSES as readonly unknown[]).includes(raw.status)) throw new CpError(400, 'Unknown project status.');
     patch.status = raw.status as ProjectStatus;
+    // Archiving turns the share link off for good (the token is thrown away). Restoring does not turn it
+    // back on: the owner shares again, with a new link.
+    if (patch.status === 'archived' && (p.shareEnabled || p.tokenHash)) {
+      patch.tokenHash = null;
+      patch.tokenSealed = null;
+      patch.shareEnabled = false;
+      archivedLinkOff = true;
+    }
   }
   if ('targetGoLive' in raw) {
     if (raw.targetGoLive !== null && !isDate(raw.targetGoLive)) throw new CpError(400, 'Enter a valid go-live date.');
@@ -258,6 +504,18 @@ export async function patchProject(p: Project, raw: Record<string, unknown>, ctx
     if (next.client_reminders && !(patch.clientContactEmail ?? p.clientContactEmail)) throw new CpError(400, 'Add the client contact email before turning on reminders to the client.');
     patch.automations = next;
   }
+  if ('wip' in raw) {
+    const w = raw.wip && typeof raw.wip === 'object' ? (raw.wip as Record<string, unknown>) : {};
+    const wip: Record<string, number> = {};
+    for (const st of TASK_STATUSES) {
+      const v = w[st];
+      if (v === undefined || v === null || v === 0) continue;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > CP_LIMITS.wipMax) throw new CpError(400, `A column limit is a whole number from 0 to ${CP_LIMITS.wipMax} (0 = no limit).`);
+      wip[st] = v;
+    }
+    // An explicit object, even empty, replaces the defaults (empty = no limits).
+    patch.settings = { ...(p.settings ?? {}), wip } as Project['settings'];
+  }
   // The client-visible progress note: only ever set here, by the owner's own approve click.
   if ('publishClientUpdate' in raw) {
     const v = text(raw.publishClientUpdate, CP_LIMITS.summary);
@@ -280,11 +538,12 @@ export async function patchProject(p: Project, raw: Record<string, unknown>, ctx
     }
     changed.push(`kickoff ${p.kickoffDate} -> ${raw.kickoffDate} (${moved} cards re-dated)`);
   }
-  for (const k of Object.keys(patch)) if (k !== 'kickoffDate' && k !== 'clientUpdate' && k !== 'clientUpdateAt') changed.push(k);
+  for (const k of Object.keys(patch)) if (!['kickoffDate', 'clientUpdate', 'clientUpdateAt', 'tokenHash', 'tokenSealed', 'shareEnabled'].includes(k)) changed.push(k);
   const updated = await s.updateProject(p.id, patch);
   if (!updated) throw new CpError(404, 'Project not found.');
   if ('publishClientUpdate' in raw) await log(p, null, ctx.actor, 'client_update_published', { length: (patch.clientUpdate ?? '').length, cleared: !patch.clientUpdate });
   if (changed.length) await log(p, null, ctx.actor, 'project_updated', { changed });
+  if (archivedLinkOff) await log(p, null, ctx.actor, 'share_disabled', { because: 'archived' });
   return updated;
 }
 
@@ -330,6 +589,73 @@ async function nextNum(p: Project): Promise<number> {
   return store().nextTaskNums(p.id, 1);
 }
 
+const isPriority = (v: unknown): v is Priority => (PRIORITIES as readonly unknown[]).includes(v);
+
+/** Validators for the v2 card fields (owner input). Each returns the clean value or throws a 400. */
+function cleanIdList(v: unknown, allowed: Set<string>, max: number, what: string): string[] {
+  if (!Array.isArray(v)) throw new CpError(400, `Send the ${what} as a list.`);
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x !== 'string' || !allowed.has(x)) throw new CpError(400, `Pick ${what} from this project.`);
+    if (!out.includes(x)) out.push(x);
+  }
+  if (out.length > max) throw new CpError(400, `At most ${max} ${what} per card.`);
+  return out;
+}
+
+function cleanChecklist(v: unknown, prev: ChecklistItem[]): ChecklistItem[] {
+  if (!Array.isArray(v)) throw new CpError(400, 'Send the checklist as a list.');
+  if (v.length > CP_LIMITS.checklistItems) throw new CpError(400, `A checklist holds at most ${CP_LIMITS.checklistItems} items.`);
+  const known = new Set(prev.map((i) => i.id));
+  const used = new Set<string>();
+  const out: ChecklistItem[] = [];
+  for (const x of v) {
+    const r = x && typeof x === 'object' ? (x as Record<string, unknown>) : {};
+    const t = line(r.text, CP_LIMITS.checklistText);
+    if (!t) continue;
+    // Ids are ours: an unknown or repeated id from the browser gets a fresh one.
+    const id = typeof r.id === 'string' && known.has(r.id) && !used.has(r.id) ? r.id : newId();
+    used.add(id);
+    out.push({ id, text: t, done: r.done === true });
+  }
+  return out;
+}
+
+function cleanEstimate(v: unknown): number | null {
+  if (v === null || v === '' || v === undefined) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > CP_LIMITS.estimateMax) throw new CpError(400, `The estimate is hours, from 0 to ${CP_LIMITS.estimateMax}.`);
+  return Math.round(v * 100) / 100;
+}
+
+/** Would making `t` wait on `ids` create a loop (A waits on B waits on A)? */
+function wouldLoop(t: Task, ids: string[], all: Task[]): boolean {
+  const byId = new Map(all.map((x) => [x.id, x]));
+  const seen = new Set<string>();
+  const stack = [...ids];
+  while (stack.length) {
+    const id = stack.pop() as string;
+    if (id === t.id) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    stack.push(...(byId.get(id)?.blockers ?? []));
+  }
+  return false;
+}
+
+/**
+ * The Done rule for the owner (kanban move, drawer, bulk): every card it waits on must be Done. It is a
+ * warning the owner may override; the override is written on the status event. Client ticks and the
+ * client-gated rules are separate and unchanged (clientTick / clientClaim).
+ */
+async function assertBlockersDone(p: Project, t: Task, override: boolean, all?: Task[]): Promise<string[]> {
+  if (!(t.blockers ?? []).length) return [];
+  const open = openBlockers(t, all ?? (await store().listTasks(p.id)));
+  if (!open.length) return [];
+  const keys = open.map((b) => taskKey(p, b));
+  if (!override) throw new CpError(409, `${taskKey(p, t)} is waiting on ${keys.join(', ')}, which ${keys.length === 1 ? 'is' : 'are'} not done. Finish ${keys.length === 1 ? 'it' : 'them'} first, or confirm to mark it Done anyway.`, { code: 'blockers_open', blockers: keys });
+  return keys;
+}
+
 /** Owner: create a task, milestone or defect. */
 export async function createTask(p: Project, raw: Record<string, unknown>, ctx: Ctx): Promise<Task> {
   const title = line(raw.title, CP_LIMITS.taskTitle);
@@ -364,8 +690,24 @@ export async function createTask(p: Project, raw: Record<string, unknown>, ctx: 
       dueDate,
     };
   }
+  const assignee = 'assigneeId' in raw && raw.assigneeId !== null && raw.assigneeId !== '' ? personOf(p, raw.assigneeId) : null;
+  if ('assigneeId' in raw && raw.assigneeId !== null && raw.assigneeId !== '' && !assignee) throw new CpError(400, 'Pick an assignee from this project’s people.');
+  if (assignee && !isDefect && over.ownerSide !== assignee.side) {
+    // The card's side follows its assignee.
+    over.ownerSide = assignee.side;
+    over.type = typeFor(assignee.side, over.type === 'milestone');
+  }
+  const v2: Partial<Task> = {
+    assigneeId: assignee?.id ?? null,
+    priority: isPriority(raw.priority) ? raw.priority : null,
+    startDate: isDate(raw.startDate) ? raw.startDate : null,
+    estimateHours: 'estimateHours' in raw ? cleanEstimate(raw.estimateHours) : null,
+    labelIds: 'labelIds' in raw ? cleanIdList(raw.labelIds, new Set((p.labels ?? []).map((l) => l.id)), CP_LIMITS.labelsPerTask, 'labels') : [],
+    checklist: 'checklist' in raw ? cleanChecklist(raw.checklist, []) : [],
+  };
   const num = await nextNum(p);
   const t = blankTask(p, num, {
+    ...v2,
     title,
     descriptionClient: text(raw.descriptionClient, CP_LIMITS.description),
     notesInternal: text(raw.notesInternal, CP_LIMITS.notes),
@@ -377,14 +719,16 @@ export async function createTask(p: Project, raw: Record<string, unknown>, ctx: 
     sort: num * 10 + 100_000,
     ...over,
   });
+  if (t.ownerSide !== 'client' || t.type !== 'client_item') t.clientMayTick = false;
   await s.insertTasks([t]);
   await log(p, t.id, ctx.actor, 'task_created', { key: taskKey(p, t), type: t.type, title: t.title, ...(t.severity ? { severity: t.severity, fixDue: t.dueDate } : {}) });
+  if (assignee) await onAssigned(p, t, null, assignee, ctx);
   return t;
 }
 
-/** The one place a card's status changes, for the owner, the client and automations alike. */
-async function setStatus(p: Project, t: Task, status: TaskStatus, ctx: Ctx, extra: Partial<Task> = {}): Promise<Task> {
-  const patch: Partial<Task> = { ...extra, status };
+/** The fields that change with a status (done stamps; leaving Done clears them, and any client claim). */
+function statusPatch(t: Task, status: TaskStatus, ctx: Ctx): Partial<Task> {
+  const patch: Partial<Task> = { status };
   if (status === 'done' && t.status !== 'done') {
     patch.doneAt = nowIso();
     patch.doneBy = ctx.actor;
@@ -396,20 +740,32 @@ async function setStatus(p: Project, t: Task, status: TaskStatus, ctx: Ctx, extr
     patch.clientClaimedAt = null;
     patch.clientClaimedBy = '';
   }
-  const updated = await store().updateTask(t.id, patch);
+  return patch;
+}
+
+const statusEventType = (ctx: Ctx, status: TaskStatus): CpEventType => (ctx.actor.startsWith('client:') ? (status === 'done' ? 'client_tick' : 'client_untick') : 'status_changed');
+
+/** What follows a card reaching Done: the late-finish record and the automations. */
+const afterDone = (p: Project, updated: Task, ctx: Ctx) =>
+  later(ctx, 'on-done', async () => {
+    await recordLateFinish(p, updated);
+    await onTaskDone(p, updated, ctx);
+  });
+
+/** The one place a card's status changes, for the owner, the client and automations alike. One write, with its event. */
+async function setStatus(p: Project, t: Task, status: TaskStatus, ctx: Ctx, extra: Partial<Task> = {}, detail: Record<string, unknown> = {}): Promise<Task> {
+  const changed = status !== t.status;
+  const [updated] = await Promise.all([
+    store().updateTask(t.id, { ...extra, ...statusPatch(t, status, ctx) }),
+    changed ? log(p, t.id, ctx.actor, statusEventType(ctx, status), { key: taskKey(p, t), from: t.status, to: status, title: t.title, ...detail }) : null,
+  ]);
   if (!updated) throw new CpError(404, 'Card not found.');
-  if (status !== t.status) {
-    await log(p, t.id, ctx.actor, ctx.actor.startsWith('client:') ? (status === 'done' ? 'client_tick' : 'client_untick') : 'status_changed', { key: taskKey(p, t), from: t.status, to: status, title: t.title });
-    if (status === 'done') {
-      await recordLateFinish(p, updated);
-      await safely('on-done', () => onTaskDone(p, updated, ctx));
-    }
-  }
+  if (changed && status === 'done') await afterDone(p, updated, ctx);
   return updated;
 }
 
 /** Owner: edit a card. Only the fields sent are changed. */
-export async function patchTask(p: Project, t: Task, raw: Record<string, unknown>, ctx: Ctx): Promise<Task> {
+export async function patchTask(p: Project, t: Task, raw: Record<string, unknown>, ctx: Ctx, all?: Task[]): Promise<Task> {
   const patch: Partial<Task> = {};
   if ('title' in raw) {
     const v = line(raw.title, CP_LIMITS.taskTitle);
@@ -439,13 +795,42 @@ export async function patchTask(p: Project, t: Task, raw: Record<string, unknown
     if (raw.dueDate !== null && !isDate(raw.dueDate)) throw new CpError(400, 'Enter a valid due date.');
     patch.dueDate = raw.dueDate as string | null;
   }
-  if ('blockedBy' in raw) {
-    if (raw.blockedBy === null || raw.blockedBy === '') patch.blockedBy = null;
-    else {
-      const other = isCpId(raw.blockedBy) && raw.blockedBy !== t.id ? await store().getTask(raw.blockedBy) : null;
-      if (!other || other.projectId !== p.id) throw new CpError(400, 'Pick a card from this project to wait on.');
-      patch.blockedBy = other.id;
+  // Dependencies: `blockers` (v2, many) or `blockedBy` (v1, one). Both must be other cards of this project.
+  if ('blockers' in raw || 'blockedBy' in raw) {
+    const want = 'blockers' in raw ? raw.blockers : raw.blockedBy === null || raw.blockedBy === '' ? [] : [raw.blockedBy];
+    if (!Array.isArray(want)) throw new CpError(400, 'Send the cards to wait on as a list.');
+    if (want.length > CP_LIMITS.blockers) throw new CpError(400, `A card can wait on at most ${CP_LIMITS.blockers} cards.`);
+    const cards = want.length ? (all ?? (await store().listTasks(p.id))) : [];
+    const ids: string[] = [];
+    for (const id of want) {
+      const other = isCpId(id) && id !== t.id ? cards.find((x) => x.id === id) : null;
+      if (!other) throw new CpError(400, 'Pick a card from this project to wait on.');
+      if (!ids.includes(other.id)) ids.push(other.id);
     }
+    if (ids.length && wouldLoop(t, ids, cards)) throw new CpError(400, 'Those cards already wait on this one: that would be a loop.');
+    patch.blockers = ids;
+    patch.blockedBy = ids[0] ?? null;
+  }
+  if ('priority' in raw) {
+    if (raw.priority !== null && raw.priority !== '' && !isPriority(raw.priority)) throw new CpError(400, 'Priority must be Low, Medium, High or Urgent.');
+    patch.priority = isPriority(raw.priority) ? raw.priority : null;
+  }
+  if ('startDate' in raw) {
+    if (raw.startDate !== null && raw.startDate !== '' && !isDate(raw.startDate)) throw new CpError(400, 'Enter a valid start date.');
+    patch.startDate = isDate(raw.startDate) ? raw.startDate : null;
+  }
+  if ('estimateHours' in raw) patch.estimateHours = cleanEstimate(raw.estimateHours);
+  if ('labelIds' in raw) patch.labelIds = cleanIdList(raw.labelIds, new Set((p.labels ?? []).map((l) => l.id)), CP_LIMITS.labelsPerTask, 'labels');
+  if ('watchers' in raw) patch.watchers = cleanIdList(raw.watchers, new Set((p.people ?? []).map((x) => x.id)), CP_LIMITS.watchers, 'watchers');
+  if ('checklist' in raw) patch.checklist = cleanChecklist(raw.checklist, t.checklist ?? []);
+  let newAssignee: Person | null | undefined;
+  if ('assigneeId' in raw) {
+    if (raw.assigneeId === null || raw.assigneeId === '') newAssignee = null;
+    else {
+      newAssignee = personOf(p, raw.assigneeId);
+      if (!newAssignee) throw new CpError(400, 'Pick an assignee from this project’s people.');
+    }
+    patch.assigneeId = newAssignee?.id ?? null;
   }
   if (t.type === 'defect') {
     if ('steps' in raw) patch.steps = text(raw.steps, CP_LIMITS.steps);
@@ -463,10 +848,13 @@ export async function patchTask(p: Project, t: Task, raw: Record<string, unknown
       patch.dueOffsetBd = raw.dueOffsetBd as number | null;
       if (!('dueDate' in raw) && raw.dueOffsetBd !== null) patch.dueDate = addBusinessDays(p.kickoffDate, raw.dueOffsetBd as number);
     }
-    const side = 'ownerSide' in raw ? raw.ownerSide : t.ownerSide;
+    // The card's side follows its assignee. Without a new assignee, an explicit side wins, and an
+    // assignee from the other side is then taken off the card.
+    const side = newAssignee ? newAssignee.side : 'ownerSide' in raw ? raw.ownerSide : t.ownerSide;
     if (side !== 'us' && side !== 'client') throw new CpError(400, 'The owner must be Us or Client.');
+    if (newAssignee === undefined && 'ownerSide' in raw && t.assigneeId && personOf(p, t.assigneeId) && personOf(p, t.assigneeId)?.side !== side) patch.assigneeId = null;
     const gate = 'isGate' in raw ? raw.isGate === true : 'type' in raw ? raw.type === 'milestone' : t.type === 'milestone';
-    if ('ownerSide' in raw || 'isGate' in raw || 'type' in raw) {
+    if ('ownerSide' in raw || 'isGate' in raw || 'type' in raw || (newAssignee && side !== t.ownerSide)) {
       patch.ownerSide = side;
       patch.type = typeFor(side, gate);
       if (!gate || side !== 'us') patch.autoComplete = false;
@@ -475,17 +863,221 @@ export async function patchTask(p: Project, t: Task, raw: Record<string, unknown
     }
   }
   if ('status' in raw && !isStatus(raw.status)) throw new CpError(400, 'Unknown status.');
-  const s = store();
-  let updated = t;
+  const toStatus = isStatus(raw.status) && raw.status !== t.status ? raw.status : null;
+  // Checked BEFORE anything is written, so a refused Done changes nothing.
+  let overridden: string[] = [];
+  if (toStatus === 'done') overridden = await assertBlockersDone(p, { ...t, ...('blockers' in patch ? { blockers: patch.blockers as string[] } : {}) }, raw.override === true, all);
   const keys = Object.keys(patch);
-  if (keys.length) {
-    updated = (await s.updateTask(t.id, patch)) ?? t;
-    if (patch.severity) await log(p, t.id, ctx.actor, 'severity_changed', { key: taskKey(p, t), from: t.severity, to: patch.severity, fixDue: updated.dueDate });
-    const other = keys.filter((k) => k !== 'severity');
-    if (other.length) await log(p, t.id, ctx.actor, 'task_updated', { key: taskKey(p, t), changed: other, ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}) });
+  if (!keys.length && !toStatus) return t;
+  const assignChanged = 'assigneeId' in patch && (patch.assigneeId ?? null) !== (t.assigneeId ?? null);
+  const to = assignChanged ? personOf(p, patch.assigneeId) : null;
+  // ONE write for the fields and the status, and its events beside it (one round trip).
+  const full: Partial<Task> = toStatus ? { ...patch, ...statusPatch(t, toStatus, ctx) } : patch;
+  const events: Promise<unknown>[] = [];
+  if (patch.severity) events.push(log(p, t.id, ctx.actor, 'severity_changed', { key: taskKey(p, t), from: t.severity, to: patch.severity, fixDue: full.dueDate ?? t.dueDate }));
+  const other = keys.filter((k) => k !== 'severity');
+  if (other.length) events.push(log(p, t.id, ctx.actor, 'task_updated', { key: taskKey(p, t), changed: other, ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}) }));
+  if (assignChanged) events.push(assignedEvent(p, t, personOf(p, t.assigneeId), to, ctx));
+  if (toStatus) events.push(log(p, t.id, ctx.actor, statusEventType(ctx, toStatus), { key: taskKey(p, t), from: t.status, to: toStatus, title: t.title, ...(overridden.length ? { override: true, openBlockers: overridden } : {}) }));
+  const [updated] = await Promise.all([store().updateTask(t.id, full), ...events]);
+  if (!updated) throw new CpError(404, 'Card not found.');
+  if (to) await later(ctx, 'assign-notify', () => notifyAssignee(p, updated as Task, to, ctx));
+  if (toStatus === 'done') await afterDone(p, updated as Task, ctx);
+  return updated as Task;
+}
+
+// ------------------------------------------------------------------ assignment (event + optional email)
+
+const assignedEvent = (p: Project, t: Task, from: Person | null, to: Person | null, ctx: Ctx) =>
+  log(p, t.id, ctx.actor, 'assigned', { key: taskKey(p, t), title: t.title, from: from?.name ?? null, to: to?.name ?? null, toId: to?.id ?? null, toSide: to?.side ?? null });
+
+/** Every (re)assignment writes an `assigned` event; the email is the `assign_notify` rule, claimed first. */
+async function onAssigned(p: Project, t: Task, from: Person | null, to: Person | null, ctx: Ctx): Promise<void> {
+  await assignedEvent(p, t, from, to, ctx);
+  if (to) await later(ctx, 'assign-notify', () => notifyAssignee(p, t, to, ctx));
+}
+
+async function notifyAssignee(p: Project, t: Task, person: Person, ctx: Ctx): Promise<void> {
+  if (!ruleOn(p, 'assign_notify')) return;
+  // Nobody is emailed about a card they assigned to themselves.
+  if (person.email && ctx.actor === `owner:${person.email}`) return;
+  // CLAIM FIRST: at most one email per card per person per day, however often the card is passed around.
+  const ev = await claim(p, 'assign_notify', t.id, { key: taskKey(p, t), to: person.name, toId: person.id, side: person.side }, `assign|${t.id}|${person.id}|${today()}`);
+  if (!ev) return;
+  const due = t.dueDate ? ` It is due ${fmtDateLong(t.dueDate)}.` : '';
+  let out: MailOutcome;
+  if (!person.email) out = { emailed: false, note: 'email not sent: no address' };
+  else if (person.side === 'client') {
+    // A person on the client side only ever hears about a card they can see, and only gets the board link.
+    const url = liveBoardUrl(p, ctx.origin);
+    if (!t.clientVisible) out = { emailed: false, note: 'email not sent: the card is hidden from the client board' };
+    else if (!url) out = { emailed: false, note: 'email not sent: the board is not shared' };
+    else out = await sendMail(p, 'cp-person', person.email, `${p.clientName} onboarding: “${t.title}” is assigned to you`, [`Hello ${person.name},`, `“${t.title}” (${taskKey(p, t)}) is assigned to you on the onboarding board.${due}`, 'Open the board to see the details and to tell us when it is done.'], { label: 'Open your project board', url }, 'assign', person.name);
+  } else {
+    out = await sendMail(p, 'cp-person', person.email, `${p.clientName}: ${taskKey(p, t)} is assigned to you`, [`“${t.title}” (${taskKey(p, t)}) is assigned to you.${due}`], { label: 'Open the project', url: consoleUrl(p.id, ctx.origin) }, 'assign', person.name);
   }
-  if (isStatus(raw.status) && raw.status !== updated.status) updated = await setStatus(p, updated, raw.status, ctx);
-  return updated;
+  await settle(ev, out);
+}
+
+// ------------------------------------------------------------------ kanban and roadmap moves
+
+const SORT_GAP = 1024;
+const columnOrder = (a: Task, b: Task) => a.sort - b.sort || a.num - b.num;
+
+/**
+ * Where a card lands in its kanban column: before `beforeId`, or at the end when that is null. Returns the
+ * new sort for the card, plus re-spaced sorts for the column when no whole number fits between its
+ * neighbours (only the cards whose sort changes).
+ */
+function placeInColumn(column: Task[], card: Task, beforeId: string | null): { sort: number; respace: { id: string; sort: number }[] } {
+  const list = column.filter((x) => x.id !== card.id).sort(columnOrder);
+  const idx = beforeId === null ? list.length : list.findIndex((x) => x.id === beforeId);
+  if (idx < 0) throw new CpError(400, 'That card is not in the column any more. Reload and try again.');
+  const prev = list[idx - 1];
+  const next = list[idx];
+  if (!prev && !next) return { sort: card.sort, respace: [] };
+  if (!prev) return { sort: next.sort - SORT_GAP, respace: [] };
+  if (!next) return { sort: prev.sort + SORT_GAP, respace: [] };
+  if (next.sort - prev.sort >= 2) return { sort: prev.sort + Math.floor((next.sort - prev.sort) / 2), respace: [] };
+  // No room: re-space the whole column around the card (keeps every other card's relative order).
+  const order = [...list.slice(0, idx), card, ...list.slice(idx)];
+  const base = Math.min(...order.map((x) => x.sort), 0);
+  const respace: { id: string; sort: number }[] = [];
+  let mine = card.sort;
+  order.forEach((x, i) => {
+    const v = base + (i + 1) * SORT_GAP;
+    if (x.id === card.id) mine = v;
+    else if (x.sort !== v) respace.push({ id: x.id, sort: v });
+  });
+  return { sort: mine, respace };
+}
+
+export interface MoveResult {
+  task: Task;
+  /** A phase move keeps the due date; this is the date the owner may confirm instead. */
+  suggestRedate: { dueDate: string; dueOffsetBd: number } | null;
+}
+
+/**
+ * Owner drag and drop (and the keyboard "Move to" menu), one call per drop:
+ *   { status?, beforeId? }   kanban: change column and/or reorder inside it (beforeId null = the end)
+ *   { phase, redate? }       roadmap: change phase; the due date is kept unless redate is true
+ *   { override? }            mark Done although a card it waits on is open (recorded on the event)
+ * Every move writes an event with from, to and who.
+ */
+export async function moveTask(p: Project, t: Task, raw: Record<string, unknown>, ctx: Ctx, all?: Task[]): Promise<MoveResult> {
+  const s = store();
+  const toStatus = 'status' in raw ? raw.status : t.status;
+  if (!isStatus(toStatus)) throw new CpError(400, 'Unknown status.');
+  const toPhase = 'phase' in raw ? raw.phase : t.phase;
+  if (!isPhase(toPhase)) throw new CpError(400, 'Unknown phase.');
+  if (toPhase !== t.phase && t.type === 'defect') throw new CpError(400, 'Defects are not on the roadmap: they stay with UAT.');
+  const reorder = 'beforeId' in raw;
+  if (reorder && raw.beforeId !== null && !isCpId(raw.beforeId)) throw new CpError(400, 'That card is not in the column any more. Reload and try again.');
+  if (!reorder && toStatus === t.status && toPhase === t.phase && raw.redate !== true) return { task: t, suggestRedate: null };
+  const statusChange = toStatus !== t.status;
+  const tasks = all ?? (reorder || (toStatus === 'done' && (t.blockers ?? []).length) ? await s.listTasks(p.id) : []);
+
+  let overridden: string[] = [];
+  if (toStatus === 'done' && statusChange) overridden = await assertBlockersDone(p, t, raw.override === true, tasks);
+
+  const patch: Partial<Task> = {};
+  const writes: Promise<unknown>[] = [];
+  const events: Promise<unknown>[] = [];
+  if (reorder) {
+    const placed = placeInColumn(tasks.filter((x) => x.status === toStatus), t, raw.beforeId as string | null);
+    for (const r of placed.respace) writes.push(s.updateTask(r.id, { sort: r.sort }));
+    if (placed.sort !== t.sort) patch.sort = placed.sort;
+  }
+  if (statusChange) {
+    Object.assign(patch, statusPatch(t, toStatus, ctx));
+    events.push(log(p, t.id, ctx.actor, 'status_changed', { key: taskKey(p, t), from: t.status, to: toStatus, title: t.title, via: 'board', ...(overridden.length ? { override: true, openBlockers: overridden } : {}) }));
+  } else if (reorder && 'sort' in patch) {
+    events.push(log(p, t.id, ctx.actor, 'task_moved', { key: taskKey(p, t), kind: 'reorder', column: toStatus, title: t.title }));
+  }
+  let suggestRedate: MoveResult['suggestRedate'] = null;
+  const offset = PHASE_END_OFFSET[toPhase];
+  const date = addBusinessDays(p.kickoffDate, offset);
+  const stillOpen = (statusChange ? toStatus : t.status) !== 'done';
+  if (toPhase !== t.phase) {
+    const redate = raw.redate === true && stillOpen;
+    Object.assign(patch, { phase: toPhase }, redate ? { dueOffsetBd: offset, dueDate: date } : {});
+    events.push(log(p, t.id, ctx.actor, 'task_moved', { key: taskKey(p, t), kind: 'phase', from: t.phase, to: toPhase, title: t.title, redated: redate, ...(redate ? { dueDate: date } : {}) }));
+    if (!redate && stillOpen && t.dueDate !== date) suggestRedate = { dueDate: date, dueOffsetBd: offset };
+  } else if (raw.redate === true && stillOpen && t.type !== 'defect' && t.dueDate !== date) {
+    // The owner confirmed the re-date after a phase move (a second call).
+    Object.assign(patch, { dueOffsetBd: offset, dueDate: date });
+    events.push(log(p, t.id, ctx.actor, 'task_updated', { key: taskKey(p, t), changed: ['dueDate'], dueDate: date, because: `moved to ${PHASE_LABEL[toPhase]}` }));
+  }
+  // One round trip: the card, any re-spaced neighbours and the events, together.
+  const [updated] = await Promise.all([Object.keys(patch).length ? s.updateTask(t.id, patch) : Promise.resolve(t), ...writes, ...events]);
+  if (!updated) throw new CpError(404, 'Card not found.');
+  if (statusChange && toStatus === 'done') await afterDone(p, updated as Task, ctx);
+  return { task: updated as Task, suggestRedate };
+}
+
+/**
+ * List view bulk actions: set status, assignee or priority, add or remove a label, on up to 100 cards.
+ * Each card goes through patchTask, so every rule (the Done rule, sides, validation) applies per card;
+ * cards that cannot take the change are skipped and reported, the rest are changed.
+ */
+export async function bulkUpdate(p: Project, raw: Record<string, unknown>, ctx: Ctx): Promise<{ updated: string[]; skipped: { key: string; reason: string }[] }> {
+  if (!Array.isArray(raw.ids) || !raw.ids.length) throw new CpError(400, 'Select at least one card.');
+  if (raw.ids.length > CP_LIMITS.bulkIds) throw new CpError(400, `Select at most ${CP_LIMITS.bulkIds} cards at a time.`);
+  const all = await store().listTasks(p.id);
+  const picked: Task[] = [];
+  for (const id of raw.ids) {
+    const t = isCpId(id) ? all.find((x) => x.id === id) : undefined;
+    // An id from another project is refused outright, like everywhere else.
+    if (!t) throw new CpError(404, 'Card not found.');
+    if (!picked.includes(t)) picked.push(t);
+  }
+  const base: Record<string, unknown> = {};
+  if ('status' in raw) {
+    if (!isStatus(raw.status)) throw new CpError(400, 'Unknown status.');
+    base.status = raw.status;
+  }
+  if ('assigneeId' in raw) {
+    if (raw.assigneeId !== null && !personOf(p, raw.assigneeId)) throw new CpError(400, 'Pick an assignee from this project’s people.');
+    base.assigneeId = raw.assigneeId;
+  }
+  if ('priority' in raw) {
+    if (raw.priority !== null && !isPriority(raw.priority)) throw new CpError(400, 'Priority must be Low, Medium, High or Urgent.');
+    base.priority = raw.priority;
+  }
+  const labels = new Set((p.labels ?? []).map((l) => l.id));
+  for (const k of ['addLabelId', 'removeLabelId'] as const) if (k in raw && (typeof raw[k] !== 'string' || !labels.has(raw[k] as string))) throw new CpError(400, 'Pick a label from this project.');
+  if (!Object.keys(base).length && !('addLabelId' in raw) && !('removeLabelId' in raw)) throw new CpError(400, 'Choose what to change.');
+  const updated: string[] = [];
+  const skipped: { key: string; reason: string }[] = [];
+  const jobs: Promise<void>[] = [];
+  for (const t of picked) {
+    const body: Record<string, unknown> = { ...base };
+    if ('addLabelId' in raw || 'removeLabelId' in raw) {
+      let ids = [...(t.labelIds ?? [])].filter((id) => labels.has(id));
+      if (raw.removeLabelId) ids = ids.filter((id) => id !== raw.removeLabelId);
+      if (raw.addLabelId && !ids.includes(raw.addLabelId as string)) ids.push(raw.addLabelId as string);
+      body.labelIds = ids;
+    }
+    // A defect keeps our side: assigning it to a client person is skipped, not forced.
+    if (t.type === 'defect' && body.assigneeId && personOf(p, body.assigneeId)?.side === 'client') {
+      skipped.push({ key: taskKey(p, t), reason: 'A defect is fixed by us: it cannot be assigned to a client person.' });
+      continue;
+    }
+    jobs.push(
+      patchTask(p, t, body, ctx, all).then(
+        () => void updated.push(taskKey(p, t)),
+        (err) => {
+          if (!(err instanceof CpError)) throw err;
+          skipped.push({ key: taskKey(p, t), reason: err.message });
+        },
+      ),
+    );
+  }
+  // Every card in parallel (one round trip), against the same snapshot of the board.
+  await Promise.all(jobs);
+  await later(ctx, 'bulk-summary', async () => void (await log(p, null, ctx.actor, 'bulk_update', { cards: updated.length, skipped: skipped.length, changed: [...Object.keys(base), ...('addLabelId' in raw ? ['label added'] : []), ...('removeLabelId' in raw ? ['label removed'] : [])] })));
+  return { updated, skipped };
 }
 
 /**
@@ -508,9 +1100,218 @@ export async function deleteTask(p: Project, t: Task, ctx: Ctx): Promise<void> {
 export async function addComment(p: Project, t: Task, body: unknown, clientVisible: boolean, ctx: Ctx) {
   const clean = text(body, CP_LIMITS.comment);
   if (!clean) throw new CpError(400, 'Write a comment first.');
-  const c = await store().addComment({ projectId: p.id, taskId: t.id, author: ctx.actor, body: clean, clientVisible });
-  await log(p, t.id, ctx.actor, 'comment', { key: taskKey(p, t), clientVisible, length: clean.length });
+  // A comment can only be visible to the client on a card the client can see (CPV2-M1).
+  const visible = clientVisible === true && t.clientVisible === true;
+  const c = await store().addComment({ projectId: p.id, taskId: t.id, author: ctx.actor, body: clean, clientVisible: visible });
+  await log(p, t.id, ctx.actor, 'comment', { key: taskKey(p, t), clientVisible: visible, length: clean.length });
+  await safely('mentions', () => recordMentions(p, t, clean, visible, ctx));
   return c;
+}
+
+// ------------------------------------------------------------------ @mentions
+
+/**
+ * "@Name" in a comment that matches a project person: one `mention` event (it feeds the owner's inbox),
+ * then the batched email rule. The comment text is plain data here: it is matched against the people
+ * list and nothing else. A client on the shared board can only mention people a client may see: the
+ * client-side people, and our side as a whole ("@Appointmentlyy" is not a person, so it matches nobody).
+ */
+async function recordMentions(p: Project, t: Task, body: string, clientVisible: boolean, ctx: Ctx): Promise<void> {
+  const fromClient = ctx.actor.startsWith('client:');
+  const pool = (p.people ?? []).filter((x) => !fromClient || x.side === 'client');
+  const author = fromClient ? ctx.actor.slice(7).toLowerCase() : ctx.actor.slice(6).toLowerCase();
+  const hit = mentionedPeople(body, pool)
+    .filter((x) => (fromClient ? x.name.toLowerCase() !== author : x.email !== author))
+    .slice(0, CP_LIMITS.mentionsPerComment);
+  if (!hit.length) return;
+  // Client-authored text is never stored for emailing (CPV2-L3): the email says who mentioned whom, on which
+  // card, and links to the board. Our own people's excerpts are kept, without links.
+  await log(p, t.id, ctx.actor, 'mention', { key: taskKey(p, t), title: t.title, clientVisible, fromClient, people: hit.map((x) => ({ id: x.id, name: x.name, side: x.side })), excerpt: fromClient ? '' : noLinks(body).slice(0, 240) });
+  await notifyMentions(p, ctx);
+}
+
+/**
+ * Rule `mention_notify`, batched and claimed first: at most one email per person per 15 minutes, carrying
+ * every mention of them since their last email. A person on the client side is only told about comments
+ * that are visible to the client, and only gets the board link. Runs on a mention and on every sweep.
+ */
+async function notifyMentions(p: Project, ctx: Ctx): Promise<void> {
+  if (!ruleOn(p, 'mention_notify')) return;
+  const s = store();
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const mentions = await s.findEvents(p.id, { type: 'mention', since, limit: 200 });
+  if (!mentions.length) return;
+  const sent = (await s.findEvents(p.id, { type: 'automation', rule: 'mention_notify', since, limit: 200 })).filter((e) => e.detail.emailed === true);
+  // The batching window: 15 minutes. A local test server may shorten it (CP_TEST_MENTION_WINDOW_MS) so the
+  // regression suite can test a card hidden inside the window; ignored anywhere else.
+  const testWindow = isLocalTestServer() ? Number(process.env.CP_TEST_MENTION_WINDOW_MS || 0) : 0;
+  const quarter = Math.floor(Date.now() / (Number.isInteger(testWindow) && testWindow > 0 ? testWindow : 15 * 60_000));
+  // CPV2-M1: what a client person may hear about is decided NOW, at send time (a card hidden after the comment,
+  // inside the 15-minute window, is dropped): only client-visible comments on cards that are client-visible now.
+  let visibleNow: Set<string> | null = null;
+  const cardVisible = async (taskId: string | null) => {
+    visibleNow ??= new Set((await s.listTasks(p.id)).filter((t) => t.clientVisible === true).map((t) => t.id));
+    return Boolean(taskId && visibleNow.has(taskId));
+  };
+  for (const person of p.people ?? []) {
+    if (!person.email) continue;
+    const last = sent.find((e) => e.detail.personId === person.id)?.at ?? '';
+    let mine = mentions.filter((e) => e.at > last && Array.isArray(e.detail.people) && (e.detail.people as { id?: string }[]).some((x) => x.id === person.id) && (person.side !== 'client' || e.detail.clientVisible === true));
+    if (person.side === 'client') {
+      const keep: CpEvent[] = [];
+      for (const e of mine) if (await cardVisible(e.taskId)) keep.push(e);
+      mine = keep;
+    }
+    if (!mine.length) continue;
+    // CPV2-L4: at most 10 mention emails a day to one person that were triggered from the shared board.
+    const fromBoard = mine.every((e) => e.actor.startsWith('client:'));
+    if (fromBoard && sent.filter((e) => e.detail.personId === person.id && e.detail.fromBoard === true).length >= 10) continue;
+    const ev = await claim(p, 'mention_notify', null, { personId: person.id, to: person.name, side: person.side, count: mine.length, fromBoard }, `mention|${person.id}|${quarter}`);
+    if (!ev) continue;
+    const url = person.side === 'client' ? liveBoardUrl(p, ctx.origin) : consoleUrl(p.id, ctx.origin);
+    const who = (actor: string) => (actor.startsWith('client:') ? actor.slice(7) : person.side === 'client' ? 'Appointmentlyy' : actor.slice(6));
+    const out: MailOutcome = !url
+      ? { emailed: false, note: 'email not sent: the board is not shared' }
+      : await sendMail(
+          p,
+          'cp-person',
+          person.email,
+          `${p.clientName}: you were mentioned on ${mine.length} card${mine.length === 1 ? '' : 's'}`,
+          [
+            `Hello ${person.name},`,
+            ...mine.slice(0, 5).map((e) => {
+              const where = `${String(e.detail.key ?? 'a card')} “${String(e.detail.title ?? '')}”`;
+              // No free text from a client author, ever (CPV2-L3); ours without links.
+              const said = e.actor.startsWith('client:') || !e.detail.excerpt ? '' : `: ${noLinks(String(e.detail.excerpt)).slice(0, 240)}`;
+              return `${who(e.actor)}${e.actor.startsWith('client:') ? ' (self-identified on the shared board)' : ''} mentioned you on ${where}${said}`;
+            }),
+            ...(mine.length > 5 ? [`and ${mine.length - 5} more.`] : []),
+            ...(mine.some((e) => e.actor.startsWith('client:')) ? ['Open the board to read the comment.'] : []),
+          ],
+          { label: person.side === 'client' ? 'Open your project board' : 'Open the project', url },
+          'mention',
+          person.name,
+        );
+    await settle(ev, out);
+  }
+}
+
+// ------------------------------------------------------------------ card attachments (owner uploads)
+
+/**
+ * Owner: attach a PDF, PNG or JPG to a card. The type comes from the file's own first bytes (the upload's
+ * name and Content-Type are not trusted), the size is capped by the caller, and a new file is NEVER
+ * client-visible: the owner turns that on per file.
+ */
+export async function addAttachment(p: Project, t: Task, nameRaw: unknown, bytes: Uint8Array, ctx: Ctx): Promise<CpFileMeta> {
+  if (!bytes.length || bytes.length > CP_LIMITS.fileBytes) throw new CpError(413, `The file is larger than ${Math.floor(CP_LIMITS.fileBytes / 1024 / 1024)} MB.`);
+  const kind = detectAttachment(bytes);
+  if (!kind) throw new CpError(400, 'Attach a PDF, PNG or JPG file.');
+  const s = store();
+  const all = await s.listFiles(p.id, 'attachment');
+  const mine = all.filter((f) => f.taskId === t.id);
+  if (mine.length >= CP_LIMITS.attachmentsPerTask) throw new CpError(409, `A card holds at most ${CP_LIMITS.attachmentsPerTask} attachments. Remove one first.`);
+  if (all.length >= CP_LIMITS.attachmentsPerProject) throw new CpError(409, `A project holds at most ${CP_LIMITS.attachmentsPerProject} attachments. Remove one first.`);
+  const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+  if (mine.some((f) => f.sha256 === sha)) throw new CpError(409, 'This file is already attached to the card.');
+  // CPV2-L5: a PDF must actually parse (at least one page), like the planner documents.
+  const pages = kind.mime === 'application/pdf' ? ((await pdfPageCount(bytes)) ?? 0) : 0;
+  if (kind.mime === 'application/pdf' && pages < 1) throw new CpError(400, 'This file could not be read as a PDF.');
+  const name = attachmentName(nameRaw, kind.ext);
+  const [file] = await Promise.all([
+    s.putFile({ projectId: p.id, name, pages, source: 'attachment', taskId: t.id, clientVisible: false, mime: kind.mime }, bytes),
+    log(p, t.id, ctx.actor, 'attachment_added', { key: taskKey(p, t), name, size: bytes.length, mime: kind.mime, sha256: sha }),
+  ]);
+  return file;
+}
+
+/** The attachment `fileId` of card `t`, or a 404 (an id from another card or project does not exist here). */
+export async function attachmentOf(p: Project, t: Task, fileId: unknown): Promise<CpFileMeta> {
+  const f = isCpId(fileId) ? await store().getFile(fileId) : null;
+  if (!f || f.projectId !== p.id || f.taskId !== t.id) throw new CpError(404, 'Attachment not found.');
+  return f;
+}
+
+export async function setAttachmentVisible(p: Project, t: Task, f: CpFileMeta, visible: boolean, ctx: Ctx): Promise<CpFileMeta> {
+  if (f.clientVisible === visible) return f;
+  // The change and its event in one round trip.
+  const [updated] = await Promise.all([store().updateFile(f.id, { clientVisible: visible }), log(p, t.id, ctx.actor, 'attachment_visibility', { key: taskKey(p, t), name: f.name, clientVisible: visible })]);
+  if (!updated) throw new CpError(404, 'Attachment not found.');
+  return updated;
+}
+
+export async function removeAttachment(p: Project, t: Task, f: CpFileMeta, ctx: Ctx): Promise<void> {
+  const [gone] = await Promise.all([store().deleteFile(f.id), log(p, t.id, ctx.actor, 'attachment_removed', { key: taskKey(p, t), name: f.name, sha256: f.sha256 })]);
+  if (!gone) throw new CpError(404, 'Attachment not found.');
+}
+
+/**
+ * The client board's download: only a file the owner marked client-visible, on a card that is itself
+ * client-visible, in this (shared) project. Anything else does not exist as far as the board is concerned.
+ */
+export async function publicAttachment(p: Project, fileId: unknown, allow?: (f: CpFileMeta) => boolean): Promise<{ file: CpFileMeta; bytes: Buffer }> {
+  const s = store();
+  const f = isCpId(fileId) ? await s.getFile(fileId) : null;
+  if (!f || f.projectId !== p.id || !f.taskId || f.clientVisible !== true) throw new CpError(404, 'File not found.');
+  const t = await s.getTask(f.taskId);
+  if (!t || t.projectId !== p.id || t.clientVisible !== true) throw new CpError(404, 'File not found.');
+  // The per-file limit counts only downloads the link is entitled to: a hidden or unknown file stays a 404 (it
+  // never shows as rate-limited), and the bytes are not read past the limit.
+  if (allow && !allow(f)) throw new CpError(429, 'Too many downloads of this file. Wait a few minutes and try again.');
+  const bytes = await s.getFileBytes(f.id);
+  if (!bytes) throw new CpError(404, 'File not found.');
+  return { file: f, bytes };
+}
+
+// ------------------------------------------------------------------ the owner's notifications inbox
+
+const INBOX_TYPES: CpEventType[] = ['client_tick', 'client_untick', 'client_claims_done', 'client_defect', 'retest_confirmed', 'comment', 'mention', 'assigned'];
+
+/**
+ * The owner's inbox, built from events (nothing extra is stored): what clients did on the shared boards,
+ * defects they reported, @mentions of our people, and cards assigned to our people by someone else.
+ * Newest first across every open project. `unread` = newer than the project's "seen" marker.
+ */
+export async function listNotifications(viewerEmail: string, limit = 60): Promise<{ items: CpNotification[]; unread: number }> {
+  const s = store();
+  const projects = (await s.listProjects()).filter((p) => p.status !== 'archived').slice(0, 60);
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  const items: CpNotification[] = [];
+  // One round trip for every project's events.
+  const perProject = await Promise.all(projects.map((p) => s.findEvents(p.id, { types: INBOX_TYPES, since, limit: 60 })));
+  for (const [i, p] of projects.entries()) {
+    const events = perProject[i];
+    for (const e of events) {
+      const fromClient = e.actor.startsWith('client:');
+      let kind: CpNotification['kind'] | null = null;
+      let textOf = eventText(e);
+      if (e.type === 'client_defect') kind = 'defect';
+      else if (e.type === 'mention') {
+        const ours = (Array.isArray(e.detail.people) ? (e.detail.people as { name?: string; side?: string }[]) : []).filter((x) => x.side === 'us');
+        if (ours.length) {
+          kind = 'mention';
+          textOf = `${String(e.detail.key ?? '')} ${ours.map((x) => `@${x.name}`).join(', ')} mentioned: ${String(e.detail.excerpt ?? '').slice(0, 160)}`;
+        }
+      } else if (e.type === 'assigned') {
+        const to = (p.people ?? []).find((x) => x.id === e.detail.toId);
+        // Cards you assigned to yourself are not news.
+        if (to && to.side === 'us' && e.actor !== `owner:${to.email}`) kind = 'assignment';
+      } else if (fromClient) kind = 'client_action';
+      if (!kind) continue;
+      items.push({ id: e.id, projectId: p.id, projectKey: p.key, clientName: p.clientName, taskId: e.taskId, kind, text: textOf.slice(0, 300), actor: e.actor, at: e.at, unread: e.actor !== `owner:${viewerEmail}` && e.at > (p.notifSeenAt ?? '') });
+    }
+  }
+  items.sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+  return { items: items.slice(0, Math.max(1, Math.min(200, limit))), unread: items.filter((i) => i.unread).length };
+}
+
+/** Mark the inbox read: one project, or every open one. */
+export async function markNotificationsSeen(projectId?: string): Promise<number> {
+  const s = store();
+  const now = nowIso();
+  const ids = projectId ? [projectId] : (await s.listProjects()).filter((p) => p.status !== 'archived').map((p) => p.id);
+  const done = await Promise.all(ids.map((id) => s.updateProject(id, { notifSeenAt: now })));
+  return done.filter(Boolean).length;
 }
 
 // ------------------------------------------------------------------ client actions (shared board)
@@ -889,11 +1690,15 @@ async function doSweep(projectId: string, origin?: string): Promise<void> {
 
   // Client comments that arrived after the last batched notice.
   await notifyComments(p, { actor: 'system', origin });
+  // @mentions that arrived after a person's last batched email.
+  await notifyMentions(p, { actor: 'system', origin });
 }
 
 // ------------------------------------------------------------------ AI plan: approve / discard
 
 export interface ApproveEdits {
+  /** Indexes of suggested people the owner does not want added. */
+  removePeople?: unknown;
   remove?: unknown;
   tasks?: unknown;
   summaryClient?: unknown;
@@ -914,12 +1719,15 @@ function applyEdits(proposal: Proposal, edits: ApproveEdits): Proposal {
     if (e.ownerSide === 'us' || e.ownerSide === 'client') next.ownerSide = e.ownerSide;
     if (isOffset(e.dueOffsetBd)) next.dueOffsetBd = e.dueOffsetBd;
     if (isPhase(e.phase)) next.phase = e.phase;
+    if ('priority' in e) next.priority = isPriority(e.priority) ? e.priority : null;
     if (next.kind === 'sop' && (next.title !== t.title || next.ownerSide !== t.ownerSide || next.dueOffsetBd !== t.dueOffsetBd)) next.kind = 'changed';
     tasks.push(next);
   });
+  const dropPeople = new Set(Array.isArray(edits.removePeople) ? edits.removePeople.filter((n): n is number => Number.isInteger(n)) : []);
   return {
     ...proposal,
     tasks,
+    people: (proposal.people ?? []).filter((_, i) => !dropPeople.has(i)),
     summaryClient: typeof edits.summaryClient === 'string' ? text(edits.summaryClient, 1500) : proposal.summaryClient,
     briefingInternal: typeof edits.briefingInternal === 'string' ? text(edits.briefingInternal, 5000) : proposal.briefingInternal,
   };
@@ -942,11 +1750,28 @@ export async function approveRun(p: Project, run: AiRun, edits: ApproveEdits, ct
   const claimed = await s.updateRun(run.id, { status: 'approved', proposal }, ['draft']);
   if (!claimed) throw new CpError(409, 'This draft was already approved or replaced. Reload.');
   const ref = (t: ProposalTask) => line(`${t.sourcePage ? `p.${t.sourcePage}` : ''}${t.sourceQuote ? `${t.sourcePage ? ': ' : ''}“${t.sourceQuote}”` : ''}`, CP_LIMITS.sourceRef);
+  // v2: the client-side people the planner found (and the owner kept) join the project's people, by name.
+  let people = [...(p.people ?? [])];
+  let peopleAdded = 0;
+  for (const sp of proposal.people ?? []) {
+    if (people.length >= CP_LIMITS.people) break;
+    const name = personName(sp.name);
+    if (name.length < 2 || people.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
+    people = [...people, { id: newId(), name, email: '', side: 'client', role: line(sp.role, CP_LIMITS.roleLabel), createdAt: nowIso() }];
+    peopleAdded++;
+  }
+  // A proposed assignee is only ever a client-side person, and only on a client-owned card.
+  const assigneeFor = (t: ProposalTask) => (t.ownerSide === 'client' && t.assigneeName ? (people.find((x) => x.side === 'client' && x.name.toLowerCase() === (t.assigneeName as string).toLowerCase())?.id ?? null) : null);
+  const checklistFor = (t: ProposalTask): ChecklistItem[] => (t.checklist ?? []).slice(0, CP_LIMITS.aiChecklist).map((x) => ({ id: newId(), text: line(x, CP_LIMITS.checklistText), done: false })).filter((i) => i.text);
   let updated = 0;
   for (const t of proposal.tasks) {
     const card = t.kind === 'new' ? undefined : bySop.get(t.matchesSopCard);
     if (!card) continue;
     const patch: Partial<Task> = { sourceRef: ref(t) };
+    // Suggestions only fill what the owner has not set on the card already.
+    if (t.priority && !card.priority) patch.priority = t.priority;
+    if (!(card.checklist ?? []).length && checklistFor(t).length) patch.checklist = checklistFor(t);
+    if (!card.assigneeId && assigneeFor(t) && (t.kind === 'changed' ? t.ownerSide : card.ownerSide) === 'client') patch.assigneeId = assigneeFor(t);
     if (t.kind === 'changed') {
       Object.assign(patch, {
         title: t.title,
@@ -980,6 +1805,9 @@ export async function approveRun(p: Project, run: AiRun, edits: ApproveEdits, ct
         source: 'ai',
         sourceRef: ref(t),
         sopKey: t.kind === 'new' ? null : t.matchesSopCard,
+        priority: t.priority ?? null,
+        checklist: checklistFor(t),
+        assigneeId: assigneeFor(t),
       }),
     );
     await s.insertTasks(cards);
@@ -991,8 +1819,9 @@ export async function approveRun(p: Project, run: AiRun, edits: ApproveEdits, ct
     briefingInternal: proposal.briefingInternal,
     planMeta: { keyDates: proposal.keyDates, fees: proposal.fees, risks: proposal.risks },
     ...(goLive ? { targetGoLive: goLive } : {}),
+    ...(peopleAdded ? { people } : {}),
   });
-  await log(p, null, ctx.actor, 'plan_approved', { runId: run.id, created, updated, cards: proposal.tasks.length });
+  await log(p, null, ctx.actor, 'plan_approved', { runId: run.id, created, updated, cards: proposal.tasks.length, peopleAdded });
   return { created, updated };
 }
 

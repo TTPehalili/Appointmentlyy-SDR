@@ -36,6 +36,12 @@ export async function POST(req: NextRequest, c: Ctx) {
   if (!body) return fail(400, 'Send the details as JSON (at most 16 KB).');
   const { project } = found;
   const origin = req.nextUrl.origin;
+  // "Who are you?": a visitor who picked a client-side person acts under that person's name. Only
+  // client-side people can be picked (an id of one of our people, or of another project, is ignored).
+  if (typeof body.personId === 'string') {
+    const person = (project.people ?? []).find((x) => x.id === body.personId && x.side === 'client');
+    if (person) body.name = person.name;
+  }
   try {
     if (await clientDailyCapReached(project)) return fail(429, 'This board has had a lot of activity today. Please try again tomorrow, or contact us directly.');
     if (action === 'tick' || action === 'untick') await clientTick(project, body.taskId, action === 'tick', body.name, origin);
@@ -45,8 +51,8 @@ export async function POST(req: NextRequest, c: Ctx) {
     else if (action === 'retest') await clientRetest(project, body.taskId, body.confirmed === true, body.name, origin);
     else return fail(404, 'Unknown action.');
     const store = getClientProjectStore();
-    const [fresh, tasks, comments] = await Promise.all([store.getProject(project.id), store.listTasks(project.id), store.listComments(project.id)]);
-    return json({ success: true, board: toPublicProject(fresh ?? project, tasks, comments) });
+    const [fresh, tasks, comments, attachments] = await Promise.all([store.getProject(project.id), store.listTasks(project.id), store.listComments(project.id), store.listFiles(project.id, 'attachment')]);
+    return json({ success: true, board: toPublicProject(fresh ?? project, tasks, comments, undefined, attachments) });
   } catch (err) {
     return cpFail(err, `board ${action}`);
   }

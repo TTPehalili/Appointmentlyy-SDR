@@ -7,11 +7,12 @@
  */
 import * as React from 'react';
 import { Check, Copy, FileText, Pencil, Sparkles, Trash2, Upload } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, IconButton, Input, Select, Skeleton, Textarea, useToast } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, EmptyState, IconButton, Input, Select, Skeleton, Textarea, useToast } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
 import { copyText } from '@/components/agreements/ownerShared';
-import { PHASES, PHASE_LABEL, PROPOSAL_KIND_LABEL, addBusinessDays, fmtAt, fmtDate, type CpFileMeta, type OwnerProjectView, type Proposal, type ProposalTask, type StatusDraft } from '@/lib/clientProjects/types';
-import { Note, SideChip, type AiResponse } from '@/components/clientProjects/shared';
+import { PHASES, PHASE_LABEL, PRIORITIES, PRIORITY_LABEL, PROPOSAL_KIND_LABEL, addBusinessDays, fmtAt, fmtDate, type CpFileMeta, type OwnerProjectView, type Priority, type Proposal, type ProposalTask, type StatusDraft } from '@/lib/clientProjects/types';
+import { Note, PriorityMark, SideChip, type AiResponse } from '@/components/clientProjects/shared';
+import { AiStage, useAiProgress } from '@/components/clientProjects/AiStage';
 
 interface FilesResponse {
   files: CpFileMeta[];
@@ -19,7 +20,7 @@ interface FilesResponse {
   limits: { bytes: number; files: number };
 }
 
-type Edit = { title?: string; ownerSide?: 'us' | 'client'; dueOffsetBd?: number };
+type Edit = { title?: string; ownerSide?: 'us' | 'client'; dueOffsetBd?: number; priority?: Priority | null };
 
 export function AiPanel({ project, onChanged }: { project: OwnerProjectView; onChanged: () => Promise<void> | void }) {
   const toast = useToast();
@@ -29,23 +30,29 @@ export function AiPanel({ project, onChanged }: { project: OwnerProjectView; onC
   const [uploading, setUploading] = React.useState(false);
   const [busy, setBusy] = React.useState('');
   const [agreementId, setAgreementId] = React.useState('');
+  const [filesError, setFilesError] = React.useState<string | null>(null);
+  const [watched, setWatched] = React.useState(false);
   const input = React.useRef<HTMLInputElement>(null);
+  const reviewRef = React.useRef<HTMLDivElement>(null);
 
   const load = React.useCallback(async () => {
     const [f, a] = await Promise.all([apiJson<FilesResponse>(`/api/client-projects/${id}/files`), apiJson<AiResponse>(`/api/client-projects/${id}/ai`)]);
-    if (f.success) setFiles(f);
+    // A failed document list is said out loud: it must never look like "no documents".
+    if (f.success) {
+      setFiles(f);
+      setFilesError(null);
+    } else setFilesError(f.error || 'The document list could not be loaded.');
     if (a.success) setAi(a);
   }, [id]);
   React.useEffect(() => {
     void load();
   }, [load]);
-  // While a draft is being written, check on it every 2 seconds.
+  // While a draft is being written, the stage polls its own progress (1 query every 1.5 s).
   const running = ai?.run?.status === 'running';
   React.useEffect(() => {
-    if (!running) return;
-    const t = window.setInterval(() => void load(), 2000);
-    return () => window.clearInterval(t);
-  }, [running, load]);
+    if (running) setWatched(true);
+  }, [running]);
+  const live = useAiProgress(id, running, () => void load().then(() => onChanged()));
 
   const upload = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -154,13 +161,31 @@ export function AiPanel({ project, onChanged }: { project: OwnerProjectView; onC
         )}
       </Card>
 
-      {run?.status === 'running' && (
-        <Card className="flex items-center gap-3 p-4" data-testid="cp-ai-running">
-          <Sparkles className="size-5 animate-pulse text-fg-secondary" aria-hidden />
-          <p className="text-body text-fg">Reading the documents and drafting the plan. This can take a minute.</p>
-        </Card>
+      {filesError && (
+        <Note tone="warning">
+          <span data-testid="cp-files-error">{filesError}</span>
+        </Note>
       )}
-      {run?.status === 'failed' && (
+      {run && (run.status === 'draft' || run.status === 'approved') && files && files.files.length === 0 && run.fileIds.length > 0 && (
+        <Note tone="warning">
+          <span data-testid="cp-files-missing">
+            This plan was drafted from {run.fileIds.length} document{run.fileIds.length === 1 ? '' : 's'} that {run.fileIds.length === 1 ? 'is' : 'are'} no longer listed here. Approving or re-running a plan never removes documents: if you did not remove them, report this (the run id is {run.id.slice(0, 8)}).
+          </span>
+        </Note>
+      )}
+      {run?.status === 'running' && (
+        <div data-testid="cp-ai-running">
+          <AiStage run={live ?? run} onReview={() => undefined} onDiscard={() => void act('discard')} onRetry={() => void act('retry')} onUseSop={() => undefined} />
+        </div>
+      )}
+      {run?.status === 'draft' && watched && (
+        <AiStage run={live && live.id === run.id ? live : run} onReview={() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} onDiscard={() => void act('discard')} onRetry={() => void act('retry')} onUseSop={() => undefined} />
+      )}
+      {/* A run watched in this session ends on the stage itself (the robot's puzzled pose and the reason); otherwise the plain card. */}
+      {run?.status === 'failed' && watched && (
+        <AiStage run={live && live.id === run.id ? live : run} onReview={() => undefined} onDiscard={() => void act('discard')} onRetry={() => void act('retry')} onUseSop={() => undefined} />
+      )}
+      {run?.status === 'failed' && !watched && (
         <Card className="flex flex-wrap items-center justify-between gap-3 border-warning-400/50 p-4" data-testid="cp-ai-failed">
           <p className="text-body text-fg">{run.error || 'The draft failed.'}</p>
           {ai?.ai !== 'off' && (files?.files.length ?? 0) > 0 && (
@@ -175,7 +200,11 @@ export function AiPanel({ project, onChanged }: { project: OwnerProjectView; onC
           Plan approved {fmtAt(run.updatedAt)}. The cards are on the board. Add another document to draft an updated plan.
         </Note>
       )}
-      {run?.status === 'draft' && run.proposal && <Review key={run.id} project={project} proposal={run.proposal} busy={busy} onApprove={(edits) => act('approve', { edits })} onDiscard={() => act('discard')} />}
+      {run?.status === 'draft' && run.proposal && (
+        <div ref={reviewRef}>
+          <Review key={run.id} project={project} proposal={run.proposal} busy={busy} onApprove={(edits) => act('approve', { edits })} onDiscard={() => act('discard')} />
+        </div>
+      )}
 
       {ai && !run && files && files.files.length === 0 && ai.ai !== 'off' && (
         <EmptyState icon={<Sparkles />} title="Upload the signed documents" description="The AI reads the proposal and annexes, then drafts the milestones, task cards, deadlines, summary and briefing for you to approve." className="py-8" />
@@ -188,6 +217,7 @@ export function AiPanel({ project, onChanged }: { project: OwnerProjectView; onC
 
 function Review({ project, proposal, busy, onApprove, onDiscard }: { project: OwnerProjectView; proposal: Proposal; busy: string; onApprove: (edits: Record<string, unknown>) => Promise<boolean>; onDiscard: () => Promise<boolean> }) {
   const [removed, setRemoved] = React.useState<Set<number>>(new Set());
+  const [dropPeople, setDropPeople] = React.useState<Set<number>>(new Set());
   const [edits, setEdits] = React.useState<Record<number, Edit>>({});
   const [editing, setEditing] = React.useState<number | null>(null);
   const [summary, setSummary] = React.useState(proposal.summaryClient);
@@ -198,6 +228,7 @@ function Review({ project, proposal, busy, onApprove, onDiscard }: { project: Ow
   const approve = () =>
     onApprove({
       remove: [...removed],
+      removePeople: [...dropPeople],
       tasks: edits,
       ...(summary !== proposal.summaryClient ? { summaryClient: summary } : {}),
       ...(briefing !== proposal.briefingInternal ? { briefingInternal: briefing } : {}),
@@ -239,6 +270,30 @@ function Review({ project, proposal, busy, onApprove, onDiscard }: { project: Ow
         </div>
       )}
 
+      {(proposal.people ?? []).length > 0 && (
+        <section aria-label="Suggested client people" data-testid="cp-ai-people">
+          <h3 className="mb-1 text-body-strong text-fg">Client people named in the documents</h3>
+          <p className="mb-2 text-small text-fg-secondary">Added to People (without an email) when you approve. Untick anyone you do not want.</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+            {(proposal.people ?? []).map((x, i) => (
+              <Checkbox
+                key={i}
+                checked={!dropPeople.has(i)}
+                onChange={() =>
+                  setDropPeople((set) => {
+                    const n = new Set(set);
+                    if (n.has(i)) n.delete(i);
+                    else n.add(i);
+                    return n;
+                  })
+                }
+                label={`${x.name}${x.role ? ` · ${x.role}` : ''}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="flex flex-col gap-4">
         {PHASES.map((phase) => {
           const list = rows.filter((r) => r.t.phase === phase);
@@ -257,11 +312,14 @@ function Review({ project, proposal, busy, onApprove, onDiscard }: { project: Ow
                           <p className="truncate text-caption text-fg-tertiary">
                             {t.sourcePage ? `p.${t.sourcePage}` : 'No page'}
                             {t.sourceQuote ? ` · “${t.sourceQuote}”` : ''}
+                            {t.assigneeName ? ` · Suggested: ${t.assigneeName}` : ''}
+                            {t.checklist?.length ? ` · Checklist of ${t.checklist.length}` : ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge tone={t.kind === 'changed' ? 'warning' : 'neutral'} className={t.kind === 'new' ? 'bg-selected-soft text-selected-soft-fg' : undefined}>{PROPOSAL_KIND_LABEL[t.kind]}</Badge>
                           {t.isGate && <Badge tone="neutral">Milestone</Badge>}
+                          <PriorityMark priority={t.priority ?? null} />
                           <SideChip side={t.ownerSide} />
                           <span className="w-14 text-right text-caption tabular-nums text-fg-secondary">{fmtDate(addBusinessDays(project.kickoffDate, t.dueOffsetBd))}</span>
                           <IconButton label={`Edit ${t.title}`} size="sm" variant="ghost" onClick={() => setEditing(editing === i ? null : i)}>
@@ -285,13 +343,21 @@ function Review({ project, proposal, busy, onApprove, onDiscard }: { project: Ow
                         </div>
                       </div>
                       {editing === i && (
-                        <div className="grid gap-2 border-t border-line bg-subtle px-3 py-2 sm:grid-cols-[1fr_8rem_8rem]">
+                        <div className="grid gap-2 border-t border-line bg-subtle px-3 py-2 sm:grid-cols-[1fr_8rem_8rem_8rem]">
                           <Input aria-label="Title" value={t.title} onChange={(e) => patch(i, { title: e.target.value })} maxLength={200} />
                           <Select aria-label="Owner" value={t.ownerSide} onChange={(e) => patch(i, { ownerSide: e.target.value as 'us' | 'client' })}>
                             <option value="us">Us</option>
                             <option value="client">Client</option>
                           </Select>
                           <Input aria-label="Business days from kickoff" type="number" min={-30} max={260} value={t.dueOffsetBd} onChange={(e) => patch(i, { dueOffsetBd: Math.trunc(Number(e.target.value) || 0) })} />
+                          <Select aria-label="Priority" value={t.priority ?? ''} onChange={(e) => patch(i, { priority: (e.target.value || null) as Priority | null })}>
+                            <option value="">No priority</option>
+                            {PRIORITIES.map((p) => (
+                              <option key={p} value={p}>
+                                {PRIORITY_LABEL[p]}
+                              </option>
+                            ))}
+                          </Select>
                         </div>
                       )}
                     </li>

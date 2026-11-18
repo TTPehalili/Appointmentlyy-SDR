@@ -19,11 +19,11 @@ export async function GET(req: NextRequest, c: Ctx) {
   try {
     const store = getClientProjectStore();
     const { project } = found;
-    const [tasks, comments] = await Promise.all([store.listTasks(project.id), store.listComments(project.id)]);
+    const [tasks, comments, attachments] = await Promise.all([store.listTasks(project.id), store.listComments(project.id), store.listFiles(project.id, 'attachment')]);
     // Lazy housekeeping after the response (no cron): never slows or fails the client's page.
     const origin = req.nextUrl.origin;
     after(() => sweepProject(project.id, { origin, minGapMs: 60_000 }));
-    return json({ success: true, board: toPublicProject(project, tasks, comments) });
+    return json({ success: true, board: toPublicProject(project, tasks, comments, undefined, attachments) });
   } catch (err) {
     return cpFail(err, 'board');
   }

@@ -5,6 +5,7 @@ import { getClientProjectStore } from '@/lib/server/clientProjectStore';
 import { requireProjectOwner, toOwnerProject } from '@/lib/server/clientProjects/core';
 import { cpFail } from '@/lib/server/clientProjects/http';
 import { createProject, sweepProject } from '@/lib/server/clientProjects/service';
+import { projectRow, projectStats } from '@/lib/server/clientProjects/stats';
 import { aiMode, aiProvider } from '@/lib/server/clientProjects/ai';
 import { SOP_TEMPLATE, SOP_VERSION } from '@/lib/clientProjects/sopTemplate';
 
@@ -18,7 +19,8 @@ export async function GET(req: NextRequest) {
   if (owner instanceof NextResponse) return owner;
   try {
     const store = getClientProjectStore();
-    const projects = await store.listProjects();
+    // Round trips: the projects and the schema check (1), their cards (2). Sweeps run after the response.
+    const [projects, schema] = await Promise.all([store.listProjects(), store.schemaStatus()]);
     const tasks = await store.listTasksFor(projects.map((p) => p.id));
     // Lazy housekeeping (delay records, reminders, digests) after the response; at most every 5 minutes per project.
     const origin = req.nextUrl.origin;
@@ -28,10 +30,14 @@ export async function GET(req: NextRequest) {
     return json({
       success: true,
       projects: projects.map((p) => toOwnerProject(p, tasks.filter((t) => t.projectId === p.id))),
+      // The cross-project home: one row of facts per project, with the rule-based health chip.
+      rows: projects.map((p) => projectRow(projectStats(p, tasks.filter((t) => t.projectId === p.id)))),
       sop: { version: SOP_VERSION, cards: SOP_TEMPLATE.length },
       ai: aiMode(),
       aiProvider: aiProvider(),
       storage: store.backend,
+      // 'v1' = the v2 migration has not been run on this database: the console says so.
+      schema,
     });
   } catch (err) {
     return cpFail(err, 'list');
@@ -45,7 +51,7 @@ export async function POST(req: NextRequest) {
   const body = await readJson(req, 16 * 1024);
   if (!body) return fail(400, 'Send the project details as JSON.');
   try {
-    const project = await createProject(body, { actor: `owner:${owner.email}`, origin: req.nextUrl.origin });
+    const project = await createProject(body, { actor: `owner:${owner.email}`, origin: req.nextUrl.origin, ownerName: owner.name });
     const tasks = await getClientProjectStore().listTasks(project.id);
     return json({ success: true, project: toOwnerProject(project, tasks) });
   } catch (err) {

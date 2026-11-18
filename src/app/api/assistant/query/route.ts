@@ -3,7 +3,10 @@ import { DEMO_INITIAL_DEMO_ACTIVITIES } from '@/lib/activityStore';
 import { DEMO_LOGIN, isDemoSession } from '@/lib/demoMode';
 import { getServerSession, type ServerSession } from '@/lib/server/session';
 import { getTenantStore } from '@/lib/server/tenantStore';
-import { ROLE_RANK, isRepLevel, parseRole, type Role } from '@/lib/roles';
+import { PLATFORM_TENANT_CODE, ROLE_RANK, isRepLevel, parseRole, type Role } from '@/lib/roles';
+import { rateLimit } from '@/lib/authToken';
+import { getClientProjectStore } from '@/lib/server/clientProjectStore';
+import { answerProjectQuestion, isProjectQuestion } from '@/lib/server/clientProjects/copilot';
 import { detectCopilotIntent, reportMetrics, sanitizeReportData, type ReportData } from '@/lib/copilotReport';
 import { raceGemini } from '@/lib/server/gemini';
 import {
@@ -411,6 +414,34 @@ export async function POST(req: NextRequest) {
     const personal = mine && mine.scope === 'rep' ? mine : null;
 
     const reply = (r: CopilotReply) => NextResponse.json({ ...r, role, timestamp: new Date().toISOString() });
+
+    // Client Projects: ONLY the platform owner signed in to the Appointmentlyy workspace (the same rule as
+    // every /api/client-projects route), never a demo login, a client workspace or a demo build. Only
+    // questions that are clearly about projects come here; everything else keeps the usual Copilot.
+    if (session && !DEMO_LOGIN && session.isPlatformAdmin && session.tenantCode === PLATFORM_TENANT_CODE) {
+      try {
+        const projects = await getClientProjectStore().listProjects();
+        if (projects.length && isProjectQuestion(question, projects)) {
+          // CPV2-L2: the same per-owner allowance as /api/client-projects/copilot (40 in 10 minutes). Over it,
+          // nothing is computed and no model is called.
+          if (!rateLimit(`cp-owner-copilot:${session.email}`, 40, 10 * 60_000)) {
+            return NextResponse.json({ error: 'Too many project questions in a short time. Wait a few minutes, or open the project Dashboard.', category: 'client_projects' }, { status: 429 });
+          }
+          const a = await answerProjectQuestion(question, { projects });
+          const one = a.projectId ? projects.find((p) => p.id === a.projectId) : null;
+          // CPV2-L1: an AI answer is labelled, and the deterministic facts headline is always shown with it.
+          const headline = a.factsAnswer.split('\n').slice(0, 2).join('\n');
+          return reply({
+            answer: a.source === 'ai' ? `${a.answer}\n\n**From the facts:** ${headline}\n\n_AI, from the facts._` : a.answer,
+            category: 'client_projects',
+            source: a.source === 'ai' ? 'client_projects_ai' : 'client_projects_facts',
+            actions: [one ? { label: `Open ${one.clientName}`, href: `/platform/client-projects/${one.id}?tab=dashboard` } : { label: 'Open Client Projects', href: '/platform/client-projects' }],
+          });
+        }
+      } catch (err) {
+        console.warn('[assistant client-projects]', err instanceof Error ? err.message : err);
+      }
+    }
     const intent = detectCopilotIntent(question);
 
     if (reportIn && (intent === 'report' || intent === 'coaching' || intent === 'objection_stats' || intent === 'personal')) {

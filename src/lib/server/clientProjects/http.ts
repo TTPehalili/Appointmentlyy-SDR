@@ -2,14 +2,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import type { ServerSession } from '@/lib/server/session';
-import { TOKEN_RE, clientIp, fail, tokenHashOf } from '@/lib/server/agreements/core';
+import { PRIVATE_HEADERS, TOKEN_RE, clientIp, fail, tokenHashOf } from '@/lib/server/agreements/core';
 import { getClientProjectStore, isCpId } from '@/lib/server/clientProjectStore';
 import { requireProjectOwner, storageFail } from '@/lib/server/clientProjects/core';
 import { CpError, type Ctx } from '@/lib/server/clientProjects/service';
 import type { Project } from '@/lib/clientProjects/types';
 
 export function cpFail(err: unknown, what: string): NextResponse {
-  if (err instanceof CpError) return fail(err.status, err.message);
+  if (err instanceof CpError) return fail(err.status, err.message, err.extra);
   return storageFail(err, what);
 }
 
@@ -27,7 +27,7 @@ export async function ownerProject(req: NextRequest, id: string, bucket: 'read' 
   try {
     const project = await getClientProjectStore().getProject(id);
     if (!project) return fail(404, 'Project not found.');
-    return { owner, project, ctx: { actor: `owner:${owner.email}`, origin: req.nextUrl.origin } };
+    return { owner, project, ctx: { actor: `owner:${owner.email}`, origin: req.nextUrl.origin, ownerName: owner.name } };
   } catch (err) {
     return storageFail(err, 'load');
   }
@@ -99,3 +99,67 @@ export const atMost = (p: Promise<unknown>, ms: number): Promise<void> =>
       resolve();
     });
   });
+
+/** The request body, or null as soon as it exceeds `max` bytes (the rest is not read). */
+export async function readCapped(req: NextRequest, max: number): Promise<Uint8Array | null> {
+  const declared = Number(req.headers.get('content-length') || 0);
+  if (declared > max) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
+/** A card of this project, or the 404 to send (ids from another project are simply not found). */
+export async function ownerTask(req: NextRequest, id: string, taskId: string, bucket: 'read' | 'write' | 'upload' | 'ai' = 'write'): Promise<(OwnerCtx & { task: import('@/lib/clientProjects/types').Task }) | NextResponse> {
+  const owner = await requireProjectOwner(req, bucket);
+  if (owner instanceof NextResponse) return owner;
+  if (!isCpId(id)) return fail(404, 'Project not found.');
+  if (!isCpId(taskId)) return fail(404, 'Card not found.');
+  try {
+    // The project and the card in ONE round trip; the card must belong to the project.
+    const store = getClientProjectStore();
+    const [project, task] = await Promise.all([store.getProject(id), store.getTask(taskId)]);
+    if (!project) return fail(404, 'Project not found.');
+    if (!task || task.projectId !== project.id) return fail(404, 'Card not found.');
+    return { owner, project, task, ctx: { actor: `owner:${owner.email}`, origin: req.nextUrl.origin, ownerName: owner.name } };
+  } catch (err) {
+    return storageFail(err, 'task load');
+  }
+}
+
+/** Inline (owner viewing) or as a download; never sniffed, never cached, never indexed. */
+export function fileResponse(bytes: Uint8Array, mime: string, name: string, download: boolean): NextResponse {
+  const safe = name.replace(/[^\w.\- ]+/g, '_').slice(0, 150) || 'file';
+  return new NextResponse(new Uint8Array(bytes), {
+    status: 200,
+    headers: {
+      ...PRIVATE_HEADERS,
+      'Content-Type': mime,
+      'Content-Length': String(bytes.length),
+      'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      // Only PDF, PNG or JPEG ever get here (checked by their magic bytes on upload), served as exactly that
+      // type with nosniff. (The app's global headers in next.config.ts set the CSP for every response.)
+      'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    },
+  });
+}
+

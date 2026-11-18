@@ -8,7 +8,8 @@ import { rateLimit, getAppBaseUrl } from '@/lib/authToken';
 import { seal, open } from '@/lib/server/secretBox';
 import type { ServerSession } from '@/lib/server/session';
 import { TOKEN_RE, fail, requireOwner, tokenHashOf } from '@/lib/server/agreements/core';
-import { ClientProjectStorageError, CP_MIGRATION, sha256Hex } from '@/lib/server/clientProjectStore';
+import { ClientProjectStorageError, CP_MIGRATION, CP_MIGRATION_V2, sha256Hex } from '@/lib/server/clientProjectStore';
+import { projectStats } from '@/lib/server/clientProjects/stats';
 import { SOP_GO_LIVE_OFFSET, SOP_TEMPLATE, SOP_UAT_START_OFFSET } from '@/lib/clientProjects/sopTemplate';
 import {
   CP_LIMITS,
@@ -23,8 +24,10 @@ import {
   progressOf,
   todayManila,
   typeFor,
+  type AttachmentMime,
   type CpComment,
   type CpEvent,
+  type CpFileMeta,
   type DelayRow,
   type OwnerProjectView,
   type OwnerTaskView,
@@ -55,7 +58,7 @@ export async function requireProjectOwner(req: NextRequest, bucket: 'read' | 'wr
 }
 
 export function storageFail(err: unknown, what: string): NextResponse {
-  if (err instanceof ClientProjectStorageError) return fail(503, `The Client Projects tables are not in the database yet. Run ${CP_MIGRATION}.`);
+  if (err instanceof ClientProjectStorageError) return fail(503, `The Client Projects tables are not up to date in the database. Run ${CP_MIGRATION}, then ${CP_MIGRATION_V2}.`);
   console.error(`[client-projects ${what}]`, err instanceof Error ? err.message : err);
   return fail(500, 'Something went wrong. Try again.');
 }
@@ -170,6 +173,14 @@ export function blankTask(p: Pick<Project, 'id'>, num: number, over: Partial<Tas
     sourceRef: '',
     sopKey: null,
     blockedBy: null,
+    blockers: [],
+    assigneeId: null,
+    watchers: [],
+    priority: null,
+    labelIds: [],
+    startDate: null,
+    checklist: [],
+    estimateHours: null,
     autoComplete: false,
     clientMayTick: false,
     clientClaimedAt: null,
@@ -232,8 +243,9 @@ export function uatOpen(p: Pick<Project, 'status' | 'kickoffDate' | 'uatOverride
 
 export const taskKey = (p: Pick<Project, 'key'>, t: Pick<Task, 'num'>) => `${p.key}-${t.num}`;
 
-export function toOwnerTask(p: Project, t: Task, comments: CpComment[], now = today()): OwnerTaskView {
+export function toOwnerTask(p: Project, t: Task, comments: CpComment[], now = today(), more: { tasks?: Task[]; attachments?: CpFileMeta[] } = {}): OwnerTaskView {
   const overdue = isOverdue(t, now);
+  const all = more.tasks ?? [];
   return {
     ...t,
     key: taskKey(p, t),
@@ -241,7 +253,73 @@ export function toOwnerTask(p: Project, t: Task, comments: CpComment[], now = to
     overdue,
     daysLate: overdue && t.dueDate ? businessDaysBetween(t.dueDate, now) : 0,
     commentCount: comments.filter((c) => c.taskId === t.id).length,
+    attachmentCount: (more.attachments ?? []).filter((f) => f.taskId === t.id).length,
+    openBlockers: (t.blockers ?? []).map((id) => all.find((x) => x.id === id)).filter((b): b is Task => Boolean(b) && (b as Task).status !== 'done').map((b) => taskKey(p, b)),
   };
+}
+
+/** The cards a card waits on that are not Done (the "Done needs its blockers done" rule). */
+export function openBlockers(t: Pick<Task, 'blockers'>, all: Task[]): Task[] {
+  return (t.blockers ?? []).map((id) => all.find((x) => x.id === id)).filter((b): b is Task => Boolean(b) && (b as Task).status !== 'done');
+}
+
+/**
+ * What an uploaded attachment really is, from its first bytes (the upload's own Content-Type and file
+ * name are never trusted): PDF, PNG or JPEG, or null for anything else.
+ */
+export function detectAttachment(bytes: Uint8Array): { mime: AttachmentMime; ext: string } | null {
+  if (bytes.length < 16) return null;
+  const b = bytes;
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2d) return { mime: 'application/pdf', ext: 'pdf' };
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return validPng(b) ? { mime: 'image/png', ext: 'png' } : null;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return validJpeg(b) ? { mime: 'image/jpeg', ext: 'jpg' } : null;
+  return null;
+}
+
+const ascii = (b: Uint8Array, at: number, len: number) => Buffer.from(b.subarray(at, at + len)).toString('latin1');
+
+/** CPV2-L5: a real PNG: an IHDR chunk first with non-zero dimensions, and the IEND chunk at the end. */
+function validPng(b: Uint8Array): boolean {
+  if (b.length < 8 + 25 + 12) return false;
+  const u32 = (at: number) => ((b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]) >>> 0;
+  if (u32(8) !== 13 || ascii(b, 12, 4) !== 'IHDR') return false;
+  const w = u32(16);
+  const h = u32(20);
+  if (!w || !h || w > 100_000 || h > 100_000) return false;
+  return ascii(b, b.length - 8, 4) === 'IEND' && u32(b.length - 12) === 0;
+}
+
+/** CPV2-L5: a real JPEG: SOI, a frame header (SOFn) with non-zero dimensions, and EOI at the end. */
+function validJpeg(b: Uint8Array): boolean {
+  let end = b.length;
+  while (end > 2 && b[end - 1] === 0x00) end--; // tolerate zero padding after EOI
+  if (!(b[end - 2] === 0xff && b[end - 1] === 0xd9)) return false;
+  let i = 2;
+  while (i + 9 < end) {
+    if (b[i] !== 0xff) return false;
+    const m = b[i + 1];
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (len < 2) return false;
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      const h = (b[i + 5] << 8) | b[i + 6];
+      const w = (b[i + 7] << 8) | b[i + 8];
+      return h > 0 && w > 0;
+    }
+    if (m === 0xda) return false; // scan data before any frame header
+    i += 2 + len;
+  }
+  return false;
+}
+
+/** A safe file name for storage and for Content-Disposition, with the extension the bytes say it has. */
+export function attachmentName(raw: unknown, ext: string): string {
+  const base = line(raw, 160)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
+    .replace(/\.(pdf|png|jpe?g)$/i, '')
+    .replace(/^\.+/, '')
+    .trim();
+  return `${base || 'attachment'}.${ext}`;
 }
 
 export function toOwnerProject(p: Project, tasks: Task[], now = today()): OwnerProjectView {
@@ -252,9 +330,15 @@ export function toOwnerProject(p: Project, tasks: Task[], now = today()): OwnerP
   const next = open
     .filter((t) => t.dueDate && t.type !== 'defect')
     .sort((a, b) => (a.dueDate as string).localeCompare(b.dueDate as string) || a.sort - b.sort)[0];
+  const stats = projectStats(p, tasks, { asOf: now });
   return {
     ...rest,
     automations: rest.automations ?? {},
+    people: rest.people ?? [],
+    labels: rest.labels ?? [],
+    settings: rest.settings ?? {},
+    health: stats.health,
+    healthReasons: stats.healthReasons,
     hasLink: Boolean(p.shareEnabled && tokenHash),
     progress: progressOf(tasks),
     overdueCount: overdue.length,
@@ -303,10 +387,25 @@ function publicComments(taskId: string, comments: CpComment[]): PublicComment[] 
  * notes, the internal briefing, plan metadata, status drafts, evidence links, source references,
  * files, AI runs, events, the owner's email, hidden cards and internal comments are simply not
  * read here. Add a field to the client board by adding it here, on purpose.
+ *
+ * v2 fields, and why each is or is not here:
+ *  - assignee: only when the person is on the CLIENT side, and only their id and name (never an email, a
+ *    role, or anyone on our side);
+ *  - people: the client-side people's ids and names, for "Who are you?";
+ *  - attachments: only files the owner marked client-visible, on a client-visible card: id, name, size
+ *    and type. The bytes come from GET /api/board/:token/file/:fileId, which re-checks all of that;
+ *  - NOT here (internal): priority, labels, start date, checklist, estimate, watchers, dependencies,
+ *    our people, people's emails and roles, project settings, the inbox marker.
  */
-export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[], now = today()): PublicProject {
+export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[], now = today(), attachments: CpFileMeta[] = []): PublicProject {
   const visible = tasks.filter((t) => t.clientVisible === true);
   const road = visible.filter((t) => t.type !== 'defect');
+  const clientPeople = (p.people ?? []).filter((x) => x.side === 'client');
+  const assigneeOf = (t: Task) => {
+    const person = t.assigneeId ? clientPeople.find((x) => x.id === t.assigneeId) : undefined;
+    return person ? { id: person.id, name: person.name } : null;
+  };
+  const filesOf = (t: Task) => attachments.filter((f) => f.taskId === t.id && f.clientVisible === true).map((f) => ({ id: f.id, name: f.name, size: f.size, mime: f.mime }));
   const pubTask = (t: Task): PublicTask => ({
     id: t.id,
     key: taskKey(p, t),
@@ -323,6 +422,8 @@ export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[]
     canClaim: t.ownerSide === 'client' && !clientCanTick(t) && t.status !== 'done' && !t.clientClaimedAt,
     awaitingConfirmation: Boolean(t.clientClaimedAt) && t.status !== 'done',
     comments: publicComments(t.id, comments),
+    assignee: assigneeOf(t),
+    attachments: filesOf(t),
   });
   const pubDefect = (t: Task): PublicDefect => ({
     id: t.id,
@@ -355,5 +456,6 @@ export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[]
       .sort((a, b) => (a.reportedAt ?? a.createdAt).localeCompare(b.reportedAt ?? b.createdAt))
       .map(pubDefect),
     readOnly: p.status === 'archived',
+    people: clientPeople.map((x) => ({ id: x.id, name: x.name })),
   };
 }

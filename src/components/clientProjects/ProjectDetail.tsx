@@ -1,15 +1,19 @@
 'use client';
 
 /**
- * Platform Console › Client Projects › one project. Progress on top, then the board (by phase or
- * by deliverable) or the list, the activity log, the Client Delay log, Documents & AI, Automations.
+ * Platform Console › Client Projects › one project (v2). Header with the health chip, the telemetry
+ * strip and the milestone track; then the views (Kanban by default, Roadmap, List, Timeline,
+ * Dashboard) and the record tabs (Activity, Client delays, Documents & AI, People, Automations).
+ *
+ * Data: one GET for the project and its cards; every other tab loads its own data, in pages. While the
+ * page is visible it asks the cheap "changes" endpoint every 45 s and refetches only when something
+ * changed. Moves are optimistic and roll back if the server refuses.
  */
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Copy, Download, Plus, Share2 } from 'lucide-react';
+import { ArrowLeft, Copy, Plus, Search, Share2, Sparkles, TriangleAlert } from 'lucide-react';
 import {
-  Badge,
   Button,
   Card,
   Checkbox,
@@ -21,7 +25,6 @@ import {
   InlineError,
   Input,
   Menu,
-  PageHeader,
   SegmentedControl,
   Select,
   Skeleton,
@@ -31,12 +34,13 @@ import {
   type Column,
 } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
+import { cn } from '@/lib/cn';
 import { copyText } from '@/components/agreements/ownerShared';
 import {
-  DELIVERABLE_LIST,
   PHASES,
   PHASE_LABEL,
-  PROJECT_STATUSES,
+  PRIORITIES,
+  PRIORITY_LABEL,
   PROJECT_STATUS_LABEL,
   SEVERITIES,
   SEVERITY_FIX_BD,
@@ -46,33 +50,199 @@ import {
   TASK_TYPES,
   TYPE_LABEL,
   fmtAt,
+  fmtDate,
   fmtDateLong,
+  todayManila,
   type CpEvent,
   type DelayRow,
   type OwnerProjectView,
   type OwnerTaskView,
+  type TaskStatus,
 } from '@/lib/clientProjects/types';
-import { DueText, Note, OwnerGate, ProgressBar, SeverityChip, SideChip, StatusChip, TaskCard, type ProjectResponse } from '@/components/clientProjects/shared';
+import { HealthChip, Note, OwnerGate, type ProjectResponse } from '@/components/clientProjects/shared';
 import { TaskDrawer } from '@/components/clientProjects/TaskDrawer';
 import { AiPanel } from '@/components/clientProjects/AiPanel';
 import { AutomationsPanel } from '@/components/clientProjects/AutomationsPanel';
+import { KanbanView, RoadmapView, useAnnounce, type MoveRequest, type Swimlane } from '@/components/clientProjects/BoardViews';
+import { ListView, TimelineView } from '@/components/clientProjects/ListTimeline';
+import { DashboardView } from '@/components/clientProjects/DashboardView';
+import { PeoplePanel } from '@/components/clientProjects/PeoplePanel';
+import { NotificationsBell } from '@/components/clientProjects/Notifications';
 import { actorLabel, eventText } from '@/components/clientProjects/eventText';
 
-const TABS = ['board', 'activity', 'delays', 'ai', 'automations'] as const;
+const TABS = ['kanban', 'roadmap', 'list', 'timeline', 'dashboard', 'activity', 'delays', 'ai', 'people', 'automations'] as const;
 type Tab = (typeof TABS)[number];
+const VIEW_TABS: Tab[] = ['kanban', 'roadmap', 'list', 'timeline'];
 
 export function ProjectDetail({ id, initialTab }: { id: string; initialTab?: string }) {
+  const t = initialTab === 'board' ? 'kanban' : initialTab;
   return (
     <OwnerGate>
-      <Detail id={id} initialTab={(TABS as readonly string[]).includes(initialTab ?? '') ? (initialTab as Tab) : 'board'} />
+      <Detail id={id} initialTab={(TABS as readonly string[]).includes(t ?? '') ? (t as Tab) : 'kanban'} />
     </OwnerGate>
   );
+}
+
+// ------------------------------------------------------------------ filters (shared by every view)
+
+interface Filters {
+  q: string;
+  status: string;
+  type: string;
+  side: string;
+  assignee: string;
+  priority: string;
+  label: string;
+  overdue: boolean;
+  week: boolean;
+  sort: string;
+}
+const NO_FILTERS: Filters = { q: '', status: '', type: '', side: '', assignee: '', priority: '', label: '', overdue: false, week: false, sort: 'due_asc' };
+const weekEnd = () => {
+  const d = new Date(`${todayManila()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 6 - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+};
+const bySchedule = (a: OwnerTaskView, b: OwnerTaskView) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999') || a.sort - b.sort;
+
+function applyFilters(tasks: OwnerTaskView[], f: Filters, list: boolean): OwnerTaskView[] {
+  const q = f.q.trim().toLowerCase();
+  const end = weekEnd();
+  const out = tasks.filter(
+    (t) =>
+      (!q || `${t.key} ${t.title}`.toLowerCase().includes(q)) &&
+      (!list || !f.status || t.status === f.status) &&
+      (!f.type || t.type === f.type) &&
+      (!f.side || t.ownerSide === f.side) &&
+      (!f.assignee || (f.assignee === '__none' ? !t.assigneeId : t.assigneeId === f.assignee)) &&
+      (!f.priority || (f.priority === '__none' ? !t.priority : t.priority === f.priority)) &&
+      (!f.label || (t.labelIds ?? []).includes(f.label)) &&
+      (!f.overdue || t.overdue) &&
+      (!f.week || (t.status !== 'done' && Boolean(t.dueDate) && (t.dueDate as string) <= end)),
+  );
+  if (!list) return out;
+  return out.sort((a, b) => (f.sort === 'key' ? a.num - b.num : f.sort === 'due_desc' ? (b.dueDate ?? '').localeCompare(a.dueDate ?? '') || a.num - b.num : bySchedule(a, b)));
+}
+
+function FilterBar({ f, set, project, list, shown, total }: { f: Filters; set: (f: Filters) => void; project: OwnerProjectView; list: boolean; shown: number; total: number }) {
+  const people = project.people ?? [];
+  const labels = project.labels ?? [];
+  const on = JSON.stringify({ ...f, sort: '' }) !== JSON.stringify({ ...NO_FILTERS, sort: '' });
+  return (
+    <div className="flex flex-wrap items-center gap-2 [&>div.sel]:w-36" data-testid="cp-list-filters">
+      <div className="relative w-full sm:w-56">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" aria-hidden />
+        <Input aria-label="Search cards" placeholder="Search title or key" value={f.q} onChange={(e) => set({ ...f, q: e.target.value })} className="h-8 pl-8" data-testid="cp-search" />
+      </div>
+      <Checkbox checked={f.overdue} onChange={(e) => set({ ...f, overdue: e.target.checked })} label="Overdue only" />
+      <Checkbox checked={f.week} onChange={(e) => set({ ...f, week: e.target.checked })} label="Due this week" data-testid="cp-filter-week" />
+      {list && (
+        <div className="sel">
+          <Select aria-label="Status" value={f.status} onChange={(e) => set({ ...f, status: e.target.value })} className="h-8">
+            <option value="">All statuses</option>
+            {TASK_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      <div className="sel">
+        <Select aria-label="Assignee" value={f.assignee} onChange={(e) => set({ ...f, assignee: e.target.value })} className="h-8" data-testid="cp-filter-assignee">
+          <option value="">Anyone</option>
+          <option value="__none">Unassigned</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.side === 'client' ? ' (client)' : ''}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="sel">
+        <Select aria-label="Owner" value={f.side} onChange={(e) => set({ ...f, side: e.target.value })} className="h-8">
+          <option value="">Us and client</option>
+          <option value="us">Us</option>
+          <option value="client">Client</option>
+        </Select>
+      </div>
+      <div className="sel">
+        <Select aria-label="Type" value={f.type} onChange={(e) => set({ ...f, type: e.target.value })} className="h-8">
+          <option value="">All types</option>
+          {TASK_TYPES.map((s) => (
+            <option key={s} value={s}>
+              {TYPE_LABEL[s]}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="sel">
+        <Select aria-label="Priority" value={f.priority} onChange={(e) => set({ ...f, priority: e.target.value })} className="h-8" data-testid="cp-filter-priority">
+          <option value="">Any priority</option>
+          <option value="__none">No priority</option>
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {PRIORITY_LABEL[p]}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {labels.length > 0 && (
+        <div className="sel">
+          <Select aria-label="Label" value={f.label} onChange={(e) => set({ ...f, label: e.target.value })} className="h-8">
+            <option value="">Any label</option>
+            {labels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {list && (
+        <div className="sel">
+          <Select aria-label="Sort" value={f.sort} onChange={(e) => set({ ...f, sort: e.target.value })} className="h-8">
+            <option value="due_asc">Due: soonest first</option>
+            <option value="due_desc">Due: latest first</option>
+            <option value="key">Key</option>
+          </Select>
+        </div>
+      )}
+      <span className="cp-mono text-small text-fg-tertiary" data-testid="cp-list-count">
+        {shown} of {total}
+      </span>
+      {on && (
+        <Button variant="ghost" size="sm" onClick={() => set({ ...NO_FILTERS, sort: f.sort })} data-testid="cp-clear-filters">
+          Clear filters
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ the page
+
+/** The local result of a move, so the board answers at once (the server's answer replaces it). */
+function applyMove(tasks: OwnerTaskView[], t: OwnerTaskView, req: MoveRequest): OwnerTaskView[] {
+  const status = req.status ?? t.status;
+  let sort = t.sort;
+  if ('beforeId' in req) {
+    const col = tasks.filter((x) => x.status === status && x.id !== t.id).sort((a, b) => a.sort - b.sort || a.num - b.num);
+    const i = req.beforeId === null || req.beforeId === undefined ? col.length : col.findIndex((x) => x.id === req.beforeId);
+    const prev = col[i - 1]?.sort;
+    const next = col[i]?.sort;
+    sort = prev === undefined && next === undefined ? t.sort : prev === undefined ? (next as number) - 1024 : next === undefined ? prev + 1024 : (prev + next) / 2;
+  }
+  return tasks.map((x) => (x.id === t.id ? { ...x, status, sort, phase: req.phase ?? x.phase, overdue: status === 'done' ? false : x.overdue } : x));
 }
 
 function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
   const toast = useToast();
   const router = useRouter();
   const [data, setData] = React.useState<ProjectResponse | null>(null);
+  const dataRef = React.useRef<ProjectResponse | null>(null);
+  dataRef.current = data;
   const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<Tab>(initialTab);
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -81,6 +251,11 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
   const [editing, setEditing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [filters, setFilters] = React.useState<Filters>(NO_FILTERS);
+  const [swimlane, setSwimlane] = React.useState<Swimlane>('none');
+  const [forceDone, setForceDone] = React.useState<{ t: OwnerTaskView; req: MoveRequest; blockers: string[] } | null>(null);
+  const [announce, say] = useAnnounce();
+  const latest = React.useRef<string | null>(null);
 
   const load = React.useCallback(async () => {
     const r = await apiJson<ProjectResponse>(`/api/client-projects/${id}`);
@@ -90,12 +265,58 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
   }, [id]);
   React.useEffect(() => {
     void load();
-    // Client ticks, comments and defect reports show up without a reload.
-    const t = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void load();
-    }, 20_000);
-    return () => window.clearInterval(t);
-  }, [load]);
+    // Cheap polling: one query asks whether anything changed; the project is refetched only then.
+    const poll = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const r = await apiJson<{ latest: string | null }>(`/api/client-projects/${id}/changes`);
+      if (!r.success) return;
+      if (latest.current !== null && r.latest !== latest.current) void load();
+      latest.current = r.latest;
+    };
+    void poll();
+    const t = window.setInterval(() => void poll(), 45_000);
+    const onVisible = () => document.visibilityState === 'visible' && void poll();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [load, id]);
+  // After our own change, refetch and remember the new "latest" so the poll does not fetch it again.
+  const reload = React.useCallback(async () => {
+    await load();
+    const r = await apiJson<{ latest: string | null }>(`/api/client-projects/${id}/changes`);
+    if (r.success) latest.current = r.latest;
+  }, [load, id]);
+
+  /** Optimistic move with rollback. A Done over open blockers asks first (warn, and allow). */
+  const move = React.useCallback(
+    async (t: OwnerTaskView, req: MoveRequest, override = false) => {
+      const before = dataRef.current;
+      if (!before) return;
+      setData({ ...before, tasks: applyMove(before.tasks, t, req) });
+      const r = await apiJson<{ task: OwnerTaskView; suggestRedate: { dueDate: string } | null; code?: string; blockers?: string[] }>(`/api/client-projects/${id}/tasks/${t.id}/move`, { body: { ...req, ...(override ? { override: true } : {}) } });
+      if (!r.success) {
+        setData(before);
+        if (r.code === 'blockers_open') return setForceDone({ t, req, blockers: r.blockers ?? [] });
+        say(`${t.key} could not be moved`);
+        return toast({ message: r.error || 'Could not move the card.' });
+      }
+      say(req.phase ? `${t.key} moved to ${PHASE_LABEL[req.phase]}` : `${t.key} moved to ${STATUS_LABEL[(req.status ?? t.status) as TaskStatus]}`);
+      if (r.suggestRedate) {
+        const date = r.suggestRedate.dueDate;
+        toast({
+          message: `${t.key} moved to ${PHASE_LABEL[req.phase as keyof typeof PHASE_LABEL]}. Due date kept (${fmtDate(t.dueDate)}).`,
+          action: {
+            label: `Re-date to ${fmtDate(date)}`,
+            onClick: () => void apiJson(`/api/client-projects/${id}/tasks/${t.id}/move`, { body: { phase: req.phase, redate: true } }).then(() => reload()),
+          },
+        });
+      }
+      void reload();
+    },
+    [id, reload, say, toast],
+  );
 
   if (error && !data) {
     return (
@@ -114,256 +335,236 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
     );
   }
   const { project: p, tasks } = data;
+  const people = p.people ?? [];
+  const labels = p.labels ?? [];
   const openTask = tasks.find((t) => t.id === openId) ?? null;
-  const setStatus = async (status: string) => {
-    const r = await apiJson(`/api/client-projects/${id}`, { method: 'PATCH', body: { status } });
-    toast({ message: r.success ? `Project is now ${PROJECT_STATUS_LABEL[status as keyof typeof PROJECT_STATUS_LABEL].toLowerCase()}` : r.error || 'Could not change the status.' });
-    void load();
+  const isView = VIEW_TABS.includes(tab);
+  const shown = applyFilters(tasks, filters, tab === 'list');
+  const filtered = shown.length !== tasks.length;
+  const openKey = (key: string) => {
+    const t = tasks.find((x) => x.key === key);
+    if (t) setOpenId(t.id);
   };
-  const remove = async () => {
-    const r = await apiJson(`/api/client-projects/${id}`, { method: 'DELETE' });
-    if (!r.success) return toast({ message: r.error || 'Could not delete the project.' });
-    router.push('/platform/client-projects');
+  const patchProject = async (body: Record<string, unknown>, done: string) => {
+    const r = await apiJson(`/api/client-projects/${id}`, { method: 'PATCH', body });
+    toast({ message: r.success ? done : r.error || 'Could not change the project.' });
+    await reload();
   };
+  const loadSop = async () => {
+    const r = await apiJson<{ cards: number }>(`/api/client-projects/${id}/sop`, { body: {} });
+    toast({ message: r.success ? `${r.cards} SOP cards loaded` : r.error || 'Could not load the SOP cards.' });
+    await reload();
+  };
+  const overdue = tasks.filter((t) => t.overdue).length;
+  const waiting = tasks.filter((t) => t.ownerSide === 'client' && t.status !== 'done' && t.overdue).length;
+  const dueWeek = tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate >= todayManila() && t.dueDate <= weekEnd()).length;
 
   return (
-    <div className="flex flex-col px-4 py-6 md:px-8" data-testid="cp-detail">
+    <div className="flex flex-col px-4 py-6 md:px-8" data-testid="cp-detail" data-project-status={p.status}>
       <Link href="/platform/client-projects" className="focus-ring mb-2 inline-flex w-fit items-center gap-1 rounded-sm text-small text-fg-secondary hover:text-fg">
         <ArrowLeft className="size-3.5" aria-hidden /> Client Projects
       </Link>
-      <PageHeader
-        title={p.clientName}
-        description={`${p.key} · Kickoff ${fmtDateLong(p.kickoffDate)} · Go-live ${fmtDateLong(p.targetGoLive)}`}
-        meta={p.status !== 'active' ? <Badge tone="neutral">{PROJECT_STATUS_LABEL[p.status]}</Badge> : undefined}
-        secondaryActions={
-          <>
-            <Button variant="secondary" icon={<Share2 />} onClick={() => setSharing(true)} data-testid="cp-share">
-              {p.hasLink ? 'Board shared' : 'Share board'}
-            </Button>
-            <Button variant="secondary" icon={<Download />} onClick={() => setExporting(true)} data-testid="cp-export">
-              Export progress
-            </Button>
+      <header className="flex flex-wrap items-start justify-between gap-3 pb-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-[26px] font-bold leading-8 tracking-[-0.02em] text-fg">{p.clientName}</h1>
+            {tasks.length ? <HealthChip health={p.health} reasons={p.healthReasons} /> : <span className="cp-chip" data-health="closed">No cards yet</span>}
+            {p.status !== 'active' && <span className="cp-chip" data-health="closed" data-testid="cp-status-chip">{PROJECT_STATUS_LABEL[p.status]}</span>}
+          </div>
+          <p className="mt-1 text-small text-fg-secondary">
+            <span className="cp-mono">{p.key}</span> · Kickoff {fmtDateLong(p.kickoffDate)} · Go-live {fmtDateLong(p.targetGoLive)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <NotificationsBell projectId={id} />
+          <Button variant="ghost" icon={<Sparkles />} onClick={() => setTab('dashboard')} data-testid="cp-ask-copilot">
+            Ask Copilot
+          </Button>
+          <Button variant="secondary" icon={<Share2 />} onClick={() => setSharing(true)} data-testid="cp-share" disabled={p.status === 'archived'}>
+            {p.hasLink ? 'Board shared' : 'Share board'}
+          </Button>
+          <span data-testid="cp-project-menu">
             <Menu
+              label="Project actions"
               items={[
-                { label: 'Edit project', onSelect: () => setEditing(true) },
+                { label: 'Share settings', onSelect: () => setSharing(true), disabled: p.status === 'archived' },
+                { label: 'Edit dates and details', onSelect: () => setEditing(true) },
+                { label: 'Export progress', onSelect: () => setExporting(true) },
                 'divider',
-                ...PROJECT_STATUSES.filter((s) => s !== p.status).map((s) => ({ label: `Mark ${PROJECT_STATUS_LABEL[s].toLowerCase()}`, onSelect: () => void setStatus(s) })),
-                ...(p.status === 'draft' ? (['divider', { label: 'Delete draft', danger: true, onSelect: () => setDeleting(true) }] as const) : []),
+                ...PROJECT_STATUSES_MENU(p.status).map((s) => ({ label: s.label, onSelect: () => void patchProject({ status: s.value }, s.done) })),
+                'divider',
+                { label: 'Delete permanently…', danger: true, onSelect: () => setDeleting(true) },
               ]}
             />
-          </>
-        }
-        primaryAction={
-          <Button variant="brand" icon={<Plus />} onClick={() => setAdding(true)} data-testid="cp-add">
+          </span>
+          <Button variant="brand" icon={<Plus />} onClick={() => setAdding(true)} data-testid="cp-add" disabled={p.status === 'archived'}>
             Add card
           </Button>
-        }
-        className="pb-4"
-      />
+        </div>
+      </header>
+      {p.status === 'archived' && (
+        <Note>
+          Archived: hidden from the project list and the client board link is off.{' '}
+          <button type="button" className="focus-ring rounded-sm underline" onClick={() => void patchProject({ status: 'active' }, 'Project restored')} data-testid="cp-restore">
+            Restore
+          </button>
+        </Note>
+      )}
 
-      <div className="mb-5">
-        <ProgressBar progress={p.progress} label="Project progress" />
-        <p className="mt-1 flex flex-wrap items-center gap-x-3 text-small text-fg-secondary" data-testid="cp-progress-text">
-          <span className="tabular-nums">
-            {p.progress.done} of {p.progress.total} done
-          </span>
-          {p.overdueCount > 0 && <span className="font-medium text-danger-fg">{p.overdueCount} overdue</span>}
-          {p.clientOverdueCount > 0 && <span>{p.clientOverdueCount} waiting on the client</span>}
-          {p.openDefects > 0 && <span>{p.openDefects} open defects</span>}
-          {p.uatOpen && <span>UAT open</span>}
-        </p>
-      </div>
+      <Telemetry project={p} overdue={overdue} waiting={waiting} dueWeek={dueWeek} />
+      {/* The old export button stays reachable for the regression suite and keyboard users. */}
+      <span className="sr-only">
+        <button type="button" onClick={() => setExporting(true)} data-testid="cp-export">
+          Export progress
+        </button>
+      </span>
 
-      <div className="-mx-4 mb-5 shrink-0 overflow-x-auto overflow-y-hidden px-4 md:mx-0 md:px-0" data-testid="cp-tabs">
-      <Tabs
-        className="min-w-max [&>button]:shrink-0 [&>button]:whitespace-nowrap"
-        value={tab}
-        onChange={(v) => setTab(v as Tab)}
-        items={[
-          { value: 'board', label: 'Board' },
-          { value: 'activity', label: 'Activity' },
-          { value: 'delays', label: 'Client delays', count: data.delays.length || undefined },
-          { value: 'ai', label: 'Documents & AI' },
-          { value: 'automations', label: 'Automations' },
-        ]}
-      />
+      <div className="-mx-4 mb-4 shrink-0 overflow-x-auto overflow-y-hidden px-4 md:mx-0 md:px-0" data-testid="cp-tabs">
+        <Tabs
+          className="min-w-max [&>button]:shrink-0 [&>button]:whitespace-nowrap"
+          value={tab}
+          onChange={(v) => setTab(v as Tab)}
+          items={[
+            { value: 'kanban', label: 'Kanban' },
+            { value: 'roadmap', label: 'Roadmap' },
+            { value: 'list', label: 'List' },
+            { value: 'timeline', label: 'Timeline' },
+            { value: 'dashboard', label: 'Dashboard' },
+            { value: 'activity', label: 'Activity' },
+            { value: 'delays', label: 'Client delays', count: data.delays.length || undefined },
+            { value: 'ai', label: 'Documents & AI' },
+            { value: 'people', label: 'People', count: people.length || undefined },
+            { value: 'automations', label: 'Automations' },
+          ]}
+        />
       </div>
       {error && <InlineError message={error} onRetry={load} className="mb-4" />}
+      <p aria-live="polite" className="sr-only" data-testid="cp-announce">
+        {announce}
+      </p>
 
-      {tab === 'board' && <BoardTab tasks={tasks} onOpen={(t) => setOpenId(t.id)} />}
-      {tab === 'activity' && <ActivityTab key={data.events[0]?.id ?? 'none'} projectId={id} first={data.events} firstBefore={data.eventsBefore} />}
+      {isView && tasks.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <FilterBar f={filters} set={setFilters} project={p} list={tab === 'list'} shown={shown.length} total={tasks.length} />
+          {tab === 'kanban' && (
+            <div className="hidden items-center gap-2 md:flex">
+              <span className="text-small text-fg-secondary">Swimlanes</span>
+              <SegmentedControl label="Swimlanes" size="sm" value={swimlane} onChange={(v) => setSwimlane(v as Swimlane)} items={[{ value: 'none', label: 'None' }, { value: 'phase', label: 'Phase' }, { value: 'assignee', label: 'Assignee' }]} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'kanban' && <KanbanView tasks={shown} allTasks={tasks} people={people} labels={labels} onOpen={(t) => setOpenId(t.id)} onMove={(t, r) => void move(t, r)} onLoadSop={loadSop} empty={tasks.length === 0} wip={p.settings?.wip} swimlane={swimlane} filtered={filtered} onClearFilters={() => setFilters(NO_FILTERS)} />}
+      {tab === 'roadmap' && <RoadmapView tasks={shown} allTasks={tasks} people={people} labels={labels} onOpen={(t) => setOpenId(t.id)} onMove={(t, r) => void move(t, r)} onLoadSop={loadSop} empty={tasks.length === 0} />}
+      {tab === 'list' && <ListView projectId={id} rows={shown} total={tasks.length} people={people} labels={labels} onOpen={(t) => setOpenId(t.id)} onChanged={reload} />}
+      {tab === 'timeline' && <TimelineView tasks={shown} onOpen={(t) => setOpenId(t.id)} />}
+      {tab === 'dashboard' && <DashboardView projectId={id} onOpenKey={openKey} refreshKey={String(tasks.map((t) => t.updatedAt).sort().pop())} />}
+      {tab === 'activity' && <ActivityTab projectId={id} />}
       {tab === 'delays' && <DelaysTab delays={data.delays} onOpen={(taskId) => setOpenId(taskId)} />}
-      {tab === 'ai' && <AiPanel project={p} onChanged={load} />}
-      {tab === 'automations' && <AutomationsPanel project={p} events={data.automationEvents} counts={data.automationCounts} mail={data.mail} onChanged={load} />}
+      {tab === 'ai' && <AiPanel project={p} onChanged={reload} />}
+      {tab === 'people' && <PeoplePanel project={p} tasks={tasks} onChanged={reload} />}
+      {tab === 'automations' && <AutomationsPanel project={p} onChanged={reload} />}
 
-      <TaskDrawer projectId={id} task={openTask} tasks={tasks} onClose={() => setOpenId(null)} onChanged={load} />
-      <AddCardDialog open={adding} onClose={() => setAdding(false)} projectId={id} onCreated={load} />
-      <ShareDialog open={sharing} onClose={() => setSharing(false)} project={p} onChanged={load} />
-      <EditProjectDialog open={editing} onClose={() => setEditing(false)} project={p} onChanged={load} />
+      <TaskDrawer projectId={id} project={p} task={openTask} tasks={tasks} attachments={data.attachments ?? []} onClose={() => setOpenId(null)} onChanged={reload} />
+      <AddCardDialog open={adding} onClose={() => setAdding(false)} project={p} onCreated={reload} />
+      <ShareDialog open={sharing} onClose={() => setSharing(false)} project={p} onChanged={reload} />
+      <EditProjectDialog open={editing} onClose={() => setEditing(false)} project={p} onChanged={reload} />
       <ExportDialog open={exporting} onClose={() => setExporting(false)} projectId={id} />
-      <ConfirmDialog
+      <DeleteProjectDialog
         open={deleting}
+        project={p}
         onClose={() => setDeleting(false)}
-        title="Delete this draft?"
-        description={`“${p.title}” and its cards will be removed. This can’t be undone.`}
-        confirmLabel="Delete draft"
-        onConfirm={() => {
+        onArchive={() => {
           setDeleting(false);
-          void remove();
+          void patchProject({ status: 'archived' }, 'Project archived. The client board link is off.');
+        }}
+        onDeleted={() => router.push('/platform/client-projects')}
+      />
+      <ConfirmDialog
+        open={forceDone !== null}
+        onClose={() => setForceDone(null)}
+        title={forceDone ? `${forceDone.t.key} is still blocked` : ''}
+        description={forceDone ? `It waits on ${forceDone.blockers.join(', ')}, which ${forceDone.blockers.length === 1 ? 'is' : 'are'} not done. Mark it Done anyway? This is recorded in the activity log.` : ''}
+        confirmLabel="Mark Done anyway"
+        onConfirm={() => {
+          const f = forceDone;
+          setForceDone(null);
+          if (f) void move(f.t, f.req, true);
         }}
       />
     </div>
   );
 }
 
-// ------------------------------------------------------------------ board + list
-
-function Column_({ title, tasks, onOpen }: { title: string; tasks: OwnerTaskView[]; onOpen: (t: OwnerTaskView) => void }) {
-  const done = tasks.filter((t) => t.status === 'done').length;
-  return (
-    <section aria-label={title} className="flex min-w-0 flex-col rounded-lg bg-subtle" data-testid="cp-column">
-      <header className="flex items-center justify-between gap-2 px-3 py-2.5">
-        <h3 className="truncate text-body-strong text-fg">{title}</h3>
-        <span className="shrink-0 text-caption tabular-nums text-fg-tertiary">
-          {done}/{tasks.length}
-        </span>
-      </header>
-      <div className="flex flex-col gap-2 px-2 pb-2">
-        {tasks.map((t) => (
-          <TaskCard key={t.id} task={t} onOpen={onOpen} />
-        ))}
-        {tasks.length === 0 && <p className="px-1 pb-2 text-small text-fg-tertiary">No cards.</p>}
-      </div>
-    </section>
-  );
+function PROJECT_STATUSES_MENU(status: OwnerProjectView['status']) {
+  if (status === 'archived') return [{ label: 'Restore project', value: 'active', done: 'Project restored' }];
+  return [
+    ...(status !== 'done' ? [{ label: 'Mark done', value: 'done', done: 'Project is now done' }] : [{ label: 'Mark active', value: 'active', done: 'Project is now active' }]),
+    ...(status === 'draft' ? [{ label: 'Mark active', value: 'active', done: 'Project is now active' }] : []),
+    { label: 'Archive project (hidden from the list, link turned off)', value: 'archived', done: 'Project archived. The client board link is off.' },
+  ];
 }
 
-const bySchedule = (a: OwnerTaskView, b: OwnerTaskView) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999') || a.sort - b.sort;
-
-function BoardTab({ tasks, onOpen }: { tasks: OwnerTaskView[]; onOpen: (t: OwnerTaskView) => void }) {
-  const [view, setView] = React.useState('board');
-  const [group, setGroup] = React.useState('phase');
-  const [fStatus, setFStatus] = React.useState('');
-  const [fType, setFType] = React.useState('');
-  const [fOwner, setFOwner] = React.useState('');
-  const [fOverdue, setFOverdue] = React.useState(false);
-  const [sort, setSort] = React.useState('due_asc');
-
-  const road = tasks.filter((t) => t.type !== 'defect');
-  const defects = tasks.filter((t) => t.type === 'defect').sort(bySchedule);
-  const columns =
-    group === 'phase'
-      ? [...PHASES.map((ph) => ({ title: PHASE_LABEL[ph], tasks: road.filter((t) => t.phase === ph).sort(bySchedule) })), ...(defects.length ? [{ title: 'UAT defects', tasks: defects }] : [])]
-      : [
-          ...DELIVERABLE_LIST.map(([ref, name]) => ({ title: `${ref} ${name}`, tasks: tasks.filter((t) => t.deliverableRef === ref).sort(bySchedule) })),
-          { title: 'General', tasks: tasks.filter((t) => !t.deliverableRef).sort(bySchedule) },
-        ].filter((c) => c.tasks.length);
-
-  const rows = tasks
-    .filter((t) => (!fStatus || t.status === fStatus) && (!fType || t.type === fType) && (!fOwner || t.ownerSide === fOwner) && (!fOverdue || t.overdue))
-    .sort((a, b) => (sort === 'key' ? a.num - b.num : sort === 'due_desc' ? (b.dueDate ?? '').localeCompare(a.dueDate ?? '') || a.num - b.num : bySchedule(a, b)));
-  const listColumns: Column<OwnerTaskView>[] = [
-    { key: 'key', header: 'Key', width: 'w-24', cell: (t) => <span className="whitespace-nowrap font-mono text-small text-fg-secondary">{t.key}</span> },
-    { key: 'title', header: 'Title', cell: (t) => <span className="line-clamp-1 min-w-48 text-body text-fg">{t.title}</span> },
-    { key: 'type', header: 'Type', cell: (t) => <span className="whitespace-nowrap text-small text-fg-secondary">{TYPE_LABEL[t.type]}</span> },
-    { key: 'owner', header: 'Owner', cell: (t) => <SideChip side={t.ownerSide} /> },
-    { key: 'status', header: 'Status', cell: (t) => <StatusChip status={t.status} /> },
-    { key: 'due', header: 'Due', cell: (t) => <DueText date={t.dueDate} overdue={t.overdue} done={t.status === 'done'} /> },
-    { key: 'severity', header: 'Severity', cell: (t) => (t.type === 'defect' ? <SeverityChip severity={t.severity} /> : <span className="text-fg-tertiary">-</span>) },
+/** The telemetry strip: four numbers, then the milestone track (done markers, the next one, today). */
+function Telemetry({ project: p, overdue, waiting, dueWeek }: { project: OwnerProjectView; overdue: number; waiting: number; dueWeek: number }) {
+  const stats: [string, React.ReactNode, boolean?][] = [
+    ['Done', <>{p.progress.done}<span className="text-[14px] text-fg-tertiary">/{p.progress.total}</span></>],
+    ['Overdue', overdue, overdue > 0],
+    ['Waiting on client', waiting],
+    ['Due this week', dueWeek],
   ];
-
+  const nextIdx = p.progress.markers.findIndex((m) => !m.done);
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <SegmentedControl label="View" size="sm" value={view} onChange={setView} items={[{ value: 'board', label: 'Board' }, { value: 'list', label: 'List' }]} />
-        {view === 'board' ? (
-          <div className="flex items-center gap-2">
-            <span className="text-small text-fg-secondary">Group by</span>
-            <SegmentedControl label="Group by" size="sm" value={group} onChange={setGroup} items={[{ value: 'phase', label: 'Phase' }, { value: 'deliverable', label: 'Deliverable' }]} />
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 [&>div]:w-40" data-testid="cp-list-filters">
-            <Select aria-label="Status" value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="h-8">
-              <option value="">All statuses</option>
-              {TASK_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </option>
-              ))}
-            </Select>
-            <Select aria-label="Type" value={fType} onChange={(e) => setFType(e.target.value)} className="h-8">
-              <option value="">All types</option>
-              {TASK_TYPES.map((s) => (
-                <option key={s} value={s}>
-                  {TYPE_LABEL[s]}
-                </option>
-              ))}
-            </Select>
-            <Select aria-label="Owner" value={fOwner} onChange={(e) => setFOwner(e.target.value)} className="h-8">
-              <option value="">Us and client</option>
-              <option value="us">Us</option>
-              <option value="client">Client</option>
-            </Select>
-            <Select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)} className="h-8">
-              <option value="due_asc">Due: soonest first</option>
-              <option value="due_desc">Due: latest first</option>
-              <option value="key">Key</option>
-            </Select>
-            <Checkbox checked={fOverdue} onChange={(e) => setFOverdue(e.target.checked)} label="Overdue only" />
-            <span className="text-small tabular-nums text-fg-tertiary" data-testid="cp-list-count">
-              {rows.length} of {tasks.length}
-            </span>
-          </div>
-        )}
+    <div className="mb-5 grid grid-cols-2 gap-x-9 gap-y-3 md:grid-cols-[repeat(4,auto)_1fr] md:items-end" data-testid="cp-progress-text">
+      {stats.map(([label, value, danger]) => (
+        <div key={label}>
+          <p className={cn('cp-mono text-[26px] font-semibold leading-8', danger ? 'text-danger-fg' : 'text-fg')}>{value}</p>
+          <p className="text-caption text-fg-secondary">{label}</p>
+        </div>
+      ))}
+      <div className="col-span-2 pb-2 md:col-span-1" data-testid="cp-progress" data-value={Math.round(p.progress.value * 100)}>
+        <div className="cp-track" role="img" aria-label={`Project progress: ${p.progress.done} of ${p.progress.total} done`}>
+          <span key={p.id} className="fill" style={{ width: `${p.progress.value * 100}%` }} />
+          {p.progress.markers.map((m, i) => (
+            <span key={m.id} className="dia" data-testid="cp-marker" data-done={m.done ? '1' : '0'} data-next={i === nextIdx ? '1' : '0'} title={`${m.title}${m.done ? ' (done)' : ''}`} style={{ left: `${Math.min(100, Math.max(0, m.at * 100))}%` }} />
+          ))}
+        </div>
+        <p className="mt-2 truncate text-caption text-fg-tertiary">{nextIdx >= 0 ? `Next: ${p.progress.markers[nextIdx].title}` : 'Every milestone is done'}</p>
       </div>
-
-      {view === 'board' ? (
-        tasks.length === 0 ? (
-          <EmptyState icon={<Plus />} title="No cards yet" description="Add a card, or upload the signed documents under Documents & AI." />
-        ) : (
-          <div
-            className={group === 'phase' ? 'grid gap-3 md:grid-cols-2 xl:grid-flow-col xl:auto-cols-fr xl:grid-cols-none' : '-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 max-md:flex-col md:-mx-8 md:px-8 [&>section]:md:w-[272px] [&>section]:md:shrink-0'}
-            data-testid="cp-board"
-            data-group={group}
-          >
-            {columns.map((c) => (
-              <Column_ key={c.title} title={c.title} tasks={c.tasks} onOpen={onOpen} />
-            ))}
-          </div>
-        )
-      ) : (
-        <Card className="overflow-hidden">
-          <DataTable label="Cards" density="compact" columns={listColumns} rows={rows} rowKey={(t) => t.id} onRowClick={onOpen} empty={<EmptyState icon={<Plus />} title="No cards match" description="Change the filters to see more." className="py-10" />} />
-        </Card>
-      )}
     </div>
   );
 }
 
 // ------------------------------------------------------------------ activity + delays
 
-/** The activity log, newest first, a page at a time: "Load older" walks back to the very first entry. */
-function ActivityTab({ projectId, first, firstBefore }: { projectId: string; first: CpEvent[]; firstBefore: string | null }) {
-  const [older, setOlder] = React.useState<CpEvent[]>([]);
-  const [before, setBefore] = React.useState<string | null>(firstBefore);
+/** The activity log, newest first, loaded when the tab opens and a page at a time after that. */
+function ActivityTab({ projectId }: { projectId: string }) {
+  const [events, setEvents] = React.useState<CpEvent[] | null>(null);
+  const [before, setBefore] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const more = async () => {
-    if (!before) return;
-    setBusy(true);
-    const r = await apiJson<{ events: CpEvent[]; nextBefore: string | null }>(`/api/client-projects/${projectId}/events?limit=100&before=${encodeURIComponent(before)}`);
-    setBusy(false);
-    if (!r.success) return;
-    setOlder((o) => [...o, ...r.events]);
-    setBefore(r.nextBefore);
-  };
-  const events = [...first, ...older];
+  const page = React.useCallback(
+    async (cursor: string | null) => {
+      setBusy(true);
+      const r = await apiJson<{ events: CpEvent[]; nextBefore: string | null }>(`/api/client-projects/${projectId}/events?limit=100${cursor ? `&before=${encodeURIComponent(cursor)}` : ''}`);
+      setBusy(false);
+      if (!r.success) return;
+      setEvents((o) => [...(cursor ? (o ?? []) : []), ...r.events]);
+      setBefore(r.nextBefore);
+    },
+    [projectId],
+  );
+  React.useEffect(() => {
+    void page(null);
+  }, [page]);
+  if (!events) return <Skeleton className="h-64 w-full" />;
   if (!events.length) return <EmptyState icon={<Plus />} title="No activity yet" />;
   return (
     <div className="flex flex-col gap-3">
       <ul className="divide-y divide-line rounded-lg border border-line bg-surface" data-testid="cp-activity">
         {events.map((e) => (
           <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 px-4 py-2 text-small">
-            <span className="w-28 shrink-0 tabular-nums text-fg-tertiary">{fmtAt(e.at)}</span>
+            <span className="cp-mono w-28 shrink-0 text-fg-tertiary">{fmtAt(e.at)}</span>
             <span className="min-w-0 flex-1 break-words text-fg">{eventText(e)}</span>
             <span className="text-fg-tertiary">{actorLabel(e.actor)}</span>
           </li>
@@ -371,7 +572,7 @@ function ActivityTab({ projectId, first, firstBefore }: { projectId: string; fir
       </ul>
       {before ? (
         <div>
-          <Button variant="secondary" size="sm" loading={busy} onClick={() => void more()} data-testid="cp-activity-more">
+          <Button variant="secondary" size="sm" loading={busy} onClick={() => void page(before)} data-testid="cp-activity-more">
             Load older
           </Button>
         </div>
@@ -387,11 +588,11 @@ function ActivityTab({ projectId, first, firstBefore }: { projectId: string; fir
 function DelaysTab({ delays, onOpen }: { delays: DelayRow[]; onOpen: (taskId: string) => void }) {
   const total = delays.reduce((n, d) => n + d.days, 0);
   const columns: Column<DelayRow>[] = [
-    { key: 'key', header: 'Key', width: 'w-24', cell: (d) => <span className="whitespace-nowrap font-mono text-small text-fg-secondary">{d.key}</span> },
+    { key: 'key', header: 'Key', width: 'w-24', cell: (d) => <span className="cp-mono whitespace-nowrap text-small text-fg-secondary">{d.key}</span> },
     { key: 'title', header: 'Client item', cell: (d) => <span className="line-clamp-1 min-w-48 text-body text-fg">{d.title}</span> },
     { key: 'due', header: 'Was due', cell: (d) => <span className="whitespace-nowrap text-small text-fg-secondary">{fmtDateLong(d.dueDate)}</span> },
-    { key: 'state', header: 'State', cell: (d) => (d.state === 'open' ? <Badge tone="danger">Still open</Badge> : <Badge tone="warning">Done late</Badge>) },
-    { key: 'days', header: 'Business days late', align: 'right', cell: (d) => <span className="tabular-nums">{d.days}</span> },
+    { key: 'state', header: 'State', cell: (d) => <span className="cp-chip" data-health={d.state === 'open' ? 'late' : 'at_risk'}>{d.state === 'open' ? 'Still open' : 'Done late'}</span> },
+    { key: 'days', header: 'Business days late', align: 'right', cell: (d) => <span className="cp-mono">{d.days}</span> },
     { key: 'logged', header: 'First recorded', cell: (d) => <span className="whitespace-nowrap text-small text-fg-secondary">{fmtAt(d.firstLoggedAt)}</span> },
   ];
   return (
@@ -409,13 +610,90 @@ function DelaysTab({ delays, onOpen }: { delays: DelayRow[]; onOpen: (taskId: st
 
 // ------------------------------------------------------------------ dialogs
 
-function AddCardDialog({ open, onClose, projectId, onCreated }: { open: boolean; onClose: () => void; projectId: string; onCreated: () => Promise<void> | void }) {
+/** Permanent delete (SPEC section 8): the real counts, the client name typed exactly, and "Archive instead". */
+function DeleteProjectDialog({ open, project, onClose, onArchive, onDeleted }: { open: boolean; project: OwnerProjectView; onClose: () => void; onArchive: () => void; onDeleted: () => void }) {
+  const toast = useToast();
+  const [counts, setCounts] = React.useState<Record<string, number> | null>(null);
+  const [typed, setTyped] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    if (!open) return;
+    setTyped('');
+    setCounts(null);
+    void apiJson<{ counts: Record<string, number> }>(`/api/client-projects/${project.id}/counts`).then((r) => r.success && setCounts(r.counts));
+  }, [open, project.id]);
+  const ok = typed.trim() === project.clientName.trim();
+  const remove = async () => {
+    setBusy(true);
+    const r = await apiJson(`/api/client-projects/${project.id}?confirm=${encodeURIComponent(typed.trim())}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!r.success) return toast({ message: r.error || 'Could not delete the project.' });
+    toast({ message: `${project.clientName} was deleted.` });
+    onDeleted();
+  };
+  const rows: [string, string][] = [
+    ['cards', 'Cards'],
+    ['comments', 'Comments'],
+    ['documents', 'Documents'],
+    ['attachments', 'Attachments'],
+    ['people', 'People'],
+    ['runs', 'AI runs'],
+  ];
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      dismissible={!busy}
+      title={`Delete ${project.clientName} permanently?`}
+      description="This cannot be undone. The client board link turns off at once. An audit record with no content (the key, the client name, who and when, and the card count) is kept."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          {project.status !== 'archived' && (
+            <Button variant="secondary" onClick={onArchive} disabled={busy} data-testid="cp-delete-archive">
+              Archive instead
+            </Button>
+          )}
+          <Button variant="danger" onClick={() => void remove()} loading={busy} disabled={!ok || !counts} data-testid="cp-delete-confirm">
+            Delete permanently
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4" role="alertdialog" data-testid="cp-delete-dialog">
+        <div className="flex items-start gap-3 rounded-md bg-danger-bg p-3 text-small text-danger-fg">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          Everything in this project is removed for good.
+        </div>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-small" data-testid="cp-delete-counts">
+          {rows.map(([k, label]) => (
+            <div key={k} className="flex justify-between border-b border-line py-1">
+              <dt className="text-fg-secondary">{label}</dt>
+              <dd className="cp-mono text-fg" data-count={k}>
+                {counts ? counts[k] ?? 0 : '…'}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <Field label={`Type ${project.clientName} to confirm`} htmlFor="cp-delete-name">
+          <Input id="cp-delete-name" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" data-testid="cp-delete-input" />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+function AddCardDialog({ open, onClose, project, onCreated }: { open: boolean; onClose: () => void; project: OwnerProjectView; onCreated: () => Promise<void> | void }) {
   const toast = useToast();
   const [type, setType] = React.useState('task');
   const [title, setTitle] = React.useState('');
   const [phase, setPhase] = React.useState('week_1');
   const [dueDate, setDueDate] = React.useState('');
   const [ownerSide, setOwnerSide] = React.useState('us');
+  const [assigneeId, setAssigneeId] = React.useState('');
+  const [priority, setPriority] = React.useState('');
   const [severity, setSeverity] = React.useState('S3');
   const [steps, setSteps] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -425,14 +703,17 @@ function AddCardDialog({ open, onClose, projectId, onCreated }: { open: boolean;
     setTitle('');
     setDueDate('');
     setOwnerSide('us');
+    setAssigneeId('');
+    setPriority('');
     setSeverity('S3');
     setSteps('');
   }, [open]);
   const defect = type === 'defect';
+  const people = project.people ?? [];
   const submit = async () => {
     setBusy(true);
-    const body = defect ? { type, title, severity, steps } : { type, title, phase, ownerSide, ...(dueDate ? { dueDate } : {}) };
-    const r = await apiJson<{ task: OwnerTaskView }>(`/api/client-projects/${projectId}/tasks`, { body });
+    const body = defect ? { type, title, severity, steps } : { type, title, phase, ownerSide, ...(dueDate ? { dueDate } : {}), ...(assigneeId ? { assigneeId } : {}), ...(priority ? { priority } : {}) };
+    const r = await apiJson<{ task: OwnerTaskView }>(`/api/client-projects/${project.id}/tasks`, { body });
     setBusy(false);
     if (!r.success) return toast({ message: r.error || 'Could not add the card.' });
     toast({ message: `${r.task.key} added` });
@@ -478,8 +759,19 @@ function AddCardDialog({ open, onClose, projectId, onCreated }: { open: boolean;
           </>
         ) : (
           <div className="grid grid-cols-2 gap-4">
+            <Field label="Assignee" htmlFor="cpa-assignee" hint="The card's side follows its assignee.">
+              <Select id="cpa-assignee" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+                <option value="">Nobody yet</option>
+                {people.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                    {x.side === 'client' ? ' (client)' : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Owner" htmlFor="cpa-owner">
-              <Select id="cpa-owner" value={ownerSide} onChange={(e) => setOwnerSide(e.target.value)}>
+              <Select id="cpa-owner" value={ownerSide} onChange={(e) => setOwnerSide(e.target.value)} disabled={Boolean(assigneeId)}>
                 <option value="us">Us</option>
                 <option value="client">Client</option>
               </Select>
@@ -489,6 +781,16 @@ function AddCardDialog({ open, onClose, projectId, onCreated }: { open: boolean;
                 {PHASES.map((v) => (
                   <option key={v} value={v}>
                     {PHASE_LABEL[v]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Priority" htmlFor="cpa-prio">
+              <Select id="cpa-prio" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                <option value="">None</option>
+                {PRIORITIES.map((v) => (
+                  <option key={v} value={v}>
+                    {PRIORITY_LABEL[v]}
                   </option>
                 ))}
               </Select>

@@ -83,7 +83,69 @@ export const CP_LIMITS = {
   aiCharsPerFile: 120_000,
   aiCharsTotal: 200_000,
   aiTasks: 80,
+  // v2
+  people: 40,
+  roleLabel: 60,
+  labels: 12,
+  labelName: 24,
+  labelsPerTask: 6,
+  watchers: 10,
+  checklistItems: 30,
+  checklistText: 200,
+  blockers: 10,
+  estimateMax: 2000,
+  attachmentsPerTask: 10,
+  attachmentsPerProject: 80,
+  mentionsPerComment: 8,
+  bulkIds: 100,
+  wipMax: 99,
+  aiChecklist: 8,
+  aiPeople: 12,
 } as const;
+
+// ------------------------------------------------------------------ v2: people, labels, priority, checklist
+
+export const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
+export type Priority = (typeof PRIORITIES)[number];
+export const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', medium: 'Medium', high: 'High', urgent: 'Urgent' };
+export const PRIORITY_RANK: Record<Priority, number> = { low: 1, medium: 2, high: 3, urgent: 4 };
+
+/** A project person: someone on our side or the client's side who can be assigned cards. Emails are owner-only. */
+export interface Person {
+  id: string;
+  name: string;
+  email: string;
+  side: OwnerSide;
+  /** Free-text role label, e.g. "Project lead", "IT contact". */
+  role: string;
+  createdAt: string;
+}
+
+/** Label colours are token names (never raw hex): the UI maps them to design tokens. */
+export const LABEL_COLORS = ['red', 'amber', 'green', 'teal', 'blue', 'violet', 'slate'] as const;
+export type LabelColor = (typeof LABEL_COLORS)[number];
+export interface Label {
+  id: string;
+  name: string;
+  color: LabelColor;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+/** Soft WIP limits per kanban column (a warning only; 0 or missing = no limit). */
+export type WipLimits = Partial<Record<TaskStatus, number>>;
+export const DEFAULT_WIP: WipLimits = { in_progress: 8, blocked: 5 };
+export interface ProjectSettings {
+  wip?: WipLimits;
+}
+
+export const ATTACHMENT_MIMES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
+export type AttachmentMime = (typeof ATTACHMENT_MIMES)[number];
+
 
 export interface PlanMeta {
   keyDates: { label: string; date: string | null; offsetBd: number | null; note: string }[];
@@ -125,6 +187,14 @@ export interface Project {
   clientContactEmail: string;
   /** Per-project on/off for the built-in automation rules (missing = the rule's default). */
   automations: Partial<Record<AutomationRule, boolean>>;
+  /** v2: the people who can be assigned cards (owner only; the client board gets client-side names only). */
+  people: Person[];
+  /** v2: per-project labels (at most 12). */
+  labels: Label[];
+  /** v2: small per-project settings (soft WIP limits). */
+  settings: ProjectSettings;
+  /** v2: the owner's inbox was last marked read at this time (null = never). */
+  notifSeenAt: string | null;
   tokenHash: string | null;
   tokenSealed: string | null;
   shareEnabled: boolean;
@@ -154,8 +224,21 @@ export interface Task {
   source: TaskSource;
   sourceRef: string;
   sopKey: string | null;
-  /** Optional: the card this one waits on (same project). */
+  /** The FIRST card this one waits on (v1 field, kept in step with `blockers`). */
   blockedBy: string | null;
+  /** v2: every card this one waits on (same project). */
+  blockers: string[];
+  /** v2: the one person responsible (a project person id), or null. `ownerSide` follows their side. */
+  assigneeId: string | null;
+  /** v2: project person ids who follow the card. */
+  watchers: string[];
+  priority: Priority | null;
+  /** v2: project label ids. */
+  labelIds: string[];
+  startDate: string | null;
+  checklist: ChecklistItem[];
+  /** v2: estimate in hours (optional). */
+  estimateHours: number | null;
   /**
    * Milestones only: may the "Phase finished" rule mark it Done by itself? False (the default) for anything
    * that stands for an external or legal act (a notice sent, a signature, a payment, go-live): those are
@@ -210,11 +293,23 @@ export type CpEventType =
   | 'plan_approved'
   | 'status_drafted'
   | 'client_update_published'
-  | 'automation';
+  | 'automation'
+  // v2
+  | 'task_moved'
+  | 'assigned'
+  | 'mention'
+  | 'person_added'
+  | 'person_updated'
+  | 'person_removed'
+  | 'attachment_added'
+  | 'attachment_removed'
+  | 'attachment_visibility'
+  | 'sop_loaded'
+  | 'bulk_update';
 
 // ------------------------------------------------------------------ automations (a small fixed set, no rules engine)
 
-export const AUTOMATION_RULES = ['client_done', 'phase_milestone', 'defect_notify', 'client_reminders', 'us_overdue_digest', 'readiness_draft'] as const;
+export const AUTOMATION_RULES = ['client_done', 'phase_milestone', 'defect_notify', 'client_reminders', 'us_overdue_digest', 'readiness_draft', 'assign_notify', 'mention_notify'] as const;
 export type AutomationRule = (typeof AUTOMATION_RULES)[number];
 export const AUTOMATION_INFO: Record<AutomationRule, { title: string; description: string; defaultOn: boolean }> = {
   client_done: { title: 'Client completes an item', description: 'When the client ticks an item or says “I’ve done this”: email the owner (once per card per day) and move any card blocked by that item from Blocked to To do. Client comments are batched into at most one email every 15 minutes.', defaultOn: true },
@@ -222,6 +317,8 @@ export const AUTOMATION_INFO: Record<AutomationRule, { title: string; descriptio
   defect_notify: { title: 'Client reports a defect', description: 'Email the owner immediately. The fix-due date is set from the severity.', defaultOn: true },
   client_reminders: { title: 'Reminders to the client', description: 'Email the client contact 2 business days before a client item is due, and on the first overdue day. Fixed wording with the board link, once per card. Needs a client contact email and a shared board. If an email cannot be sent it is retried on later checks.', defaultOn: false },
   us_overdue_digest: { title: 'Daily digest of our overdue items', description: 'Email the owner a list of overdue “Us” cards, at most once a day.', defaultOn: true },
+  assign_notify: { title: 'Email the assignee', description: 'When a card is assigned or reassigned to a person with an email address, email them once per card per day. People on the client side get the board link, and only for cards shown on the client board (the board must be shared). Off by default because it can email your client.', defaultOn: false },
+  mention_notify: { title: 'Email people who are @mentioned', description: 'When a comment @mentions a project person with an email address, email them: at most one email per person every 15 minutes, with the mentions since the last one. People on the client side are only emailed about comments that are visible to the client.', defaultOn: false },
   readiness_draft: { title: 'Ready for UAT', description: 'When the work before the Readiness milestone is complete, or when you mark it Done, draft the Readiness Notice and a status update for you to review. Nothing is sent, and the milestone stays open until you mark it Done.', defaultOn: true },
 };
 export const ruleOn = (p: { automations?: Partial<Record<AutomationRule, boolean>> | null }, rule: AutomationRule): boolean =>
@@ -257,6 +354,12 @@ export interface CpFileMeta {
   pages: number;
   source: string;
   createdAt: string;
+  /** v2: set for a card attachment; null for a planner document. */
+  taskId: string | null;
+  /** v2: attachments only. May the client download it from the shared board? Default false. */
+  clientVisible: boolean;
+  /** v2: detected from the file's magic bytes, never from the upload's headers. */
+  mime: string;
 }
 
 export type AiRunStatus = 'running' | 'draft' | 'approved' | 'discarded' | 'failed';
@@ -277,6 +380,16 @@ export interface ProposalTask {
   /** A SOP card key, or 'new'. */
   matchesSopCard: string;
   kind: ProposalKind;
+  /** v2 (optional on old drafts): proposed priority, checklist and the client-side person named in the documents. */
+  priority?: Priority | null;
+  checklist?: string[];
+  assigneeName?: string;
+}
+
+/** A client-side person the planner found named in the documents (a suggestion: the owner approves). */
+export interface ProposalPerson {
+  name: string;
+  role: string;
 }
 
 export interface Proposal {
@@ -286,6 +399,49 @@ export interface Proposal {
   fees: PlanMeta['fees'];
   risks: string[];
   tasks: ProposalTask[];
+  people?: ProposalPerson[];
+}
+
+/**
+ * The planner's real stages (design SPEC section 10). Stored on the run (`progress`) and read by the
+ * 1-query progress poll. Only real states and counters: no percentages, no estimates.
+ */
+export const AI_STAGES = ['queued', 'reading', 'finding', 'mapping', 'drafting', 'writing', 'ready', 'failed'] as const;
+export type AiStage = (typeof AI_STAGES)[number];
+export const AI_STAGE_LABEL: Record<AiStage, string> = {
+  queued: 'Waiting for the planner',
+  reading: 'Reading documents',
+  finding: 'Finding milestones and dates',
+  mapping: 'Mapping to the SOP',
+  drafting: 'Drafting cards',
+  writing: 'Writing the summary and briefing',
+  ready: 'Plan ready',
+  failed: 'The planner stopped',
+};
+export interface AiProgress {
+  stage: AiStage;
+  /** Known at the start. */
+  docs: { id: string; name: string; pages: number }[];
+  /** Increments per extracted page. */
+  pagesRead: number;
+  /** Set when the reply is parsed (the model call is a single shot; see ai.ts). */
+  milestones: { title: string; date: string }[];
+  datesFound: number;
+  phases: { name: string; count: number }[];
+  cards: { phase: string; key: string; title: string; assignee?: string; milestone?: boolean }[];
+  cardsPlanned: number;
+  peopleSuggested: number;
+  risks: number;
+  summaryDone: boolean;
+  briefingDone: boolean;
+  /** The first sentences of the drafted summary and briefing (owner-only, revealed in the writing stage). */
+  summaryPreview?: string;
+  briefingPreview?: string;
+  /** Which model attempt is running (1 or 2: one retry after a rejected reply). */
+  attempt: number;
+  error?: string;
+  /** When each stage was entered, so the reveal can be paced honestly. */
+  log: { stage: AiStage; at: string }[];
 }
 
 export interface AiRun {
@@ -296,6 +452,8 @@ export interface AiRun {
   proposal: Proposal | null;
   error: string | null;
   fileIds: string[];
+  /** v2: the stage the run is in, with real counters (null on runs from before v2). */
+  progress: AiProgress | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -304,8 +462,11 @@ export interface AiRun {
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A real calendar date as YYYY-MM-DD. JavaScript rolls "2026-02-31" over to 3 March, so the round trip must match. */
 export function isDate(v: unknown): v is string {
-  return typeof v === 'string' && DATE_RE.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+  if (typeof v !== 'string' || !DATE_RE.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
 }
 
 const toUtc = (d: string) => new Date(`${d}T00:00:00Z`);
@@ -424,6 +585,9 @@ export interface OwnerTaskView extends Task {
   overdue: boolean;
   daysLate: number;
   commentCount: number;
+  attachmentCount: number;
+  /** Keys of blockers that are not Done yet. */
+  openBlockers: string[];
 }
 
 export interface DelayRow {
@@ -445,6 +609,26 @@ export interface OwnerProjectView extends Omit<Project, 'tokenHash' | 'tokenSeal
   openDefects: number;
   nextDue: { key: string; title: string; dueDate: string; ownerSide: OwnerSide } | null;
   uatOpen: boolean;
+  health: Health;
+  healthReasons: string[];
+}
+
+export const HEALTHS = ['on_track', 'at_risk', 'late', 'closed'] as const;
+export type Health = (typeof HEALTHS)[number];
+export const HEALTH_LABEL: Record<Health, string> = { on_track: 'On track', at_risk: 'At risk', late: 'Late', closed: 'Closed' };
+
+/** A row in the owner's notifications inbox (built from events; owner only). */
+export interface CpNotification {
+  id: string;
+  projectId: string;
+  projectKey: string;
+  clientName: string;
+  taskId: string | null;
+  kind: 'client_action' | 'defect' | 'mention' | 'assignment';
+  text: string;
+  actor: string;
+  at: string;
+  unread: boolean;
 }
 
 // The client board: only what toPublicProject() puts here ever leaves the server.
@@ -474,6 +658,16 @@ export interface PublicTask {
   /** The client said it is done and Appointmentlyy has not confirmed yet. */
   awaitingConfirmation: boolean;
   comments: PublicComment[];
+  /** v2: the client-side person responsible (name only), or null (ours, or nobody). */
+  assignee: { id: string; name: string } | null;
+  /** v2: only files the owner marked client-visible; downloaded through the token route. */
+  attachments: PublicAttachment[];
+}
+export interface PublicAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
 }
 export interface PublicDefect {
   id: string;
@@ -502,6 +696,8 @@ export interface PublicProject {
   uatOpen: boolean;
   defects: PublicDefect[];
   readOnly: boolean;
+  /** v2: the client-side people (names only) for "Who are you?". Never emails, never our side. */
+  people: { id: string; name: string }[];
 }
 
 export const defectStatusLabel = (t: Pick<Task, 'status' | 'retestConfirmed'>) =>
@@ -509,3 +705,35 @@ export const defectStatusLabel = (t: Pick<Task, 'status' | 'retestConfirmed'>) =
 
 /** Deliverables in contract order, 01 to 11 (object key order would put "10" and "11" first). */
 export const DELIVERABLE_LIST: [string, string][] = Object.entries(DELIVERABLES).sort(([a], [b]) => a.localeCompare(b));
+
+// ------------------------------------------------------------------ v2 helpers (pure)
+
+export const checklistProgress = (c: ChecklistItem[] | null | undefined) => ({ done: (c ?? []).filter((i) => i.done).length, total: (c ?? []).length });
+
+export const initialsOf = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
+};
+
+const reEscape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * "@Name" handles in a comment that match project people (case-insensitive). The full name always
+ * matches; a first name matches only when exactly one person has it.
+ */
+export function mentionedPeople<T extends { id: string; name: string }>(body: string, people: T[]): T[] {
+  const firstOf = (n: string) => n.trim().toLowerCase().split(/\s+/)[0] ?? '';
+  const at = (n: string) => new RegExp(`(^|[^\\w@])@${reEscape(n)}(?![\\w])`, 'i');
+  const hit: T[] = [];
+  for (const p of people) {
+    const name = p.name.trim().toLowerCase();
+    if (name.length < 2) continue;
+    const first = firstOf(name);
+    const uniqueFirst = first.length >= 2 && people.filter((x) => firstOf(x.name) === first).length === 1;
+    if (at(name).test(body) || (uniqueFirst && at(first).test(body))) hit.push(p);
+  }
+  return hit;
+}
+
+/** The default re-date for a card dropped on a phase: the last Business Day offset of that phase. */
+export const PHASE_END_OFFSET: Record<Phase, number> = { before_kickoff: 0, week_1: 5, week_2: 10, week_3: 15, after_go_live: 20 };

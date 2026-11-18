@@ -24,10 +24,16 @@ export async function GET(req: NextRequest, c: Ctx) {
   const o = await ownerProject(req, id, 'read');
   if (o instanceof NextResponse) return o;
   try {
-    const files = await getClientProjectStore().listFiles(id);
+    // Planner documents only ('doc'): card attachments share the table but are never listed here,
+    // never count against the 12-document cap and are never read by the planner.
+    // The documents and the completed agreements in parallel. A failing document list is NOT swallowed
+    // (it is a 5xx the panel shows); only the optional agreements list degrades to empty.
+    const [files, envelopes] = await Promise.all([getClientProjectStore().listFiles(id, 'doc'), getAgreementStore().listEnvelopes().catch(() => [])]);
     const attached = new Set(files.map((f) => f.source));
-    const agreements = (await getAgreementStore().listEnvelopes().catch(() => []))
+    const agreements = envelopes
       .filter((e) => e.status === 'completed' && e.finalSha256 && e.templateMeta?.action !== 'view')
+      // Newest first BEFORE the cap, so a long history never hides the agreement just signed.
+      .sort((a, b) => String(b.completedAt ?? '').localeCompare(String(a.completedAt ?? '')))
       .slice(0, 50)
       .map((e) => ({ id: e.id, title: e.title, completedAt: e.completedAt, attached: attached.has(`agreement:${e.id}`) }));
     return json({ success: true, files, agreements, limits: { bytes: CP_LIMITS.fileBytes, files: CP_LIMITS.filesPerProject } });
@@ -65,13 +71,13 @@ async function store(o: OwnerCtx, name: string, bytes: Uint8Array, source: strin
   const s = getClientProjectStore();
   // PDF only, by its magic bytes, and it must actually parse as one.
   if (!looksLikePdf(bytes)) return fail(400, `Upload a PDF of at most ${Math.floor(CP_LIMITS.fileBytes / 1024 / 1024)} MB.`);
-  const existing = await s.listFiles(o.project.id);
+  const existing = await s.listFiles(o.project.id, 'doc');
   if (existing.length >= CP_LIMITS.filesPerProject) return fail(409, `A project holds at most ${CP_LIMITS.filesPerProject} documents. Remove one first.`);
   const sha = sha256Hex(bytes);
   if (existing.some((f) => f.sha256 === sha)) return fail(409, 'This document is already attached to the project.');
   const pages = await pdfPageCount(bytes);
   if (!pages) return fail(400, 'This file could not be read as a PDF.');
-  const file = await s.putFile({ projectId: o.project.id, name: line(name, 180).replace(/[\\/:*?"<>|]+/g, '-') || 'document.pdf', pages, source }, bytes);
+  const file = await s.putFile({ projectId: o.project.id, name: line(name, 180).replace(/[\\/:*?"<>|]+/g, '-') || 'document.pdf', pages, source, taskId: null, clientVisible: false, mime: 'application/pdf' }, bytes);
   await s.addEvent({ projectId: o.project.id, taskId: null, actor: o.ctx.actor, type: 'file_added', detail: { name: file.name, pages, size: file.size, sha256: file.sha256, source } });
   // The AI plan starts by itself as soon as a document is in: no separate "run" click.
   const started = await startAiRun(o.project.id, o.ctx.actor);

@@ -114,7 +114,8 @@
     --bg-selected: color-mix(in srgb, var(--brand-500) 14%, transparent);
     --text-primary: var(--ink-50);
     --text-secondary: var(--ink-400);
-    --text-tertiary: var(--ink-500);
+    /* #938B85: 5.2:1 on ink-900 (ink-500 was below AA). Design SPEC, owner-approved 2026-11-19. */
+    --text-tertiary: #938B85;
     --text-disabled: var(--ink-600);
     --border-default: var(--ink-800);
     --border-strong: var(--ink-700);
@@ -129,7 +130,8 @@
     --selected-soft-fg: #D9B3FF;
     --action-brand: var(--brand-500);
     --action-brand-hover: var(--brand-600);
-    --brand-text: var(--brand-500);
+    /* Text only (fills keep brand-500): #FF5C7F is 5.9:1 on ink-900; #FF0943 was 4.47:1. */
+    --brand-text: #FF5C7F;
     /* DESIGN-NOTE: the guide defines no dark variants for semantic text; the 700 shades fail
        contrast on ink-900, so dark mode uses the 500/400 shades and translucent tints. */
     --success-fg: var(--success-500);

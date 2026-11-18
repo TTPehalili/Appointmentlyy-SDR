@@ -4,17 +4,24 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { FolderKanban, Plus } from 'lucide-react';
-import { Badge, Button, Card, Checkbox, DataTable, Dialog, EmptyState, Field, InlineError, Input, PageHeader, useToast, type Column } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, DataTable, Dialog, EmptyState, Field, InlineError, Input, PageHeader, SegmentedControl, useToast, type Column } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
 import { PROJECT_STATUS_LABEL, fmtDate, suggestKey, todayManila, type OwnerProjectView } from '@/lib/clientProjects/types';
-import { Note, OwnerGate, ProgressBar, SideChip, type AiMode } from '@/components/clientProjects/shared';
+import type { ProjectRow } from '@/lib/server/clientProjects/stats';
+import { HealthChip, Note, OwnerGate } from '@/components/clientProjects/shared';
+import { NotificationsBell } from '@/components/clientProjects/Notifications';
+import { cn } from '@/lib/cn';
 
 interface ListResponse {
   projects: OwnerProjectView[];
+  rows: ProjectRow[];
   sop: { version: string; cards: number };
-  ai: AiMode;
+  ai: 'live' | 'stub' | 'off';
   storage: 'supabase' | 'file';
+  schema: 'v2' | 'v1';
 }
+
+const HEALTH_ORDER = { late: 0, at_risk: 1, on_track: 2, closed: 3 } as const;
 
 export function ProjectsConsole() {
   return (
@@ -29,6 +36,8 @@ function Console() {
   const [data, setData] = React.useState<ListResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const [show, setShow] = React.useState('open');
+  const toast = useToast();
 
   const load = React.useCallback(async () => {
     const r = await apiJson<ListResponse>('/api/client-projects');
@@ -40,54 +49,75 @@ function Console() {
     void load();
   }, [load]);
 
+  const restore = async (p: OwnerProjectView) => {
+    const r = await apiJson(`/api/client-projects/${p.id}`, { method: 'PATCH', body: { status: 'active' } });
+    toast({ message: r.success ? `${p.clientName} restored` : r.error || 'Could not restore it.' });
+    await load();
+  };
+  const rowOf = (p: OwnerProjectView) => data?.rows?.find((r) => r.id === p.id);
+  const archived = (data?.projects ?? []).filter((p) => p.status === 'archived');
+  const rows = (data?.projects ?? [])
+    .filter((p) => (show === 'archived' ? p.status === 'archived' : p.status !== 'archived'))
+    .sort((a, b) => HEALTH_ORDER[a.health ?? 'on_track'] - HEALTH_ORDER[b.health ?? 'on_track'] || b.createdAt.localeCompare(a.createdAt));
   const columns: Column<OwnerProjectView>[] = [
     {
       key: 'client',
       header: 'Client',
       cell: (p) => (
-        <div className="min-w-0">
+        <div className={cn('min-w-0', p.status === 'archived' && 'opacity-60')}>
           <p className="truncate text-body-strong text-fg">{p.clientName}</p>
           <p className="truncate text-small text-fg-secondary">
-            <span className="font-mono">{p.key}</span> · {p.title}
+            <span className="cp-mono">{p.key}</span> · {p.title}
           </p>
         </div>
       ),
     },
-    { key: 'status', header: 'Status', cell: (p) => <Badge tone={p.status === 'done' ? 'success' : 'neutral'} className={p.status === 'active' ? 'bg-selected-soft text-selected-soft-fg' : undefined}>{PROJECT_STATUS_LABEL[p.status]}</Badge> },
+    {
+      key: 'health',
+      header: 'Health',
+      cell: (p) => (p.status === 'archived' ? <Badge tone="neutral">Archived</Badge> : p.status === 'draft' ? <Badge tone="neutral">{PROJECT_STATUS_LABEL.draft}</Badge> : <HealthChip health={p.health} reasons={p.healthReasons} />),
+    },
     {
       key: 'progress',
-      header: 'Progress',
+      header: 'Done vs plan',
       width: 'w-56',
-      cell: (p) => (
-        <div className="flex min-w-40 items-center gap-3">
-          <ProgressBar progress={p.progress} label={`${p.clientName} progress`} className="flex-1" />
-          <span className="w-12 text-right text-small tabular-nums text-fg-secondary">
-            {p.progress.done}/{p.progress.total}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'next',
-      header: 'Next due',
-      cell: (p) =>
-        p.nextDue ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <SideChip side={p.nextDue.ownerSide} />
-            <span className="max-w-64 truncate text-small text-fg">{p.nextDue.title}</span>
-            <span className="whitespace-nowrap text-small text-fg-secondary">{fmtDate(p.nextDue.dueDate)}</span>
+      cell: (p) => {
+        const r = rowOf(p);
+        const planned = r && r.cards ? r.plannedToDate / r.cards : 0;
+        return (
+          <div className="flex min-w-40 items-center gap-3" data-testid="cp-done-vs-plan">
+            <div className="cp-track flex-1" style={{ height: 6 }}>
+              <span className="fill" style={{ width: `${p.progress.value * 100}%` }} />
+              <span className="absolute -top-0.5 h-2.5 w-0.5 bg-fg/55" style={{ left: `${planned * 100}%` }} title={r ? `${r.plannedToDate} planned to date` : undefined} />
+            </div>
+            <span className="cp-mono w-10 text-right text-small text-fg-secondary">{Math.round(p.progress.value * 100)}%</span>
           </div>
-        ) : (
-          <span className="text-small text-fg-tertiary">Nothing due</span>
-        ),
+        );
+      },
     },
+    { key: 'done', header: 'Done', cell: (p) => <span className="cp-mono text-small text-fg-secondary">{p.progress.done}/{p.progress.total}</span> },
     {
       key: 'overdue',
       header: 'Overdue',
       align: 'right',
-      cell: (p) => (p.overdueCount ? <Badge tone="danger">{p.overdueCount}</Badge> : <span className="text-small text-fg-tertiary">0</span>),
+      cell: (p) => <span className={cn('cp-mono text-small', p.overdueCount ? 'font-semibold text-danger-fg' : 'text-fg-tertiary')}>{p.overdueCount}</span>,
     },
-    { key: 'golive', header: 'Go-live', cell: (p) => <span className="whitespace-nowrap text-small text-fg-secondary">{fmtDate(p.targetGoLive)}</span> },
+    {
+      key: 'next',
+      header: 'Next milestone',
+      cell: (p) => {
+        const m = rowOf(p)?.nextMilestone;
+        return m ? (
+          <span className="flex min-w-0 items-center gap-2 text-small">
+            <span className="max-w-56 truncate text-fg">{m.title}</span>
+            <span className="cp-mono whitespace-nowrap text-fg-secondary">{fmtDate(m.dueDate)}</span>
+          </span>
+        ) : (
+          <span className="text-small text-fg-tertiary">None</span>
+        );
+      },
+    },
+    { key: 'golive', header: 'Go-live', cell: (p) => <span className="cp-mono whitespace-nowrap text-small text-fg-secondary">{fmtDate(p.targetGoLive)}</span> },
   ];
 
   return (
@@ -96,24 +126,42 @@ function Console() {
         title="Client Projects"
         count={data?.projects.length}
         description="One onboarding board per client: what we promised, what is done, and what is waiting on them."
+        secondaryActions={<NotificationsBell />}
         primaryAction={
           <Button variant="brand" icon={<Plus />} onClick={() => setCreating(true)} data-testid="cp-new">
             New project
           </Button>
         }
       />
+      {archived.length > 0 && (
+        <div className="mb-3">
+          <SegmentedControl label="Show" size="sm" value={show} onChange={setShow} items={[{ value: 'open', label: 'Projects' }, { value: 'archived', label: `Archived (${archived.length})` }]} />
+        </div>
+      )}
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {data?.storage === 'file' && <Note tone="warning">Projects are saved on this server&apos;s disk. Connect the Supabase database before relying on them.</Note>}
+        {data?.schema === 'v1' && (
+          <Note tone="warning">
+            <span data-testid="cp-schema-v1">The database is missing the Client Projects v2 update. Documents still list, but people, labels, checklists, attachments and moves cannot be saved until the owner runs supabase/migrations/20261125000000_client_projects_v2.sql.</span>
+          </Note>
+        )}
         {error && <InlineError message={error} onRetry={load} />}
       </div>
       <Card className="overflow-hidden">
         <DataTable
           label="Client projects"
           columns={columns}
-          rows={data?.projects ?? []}
+          rows={rows}
           rowKey={(p) => p.id}
           loading={!data && !error}
           onRowClick={(p) => router.push(`/platform/client-projects/${p.id}`)}
+          rowActions={(p) =>
+            p.status === 'archived' ? (
+              <Button size="sm" variant="secondary" onClick={() => void restore(p)} data-testid="cp-row-restore">
+                Restore
+              </Button>
+            ) : null
+          }
           empty={
             <EmptyState
               icon={<FolderKanban />}

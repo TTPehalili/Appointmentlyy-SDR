@@ -69,7 +69,7 @@ export function buildDeliveryReport(p: Project, tasks: Task[], events: CpEvent[]
     `Overall progress: ${prog.done} of ${prog.total} items done (${pct(prog.value)})`,
     '',
     '1. WORK COMPLETED THIS WEEK',
-    bullet(done.map((t) => `${key(t)} ${t.title}${t.evidence.length ? ` (evidence: ${t.evidence.join(', ')})` : ''}`), 'None.'),
+    bullet(done.map((t) => `${key(t)} ${t.title}${t.evidence.length ? ` (evidence: ${t.evidence.join(', ')})` : ''}${(t.doneBy ?? '').startsWith('client:') ? ` (ticked by ${(t.doneBy as string).slice(7)}, self-identified via the shared link)` : ''}`), 'None.'),
     '',
     '2. MILESTONES',
     bullet(gates.map((t) => `${t.title}: ${STATUS_LABEL[t.status]}${t.dueDate ? ` (target ${fmtDateLong(t.dueDate)})` : ''}`), 'None set.'),
@@ -78,7 +78,7 @@ export function buildDeliveryReport(p: Project, tasks: Task[], events: CpEvent[]
     bullet(upcoming.map((t) => `${key(t)} ${t.title} (due ${fmtDateLong(t.dueDate)}${isOverdue(t, now) ? ', overdue' : ''})`), 'None.'),
     '',
     '4. ITEMS WAITING ON THE CLIENT',
-    bullet(clientOpen.map((t) => `${key(t)} ${t.title} (due ${fmtDateLong(t.dueDate)}${isOverdue(t, now) ? ', overdue' : ''})${t.clientClaimedAt ? ' [NOT DONE: the client reports it done; awaiting our confirmation]' : ''}`), 'None.'),
+    bullet(clientOpen.map((t) => `${key(t)} ${t.title} (due ${fmtDateLong(t.dueDate)}${isOverdue(t, now) ? ', overdue' : ''})${t.clientClaimedAt ? ` [NOT DONE: the client reports it done; awaiting our confirmation. Reported by ${t.clientClaimedBy || 'the client'}, self-identified via the shared link]` : ''}`), 'None.'),
     '',
     '5. CLIENT DELAYS (Business Days)',
     bullet(
@@ -88,8 +88,9 @@ export function buildDeliveryReport(p: Project, tasks: Task[], events: CpEvent[]
   ];
   if (defects.length) {
     lines.push('', '6. UAT DEFECTS');
-    lines.push(bullet(defects.map((t) => `${key(t)} [${t.severity ? SEVERITY_LABEL[t.severity] : 'Unclassified'}] ${t.title}: ${defectStatusLabel(t)}${t.dueDate ? ` (fix due ${fmtDateLong(t.dueDate)})` : ''}`), 'None.'));
+    lines.push(bullet(defects.map((t) => `${key(t)} [${t.severity ? SEVERITY_LABEL[t.severity] : 'Unclassified'}] ${t.title}: ${defectStatusLabel(t)}${t.dueDate ? ` (fix due ${fmtDateLong(t.dueDate)})` : ''}${t.reportedByClient ? ` (reported by ${t.reportedBy || 'the client'}${t.retestConfirmed ? ', retest confirmed' : ''}, self-identified via the shared link)` : ''}`), 'None.'));
   }
+  lines.push('', 'Names on client actions (ticks, "done" reports, defect reports, retests) are as typed or picked on the shared board link: self-identified, not signatures.');
   lines.push('', 'Please confirm this report within 2 Business Days. After that it is treated as confirmed.');
   return lines.join('\n');
 }

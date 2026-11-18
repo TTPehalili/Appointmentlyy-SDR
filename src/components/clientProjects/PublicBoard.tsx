@@ -6,13 +6,15 @@
  * server decides what this page may see and do.
  */
 import * as React from 'react';
-import { ChevronDown, Diamond, Lock } from 'lucide-react';
-import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
+import { ChevronDown, Diamond, Download, Lock } from 'lucide-react';
+import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Field, Input, SegmentedControl, Select, Skeleton, Textarea } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { SEVERITIES, SEVERITY_LABEL, fmtAt, fmtDateLong, type PublicComment, type PublicDefect, type PublicProject, type PublicTask } from '@/lib/clientProjects/types';
-import { DueText, ProgressBar, SeverityChip, SideChip, StatusChip } from '@/components/clientProjects/shared';
+import { DueText, ProgressBar, SeverityChip, SideChip, StatusChip, initialsOf } from '@/components/clientProjects/shared';
 
 const NAME_KEY = 'cp_board_name';
+/** The client-side person the visitor picked in "Who are you?" (an id from this board's people). */
+const PERSON_KEY = 'cp_board_person';
 
 type Result = { success: boolean; error?: string; board?: PublicProject; status: number };
 
@@ -37,8 +39,10 @@ export function PublicBoard({ token }: { token: string }) {
   const [gone, setGone] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [name, setName] = React.useState('');
+  const [personId, setPersonId] = React.useState('');
   const [askName, setAskName] = React.useState<null | ((n: string) => void)>(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const [view, setView] = React.useState('all');
   const dead = React.useRef(false);
 
   const load = React.useCallback(async () => {
@@ -57,6 +61,7 @@ export function PublicBoard({ token }: { token: string }) {
   React.useEffect(() => {
     try {
       setName(window.localStorage.getItem(NAME_KEY) || '');
+      setPersonId(window.localStorage.getItem(PERSON_KEY) || '');
     } catch {
       /* private mode: ask each time */
     }
@@ -75,7 +80,7 @@ export function PublicBoard({ token }: { token: string }) {
   const act = (action: string, body: Record<string, unknown>, after?: () => void) =>
     withName(async (n) => {
       setNotice(null);
-      const r = await call(token, action, { ...body, name: n });
+      const r = await call(token, action, { ...body, name: n, ...(personId ? { personId } : {}) });
       if (r.success && r.board) {
         setBoard(r.board);
         after?.();
@@ -102,6 +107,15 @@ export function PublicBoard({ token }: { token: string }) {
   }
 
   const yours = board.phases.flatMap((p) => p.tasks).filter((t) => t.ownerSide === 'client' && t.status !== 'done');
+  // A picked person only counts while they are still on the board's people list.
+  const me = board.people.find((x) => x.id === personId) ?? null;
+  const mineAll = me ? board.phases.flatMap((p) => p.tasks).filter((t) => t.assignee?.id === me.id) : [];
+  const mineOpen = mineAll.filter((t) => t.status !== 'done');
+  // "Waiting on you": open client items nobody is assigned to (for every visitor), then, once the visitor
+  // has picked who they are, the ones assigned to them.
+  const unassignedOpen = board.phases.flatMap((p) => p.tasks).filter((t) => t.ownerSide === 'client' && t.status !== 'done' && !t.assignee);
+  const waiting = [...mineOpen, ...unassignedOpen];
+  const keep = (t: PublicTask) => (view === 'mine' ? t.assignee?.id === me?.id : view === 'open' ? t.status !== 'done' : true);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 md:py-10" data-testid="cpb">
       <header className="flex flex-col gap-3">
@@ -141,6 +155,42 @@ export function PublicBoard({ token }: { token: string }) {
       )}
       {board.readOnly && <div className="rounded-md border border-line bg-subtle px-3 py-2 text-small text-fg-secondary">This project is closed. The board is read-only.</div>}
 
+      {(me || waiting.length > 0) && (
+        <section className="relative overflow-hidden rounded-lg bg-inverse p-4 text-fg-inverse" data-testid="cpb-waiting" aria-label="Waiting on you">
+          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-action-brand" />
+          <p className="flex items-center gap-2 text-body-strong">
+            Waiting on you <span className="cp-mono rounded-full bg-action-brand px-2 text-caption text-action-brand-fg">{waiting.length}</span>
+          </p>
+          {!me && board.people.length > 0 && <p className="mt-0.5 text-caption text-fg-inverse-secondary">Items for your team. Pick your name above to see the ones assigned to you too.</p>}
+          {waiting.length === 0 ? (
+            <p className="mt-1 text-small text-fg-inverse-secondary">Nothing is waiting on you. We&apos;ll email you when something is.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-2">
+              {waiting.slice(0, 8).map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-2" data-testid="cpb-waiting-row" data-assigned={t.assignee ? '1' : '0'}>
+                  <span className="min-w-0">
+                    <span className="block text-body font-medium">{t.title}</span>
+                    <span className="cp-mono text-caption text-fg-inverse-secondary">{t.dueDate ? `Due ${fmtDateLong(t.dueDate)}${t.overdue ? ' · overdue' : ''}` : 'No date'}</span>
+                  </span>
+                  {!board.readOnly && t.canTick && (
+                    <Button size="sm" variant="secondary" onClick={() => act('tick', { taskId: t.id })}>
+                      Mark done
+                    </Button>
+                  )}
+                  {!board.readOnly && t.canClaim && (
+                    <Button size="sm" variant="secondary" onClick={() => act('claim', { taskId: t.id })}>
+                      I’ve done this
+                    </Button>
+                  )}
+                  {t.awaitingConfirmation && <span className="text-caption text-fg-inverse-secondary">We confirm it once checked.</span>}
+                </li>
+              ))}
+              {waiting.length > 8 && <li className="text-caption text-fg-inverse-secondary">and {waiting.length - 8} more below.</li>}
+            </ul>
+          )}
+        </section>
+      )}
+
       {(board.summary || board.update) && (
         <Card className="flex flex-col gap-3 p-4">
           {board.update && (
@@ -158,7 +208,27 @@ export function PublicBoard({ token }: { token: string }) {
         </Card>
       )}
 
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          label="Show"
+          size="sm"
+          value={view}
+          onChange={setView}
+          items={[
+            { value: 'all', label: 'Everything' },
+            ...(me ? [{ value: 'mine', label: `My tasks (${mineAll.length})` }] : []),
+            { value: 'open', label: 'Open' },
+          ]}
+        />
+        {!me && board.people.length > 0 && (
+          <button type="button" className="focus-ring rounded-sm text-small text-fg-secondary underline" onClick={() => setAskName(() => () => undefined)} data-testid="cpb-who">
+            Who are you? Pick your name to see your tasks
+          </button>
+        )}
+      </div>
+
       {board.phases
+        .map((ph) => ({ ...ph, tasks: ph.tasks.filter(keep) }))
         .filter((ph) => ph.tasks.length)
         .map((ph) => {
           const done = ph.tasks.filter((t) => t.status === 'done').length;
@@ -174,6 +244,8 @@ export function PublicBoard({ token }: { token: string }) {
                 {ph.tasks.map((t) => (
                   <TaskRow
                     key={t.id}
+                    token={token}
+                    mine={Boolean(me && t.assignee?.id === me.id)}
                     task={t}
                     open={openId === t.id}
                     readOnly={board.readOnly}
@@ -204,11 +276,16 @@ export function PublicBoard({ token }: { token: string }) {
       <NameDialog
         open={askName !== null}
         initial={name}
+        people={board.people}
+        tasks={board.phases.flatMap((ph) => ph.tasks)}
         onClose={() => setAskName(null)}
-        onSave={(n) => {
+        onSave={(n, pid) => {
           setName(n);
+          setPersonId(pid);
           try {
             window.localStorage.setItem(NAME_KEY, n);
+            if (pid) window.localStorage.setItem(PERSON_KEY, pid);
+            else window.localStorage.removeItem(PERSON_KEY);
           } catch {
             /* ignore */
           }
@@ -245,10 +322,10 @@ function Comments({ comments, onComment, readOnly }: { comments: PublicComment[]
   );
 }
 
-function TaskRow({ task, open, readOnly, onToggle, onTick, onClaim, onComment }: { task: PublicTask; open: boolean; readOnly: boolean; onToggle: () => void; onTick: (done: boolean) => void; onClaim: () => void; onComment: (body: string, clear: () => void) => void }) {
+function TaskRow({ token, mine, task, open, readOnly, onToggle, onTick, onClaim, onComment }: { token: string; mine: boolean; task: PublicTask; open: boolean; readOnly: boolean; onToggle: () => void; onTick: (done: boolean) => void; onClaim: () => void; onComment: (body: string, clear: () => void) => void }) {
   const done = task.status === 'done';
   return (
-    <li data-testid="cpb-task" data-owner={task.ownerSide} data-status={task.status} data-key={task.key} data-awaiting={task.awaitingConfirmation ? '1' : '0'}>
+    <li data-testid="cpb-task" data-owner={task.ownerSide} data-status={task.status} data-key={task.key} data-awaiting={task.awaitingConfirmation ? '1' : '0'} data-mine={mine ? '1' : '0'} className={cn(mine && 'bg-[color-mix(in_srgb,var(--brand-500)_3.5%,transparent)]')}>
       <div className="flex items-start gap-3 px-3 py-3">
         <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
           {task.canTick ? (
@@ -266,6 +343,18 @@ function TaskRow({ task, open, readOnly, onToggle, onTick, onClaim, onComment }:
             <SideChip side={task.ownerSide} you />
             <DueText date={task.dueDate} overdue={task.overdue} done={done} />
             {task.awaitingConfirmation ? <Badge tone="warning">Awaiting confirmation</Badge> : <StatusChip status={task.status} />}
+            {mine ? (
+              <span className="rounded-sm bg-[color-mix(in_srgb,var(--brand-500)_10%,transparent)] px-1.5 text-caption font-medium text-brand-text" data-testid="cpb-assigned-you">
+                Assigned to you
+              </span>
+            ) : task.assignee ? (
+              <span className="inline-flex items-center gap-1 text-caption text-fg-secondary" data-testid="cpb-assignee">
+                <span className="cp-av" data-side="client" aria-hidden>
+                  {initialsOf(task.assignee.name)}
+                </span>
+                {task.assignee.name.split(' ')[0]}
+              </span>
+            ) : null}
             {task.comments.length > 0 && <span className="text-caption text-fg-tertiary">{task.comments.length} {task.comments.length === 1 ? 'comment' : 'comments'}</span>}
           </span>
         </button>
@@ -281,6 +370,18 @@ function TaskRow({ task, open, readOnly, onToggle, onTick, onClaim, onComment }:
           {task.awaitingConfirmation && <p className="text-small text-fg-secondary">You told us this is done. We will confirm it and mark it Done.</p>}
           {task.canClaim && <p className="text-small text-fg-tertiary">We confirm this item ourselves. Tell us when it is done with “I’ve done this”.</p>}
           {task.description && <p className="whitespace-pre-wrap break-words text-body text-fg-secondary">{task.description}</p>}
+          {task.attachments.length > 0 && (
+            <ul className="flex flex-col gap-1" data-testid="cpb-attachments">
+              {task.attachments.map((f) => (
+                <li key={f.id}>
+                  <a className="focus-ring inline-flex items-center gap-1.5 rounded-sm text-small text-fg underline-offset-2 hover:underline" href={`/api/board/${token}/file/${f.id}`} rel="noopener noreferrer" referrerPolicy="no-referrer" data-testid="cpb-attachment">
+                    <Download className="size-3.5" aria-hidden />
+                    {f.name} <span className="cp-mono text-caption text-fg-tertiary">{(f.size / 1024).toFixed(0)} KB</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
           <Comments comments={task.comments} onComment={onComment} readOnly={readOnly} />
         </div>
       )}
@@ -403,7 +504,7 @@ function DefectRow({ d, open, readOnly, onToggle, onRetest, onComment }: { d: Pu
   );
 }
 
-function NameDialog({ open, initial, onClose, onSave }: { open: boolean; initial: string; onClose: () => void; onSave: (name: string) => void }) {
+function NameDialog({ open, initial, people, tasks, onClose, onSave }: { open: boolean; initial: string; people: { id: string; name: string }[]; tasks: PublicTask[]; onClose: () => void; onSave: (name: string, personId: string) => void }) {
   const [v, setV] = React.useState(initial);
   React.useEffect(() => {
     if (open) setV(initial);
@@ -414,31 +515,55 @@ function NameDialog({ open, initial, onClose, onSave }: { open: boolean; initial
       open={open}
       onClose={onClose}
       size="sm"
-      title="Your name"
-      description="So the team knows who ticked an item or left a comment. You only enter it once."
+      title="Who are you?"
+      description="So the team knows who ticked an item or left a comment, and so you can see your own tasks. You only do this once."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!ok} onClick={() => onSave(v.trim())} data-testid="cpb-name-save">
+          <Button variant="primary" disabled={!ok} onClick={() => onSave(v.trim(), '')} data-testid="cpb-name-save">
             Continue
           </Button>
         </>
       }
     >
-      <Input
-        aria-label="Your name"
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        maxLength={80}
-        placeholder="First and last name"
-        autoFocus
-        data-testid="cpb-name"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && ok) onSave(v.trim());
-        }}
-      />
+      <div className="flex flex-col gap-3">
+        {people.length > 0 && (
+          <ul className="flex flex-col gap-1.5" data-testid="cpb-people">
+            {people.map((x) => {
+              const n = tasks.filter((t) => t.assignee?.id === x.id && t.status !== 'done').length;
+              return (
+                <li key={x.id}>
+                  <button type="button" onClick={() => onSave(x.name, x.id)} className="focus-ring flex w-full items-center gap-3 rounded-md border border-line px-3 py-2 text-left hover:bg-subtle" data-testid="cpb-person">
+                    <span className="cp-av is-md" data-side="client" aria-hidden>
+                      {initialsOf(x.name)}
+                    </span>
+                    <span className="flex-1 text-body text-fg">{x.name}</span>
+                    <span className="cp-mono text-caption text-fg-tertiary">
+                      {n} task{n === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <Field label={people.length ? 'Someone else? Type your name' : 'Your name'} htmlFor="cpb-name">
+          <Input
+            id="cpb-name"
+            value={v}
+            onChange={(e) => setV(e.target.value)}
+            maxLength={80}
+            placeholder="First and last name"
+            autoFocus={!people.length}
+            data-testid="cpb-name"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ok) onSave(v.trim(), '');
+            }}
+          />
+        </Field>
+      </div>
     </Dialog>
   );
 }

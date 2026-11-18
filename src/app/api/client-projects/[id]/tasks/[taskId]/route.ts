@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fail, json, readJson } from '@/lib/server/agreements/core';
-import { getClientProjectStore, isCpId } from '@/lib/server/clientProjectStore';
+import { getClientProjectStore } from '@/lib/server/clientProjectStore';
 import { toOwnerTask } from '@/lib/server/clientProjects/core';
-import { cpFail, ownerProject, type OwnerCtx } from '@/lib/server/clientProjects/http';
+import { cpFail, ownerTask, type OwnerCtx } from '@/lib/server/clientProjects/http';
 import { addComment, deleteTask, patchTask } from '@/lib/server/clientProjects/service';
 import type { Task } from '@/lib/clientProjects/types';
 
@@ -10,17 +10,7 @@ type Ctx = { params: Promise<{ id: string; taskId: string }> };
 
 async function load(req: NextRequest, c: Ctx): Promise<(OwnerCtx & { task: Task }) | NextResponse> {
   const { id, taskId } = await c.params;
-  const o = await ownerProject(req, id);
-  if (o instanceof NextResponse) return o;
-  if (!isCpId(taskId)) return fail(404, 'Card not found.');
-  try {
-    const task = await getClientProjectStore().getTask(taskId);
-    // A card id from another project is simply not found.
-    if (!task || task.projectId !== o.project.id) return fail(404, 'Card not found.');
-    return { ...o, task };
-  } catch (err) {
-    return cpFail(err, 'task load');
-  }
+  return ownerTask(req, id, taskId);
 }
 
 /** PATCH /api/client-projects/:id/tasks/:taskId -> edit a card or set its status (owner only). */
@@ -30,8 +20,13 @@ export async function PATCH(req: NextRequest, c: Ctx) {
   const body = await readJson(req, 32 * 1024);
   if (!body) return fail(400, 'Send the changes as JSON.');
   try {
-    const task = await patchTask(o.project, o.task, body, o.ctx);
-    return json({ success: true, task: toOwnerTask(o.project, task, []) });
+    // Round trips: project + card (1), the board snapshot (2), the write with its events (3); the done
+    // automations of v1 still run inline here (they are asserted by the regression suite).
+    const store = getClientProjectStore();
+    const [tasks, attachments] = await Promise.all([store.listTasks(o.project.id), store.listFiles(o.project.id, 'attachment')]);
+    const task = await patchTask(o.project, o.task, body, o.ctx, tasks);
+    const all = tasks.map((t) => (t.id === task.id ? task : t));
+    return json({ success: true, task: toOwnerTask(o.project, task, [], undefined, { tasks: all, attachments }) });
   } catch (err) {
     return cpFail(err, 'task patch');
   }

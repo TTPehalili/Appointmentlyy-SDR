@@ -19,15 +19,22 @@ import { askClaudeDirect } from '@/lib/server/anthropicBridge';
 import { isLocalTestServer } from '@/lib/server/agreements/mail';
 import { getClientProjectStore } from '@/lib/server/clientProjectStore';
 import { extractPdfText } from '@/lib/server/clientProjects/pdfText';
-import { deliverableRef, line, text } from '@/lib/server/clientProjects/core';
+import { deliverableRef, line, personName, text } from '@/lib/server/clientProjects/core';
 import { buildClientUpdate, buildDeliveryReport } from '@/lib/server/clientProjects/statusText';
 import { SOP_TEMPLATE, sopCard } from '@/lib/clientProjects/sopTemplate';
 import { newId, nowIso } from '@/lib/server/tenantStore';
 import {
   CP_LIMITS,
   PHASES,
+  PHASE_LABEL,
+  PRIORITIES,
+  addBusinessDays,
+  type CpFileMeta,
   isDate,
+  type AiProgress,
   type AiRun,
+  type Priority,
+  type ProposalPerson,
   type CpEvent,
   type Phase,
   type Project,
@@ -60,7 +67,7 @@ export function aiMode(): AiMode {
 /** The planner reads whole contracts: its own timeout, well above the bridge's 60 seconds for other callers. */
 export const PLANNER_TIMEOUT_MS = 180_000;
 
-interface AskInput {
+export interface AskInput {
   system: string;
   user: string;
   schema: unknown;
@@ -73,7 +80,7 @@ interface AskInput {
  * One JSON-only model call: Claude first when configured, then the Gemini path. Whatever comes back is
  * only ever parsed here; every caller still rebuilds and validates it (validateProposal) before use.
  */
-async function askModel(input: AskInput): Promise<Record<string, unknown> | null> {
+export async function askModel(input: AskInput): Promise<Record<string, unknown> | null> {
   if (aiProvider() === 'claude') {
     const reply = await askClaudeDirect({ system: input.system, user: input.user, json: true, schema: input.schema, maxOutputTokens: input.maxOutputTokens, timeoutMs: input.timeoutMs });
     if (reply) {
@@ -137,6 +144,14 @@ export function validateProposal(raw: unknown): { ok: true; value: Proposal } | 
     const ownerSide = t.owner_side;
     const isGate = t.is_gate === true;
     const kind = !card ? 'new' : card.offset === off && card.side === ownerSide && card.title === title && Boolean(card.gate) === isGate ? 'sop' : 'changed';
+    // v2 suggestions (optional; dropped when malformed, never a reason to reject the draft).
+    const priority = typeof t.priority === 'string' && (PRIORITIES as readonly string[]).includes(t.priority) ? (t.priority as Priority) : null;
+    const checklist = (Array.isArray(t.checklist) ? t.checklist : [])
+      .slice(0, CP_LIMITS.aiChecklist)
+      .map((x) => noLinks(line(x, CP_LIMITS.checklistText)))
+      .filter(Boolean);
+    // Only a client-side card can carry a suggested assignee (a person named in the documents).
+    const assigneeName = ownerSide === 'client' ? personName(noLinks(line(t.assignee_name, CP_LIMITS.personName))) : '';
     tasks.push({
       phase: t.phase as Phase,
       title,
@@ -149,6 +164,9 @@ export function validateProposal(raw: unknown): { ok: true; value: Proposal } | 
       sourceQuote: noLinks(line(t.source_quote, 300)),
       matchesSopCard: match,
       kind,
+      priority,
+      checklist,
+      assigneeName,
     });
   }
   // One proposal row per SOP card at most.
@@ -181,6 +199,10 @@ export function validateProposal(raw: unknown): { ok: true; value: Proposal } | 
         .map((r) => line(r, 300))
         .filter(Boolean),
       tasks,
+      people: arr(raw.client_people, CP_LIMITS.aiPeople)
+        .filter(isObj)
+        .map((x): ProposalPerson => ({ name: personName(noLinks(line(x.name, CP_LIMITS.personName))), role: noLinks(line(x.role, CP_LIMITS.roleLabel)) }))
+        .filter((x, i, all) => x.name.length >= 2 && all.findIndex((y) => y.name.toLowerCase() === x.name.toLowerCase()) === i),
     },
   };
 }
@@ -195,6 +217,11 @@ const RESPONSE_SCHEMA = {
     briefing_internal: { type: 'string', description: 'Up to 300 words for the delivery team: obligations, deadlines, remedies, payment triggers, anything unusual.' },
     key_dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD or empty' }, offset_bd: { type: 'integer', description: 'Business Days from kickoff, if relative' }, note: { type: 'string' } } } },
     fees: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, amount: { type: 'string' }, due: { type: 'string' } } } },
+    client_people: {
+      type: 'array',
+      description: 'People on the CLIENT side named in the documents (signatories, project lead, UAT lead, IT contact). Names and roles only: never emails or phone numbers.',
+      items: { type: 'object', properties: { name: { type: 'string' }, role: { type: 'string' } } },
+    },
     risks: { type: 'array', items: { type: 'string' } },
     tasks: {
       type: 'array',
@@ -212,6 +239,9 @@ const RESPONSE_SCHEMA = {
           source_page: { type: 'integer' },
           source_quote: { type: 'string', description: 'A short exact quote from that page (max 200 characters)' },
           matches_sop_card: { type: 'string', description: 'The key of the SOP card this is, or "new"' },
+          priority: { type: 'string', enum: [...PRIORITIES], description: 'urgent for contractual deadlines with remedies or payment triggers, high for milestones, otherwise medium or low' },
+          checklist: { type: 'array', items: { type: 'string' }, description: 'Up to 6 short sub-steps, only when the documents list them' },
+          assignee_name: { type: 'string', description: 'Client-side cards only: the client person the documents make responsible, exactly as named in client_people, or empty' },
         },
       },
     },
@@ -236,6 +266,7 @@ YOUR JOB:
 5. owner_side is "client" for things the client must do or provide, otherwise "us".
 6. For every card give source_page and a short exact source_quote.
 7. Write summary_client for the client and briefing_internal for our team, and list key_dates, fees and risks.
+8. Suggest a priority per card, a short checklist where the documents list sub-steps, and the client people named in the documents (client_people: names and roles only). For client cards, set assignee_name only when the documents name who is responsible. These are suggestions the owner reviews.
 
 Reply with JSON only, matching the schema.`;
 
@@ -277,12 +308,13 @@ function stubReply(docText: string, attempt: number): unknown {
       { label: 'Build fee, second 50%', amount: 'USD 6,250', due: 'Within 3 Business Days of go-live' },
     ],
     risks: ['Client is late with provider keys or DNS access.', 'UAT testers are not available in week 3.'],
+    client_people: [{ name: 'Dana Signer', role: 'Signatory' }, { name: 'Uma Tester', role: 'UAT lead' }],
     tasks: [
       card('readiness'),
       card('go-live'),
       card('second-payment'),
-      card('provider-keys', { due_offset_bd: 2, source_page: 2, source_quote: 'Client keys are due within 2 Business Days of kickoff.' }),
-      { phase: 'week_1', title: 'Sign the data processing addendum', description_client: 'Sign and return the data processing addendum in Annex B.', owner_side: 'client', due_offset_bd: 3, deliverable_ref: '', is_gate: false, matches_sop_card: 'new', source_page: 2, source_quote: 'The Client shall sign the data processing addendum.' },
+      card('provider-keys', { due_offset_bd: 2, source_page: 2, source_quote: 'Client keys are due within 2 Business Days of kickoff.', priority: 'urgent', assignee_name: 'Uma Tester' }),
+      { phase: 'week_1', title: 'Sign the data processing addendum', description_client: 'Sign and return the data processing addendum in Annex B.', owner_side: 'client', due_offset_bd: 3, deliverable_ref: '', is_gate: false, matches_sop_card: 'new', source_page: 2, source_quote: 'The Client shall sign the data processing addendum.', priority: 'high', checklist: ['Read Annex B', 'Sign page 4', 'Return the signed copy'], assignee_name: 'Dana Signer' },
       { phase: 'week_3', title: 'Milestone: UAT window closes', description_client: 'Acceptance testing ends 5 business days after the Readiness Notice.', owner_side: 'us', due_offset_bd: 15, deliverable_ref: '09', is_gate: true, matches_sop_card: 'new', source_page: 3, source_quote: 'UAT runs for 5 Business Days.' },
       { phase: 'after_go_live', title: 'Monthly billing starts', description_client: 'Monthly billing begins from go-live.', owner_side: 'us', due_offset_bd: 16, deliverable_ref: '', is_gate: false, matches_sop_card: 'new', source_page: 3, source_quote: 'Monthly fees apply from go-live.' },
     ],
@@ -331,7 +363,7 @@ export async function latestRun(projectId: string): Promise<AiRun | null> {
 export async function startAiRun(projectId: string, actor: string): Promise<{ run: AiRun; work: (() => Promise<void>) | null } | null> {
   if (aiMode() === 'off') return null;
   const store = getClientProjectStore();
-  const files = await store.listFiles(projectId);
+  const files = await store.listFiles(projectId, 'doc');
   if (!files.length) return null;
   const current = inflight.get(projectId);
   if (current) {
@@ -342,7 +374,7 @@ export async function startAiRun(projectId: string, actor: string): Promise<{ ru
   const now = nowIso();
   const prev = await store.latestRun(projectId);
   if (prev && prev.status === 'draft') await store.updateRun(prev.id, { status: 'discarded', error: 'Replaced by a newer draft.' }, ['draft']);
-  const run = await store.createRun({ id: newId(), projectId, status: 'running', model: modelLabel(), proposal: null, error: null, fileIds: files.map((f) => f.id), createdAt: now, updatedAt: now });
+  const run = await store.createRun({ id: newId(), projectId, status: 'running', model: modelLabel(), proposal: null, error: null, fileIds: files.map((f) => f.id), progress: newProgress(files), createdAt: now, updatedAt: now });
   inflight.set(projectId, { again: false });
   await logEvent(projectId, 'ai_run_started', { runId: run.id, files: files.length }, actor);
   const work = async () => {
@@ -360,18 +392,66 @@ export async function startAiRun(projectId: string, actor: string): Promise<{ ru
   return { run, work };
 }
 
+export function newProgress(files: Pick<CpFileMeta, 'id' | 'name' | 'pages'>[]): AiProgress {
+  return {
+    stage: 'queued',
+    docs: files.map((f) => ({ id: f.id, name: f.name, pages: Math.min(f.pages || 0, CP_LIMITS.aiPages) })),
+    pagesRead: 0,
+    milestones: [],
+    datesFound: 0,
+    phases: [],
+    cards: [],
+    cardsPlanned: 0,
+    peopleSuggested: 0,
+    risks: 0,
+    summaryDone: false,
+    briefingDone: false,
+    attempt: 0,
+    log: [{ stage: 'queued', at: nowIso() }],
+  };
+}
+
+/**
+ * The run's real progress, written as it happens (only while the run is still running), read by the
+ * 1-query progress poll. `reading` is real per page (text extraction). The model call is a single shot,
+ * so `finding` covers the call itself (with the attempt number), and `mapping`, `drafting` and `writing`
+ * are marked as the parsed reply is validated, each carrying the real results (milestones, phase counts,
+ * cards, summary flags). The client paces the reveal; it never invents data.
+ */
+async function track(run: AiRun, prog: AiProgress, patch: Partial<AiProgress>): Promise<void> {
+  if (patch.stage && patch.stage !== prog.stage) prog.log.push({ stage: patch.stage, at: nowIso() });
+  Object.assign(prog, patch);
+  await getClientProjectStore()
+    .updateRun(run.id, { progress: { ...prog, log: [...prog.log] } }, ['running'])
+    .catch(() => null);
+  // Test servers only: a pause per step so the staged UI can be observed and screenshotted.
+  const pause = aiMode() === 'stub' && isLocalTestServer() ? Number(process.env.CP_AI_STUB_STAGE_MS || 0) : 0;
+  if (pause > 0) await new Promise((r) => setTimeout(r, Math.min(pause, 5000)));
+}
+
+/** The facts a validated proposal yields for the progress view (titles are AI output, already cleaned). */
+function proposalFacts(p: Project, v: Proposal) {
+  const milestones = v.tasks.filter((t) => t.isGate).map((t) => ({ title: t.title, date: addBusinessDays(p.kickoffDate, t.dueOffsetBd) }));
+  const phases = PHASES.map((ph) => ({ name: PHASE_LABEL[ph], count: v.tasks.filter((t) => t.phase === ph).length })).filter((x) => x.count);
+  const cards = v.tasks.map((t, i) => ({ phase: PHASE_LABEL[t.phase], key: `#${i + 1}`, title: t.title, ...(t.assigneeName ? { assignee: t.assigneeName } : {}), ...(t.isGate ? { milestone: true } : {}) }));
+  return { milestones, phases, cards, datesFound: v.keyDates.length + v.tasks.length };
+}
+
 async function executeRun(run: AiRun): Promise<void> {
   const store = getClientProjectStore();
+  const prog = run.progress ?? newProgress([]);
   const failRun = async (error: string) => {
-    await store.updateRun(run.id, { status: 'failed', error }, ['running']);
+    prog.log.push({ stage: 'failed', at: nowIso() });
+    await store.updateRun(run.id, { status: 'failed', error, progress: { ...prog, stage: 'failed', error } }, ['running']);
     await logEvent(run.projectId, 'ai_failed', { runId: run.id, error });
   };
   try {
     const project = await store.getProject(run.projectId);
     if (!project) return;
-    const files = (await store.listFiles(run.projectId)).filter((f) => run.fileIds.includes(f.id));
+    const files = (await store.listFiles(run.projectId, 'doc')).filter((f) => run.fileIds.includes(f.id));
     const docs: { name: string; pages: { page: number; text: string }[] }[] = [];
     let budget: number = CP_LIMITS.aiCharsTotal;
+    await track(run, prog, { stage: 'reading', docs: files.map((f) => ({ id: f.id, name: f.name, pages: Math.min(f.pages || 0, CP_LIMITS.aiPages) })) });
     for (const f of files) {
       if (budget <= 0) break;
       const bytes = await store.getFileBytes(f.id);
@@ -379,6 +459,7 @@ async function executeRun(run: AiRun): Promise<void> {
       const { pages } = await extractPdfText(bytes, CP_LIMITS.aiPages, Math.min(CP_LIMITS.aiCharsPerFile, budget));
       budget -= pages.reduce((n, p) => n + p.text.length, 0);
       docs.push({ name: f.name, pages });
+      await track(run, prog, { pagesRead: prog.pagesRead + pages.length });
     }
     const allText = docs.flatMap((d) => d.pages.map((p) => p.text)).join('\n');
     if (allText.replace(/\s+/g, '').length < 40) return failRun('No readable text was found in the documents (scanned PDFs need OCR first). The project still works from the SOP template.');
@@ -387,6 +468,7 @@ async function executeRun(run: AiRun): Promise<void> {
     let lastError = 'no reply';
     // Schema-validated; one retry (plan: "reject, then retry once").
     for (let attempt = 0; attempt < 2; attempt++) {
+      await track(run, prog, { stage: 'finding', attempt: attempt + 1 });
       let raw: unknown;
       if (mode === 'stub') raw = stubReply(allText, attempt);
       else if (mode === 'live')
@@ -405,8 +487,18 @@ async function executeRun(run: AiRun): Promise<void> {
       }
       const checked = validateProposal(raw);
       if (checked.ok) {
-        const saved = await store.updateRun(run.id, { status: 'draft', proposal: checked.value, error: null }, ['running']);
-        if (saved) await logEvent(run.projectId, 'ai_draft_ready', { runId: run.id, tasks: checked.value.tasks.length, attempt: attempt + 1 });
+        const v = checked.value;
+        const f = proposalFacts(project, v);
+        await track(run, prog, { milestones: f.milestones, datesFound: f.datesFound });
+        await track(run, prog, { stage: 'mapping', phases: f.phases, cardsPlanned: v.tasks.length });
+        await track(run, prog, { stage: 'drafting', cards: f.cards, peopleSuggested: (v.people ?? []).length });
+        await track(run, prog, { stage: 'writing', risks: v.risks.length, summaryPreview: v.summaryClient.slice(0, 360), briefingPreview: v.briefingInternal.slice(0, 360) });
+        prog.summaryDone = Boolean(v.summaryClient);
+        prog.briefingDone = Boolean(v.briefingInternal);
+        prog.log.push({ stage: 'ready', at: nowIso() });
+        prog.stage = 'ready';
+        const saved = await store.updateRun(run.id, { status: 'draft', proposal: v, error: null, progress: { ...prog } }, ['running']);
+        if (saved) await logEvent(run.projectId, 'ai_draft_ready', { runId: run.id, tasks: v.tasks.length, attempt: attempt + 1 });
         return;
       }
       lastError = checked.error;

@@ -2,13 +2,27 @@
 
 /** Automations: a small, fixed set of built-in rules with an on/off switch each. Every firing is logged. */
 import * as React from 'react';
-import { Button, Card, Field, Input, Switch, useToast } from '@/components/ui';
+import { Button, Card, Field, Input, Skeleton, Switch, useToast } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
 import { AUTOMATION_INFO, AUTOMATION_RULES, fmtAt, ruleOn, type AutomationRule, type CpEvent, type OwnerProjectView } from '@/lib/clientProjects/types';
 import { actorLabel, eventText } from '@/components/clientProjects/eventText';
 import { Note, type MailStatus } from '@/components/clientProjects/shared';
 
-export function AutomationsPanel({ project, events, counts, mail, onChanged }: { project: OwnerProjectView; events: CpEvent[]; counts: Record<string, number>; mail: MailStatus; onChanged: () => Promise<void> | void }) {
+/** Loads its own firing log and the per-rule counts (one grouped query) when the tab opens. */
+export function AutomationsPanel({ project, onChanged: onProjectChanged }: { project: OwnerProjectView; onChanged: () => Promise<void> | void }) {
+  const [state, setState] = React.useState<{ events: CpEvent[]; counts: Record<string, number>; mail: MailStatus } | null>(null);
+  const reload = React.useCallback(async () => {
+    const r = await apiJson<{ events: CpEvent[]; counts: Record<string, number>; mail: MailStatus }>(`/api/client-projects/${project.id}/automations`);
+    if (r.success) setState({ events: r.events, counts: r.counts, mail: r.mail });
+  }, [project.id]);
+  React.useEffect(() => {
+    void reload();
+  }, [reload]);
+  if (!state) return <Skeleton className="h-96 w-full" />;
+  return <Panel project={project} {...state} onChanged={async () => (await onProjectChanged(), await reload())} />;
+}
+
+function Panel({ project, events, counts, mail, onChanged }: { project: OwnerProjectView; events: CpEvent[]; counts: Record<string, number>; mail: MailStatus; onChanged: () => Promise<void> | void }) {
   const toast = useToast();
   const [email, setEmail] = React.useState(project.clientContactEmail);
   const [busy, setBusy] = React.useState('');
