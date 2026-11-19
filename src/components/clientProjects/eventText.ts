@@ -2,6 +2,7 @@ import { AUTOMATION_INFO, STATUS_LABEL, type AutomationRule, type CpEvent, type 
 
 const s = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '');
 const status = (v: unknown) => STATUS_LABEL[v as TaskStatus] ?? s(v);
+const UNIFIED_TEXT: Record<string, string> = { not_started: 'not started', in_progress: 'in progress', waiting_on_us: 'waiting on us', complete: 'complete' };
 
 /** Who did it, for the activity log: the owner's email, the client's name as typed, or the system. */
 export function actorLabel(actor: string): string {
@@ -81,6 +82,37 @@ export function eventText(e: CpEvent): string {
         Array.isArray(d.ready) && d.ready.length ? s(d.note).split(';')[0] : s(d.note),
       ].filter(Boolean);
       return `Automation · ${rule}${key ? ` · ${key}` : ''}${bits.length ? `: ${bits.join('; ')}` : ''}`;
+    }
+    case 'intake': {
+      // Never any client-typed text here (file names, domains, answers): this sentence also reaches Copilot's model.
+      const v = d.version ? ` v${s(d.version)}` : '';
+      const moved = d.from && d.to && d.from !== d.to ? ` (${UNIFIED_TEXT[s(d.to)] ?? s(d.to)})` : '';
+      const what: Record<string, string> = {
+        draft_saved: 'draft saved by the client',
+        submitted: `form${v} submitted for review`,
+        accepted: `submission${v} accepted`,
+        changes_requested: `changes requested on${v}`,
+        applied: `applied: ${Array.isArray(d.targets) ? d.targets.map(s).join(', ') : ''}`,
+        file_added: `file uploaded (${s(d.kind).toUpperCase()}, ${Math.max(1, Math.round(Number(d.size || 0) / 1024))} KB)`,
+        file_removed: 'file removed by the client',
+        domain_set: 'sending domain set',
+        dns_checked: `DNS checked: ${s(d.ok)} of ${s(d.total)} records found`,
+        keys_checked: `provider keys checked: ${s(d.ok)} of ${s(d.total)} passed`,
+        envelope_linked: d.envelopeId ? `Agreements envelope linked${d.auto ? ' automatically' : ''}` : 'Agreements envelope unlinked',
+        envelope_status: `Agreements envelope ${s(d.status)}`,
+        deemed_confirmed: `deemed confirmed: no response within 2 business days of ${s(d.sentOn)}`,
+        paid_claimed: 'the client says it is paid',
+        payment_received: `payment received (recorded by us${d.via === 'agreements' ? ' in Agreements' : ''})`,
+        payment_not_received: 'payment not received yet: follow-up',
+        payment_reset: 'payment status set to awaiting payment',
+        uat_complete: 'UAT complete: the certificate is signed',
+        request_attached: 'client intake step attached',
+        intake_enabled: 'Client Intake turned on',
+        intake_disabled: 'Client Intake turned off',
+        workspace_set: d.tenantCode ? `client workspace set to ${s(d.tenantCode)}` : 'client workspace cleared',
+        config: 'client intake settings changed',
+      };
+      return `${k}${what[s(d.action)] ?? s(d.action)}${moved}`;
     }
     default:
       return e.type;

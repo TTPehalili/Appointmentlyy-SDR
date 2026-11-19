@@ -299,7 +299,8 @@ export function TaskCard({
   const cl = checklistProgress(task.checklist);
   const mine = labels.filter((l) => (task.labelIds ?? []).includes(l.id));
   const gated = task.ownerSide === 'client' && task.type !== 'defect' && !task.clientMayTick;
-  const waitingClient = !done && task.ownerSide === 'client' && task.overdue;
+  // A client intake step the client has done is waiting on US, not on the client.
+  const waitingClient = !done && task.ownerSide === 'client' && task.overdue && task.intake?.unified !== 'waiting_on_us';
   return (
     <article
       data-testid="cp-card"
@@ -360,6 +361,17 @@ export function TaskCard({
           <Clock className="size-3" aria-hidden /> Client says done: confirm it
         </div>
       ) : null}
+      {task.intake && (
+        <div className="cp-intake-chip" data-testid="cp-card-intake" data-u={task.intake.unified} data-review={task.intake.review ? '1' : '0'}>
+          {task.intake.unified === 'waiting_on_us' ? 'Waiting on us' : task.intake.label}
+          {task.intake.review && <span className="cp-intake-dot" aria-label="Needs your review" />}
+          {task.intake.kind === 'payment' && task.intake.unified !== 'complete' && (
+            <button type="button" className="focus-ring relative z-10 ml-1 rounded-sm underline" onClick={() => onOpen(task)} data-testid="cp-card-pay">
+              Record payment
+            </button>
+          )}
+        </div>
+      )}
       <div className="cp-card-foot">
         {task.type === 'defect' ? null : <AssigneeBadge person={assignee} />}
         {cl.total > 0 && (

@@ -8,7 +8,7 @@ import { EMAIL_RE } from '@/lib/roles';
 import { rateLimit } from '@/lib/authToken';
 import { loadSettings } from '@/lib/server/agreements/core';
 import { mailStatus, sendAgreementMail, type AgreementMail } from '@/lib/server/agreements/mail';
-import { getClientProjectStore, isCpId } from '@/lib/server/clientProjectStore';
+import { getClientProjectStore, INTAKE_SOURCE, isCpId } from '@/lib/server/clientProjectStore';
 import { isLocalTestServer } from '@/lib/server/agreements/mail';
 import { draftStatus, noLinks } from '@/lib/server/clientProjects/ai';
 import { buildClientReminder, buildReadinessNotice } from '@/lib/server/clientProjects/statusText';
@@ -118,20 +118,20 @@ function later(ctx: Ctx, what: string, fn: () => Promise<void>): Promise<void> {
 const store = () => getClientProjectStore();
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-async function log(p: Pick<Project, 'id'>, taskId: string | null, actor: string, type: CpEventType, detail: Record<string, unknown> = {}, dedupeKey?: string) {
+export async function log(p: Pick<Project, 'id'>, taskId: string | null, actor: string, type: CpEventType, detail: Record<string, unknown> = {}, dedupeKey?: string) {
   return store().addEvent({ projectId: p.id, taskId, actor: actor.slice(0, 200), type, detail }, dedupeKey);
 }
 
 // ------------------------------------------------------------------ mail (the Agreements sender; dev outbox on test servers)
 
-type MailOutcome = { emailed: boolean; note: string };
+export type MailOutcome = { emailed: boolean; note: string };
 
 /**
  * Send one plain notification. Never throws: the outcome is recorded on the automation event.
  * `budget`: hourly allowance per project. Defect reports have their own, so a burst of ticks or comments
  * can never starve "a client reported a defect".
  */
-async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client' | 'cp-person', to: string, subject: string, lines: string[], cta?: { label: string; url: string }, budget: 'general' | 'defect' | 'assign' | 'mention' = 'general', who?: string): Promise<MailOutcome> {
+export async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client' | 'cp-person', to: string, subject: string, lines: string[], cta?: { label: string; url: string }, budget: 'general' | 'defect' | 'assign' | 'mention' = 'general', who?: string): Promise<MailOutcome> {
   try {
     if (!to || !EMAIL_RE.test(to)) return { emailed: false, note: 'email not sent: no address' };
     if (!mailStatus().configured) return { emailed: false, note: 'email not sent: mail not configured' };
@@ -157,7 +157,7 @@ async function sendMail(p: Project, kind: 'cp-owner' | 'cp-client' | 'cp-person'
   }
 }
 
-async function mailOwner(p: Project, ctx: Ctx, subject: string, lines: string[], budget: 'general' | 'defect' = 'general'): Promise<MailOutcome> {
+export async function mailOwner(p: Project, ctx: Ctx, subject: string, lines: string[], budget: 'general' | 'defect' = 'general'): Promise<MailOutcome> {
   const { settings } = await loadSettings().catch(() => ({ settings: null }));
   return sendMail(p, 'cp-owner', settings?.ownerEmail ?? '', subject, lines, { label: 'Open the project', url: consoleUrl(p.id, ctx.origin) }, budget);
 }
@@ -173,18 +173,18 @@ async function fired(p: Project, rule: AutomationRule, taskId: string | null, de
  * across requests and across server instances; only the winner goes on to send, and then writes the outcome
  * onto its own event with settle(). A loser gets null and does nothing.
  */
-async function claim(p: Project, rule: AutomationRule, taskId: string | null, detail: Record<string, unknown>, dedupeKey: string): Promise<CpEvent | null> {
+export async function claim(p: Project, rule: AutomationRule, taskId: string | null, detail: Record<string, unknown>, dedupeKey: string): Promise<CpEvent | null> {
   return log(p, taskId, 'system', 'automation', { rule, ...detail, pending: true }, dedupeKey.slice(0, 200));
 }
 
-async function settle(ev: CpEvent, detail: Record<string, unknown>): Promise<void> {
+export async function settle(ev: CpEvent, detail: Record<string, unknown>): Promise<void> {
   await store().settleEvent(ev.id, { ...detail, pending: false });
 }
 
 const shortHash = (s: string) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 32);
 
 /** Automations must never break the request that triggered them. */
-async function safely(what: string, fn: () => Promise<void>): Promise<void> {
+export async function safely(what: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
   } catch (err) {
@@ -235,7 +235,8 @@ export async function createProject(raw: Record<string, unknown>, ctx: Ctx): Pro
     automations: {},
     people: [ownerPerson(ctx)].filter((x): x is Person => Boolean(x)),
     labels: [],
-    settings: { peopleSeeded: true } as Project['settings'],
+    // Client Intake: on when the owner asks for it (the create dialog's default); off for API callers that do not.
+    settings: { peopleSeeded: true, ...(raw.intake === true ? { intake: { enabled: true } } : {}) } as Project['settings'],
     notifSeenAt: now,
     tokenHash: null,
     tokenSealed: null,
@@ -753,7 +754,7 @@ const afterDone = (p: Project, updated: Task, ctx: Ctx) =>
   });
 
 /** The one place a card's status changes, for the owner, the client and automations alike. One write, with its event. */
-async function setStatus(p: Project, t: Task, status: TaskStatus, ctx: Ctx, extra: Partial<Task> = {}, detail: Record<string, unknown> = {}): Promise<Task> {
+export async function setStatus(p: Project, t: Task, status: TaskStatus, ctx: Ctx, extra: Partial<Task> = {}, detail: Record<string, unknown> = {}): Promise<Task> {
   const changed = status !== t.status;
   const [updated] = await Promise.all([
     store().updateTask(t.id, { ...extra, ...statusPatch(t, status, ctx) }),
@@ -1228,7 +1229,9 @@ export async function addAttachment(p: Project, t: Task, nameRaw: unknown, bytes
 /** The attachment `fileId` of card `t`, or a 404 (an id from another card or project does not exist here). */
 export async function attachmentOf(p: Project, t: Task, fileId: unknown): Promise<CpFileMeta> {
   const f = isCpId(fileId) ? await store().getFile(fileId) : null;
-  if (!f || f.projectId !== p.id || f.taskId !== t.id) throw new CpError(404, 'Attachment not found.');
+  // A client's intake upload is never a card attachment: it cannot be served, published or deleted through these
+  // routes (security review M1). Its only route is the owner's intake download, always as an attachment.
+  if (!f || f.projectId !== p.id || f.taskId !== t.id || f.source === INTAKE_SOURCE) throw new CpError(404, 'Attachment not found.');
   return f;
 }
 
@@ -1265,7 +1268,9 @@ export async function publicAttachment(p: Project, fileId: unknown, allow?: (f: 
 
 // ------------------------------------------------------------------ the owner's notifications inbox
 
-const INBOX_TYPES: CpEventType[] = ['client_tick', 'client_untick', 'client_claims_done', 'client_defect', 'retest_confirmed', 'comment', 'mention', 'assigned'];
+const INBOX_TYPES: CpEventType[] = ['client_tick', 'client_untick', 'client_claims_done', 'client_defect', 'retest_confirmed', 'comment', 'mention', 'assigned', 'intake'];
+/** The Delivery Report's week: Client Intake events since then are listed in it. */
+export const weekAgoIso = () => new Date(Date.now() - 7 * 86_400_000).toISOString();
 
 /**
  * The owner's inbox, built from events (nothing extra is stored): what clients did on the shared boards,
@@ -1316,18 +1321,29 @@ export async function markNotificationsSeen(projectId?: string): Promise<number>
 
 // ------------------------------------------------------------------ client actions (shared board)
 
-function clientCtx(nameRaw: unknown, origin?: string): Ctx {
+export function clientCtx(nameRaw: unknown, origin?: string): Ctx {
   const name = personName(nameRaw);
   if (name.length < 2) throw new CpError(400, 'Enter your own name first.');
   return { actor: `client:${name}`, origin };
 }
 
-async function clientTask(p: Project, taskId: unknown): Promise<Task> {
+export async function clientTask(p: Project, taskId: unknown): Promise<Task> {
   if (p.status === 'archived') throw new CpError(409, 'This board is closed.');
   const t = isCpId(taskId) ? await store().getTask(taskId) : null;
   // Hidden cards and other projects' cards do not exist as far as the board is concerned.
   if (!t || t.projectId !== p.id || !t.clientVisible) throw new CpError(404, 'Item not found.');
   return t;
+}
+
+/** The card's Client Intake request, when intake is on for the project (then the legacy tick and claim give way). */
+async function intakeRequestOf(p: Project, t: Task): Promise<boolean> {
+  if (!(p.settings?.intake?.enabled === true)) return false;
+  try {
+    return (await store().listRequests(p.id)).some((r) => r.taskId === t.id);
+  } catch {
+    // Before the intake migration there are no requests: the legacy behaviour stays.
+    return false;
+  }
 }
 
 /**
@@ -1340,6 +1356,7 @@ export async function clientTick(p: Project, taskId: unknown, done: boolean, nam
   const t = await clientTask(p, taskId);
   if (t.ownerSide !== 'client' || t.type === 'defect') throw new CpError(403, 'Only your own items can be ticked here.');
   if (!clientCanTick(t)) throw new CpError(403, 'This item is confirmed by Appointmentlyy. Use “I’ve done this” to tell us it is done.');
+  if (await intakeRequestOf(p, t)) throw new CpError(409, 'This item is completed through its form or check on the board, not by ticking it.', { code: 'use_intake' });
   if ((t.status === 'done') === done) return t;
   // What we confirmed, the board cannot undo.
   if (!done && !(t.doneBy ?? '').startsWith('client:')) throw new CpError(403, 'This item was confirmed by Appointmentlyy and cannot be unticked here.');
@@ -1356,6 +1373,7 @@ export async function clientClaim(p: Project, taskId: unknown, name: unknown, or
   const t = await clientTask(p, taskId);
   if (t.ownerSide !== 'client' || t.type === 'defect') throw new CpError(403, 'Only your own items can be reported done here.');
   if (clientCanTick(t)) throw new CpError(409, 'Tick this item instead.');
+  if (await intakeRequestOf(p, t)) throw new CpError(409, 'This item is completed through its form, check, signature or payment step on the board.', { code: 'use_intake' });
   if (t.status === 'done' || t.clientClaimedAt) return t;
   const updated = await store().updateTask(t.id, { clientClaimedAt: nowIso(), clientClaimedBy: ctx.actor.slice(7) });
   if (!updated) throw new CpError(404, 'Item not found.');
@@ -1489,7 +1507,7 @@ async function onTaskDone(p: Project, t: Task, ctx: Ctx): Promise<void> {
       await settle(
         ev,
         await mailOwner(p, ctx, `${p.clientName}: ${taskKey(p, t)} completed by the client`, [
-          `“${t.title}” was marked done by ${ctx.actor.startsWith('client:') ? ctx.actor.slice(7) : 'you, on the client’s behalf'}.`,
+          `“${t.title}” was marked done by ${ctx.actor.startsWith('client:') ? ctx.actor.slice(7) : ctx.actor === 'system' ? 'the platform (Client Intake: the step was verified or completed)' : 'you, on the client’s behalf'}.`,
           ...(unblocked.length ? [`Unblocked: ${unblocked.join(', ')} (moved from Blocked to To do).`] : []),
         ]),
       );
@@ -1513,8 +1531,8 @@ async function draftReadiness(p: Project, milestone: Task, trigger: 'phase_compl
   const ev = await claim(p, 'readiness_draft', milestone.id, { trigger, key: taskKey(p, milestone) }, `readiness|${milestone.id}|${trigger}`);
   if (!ev) return;
   const s = store();
-  const [tasks, delays] = await Promise.all([s.listTasks(p.id), s.findEvents(p.id, { type: 'client_delay', limit: 1000 })]);
-  const draft = await draftStatus(p, tasks, delays);
+  const [tasks, delays, intake] = await Promise.all([s.listTasks(p.id), s.findEvents(p.id, { type: 'client_delay', limit: 1000 }), s.findEvents(p.id, { type: 'intake', since: weekAgoIso(), limit: 300 })]);
+  const draft = await draftStatus(p, tasks, [...delays, ...intake]);
   await s.updateProject(p.id, { statusDraft: { ...draft, readinessNotice: buildReadinessNotice(p, tasks) } });
   await settle(ev, { drafted: ['readinessNotice', 'clientUpdate', 'deliveryReport'], ai: draft.ai, note: 'drafts only: nothing was sent' });
 }
@@ -1753,10 +1771,16 @@ export async function approveRun(p: Project, run: AiRun, edits: ApproveEdits, ct
   // v2: the client-side people the planner found (and the owner kept) join the project's people, by name.
   let people = [...(p.people ?? [])];
   let peopleAdded = 0;
+  // Our own people are never added as client people: the contract names our signatory too, and the planner cannot
+  // tell the sides apart reliably. Matched on our people's names (full, or first + last word), the local part of our
+  // emails, and the Agreements owner and sender names.
+  const { settings: agr } = await loadSettings().catch(() => ({ settings: null }));
+  const ours = ourNames(p, [agr?.ownerName, agr?.senderName, ctx.ownerName, ctx.actor.startsWith('owner:') ? ctx.actor.slice(6).split('@')[0] : '']);
   for (const sp of proposal.people ?? []) {
     if (people.length >= CP_LIMITS.people) break;
     const name = personName(sp.name);
     if (name.length < 2 || people.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
+    if (isOurs(name, ours)) continue;
     people = [...people, { id: newId(), name, email: '', side: 'client', role: line(sp.role, CP_LIMITS.roleLabel), createdAt: nowIso() }];
     peopleAdded++;
   }
@@ -1825,6 +1849,24 @@ export async function approveRun(p: Project, run: AiRun, edits: ApproveEdits, ct
   return { created, updated };
 }
 
+const normName = (v: string) => v.toLowerCase().replace(/[._-]+/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** Normalised names of our side (people on our side, plus extra names such as the Agreements signatory). */
+export function ourNames(p: Pick<Project, 'people'>, extra: (string | null | undefined)[] = []): string[] {
+  return [...(p.people ?? []).filter((x) => x.side === 'us').flatMap((x) => [x.name, x.email.split('@')[0]]), ...extra]
+    .filter((x): x is string => typeof x === 'string')
+    .map(normName)
+    .filter((x) => x.length >= 2);
+}
+/** Is this name one of ours? The same name, or the same first and last word ("Emil Halili" and "Emil J. Halili"). */
+export function isOurs(name: string, ours: string[]): boolean {
+  const n = normName(name);
+  const fl = (v: string) => {
+    const w = v.split(' ');
+    return w.length >= 2 ? `${w[0]} ${w[w.length - 1]}` : '';
+  };
+  return ours.some((o) => o === n || (fl(o) !== '' && fl(o) === fl(n)));
+}
+
 export async function discardRun(p: Project, run: AiRun, ctx: Ctx): Promise<void> {
   const done = await store().updateRun(run.id, { status: 'discarded' }, ['draft', 'failed']);
   if (!done) throw new CpError(409, 'There is no draft to discard.');
@@ -1834,8 +1876,8 @@ export async function discardRun(p: Project, run: AiRun, ctx: Ctx): Promise<void
 /** The "AI status update" action: draft the client note and the Delivery Report text. A draft only. */
 export async function draftStatusUpdate(p: Project, ctx: Ctx) {
   const s = store();
-  const [tasks, events] = await Promise.all([s.listTasks(p.id), s.findEvents(p.id, { type: 'client_delay', limit: 1000 })]);
-  const draft = await draftStatus(p, tasks, events);
+  const [tasks, delays, intake] = await Promise.all([s.listTasks(p.id), s.findEvents(p.id, { type: 'client_delay', limit: 1000 }), s.findEvents(p.id, { type: 'intake', since: weekAgoIso(), limit: 300 })]);
+  const draft = await draftStatus(p, tasks, [...delays, ...intake]);
   const statusDraft = { ...draft, ...(p.statusDraft?.readinessNotice ? { readinessNotice: p.statusDraft.readinessNotice } : {}) };
   await s.updateProject(p.id, { statusDraft });
   await log(p, null, ctx.actor, 'status_drafted', { ai: draft.ai });

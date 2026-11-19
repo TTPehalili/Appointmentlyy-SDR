@@ -4,6 +4,7 @@
  * fixed client reminder. They are drafts for the owner to copy or approve; nothing here sends.
  */
 import { delayRows, taskKey, today } from '@/lib/server/clientProjects/core';
+import { eventText } from '@/components/clientProjects/eventText';
 import {
   PHASES,
   PHASE_LABEL,
@@ -11,6 +12,7 @@ import {
   STATUS_LABEL,
   addBusinessDays,
   defectStatusLabel,
+  fmtAt,
   fmtDateLong,
   isOverdue,
   progressOf,
@@ -90,7 +92,13 @@ export function buildDeliveryReport(p: Project, tasks: Task[], events: CpEvent[]
     lines.push('', '6. UAT DEFECTS');
     lines.push(bullet(defects.map((t) => `${key(t)} [${t.severity ? SEVERITY_LABEL[t.severity] : 'Unclassified'}] ${t.title}: ${defectStatusLabel(t)}${t.dueDate ? ` (fix due ${fmtDateLong(t.dueDate)})` : ''}${t.reportedByClient ? ` (reported by ${t.reportedBy || 'the client'}${t.retestConfirmed ? ', retest confirmed' : ''}, self-identified via the shared link)` : ''}`), 'None.'));
   }
-  lines.push('', 'Names on client actions (ticks, "done" reports, defect reports, retests) are as typed or picked on the shared board link: self-identified, not signatures.');
+  // Client Intake: what the client submitted, what we accepted or asked to change, what was verified or applied.
+  const intake = events.filter((e) => e.type === 'intake' && e.at >= weekAgo && e.detail?.action !== 'draft_saved').sort((a, b) => a.at.localeCompare(b.at));
+  if (intake.length) {
+    lines.push('', '7. CLIENT INTAKE THIS WEEK');
+    lines.push(bullet(intake.slice(-40).map((e) => `${fmtAt(e.at)} ${eventText(e)}${e.actor.startsWith('client:') ? ` (by ${e.actor.slice(7)}, self-identified via the shared link)` : ''}`), 'None.'));
+  }
+  lines.push('', 'Names on client actions (ticks, "done" reports, defect reports, retests, form submissions) are as typed or picked on the shared board link: self-identified, not signatures.');
   lines.push('', 'Please confirm this report within 2 Business Days. After that it is treated as confirmed.');
   return lines.join('\n');
 }

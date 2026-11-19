@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/server/apiSession';
+import { recordKeyCheck } from '@/lib/server/keyChecks';
 
+/**
+ * Client Intake: after a test, the workspace's pass/fail for that provider is recorded (status only: never the key,
+ * a hash of it, or the provider's message), so the client's onboarding board can show "test passed".
+ */
 export async function POST(req: NextRequest) {
   const auth = await requireApiSession(req, 'Admin', 'Only workspace admins can check AI provider keys.');
   if (auth instanceof NextResponse) return auth;
+  const provider = await req
+    .clone()
+    .json()
+    .then((b: { provider?: unknown }) => b?.provider)
+    .catch(() => null);
+  const res = await validate(req);
+  const out = (await res.clone().json().catch(() => null)) as { success?: unknown } | null;
+  if (res.status === 200 && out && typeof out.success === 'boolean') await recordKeyCheck(auth.tenantCode, provider, out.success === true, auth.email);
+  return res;
+}
+
+async function validate(req: NextRequest): Promise<NextResponse> {
   try {
     const { provider, apiKey, domain } = await req.json();
 

@@ -35,6 +35,7 @@ import {
 import { actorLabel, eventText } from '@/components/clientProjects/eventText';
 import { AssigneeBadge, LabelChip, PriorityMark } from '@/components/clientProjects/shared';
 import { Picker, StatusSegments } from '@/components/clientProjects/Picker';
+import { CardIntakePanel } from '@/components/clientProjects/intake/OwnerIntake';
 
 interface Form {
   title: string;
@@ -306,6 +307,8 @@ export function TaskDrawer({
         <Field label="Title" htmlFor="cpd-title">
           <Input id="cpd-title" value={form.title} onChange={(e) => set('title', e.target.value)} maxLength={200} />
         </Field>
+        {/* Client Intake: only for projects with intake on (no extra request for the others). */}
+        {!isDefect && task.ownerSide === 'client' && project.settings?.intake?.enabled === true && <CardIntakePanel key={task.id} projectId={projectId} task={task} onChanged={onChanged} />}
         {task.clientClaimedAt && task.status !== 'done' && (
           <div role="note" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning-400/40 bg-warning-bg px-3 py-2 text-small text-warning-fg" data-testid="cp-drawer-claim">
             <span>
@@ -316,7 +319,7 @@ export function TaskDrawer({
             </button>
           </div>
         )}
-        {!isDefect && form.ownerSide === 'client' && !form.isGate && !form.clientMayTick && (
+        {!isDefect && form.ownerSide === 'client' && !form.isGate && !form.clientMayTick && !task.intake && (
           <p className="-mb-2 text-small text-fg-tertiary" data-testid="cp-drawer-claim-note">The client cannot tick this card. They can say “I’ve done this”; it is Done only when you mark it. Keep it that way for signatures, payments and acceptances.</p>
         )}
         <div className="flex flex-col gap-1.5">

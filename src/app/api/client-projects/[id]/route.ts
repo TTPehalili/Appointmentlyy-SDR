@@ -7,6 +7,7 @@ import { delayRows, toOwnerProject, toOwnerTask } from '@/lib/server/clientProje
 import { cpFail, ownerProject } from '@/lib/server/clientProjects/http';
 import { deleteProjectForever, ensureOwnerSeed, patchProject, sweepProject } from '@/lib/server/clientProjects/service';
 import { aiMode, aiProvider } from '@/lib/server/clientProjects/ai';
+import { intakeOn, ownerChips } from '@/lib/server/clientProjects/intake';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -33,14 +34,17 @@ export async function GET(req: NextRequest, c: Ctx) {
       if (isLocalTestServer() && req.headers.get('x-cp-test-sweep') === 'sync') await sweepProject(id, { origin });
       else after(() => sweepProject(id, { origin, minGapMs: 60_000 }));
     }
-    const [tasks, commentCounts, delayEvents, allFiles] = await Promise.all([store.listTasks(id), store.commentCounts(id), store.findEvents(id, { type: 'client_delay', limit: 1000 }), store.listFiles(id, 'all')]);
+    const [tasks0, commentCounts, delayEvents, allFiles] = await Promise.all([store.listTasks(id), store.commentCounts(id), store.findEvents(id, { type: 'client_delay', limit: 1000 }), store.listFiles(id, 'all')]);
     const project = await ensureOwnerSeed(o.project, o.ctx);
+    // Client Intake: the status chip per card (its sync may move cards, so they are read again when it is on).
+    const chips = await ownerChips(project, tasks0);
+    const tasks = intakeOn(project) ? await store.listTasks(id) : tasks0;
     const files = allFiles.filter((f) => !f.taskId);
     const attachments = allFiles.filter((f) => f.taskId);
     return json({
       success: true,
       project: toOwnerProject(project, tasks),
-      tasks: tasks.map((t) => ({ ...toOwnerTask(project, t, [], undefined, { tasks, attachments }), commentCount: commentCounts[t.id] ?? 0 })),
+      tasks: tasks.map((t) => ({ ...toOwnerTask(project, t, [], undefined, { tasks, attachments }), commentCount: commentCounts[t.id] ?? 0, intake: chips.get(t.id) ?? null })),
       attachments,
       delays: delayRows(project, tasks, delayEvents),
       files,

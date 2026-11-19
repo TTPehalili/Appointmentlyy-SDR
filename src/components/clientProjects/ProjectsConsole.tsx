@@ -188,6 +188,7 @@ function NewProjectDialog({ open, onClose, onCreated, sopCards }: { open: boolea
   const [keyTouched, setKeyTouched] = React.useState(false);
   const [kickoff, setKickoff] = React.useState('');
   const [fromSop, setFromSop] = React.useState(true);
+  const [intake, setIntake] = React.useState(true);
   const [fromDocs, setFromDocs] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -207,7 +208,7 @@ function NewProjectDialog({ open, onClose, onCreated, sopCards }: { open: boolea
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const r = await apiJson<{ project: OwnerProjectView }>('/api/client-projects', { body: { clientName, kickoffDate: kickoff, key: shownKey, fromSop } });
+    const r = await apiJson<{ project: OwnerProjectView }>('/api/client-projects', { body: { clientName, kickoffDate: kickoff, key: shownKey, fromSop, intake: fromSop && intake } });
     setBusy(false);
     if (!r.success) return setError(r.error || 'Could not create the project.');
     toast({ message: `${r.project.clientName} created with ${r.project.progress.total} cards` });
@@ -257,6 +258,7 @@ function NewProjectDialog({ open, onClose, onCreated, sopCards }: { open: boolea
         <div className="flex flex-col gap-2">
           <p className="text-body-strong text-fg">Start from</p>
           <Checkbox checked={fromSop} onChange={(e) => setFromSop(e.target.checked)} label={`The onboarding SOP${sopCards ? ` (${sopCards} cards)` : ''}`} />
+          <Checkbox checked={fromSop && intake} disabled={!fromSop} onChange={(e) => setIntake(e.target.checked)} label="Client Intake: forms, checks, signatures and payments on the client board" data-testid="cp-new-intake" />
           <Checkbox checked={fromDocs} onChange={(e) => setFromDocs(e.target.checked)} label="Signed documents (upload next; the AI drafts the plan)" />
         </div>
         {error && <InlineError message={error} />}

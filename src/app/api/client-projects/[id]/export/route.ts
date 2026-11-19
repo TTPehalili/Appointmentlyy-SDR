@@ -3,6 +3,7 @@ import { json } from '@/lib/server/agreements/core';
 import { getClientProjectStore } from '@/lib/server/clientProjectStore';
 import { cpFail, ownerProject } from '@/lib/server/clientProjects/http';
 import { buildClientUpdate, buildDeliveryReport } from '@/lib/server/clientProjects/statusText';
+import { weekAgoIso } from '@/lib/server/clientProjects/service';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,8 +18,8 @@ export async function GET(req: NextRequest, c: Ctx) {
   if (o instanceof NextResponse) return o;
   try {
     const store = getClientProjectStore();
-    const [tasks, events] = await Promise.all([store.listTasks(id), store.findEvents(id, { type: 'client_delay', limit: 1000 })]);
-    return json({ success: true, deliveryReport: buildDeliveryReport(o.project, tasks, events), clientUpdate: buildClientUpdate(o.project, tasks), generatedAt: new Date().toISOString() });
+    const [tasks, delays, intake] = await Promise.all([store.listTasks(id), store.findEvents(id, { type: 'client_delay', limit: 1000 }), store.findEvents(id, { type: 'intake', since: weekAgoIso(), limit: 300 })]);
+    return json({ success: true, deliveryReport: buildDeliveryReport(o.project, tasks, [...delays, ...intake]), clientUpdate: buildClientUpdate(o.project, tasks), generatedAt: new Date().toISOString() });
   } catch (err) {
     return cpFail(err, 'export');
   }

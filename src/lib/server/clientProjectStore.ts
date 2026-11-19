@@ -13,11 +13,15 @@ import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { newId, nowIso } from '@/lib/server/tenantStore';
 import type { AiRun, AiRunStatus, CpComment, CpEvent, CpEventType, CpFileMeta, Project, Task } from '@/lib/clientProjects/types';
+import type { CpRequest, CpSubmission, SubmissionStatus } from '@/lib/clientProjects/intake';
 
 /** The database tables aren't there yet (migration not run). */
 export class ClientProjectStorageError extends Error {}
 export const CP_MIGRATION = 'supabase/migrations/20261121000000_client_projects.sql';
 export const CP_MIGRATION_V2 = 'supabase/migrations/20261125000000_client_projects_v2.sql';
+export const CP_MIGRATION_INTAKE = 'supabase/migrations/20261127000000_client_intake.sql';
+/** cp_files.source of a client intake upload (never a planner document, never a card attachment). */
+export const INTAKE_SOURCE = 'intake';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isCpId = (id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id);
@@ -60,8 +64,10 @@ export interface CommentQuery {
   before?: string;
   limit?: number;
 }
-export type FileKind = 'doc' | 'attachment' | 'all';
-const ofKind = (f: Pick<CpFileMeta, 'taskId'>, kind: FileKind) => kind === 'all' || (kind === 'doc' ? !f.taskId : Boolean(f.taskId));
+/** 'doc' planner documents, 'attachment' owner card attachments, 'all' both, 'intake' client intake uploads (never in 'all'). */
+export type FileKind = 'doc' | 'attachment' | 'all' | 'intake';
+const ofKind = (f: Pick<CpFileMeta, 'taskId' | 'source'>, kind: FileKind) =>
+  kind === 'intake' ? f.source === INTAKE_SOURCE : f.source !== INTAKE_SOURCE && (kind === 'all' || (kind === 'doc' ? !f.taskId : Boolean(f.taskId)));
 
 // Rows written before v2 (file store) or read from a database (nulls) get the v2 defaults here, in one place.
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
@@ -87,6 +93,16 @@ export function normTask(t: Task): Task {
 }
 export const normFile = (f: CpFileMeta): CpFileMeta => ({ ...f, taskId: f.taskId ?? null, clientVisible: f.clientVisible === true, mime: f.mime || 'application/pdf' });
 export const normRun = (r: AiRun): AiRun => ({ ...r, progress: r.progress ?? null });
+const obj = <T,>(v: unknown, d: T): T => (v && typeof v === 'object' && !Array.isArray(v) ? (v as T) : d);
+export const normRequest = (r: CpRequest): CpRequest => ({ ...r, schema: r.schema ?? null, formStatus: r.formStatus ?? null, sysStatus: r.sysStatus ?? null, draft: obj(r.draft, {}), files: arr(r.files), config: obj(r.config, {}), state: obj(r.state, {}), version: r.version ?? 0, rev: r.rev ?? 0, draftAt: r.draftAt ?? null, draftBy: r.draftBy ?? '' });
+export const normSubmission = (x: CpSubmission): CpSubmission => ({ ...x, answers: obj(x.answers, {}), files: arr(x.files), applied: arr(x.applied), reviewNote: x.reviewNote ?? '', reviewedBy: x.reviewedBy ?? null, reviewedAt: x.reviewedAt ?? null });
+/** The review fields: the ONLY part of a submission that ever changes (what was submitted is immutable). */
+export type SubmissionReview = Partial<Pick<CpSubmission, 'status' | 'reviewNote' | 'reviewedBy' | 'reviewedAt' | 'applied'>>;
+export interface SubmissionQuery {
+  requestId?: string;
+  since?: string;
+  limit?: number;
+}
 
 const pageSize = (n: number | undefined, dflt: number, max: number) => Math.max(1, Math.min(max, Math.trunc(n ?? dflt) || dflt));
 
@@ -165,6 +181,24 @@ export interface ClientProjectStore {
   listDeletions(limit?: number): Promise<CpDeletion[]>;
   /** Is the v2 migration applied? ('v2', or 'v1' when its columns are missing). Cached for a minute. */
   schemaStatus(): Promise<'v2' | 'v1'>;
+
+  // ---------------------------------------------------------------- Client Intake
+  listRequests(projectId: string): Promise<CpRequest[]>;
+  getRequest(id: string): Promise<CpRequest | null>;
+  /** Insert requests; a card that already has one is skipped (unique task_id). Returns how many were written. */
+  insertRequests(rows: CpRequest[]): Promise<number>;
+  /**
+   * Optimistic write: only when the stored rev is still `expectRev` (then rev + 1). Null when it changed in the
+   * meantime (another tab or a double click) or the request is gone: the caller re-reads and decides.
+   */
+  updateRequest(id: string, patch: Partial<CpRequest>, expectRev: number): Promise<CpRequest | null>;
+  /** Append a submission. Null when that version already exists for the request (unique request_id + version). */
+  addSubmission(row: CpSubmission): Promise<CpSubmission | null>;
+  /** Newest first. */
+  listSubmissions(projectId: string, q?: SubmissionQuery): Promise<CpSubmission[]>;
+  getSubmission(id: string): Promise<CpSubmission | null>;
+  /** Change the review fields only, and only while the status is one of `ifStatus` (when given). */
+  reviewSubmission(id: string, patch: SubmissionReview, ifStatus?: SubmissionStatus[]): Promise<CpSubmission | null>;
 }
 
 export interface DeleteCounts {
@@ -174,6 +208,9 @@ export interface DeleteCounts {
   documents: number;
   attachments: number;
   runs: number;
+  /** Client Intake: uploads and submitted versions (0 before the intake migration). */
+  intakeFiles?: number;
+  submissions?: number;
 }
 
 export interface CpDeletion {
@@ -196,8 +233,10 @@ interface FileData {
   files: CpFileMeta[];
   runs: AiRun[];
   deletions: CpDeletion[];
+  requests: CpRequest[];
+  submissions: CpSubmission[];
 }
-const EMPTY = (): FileData => ({ projects: [], tasks: [], events: [], comments: [], files: [], runs: [], deletions: [] });
+const EMPTY = (): FileData => ({ projects: [], tasks: [], events: [], comments: [], files: [], runs: [], deletions: [], requests: [], submissions: [] });
 
 class FileClientProjectStore implements ClientProjectStore {
   readonly backend = 'file' as const;
@@ -215,6 +254,8 @@ class FileClientProjectStore implements ClientProjectStore {
       d.tasks = d.tasks.map(normTask);
       d.files = d.files.map(normFile);
       d.runs = d.runs.map(normRun);
+      d.requests = d.requests.map(normRequest);
+      d.submissions = d.submissions.map(normSubmission);
       return d;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return EMPTY();
@@ -277,6 +318,8 @@ class FileClientProjectStore implements ClientProjectStore {
       d.events = d.events.filter((e) => e.projectId !== id);
       d.comments = d.comments.filter((c) => c.projectId !== id);
       d.runs = d.runs.filter((r) => r.projectId !== id);
+      d.requests = d.requests.filter((r) => r.projectId !== id);
+      d.submissions = d.submissions.filter((r) => r.projectId !== id);
       fileIds.push(...d.files.filter((f) => f.projectId === id).map((f) => f.id));
       d.files = d.files.filter((f) => f.projectId !== id);
       return d.projects.length < n;
@@ -330,6 +373,10 @@ class FileClientProjectStore implements ClientProjectStore {
       d.tasks = d.tasks.filter((t) => t.id !== id);
       if (d.tasks.length === n) return false;
       d.comments = d.comments.filter((c) => c.taskId !== id);
+      // Its request and submissions go with it (the database cascades the same way).
+      const reqIds = new Set(d.requests.filter((r) => r.taskId === id).map((r) => r.id));
+      d.requests = d.requests.filter((r) => r.taskId !== id);
+      d.submissions = d.submissions.filter((x) => !reqIds.has(x.requestId));
       for (const t of d.tasks) {
         if (!t.blockers.includes(id) && t.blockedBy !== id) continue;
         t.blockers = t.blockers.filter((b) => b !== id);
@@ -501,9 +548,11 @@ class FileClientProjectStore implements ClientProjectStore {
       cards: d.tasks.filter((t) => t.projectId === projectId).length,
       comments: d.comments.filter((c) => c.projectId === projectId).length,
       events: d.events.filter((e) => e.projectId === projectId).length,
-      documents: files.filter((f) => !f.taskId).length,
-      attachments: files.filter((f) => f.taskId).length,
+      documents: files.filter((f) => ofKind(f, 'doc')).length,
+      attachments: files.filter((f) => ofKind(f, 'attachment')).length,
       runs: d.runs.filter((r) => r.projectId === projectId).length,
+      intakeFiles: files.filter((f) => ofKind(f, 'intake')).length,
+      submissions: d.submissions.filter((x) => x.projectId === projectId).length,
     };
   }
   addDeletion(row: Omit<CpDeletion, 'id' | 'deletedAt'>) {
@@ -518,6 +567,65 @@ class FileClientProjectStore implements ClientProjectStore {
   }
   async schemaStatus() {
     return 'v2' as const;
+  }
+  async listRequests(projectId: string) {
+    return this.read().requests.filter((r) => r.projectId === projectId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }
+  async getRequest(id: string) {
+    return this.read().requests.find((r) => r.id === id) ?? null;
+  }
+  insertRequests(rows: CpRequest[]) {
+    return this.mutate((d) => {
+      let n = 0;
+      for (const r of rows) {
+        if (d.requests.some((x) => x.taskId === r.taskId)) continue;
+        // The same rule as the database's foreign keys.
+        if (!d.tasks.some((t) => t.id === r.taskId && t.projectId === r.projectId)) throw new Error('[clientProjectStore] request for an unknown card');
+        d.requests.push(normRequest(r));
+        n++;
+      }
+      return n;
+    });
+  }
+  updateRequest(id: string, patch: Partial<CpRequest>, expectRev: number) {
+    return this.mutate((d) => {
+      const i = d.requests.findIndex((r) => r.id === id);
+      if (i < 0 || d.requests[i].rev !== expectRev) return null;
+      const cur = d.requests[i];
+      d.requests[i] = normRequest({ ...cur, ...patch, id, projectId: cur.projectId, taskId: cur.taskId, createdAt: cur.createdAt, rev: expectRev + 1, updatedAt: nowIso() });
+      return d.requests[i];
+    });
+  }
+  addSubmission(row: CpSubmission) {
+    return this.mutate((d) => {
+      if (d.submissions.some((x) => x.requestId === row.requestId && x.version === row.version)) return null;
+      if (!d.requests.some((r) => r.id === row.requestId)) throw new Error('[clientProjectStore] submission for an unknown request');
+      const out = normSubmission(row);
+      d.submissions.push(out);
+      return out;
+    });
+  }
+  async listSubmissions(projectId: string, q: SubmissionQuery = {}) {
+    return this.read()
+      .submissions.filter((x) => x.projectId === projectId && (!q.requestId || x.requestId === q.requestId) && (!q.since || x.submittedAt >= q.since))
+      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt) || b.version - a.version)
+      .slice(0, pageSize(q.limit, 500, 2000));
+  }
+  async getSubmission(id: string) {
+    return this.read().submissions.find((x) => x.id === id) ?? null;
+  }
+  reviewSubmission(id: string, patch: SubmissionReview, ifStatus?: SubmissionStatus[]) {
+    return this.mutate((d) => {
+      const x = d.submissions.find((r) => r.id === id);
+      if (!x || (ifStatus && !ifStatus.includes(x.status))) return null;
+      // Only the review fields; what was submitted stays exactly as it was.
+      if (patch.status !== undefined) x.status = patch.status;
+      if (patch.reviewNote !== undefined) x.reviewNote = patch.reviewNote;
+      if (patch.reviewedBy !== undefined) x.reviewedBy = patch.reviewedBy;
+      if (patch.reviewedAt !== undefined) x.reviewedAt = patch.reviewedAt;
+      if (patch.applied !== undefined) x.applied = patch.applied;
+      return { ...x };
+    });
   }
 }
 
@@ -695,6 +803,43 @@ const RUN_COLS: ColMap<AiRun> = [
   ['progress', 'progress', 'j'],
   ['createdAt', 'created_at', 't'],
   ['updatedAt', 'updated_at', 't'],
+];
+
+const REQUEST_COLS: ColMap<CpRequest> = [
+  ['id', 'id', 's'],
+  ['projectId', 'project_id', 's'],
+  ['taskId', 'task_id', 's'],
+  ['kind', 'kind', 's'],
+  ['templateKey', 'template_key', 's'],
+  ['schema', 'schema', 'j'],
+  ['formStatus', 'form_status', 'ns'],
+  ['sysStatus', 'sys_status', 'ns'],
+  ['draft', 'draft', 'j', {}],
+  ['draftAt', 'draft_at', 't'],
+  ['draftBy', 'draft_by', 's'],
+  ['files', 'files', 'j', []],
+  ['config', 'config', 'j', {}],
+  ['state', 'state', 'j', {}],
+  ['version', 'version', 'n'],
+  ['rev', 'rev', 'n'],
+  ['createdAt', 'created_at', 't'],
+  ['updatedAt', 'updated_at', 't'],
+];
+const SUBMISSION_COLS: ColMap<CpSubmission> = [
+  ['id', 'id', 's'],
+  ['projectId', 'project_id', 's'],
+  ['requestId', 'request_id', 's'],
+  ['taskId', 'task_id', 's'],
+  ['version', 'version', 'n'],
+  ['answers', 'answers', 'j', {}],
+  ['files', 'files', 'j', []],
+  ['actor', 'actor', 's'],
+  ['submittedAt', 'submitted_at', 't'],
+  ['status', 'status', 's', 'submitted'],
+  ['reviewNote', 'review_note', 's'],
+  ['reviewedBy', 'reviewed_by', 'ns'],
+  ['reviewedAt', 'reviewed_at', 't'],
+  ['applied', 'applied', 'j', []],
 ];
 
 /** bytea over PostgREST: written and read as "\x<hex>". */
@@ -930,10 +1075,12 @@ class SupabaseClientProjectStore implements ClientProjectStore {
       let q = this.db.from('cp_files').select(cols).eq('project_id', projectId);
       // Without the v2 columns every row is a v1 planner document (attachments did not exist).
       if (cols === FILE_META && kind === 'doc') q = q.is('task_id', null);
-      if (cols === FILE_META && kind === 'attachment') q = q.not('task_id', 'is', null);
+      if (cols === FILE_META && kind === 'attachment') q = q.not('task_id', 'is', null).neq('source', INTAKE_SOURCE);
+      if (cols === FILE_META && kind === 'all') q = q.neq('source', INTAKE_SOURCE);
+      if (kind === 'intake') q = q.eq('source', INTAKE_SOURCE);
       return q.order('created_at', { ascending: true }).limit(500);
     })) as unknown as Row[];
-    if (this.filesV2 === false && kind === 'attachment') return [];
+    if (this.filesV2 === false && (kind === 'attachment' || kind === 'intake')) return [];
     return rows.map((r) => normFile(fromRow(FILE_COLS, r)));
   }
   async getFile(id: string) {
@@ -1023,19 +1170,23 @@ class SupabaseClientProjectStore implements ClientProjectStore {
     if (!isCpId(projectId)) return { cards: 0, comments: 0, events: 0, documents: 0, attachments: 0, runs: 0 };
     const head = (table: string) => this.db.from(table).select('id', { count: 'exact', head: true }).eq('project_id', projectId);
     const v2 = this.filesV2 !== false;
-    const [cards, comments, events, docs, atts, runs] = await Promise.all([
+    const [cards, comments, events, docs, atts, runs, intake, subs] = await Promise.all([
       head('cp_tasks'),
       head('cp_comments'),
       head('cp_events'),
       v2 ? head('cp_files').is('task_id', null) : head('cp_files'),
-      v2 ? head('cp_files').not('task_id', 'is', null) : Promise.resolve({ count: 0, error: null }),
+      v2 ? head('cp_files').not('task_id', 'is', null).neq('source', INTAKE_SOURCE) : Promise.resolve({ count: 0, error: null }),
       head('cp_ai_runs'),
+      v2 ? head('cp_files').eq('source', INTAKE_SOURCE) : Promise.resolve({ count: 0, error: null }),
+      head('cp_submissions'),
     ]);
     const n = (r: { count: number | null; error: { message: string; code?: string } | null }) => {
       this.check({ data: null, error: r.error });
       return r.count ?? 0;
     };
-    return { cards: n(cards), comments: n(comments), events: n(events), documents: n(docs), attachments: n(atts), runs: n(runs) };
+    // Before the intake migration the submissions table does not exist: that count is simply 0.
+    const optional = (r: { count: number | null; error: { message: string; code?: string } | null }) => (r.error && r.error.code && MISSING_TABLE.has(r.error.code) ? 0 : n(r));
+    return { cards: n(cards), comments: n(comments), events: n(events), documents: n(docs), attachments: n(atts), runs: n(runs), intakeFiles: n(intake), submissions: optional(subs) };
   }
   async addDeletion(row: Omit<CpDeletion, 'id' | 'deletedAt'>) {
     const r = this.check(
@@ -1061,6 +1212,74 @@ class SupabaseClientProjectStore implements ClientProjectStore {
     if (missing) this.filesV2 = false;
     this.schemaAt = Date.now();
     return this.schema;
+  }
+  async listRequests(projectId: string) {
+    if (!isCpId(projectId)) return [];
+    const rows = this.check(await this.db.from('cp_requests').select('*').eq('project_id', projectId).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(500)) as Row[];
+    return rows.map((r) => normRequest(fromRow(REQUEST_COLS, r)));
+  }
+  async getRequest(id: string) {
+    if (!isCpId(id)) return null;
+    const r = this.check(await this.db.from('cp_requests').select('*').eq('id', id).maybeSingle()) as Row | null;
+    return r ? normRequest(fromRow(REQUEST_COLS, r)) : null;
+  }
+  async insertRequests(rows: CpRequest[]) {
+    let n = 0;
+    // One at a time: a card that already has a request (unique task_id) is skipped, the rest still go in.
+    for (const r of rows) {
+      const res = await this.db.from('cp_requests').insert(toRow(REQUEST_COLS, normRequest(r))).select('id').maybeSingle();
+      if (res.error?.code === '23505') continue;
+      this.check(res);
+      n++;
+    }
+    return n;
+  }
+  async updateRequest(id: string, patch: Partial<CpRequest>, expectRev: number) {
+    if (!isCpId(id)) return null;
+    const row = toRow(REQUEST_COLS, patch);
+    for (const k of ['id', 'project_id', 'task_id', 'created_at', 'rev']) delete row[k];
+    const r = this.check(
+      await this.db
+        .from('cp_requests')
+        .update({ ...row, rev: expectRev + 1, updated_at: nowIso() })
+        .eq('id', id)
+        .eq('rev', expectRev)
+        .select()
+        .maybeSingle(),
+    ) as Row | null;
+    return r ? normRequest(fromRow(REQUEST_COLS, r)) : null;
+  }
+  async addSubmission(row: CpSubmission) {
+    const res = await this.db.from('cp_submissions').insert(toRow(SUBMISSION_COLS, normSubmission(row))).select().single();
+    if (res.error?.code === '23505') return null;
+    return normSubmission(fromRow(SUBMISSION_COLS, this.check(res) as Row));
+  }
+  async listSubmissions(projectId: string, q: SubmissionQuery = {}) {
+    if (!isCpId(projectId) || (q.requestId && !isCpId(q.requestId))) return [];
+    let x = this.db.from('cp_submissions').select('*').eq('project_id', projectId);
+    if (q.requestId) x = x.eq('request_id', q.requestId);
+    if (q.since) x = x.gte('submitted_at', q.since);
+    const rows = this.check(await x.order('submitted_at', { ascending: false }).order('version', { ascending: false }).limit(pageSize(q.limit, 500, 2000))) as Row[];
+    return rows.map((r) => normSubmission(fromRow(SUBMISSION_COLS, r)));
+  }
+  async getSubmission(id: string) {
+    if (!isCpId(id)) return null;
+    const r = this.check(await this.db.from('cp_submissions').select('*').eq('id', id).maybeSingle()) as Row | null;
+    return r ? normSubmission(fromRow(SUBMISSION_COLS, r)) : null;
+  }
+  async reviewSubmission(id: string, patch: SubmissionReview, ifStatus?: SubmissionStatus[]) {
+    if (!isCpId(id)) return null;
+    // Only the review columns are ever sent (the database trigger refuses anything else too).
+    const row: Row = {};
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.reviewNote !== undefined) row.review_note = patch.reviewNote;
+    if (patch.reviewedBy !== undefined) row.reviewed_by = patch.reviewedBy;
+    if (patch.reviewedAt !== undefined) row.reviewed_at = patch.reviewedAt;
+    if (patch.applied !== undefined) row.applied = patch.applied;
+    let q = this.db.from('cp_submissions').update(row).eq('id', id);
+    if (ifStatus) q = q.in('status', ifStatus);
+    const r = this.check(await q.select().maybeSingle()) as Row | null;
+    return r ? normSubmission(fromRow(SUBMISSION_COLS, r)) : null;
   }
 }
 

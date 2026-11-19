@@ -1,7 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { json } from '@/lib/server/agreements/core';
-import { getClientProjectStore } from '@/lib/server/clientProjectStore';
-import { toPublicProject } from '@/lib/server/clientProjects/core';
+import { boardPayload } from '@/lib/server/clientProjects/board';
 import { cpFail, projectByToken } from '@/lib/server/clientProjects/http';
 import { sweepProject } from '@/lib/server/clientProjects/service';
 
@@ -17,13 +16,11 @@ export async function GET(req: NextRequest, c: Ctx) {
   const found = await projectByToken(req, token);
   if (found instanceof NextResponse) return found;
   try {
-    const store = getClientProjectStore();
     const { project } = found;
-    const [tasks, comments, attachments] = await Promise.all([store.listTasks(project.id), store.listComments(project.id), store.listFiles(project.id, 'attachment')]);
     // Lazy housekeeping after the response (no cron): never slows or fails the client's page.
     const origin = req.nextUrl.origin;
     after(() => sweepProject(project.id, { origin, minGapMs: 60_000 }));
-    return json({ success: true, board: toPublicProject(project, tasks, comments, undefined, attachments) });
+    return json({ success: true, board: await boardPayload(project) });
   } catch (err) {
     return cpFail(err, 'board');
   }

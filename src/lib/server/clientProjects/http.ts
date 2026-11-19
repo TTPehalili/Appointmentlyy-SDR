@@ -159,7 +159,13 @@ export function fileResponse(bytes: Uint8Array, mime: string, name: string, down
       // type with nosniff. (The app's global headers in next.config.ts set the CSP for every response.)
       'X-Content-Type-Options': 'nosniff',
       'Cross-Origin-Resource-Policy': 'same-origin',
+      // Defence in depth (security review M1): anything but a PDF runs in a sandbox with no script and no fetches, even
+      // if it were ever opened inline. (PDFs keep the browser's own viewer.)
+      ...(mime === 'application/pdf' ? {} : { 'Content-Security-Policy': FILE_CSP }),
     },
   });
 }
+
+/** The policy for served non-PDF files (also excluded from next.config's frame-ancestors-only policy, which would replace it). */
+export const FILE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox; frame-ancestors 'none'";
 

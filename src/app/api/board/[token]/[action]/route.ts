@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import { fail, json, readJson } from '@/lib/server/agreements/core';
-import { getClientProjectStore } from '@/lib/server/clientProjectStore';
-import { toPublicProject } from '@/lib/server/clientProjects/core';
+import { boardPayload } from '@/lib/server/clientProjects/board';
 import { cpFail, projectByToken } from '@/lib/server/clientProjects/http';
 import { clientClaim, clientComment, clientDailyCapReached, clientDefect, clientRetest, clientTick } from '@/lib/server/clientProjects/service';
 
@@ -50,9 +49,7 @@ export async function POST(req: NextRequest, c: Ctx) {
     else if (action === 'defect') await clientDefect(project, body, origin);
     else if (action === 'retest') await clientRetest(project, body.taskId, body.confirmed === true, body.name, origin);
     else return fail(404, 'Unknown action.');
-    const store = getClientProjectStore();
-    const [fresh, tasks, comments, attachments] = await Promise.all([store.getProject(project.id), store.listTasks(project.id), store.listComments(project.id), store.listFiles(project.id, 'attachment')]);
-    return json({ success: true, board: toPublicProject(fresh ?? project, tasks, comments, undefined, attachments) });
+    return json({ success: true, board: await boardPayload(project) });
   } catch (err) {
     return cpFail(err, `board ${action}`);
   }

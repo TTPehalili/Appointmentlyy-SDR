@@ -8,7 +8,7 @@ import { rateLimit, getAppBaseUrl } from '@/lib/authToken';
 import { seal, open } from '@/lib/server/secretBox';
 import type { ServerSession } from '@/lib/server/session';
 import { TOKEN_RE, fail, requireOwner, tokenHashOf } from '@/lib/server/agreements/core';
-import { ClientProjectStorageError, CP_MIGRATION, CP_MIGRATION_V2, sha256Hex } from '@/lib/server/clientProjectStore';
+import { ClientProjectStorageError, CP_MIGRATION, CP_MIGRATION_INTAKE, CP_MIGRATION_V2, sha256Hex } from '@/lib/server/clientProjectStore';
 import { projectStats } from '@/lib/server/clientProjects/stats';
 import { SOP_GO_LIVE_OFFSET, SOP_TEMPLATE, SOP_UAT_START_OFFSET } from '@/lib/clientProjects/sopTemplate';
 import {
@@ -40,6 +40,7 @@ import {
   type Task,
 } from '@/lib/clientProjects/types';
 import { newId, nowIso } from '@/lib/server/tenantStore';
+import type { PublicIntake } from '@/lib/clientProjects/intake';
 
 // ------------------------------------------------------------------ guard
 
@@ -58,7 +59,7 @@ export async function requireProjectOwner(req: NextRequest, bucket: 'read' | 'wr
 }
 
 export function storageFail(err: unknown, what: string): NextResponse {
-  if (err instanceof ClientProjectStorageError) return fail(503, `The Client Projects tables are not up to date in the database. Run ${CP_MIGRATION}, then ${CP_MIGRATION_V2}.`);
+  if (err instanceof ClientProjectStorageError) return fail(503, `The Client Projects tables are not up to date in the database. Run ${CP_MIGRATION}, then ${CP_MIGRATION_V2}, then ${CP_MIGRATION_INTAKE}.`);
   console.error(`[client-projects ${what}]`, err instanceof Error ? err.message : err);
   return fail(500, 'Something went wrong. Try again.');
 }
@@ -396,8 +397,12 @@ function publicComments(taskId: string, comments: CpComment[]): PublicComment[] 
  *    and type. The bytes come from GET /api/board/:token/file/:fileId, which re-checks all of that;
  *  - NOT here (internal): priority, labels, start date, checklist, estimate, watchers, dependencies,
  *    our people, people's emails and roles, project settings, the inbox marker.
+ *
+ * Client Intake: `intake` comes from boardIntake() (intake.ts publicIntake(): the card's own form, draft, files,
+ * check results and status, built field by field; never config, envelope ids, payment amounts or review details).
+ * A card with an intake step is completed through it, so it offers no tick and no "I've done this".
  */
-export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[], now = today(), attachments: CpFileMeta[] = []): PublicProject {
+export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[], now = today(), attachments: CpFileMeta[] = [], intake: IntakeForBoard | null = null): PublicProject {
   const visible = tasks.filter((t) => t.clientVisible === true);
   const road = visible.filter((t) => t.type !== 'defect');
   const clientPeople = (p.people ?? []).filter((x) => x.side === 'client');
@@ -418,12 +423,13 @@ export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[]
     isGate: t.type === 'milestone',
     overdue: isOverdue(t, now),
     doneAt: t.doneAt,
-    canTick: clientCanTick(t) && (t.status !== 'done' || (t.doneBy ?? '').startsWith('client:')),
-    canClaim: t.ownerSide === 'client' && !clientCanTick(t) && t.status !== 'done' && !t.clientClaimedAt,
+    canTick: !intake?.byTask.has(t.id) && clientCanTick(t) && (t.status !== 'done' || (t.doneBy ?? '').startsWith('client:')),
+    canClaim: !intake?.byTask.has(t.id) && t.ownerSide === 'client' && !clientCanTick(t) && t.status !== 'done' && !t.clientClaimedAt,
     awaitingConfirmation: Boolean(t.clientClaimedAt) && t.status !== 'done',
     comments: publicComments(t.id, comments),
     assignee: assigneeOf(t),
     attachments: filesOf(t),
+    intake: intake?.byTask.get(t.id) ?? null,
   });
   const pubDefect = (t: Task): PublicDefect => ({
     id: t.id,
@@ -457,5 +463,11 @@ export function toPublicProject(p: Project, tasks: Task[], comments: CpComment[]
       .map(pubDefect),
     readOnly: p.status === 'archived',
     people: clientPeople.map((x) => ({ id: x.id, name: x.name })),
+    intake: intake ? intake.summary : null,
   };
+}
+
+export interface IntakeForBoard {
+  byTask: Map<string, PublicIntake>;
+  summary: { forms: number; formsSubmitted: number; items: number; itemsComplete: number };
 }

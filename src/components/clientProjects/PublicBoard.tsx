@@ -11,6 +11,19 @@ import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Field, Input, Segmen
 import { cn } from '@/lib/cn';
 import { SEVERITIES, SEVERITY_LABEL, fmtAt, fmtDateLong, type PublicComment, type PublicDefect, type PublicProject, type PublicTask } from '@/lib/clientProjects/types';
 import { DueText, ProgressBar, SeverityChip, SideChip, StatusChip, initialsOf } from '@/components/clientProjects/shared';
+import { ClientIntakePanel } from '@/components/clientProjects/intake/ClientIntakePanel';
+import type { PublicIntake } from '@/lib/clientProjects/intake';
+
+/** The button that opens a card's Client Intake panel. */
+export function intakeAction(i: PublicIntake): string {
+  if (i.unified === 'complete') return 'View';
+  if (i.form && (i.form.status === 'open' || i.form.status === 'draft' || i.form.status === 'changes_requested')) return i.form.status === 'open' ? 'Fill in' : 'Continue';
+  if (i.kind === 'dns') return 'Set up DNS';
+  if (i.kind === 'keys') return 'Connect keys';
+  if (i.kind === 'signature' && i.signature?.ready) return i.signature.action === 'acknowledge' ? 'Open to confirm' : 'Open to sign';
+  if (i.kind === 'payment' && i.payment?.canClaim) return 'Pay';
+  return 'View';
+}
 
 const NAME_KEY = 'cp_board_name';
 /** The client-side person the visitor picked in "Who are you?" (an id from this board's people). */
@@ -43,6 +56,7 @@ export function PublicBoard({ token }: { token: string }) {
   const [askName, setAskName] = React.useState<null | ((n: string) => void)>(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [view, setView] = React.useState('all');
+  const [intakeId, setIntakeId] = React.useState<string | null>(null);
   const dead = React.useRef(false);
 
   const load = React.useCallback(async () => {
@@ -106,14 +120,16 @@ export function PublicBoard({ token }: { token: string }) {
     );
   }
 
-  const yours = board.phases.flatMap((p) => p.tasks).filter((t) => t.ownerSide === 'client' && t.status !== 'done');
+  // An intake step the client has done (submitted, paid, signed: now waiting on us) or that is complete is not waiting on them.
+  const onClient = (t: PublicTask) => t.ownerSide === 'client' && t.status !== 'done' && !(t.intake && (t.intake.unified === 'waiting_on_us' || t.intake.unified === 'complete'));
+  const yours = board.phases.flatMap((p) => p.tasks).filter(onClient);
   // A picked person only counts while they are still on the board's people list.
   const me = board.people.find((x) => x.id === personId) ?? null;
   const mineAll = me ? board.phases.flatMap((p) => p.tasks).filter((t) => t.assignee?.id === me.id) : [];
-  const mineOpen = mineAll.filter((t) => t.status !== 'done');
+  const mineOpen = mineAll.filter((t) => t.status !== 'done' && onClient(t));
   // "Waiting on you": open client items nobody is assigned to (for every visitor), then, once the visitor
   // has picked who they are, the ones assigned to them.
-  const unassignedOpen = board.phases.flatMap((p) => p.tasks).filter((t) => t.ownerSide === 'client' && t.status !== 'done' && !t.assignee);
+  const unassignedOpen = board.phases.flatMap((p) => p.tasks).filter((t) => onClient(t) && !t.assignee);
   const waiting = [...mineOpen, ...unassignedOpen];
   const keep = (t: PublicTask) => (view === 'mine' ? t.assignee?.id === me?.id : view === 'open' ? t.status !== 'done' : true);
   return (
@@ -132,6 +148,11 @@ export function PublicBoard({ token }: { token: string }) {
           <span className="tabular-nums">
             {board.progress.done} of {board.progress.total} done
           </span>
+          {board.intake && board.intake.forms > 0 && (
+            <span className="rounded-full bg-subtle px-2 text-caption text-fg-secondary" data-testid="cpb-intake-progress">
+              {board.intake.formsSubmitted} of {board.intake.forms} forms submitted
+            </span>
+          )}
           {yours.length > 0 && (
             <span>
               {yours.length} waiting on you{yours.some((t) => t.overdue) ? ` (${yours.filter((t) => t.overdue).length} overdue)` : ''}
@@ -172,6 +193,11 @@ export function PublicBoard({ token }: { token: string }) {
                     <span className="block text-body font-medium">{t.title}</span>
                     <span className="cp-mono text-caption text-fg-inverse-secondary">{t.dueDate ? `Due ${fmtDateLong(t.dueDate)}${t.overdue ? ' · overdue' : ''}` : 'No date'}</span>
                   </span>
+                  {t.intake && (
+                    <Button size="sm" variant="secondary" onClick={() => setIntakeId(t.id)} data-testid="cpb-waiting-intake">
+                      {intakeAction(t.intake)}
+                    </Button>
+                  )}
                   {!board.readOnly && t.canTick && (
                     <Button size="sm" variant="secondary" onClick={() => act('tick', { taskId: t.id })}>
                       Mark done
@@ -252,6 +278,7 @@ export function PublicBoard({ token }: { token: string }) {
                     onToggle={() => setOpenId(openId === t.id ? null : t.id)}
                     onTick={(done) => act(done ? 'tick' : 'untick', { taskId: t.id })}
                     onClaim={() => act('claim', { taskId: t.id })}
+                    onIntake={() => setIntakeId(t.id)}
                     onComment={(body, clear) => act('comment', { taskId: t.id, body }, clear)}
                   />
                 ))}
@@ -272,6 +299,22 @@ export function PublicBoard({ token }: { token: string }) {
       )}
 
       <footer className="pb-6 pt-2 text-caption text-fg-tertiary">This page is private to your team. Please do not forward the link.</footer>
+
+      {(() => {
+        const t = intakeId ? board.phases.flatMap((p) => p.tasks).find((x) => x.id === intakeId) : undefined;
+        return t?.intake ? (
+          <ClientIntakePanel
+            token={token}
+            task={t}
+            intake={t.intake}
+            readOnly={board.readOnly}
+            who={{ name, personId }}
+            withName={withName}
+            onBoard={setBoard}
+            onClose={() => setIntakeId(null)}
+          />
+        ) : null;
+      })()}
 
       <NameDialog
         open={askName !== null}
@@ -322,10 +365,10 @@ function Comments({ comments, onComment, readOnly }: { comments: PublicComment[]
   );
 }
 
-function TaskRow({ token, mine, task, open, readOnly, onToggle, onTick, onClaim, onComment }: { token: string; mine: boolean; task: PublicTask; open: boolean; readOnly: boolean; onToggle: () => void; onTick: (done: boolean) => void; onClaim: () => void; onComment: (body: string, clear: () => void) => void }) {
+function TaskRow({ token, mine, task, open, readOnly, onToggle, onTick, onClaim, onIntake, onComment }: { token: string; mine: boolean; task: PublicTask; open: boolean; readOnly: boolean; onToggle: () => void; onTick: (done: boolean) => void; onClaim: () => void; onIntake: () => void; onComment: (body: string, clear: () => void) => void }) {
   const done = task.status === 'done';
   return (
-    <li data-testid="cpb-task" data-owner={task.ownerSide} data-status={task.status} data-key={task.key} data-awaiting={task.awaitingConfirmation ? '1' : '0'} data-mine={mine ? '1' : '0'} className={cn(mine && 'bg-[color-mix(in_srgb,var(--brand-500)_3.5%,transparent)]')}>
+    <li data-testid="cpb-task" data-owner={task.ownerSide} data-status={task.status} data-key={task.key} data-intake={task.intake ? task.intake.unified : ''} data-awaiting={task.awaitingConfirmation ? '1' : '0'} data-mine={mine ? '1' : '0'} className={cn(mine && 'bg-[color-mix(in_srgb,var(--brand-500)_3.5%,transparent)]')}>
       <div className="flex items-start gap-3 px-3 py-3">
         <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
           {task.canTick ? (
@@ -342,7 +385,15 @@ function TaskRow({ token, mine, task, open, readOnly, onToggle, onTick, onClaim,
           <span className="flex flex-wrap items-center gap-2">
             <SideChip side={task.ownerSide} you />
             <DueText date={task.dueDate} overdue={task.overdue} done={done} />
-            {task.awaitingConfirmation ? <Badge tone="warning">Awaiting confirmation</Badge> : <StatusChip status={task.status} />}
+            {task.intake ? (
+              <span data-testid="cpb-intake-chip" data-u={task.intake.unified}><Badge tone={task.intake.tone}>
+                {task.intake.label}
+              </Badge></span>
+            ) : task.awaitingConfirmation ? (
+              <Badge tone="warning">Awaiting confirmation</Badge>
+            ) : (
+              <StatusChip status={task.status} />
+            )}
             {mine ? (
               <span className="rounded-sm bg-[color-mix(in_srgb,var(--brand-500)_10%,transparent)] px-1.5 text-caption font-medium text-brand-text" data-testid="cpb-assigned-you">
                 Assigned to you
@@ -358,6 +409,11 @@ function TaskRow({ token, mine, task, open, readOnly, onToggle, onTick, onClaim,
             {task.comments.length > 0 && <span className="text-caption text-fg-tertiary">{task.comments.length} {task.comments.length === 1 ? 'comment' : 'comments'}</span>}
           </span>
         </button>
+        {task.intake && (
+          <Button variant={task.intake.unified === 'complete' ? 'ghost' : 'secondary'} size="sm" onClick={onIntake} data-testid="cpb-intake" data-kind={task.intake.kind} className="shrink-0">
+            {intakeAction(task.intake)}
+          </Button>
+        )}
         {task.canClaim && !readOnly && (
           <Button variant="secondary" size="sm" onClick={onClaim} data-testid="cpb-claim" className="shrink-0">
             I’ve done this

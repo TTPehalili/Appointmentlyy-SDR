@@ -141,6 +141,29 @@ export type WipLimits = Partial<Record<TaskStatus, number>>;
 export const DEFAULT_WIP: WipLimits = { in_progress: 8, blocked: 5 };
 export interface ProjectSettings {
   wip?: WipLimits;
+  /** Client Intake (per project): on/off, the client's workspace (for branding and invites), the accepted company profile. */
+  intake?: IntakeSettings;
+}
+
+/** The company details the client submitted and the owner accepted (data only: shown on Client data, copied into Agreements by hand). */
+export interface CompanyProfile {
+  legalName: string;
+  secNo: string;
+  tin: string;
+  address: string;
+  website: string;
+  signatoryName: string;
+  signatoryTitle: string;
+  billingEmail: string;
+  phone: string;
+  version: number;
+  acceptedAt: string;
+}
+export interface IntakeSettings {
+  enabled?: boolean;
+  /** The client's own workspace (tenant code). Branding and invites only ever go to this one workspace. */
+  tenantCode?: string | null;
+  company?: CompanyProfile | null;
 }
 
 export const ATTACHMENT_MIMES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
@@ -305,7 +328,9 @@ export type CpEventType =
   | 'attachment_removed'
   | 'attachment_visibility'
   | 'sop_loaded'
-  | 'bulk_update';
+  | 'bulk_update'
+  // Client Intake: detail.action says what happened (submitted, accepted, changes_requested, applied, dns_checked, ...)
+  | 'intake';
 
 // ------------------------------------------------------------------ automations (a small fixed set, no rules engine)
 
@@ -588,6 +613,17 @@ export interface OwnerTaskView extends Task {
   attachmentCount: number;
   /** Keys of blockers that are not Done yet. */
   openBlockers: string[];
+  /** Client Intake: the card's request status (owner boards). */
+  intake?: OwnerIntakeChip | null;
+}
+
+export interface OwnerIntakeChip {
+  requestId: string;
+  kind: string;
+  unified: 'not_started' | 'in_progress' | 'waiting_on_us' | 'complete';
+  label: string;
+  /** A submission is waiting for the owner's review. */
+  review: boolean;
 }
 
 export interface DelayRow {
@@ -662,6 +698,8 @@ export interface PublicTask {
   assignee: { id: string; name: string } | null;
   /** v2: only files the owner marked client-visible; downloaded through the token route. */
   attachments: PublicAttachment[];
+  /** Client Intake: how the client completes this item (a form, a check, a signature, a payment), or null. */
+  intake: import('@/lib/clientProjects/intake').PublicIntake | null;
 }
 export interface PublicAttachment {
   id: string;
@@ -698,6 +736,8 @@ export interface PublicProject {
   readOnly: boolean;
   /** v2: the client-side people (names only) for "Who are you?". Never emails, never our side. */
   people: { id: string; name: string }[];
+  /** Client Intake: forms submitted of forms asked, and items complete of items (null when intake is off). */
+  intake: { forms: number; formsSubmitted: number; items: number; itemsComplete: number } | null;
 }
 
 export const defectStatusLabel = (t: Pick<Task, 'status' | 'retestConfirmed'>) =>
