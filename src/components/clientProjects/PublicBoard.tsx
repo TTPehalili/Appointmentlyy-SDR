@@ -6,7 +6,7 @@
  * server decides what this page may see and do.
  */
 import * as React from 'react';
-import { ChevronDown, Diamond, Download, Lock } from 'lucide-react';
+import { ArrowRight, ChevronDown, Diamond, Download, Lock } from 'lucide-react';
 import { Badge, Button, Card, Checkbox, Dialog, EmptyState, Field, Input, SegmentedControl, Select, Skeleton, Textarea } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { SEVERITIES, SEVERITY_LABEL, fmtAt, fmtDateLong, type PublicComment, type PublicDefect, type PublicProject, type PublicTask } from '@/lib/clientProjects/types';
@@ -25,9 +25,9 @@ export function intakeAction(i: PublicIntake): string {
   return 'View';
 }
 
-const NAME_KEY = 'cp_board_name';
+export const NAME_KEY = 'cp_board_name';
 /** The client-side person the visitor picked in "Who are you?" (an id from this board's people). */
-const PERSON_KEY = 'cp_board_person';
+export const PERSON_KEY = 'cp_board_person';
 
 type Result = { success: boolean; error?: string; board?: PublicProject; status: number };
 
@@ -167,6 +167,26 @@ export function PublicBoard({ token }: { token: string }) {
             </span>
           )}
         </p>
+        {board.intake && board.intake.items > 0 && !board.readOnly && (() => {
+          const items = board.phases.flatMap((p) => p.tasks).filter((t) => t.intake);
+          const started = items.some((t) => t.intake && t.intake.unified !== 'not_started');
+          const allDone = board.intake.itemsComplete === board.intake.items;
+          return (
+            <a
+              href={`/b/${token}/onboarding`}
+              className="cpg-entry focus-ring"
+              data-testid="cpb-guided"
+              data-started={started ? '1' : '0'}
+              referrerPolicy="no-referrer"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="text-body-strong">{allDone ? 'Review your onboarding' : started ? 'Continue onboarding' : 'Start onboarding'}</span>
+                <span className="text-caption opacity-80">{started ? `${board.intake.itemsComplete} of ${board.intake.items} done` : `${board.intake.items} short steps, one at a time`}</span>
+              </span>
+              <ArrowRight className="size-4 shrink-0" aria-hidden />
+            </a>
+          );
+        })()}
       </header>
 
       {notice && (
@@ -560,7 +580,7 @@ function DefectRow({ d, open, readOnly, onToggle, onRetest, onComment }: { d: Pu
   );
 }
 
-function NameDialog({ open, initial, people, tasks, onClose, onSave }: { open: boolean; initial: string; people: { id: string; name: string }[]; tasks: PublicTask[]; onClose: () => void; onSave: (name: string, personId: string) => void }) {
+export function NameDialog({ open, initial, people, tasks, onClose, onSave }: { open: boolean; initial: string; people: { id: string; name: string }[]; tasks: PublicTask[]; onClose: () => void; onSave: (name: string, personId: string) => void }) {
   const [v, setV] = React.useState(initial);
   React.useEffect(() => {
     if (open) setV(initial);
