@@ -23,10 +23,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
-      // A config header replaces the route's own, so the uploaded-photo route and the Client Projects file
+      // A config header replaces the route's own, so the uploaded-photo and workspace-logo routes and the Client Projects file
       // downloads (which set a stricter sandboxing CSP that already includes frame-ancestors) are left out here.
       {
-        source: "/:path((?!api/profile/avatar/image|api/board/[^/]+/file/|api/client-projects/[^/]+/intake/file/|api/client-projects/[^/]+/tasks/[^/]+/attachments).*)",
+        source: "/:path((?!api/profile/avatar/image|api/tenant/logo/image|api/board/[^/]+/file/|api/client-projects/[^/]+/intake/file/|api/client-projects/[^/]+/tasks/[^/]+/attachments).*)",
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'none'" }],
       },
       // Agreements signer pages and APIs: private links, never indexed, never leaked in a Referer.

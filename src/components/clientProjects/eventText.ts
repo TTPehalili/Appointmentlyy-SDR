@@ -114,6 +114,22 @@ export function eventText(e: CpEvent): string {
       };
       return `${k}${what[s(d.action)] ?? s(d.action)}${moved}`;
     }
+    case 'provision': {
+      // Counts and the owner-chosen workspace code only: never client-typed text (this also reaches Copilot's model).
+      const st = d.status === 'partial' ? ' (partly)' : d.status === 'failed' ? ' (not done)' : '';
+      const n = (v: unknown) => s(v) || '0';
+      const what: Record<string, string> = {
+        workspace: d.resumed ? `workspace ${s(d.tenantCode)} linked (it already existed from an earlier run)` : d.linkedOnly ? `already linked to ${s(d.tenantCode)}: skipped` : `workspace ${s(d.tenantCode)} created and linked`,
+        branding: d.changed ? 'branding applied to the workspace' : 'branding already in place (nothing changed)',
+        logo: d.changed ? 'logo copied to the workspace' : 'logo already in place (nothing changed)',
+        members: `members: ${n(d.created)} created, ${n(d.existing)} already there, ${n(d.failed)} not created (no email sent)`,
+        invites: `invites: ${n(d.sent)} sent, ${n(d.skipped)} skipped, ${n(d.failed)} not sent`,
+        templates_drafted: `starter email templates drafted (${n(d.count)}) for review`,
+        templates_seeded: `starter email templates: ${n(d.added)} added, ${n(d.existing)} already there`,
+        sop_completed: 'workspace set-up card completed (steps 1 to 4 done)',
+      };
+      return `Provisioning: ${what[s(d.action)] ?? s(d.action)}${st}`;
+    }
     default:
       return e.type;
   }

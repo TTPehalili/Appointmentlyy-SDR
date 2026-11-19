@@ -34,8 +34,25 @@ export function useWhiteLabel(): TenantCustomDomainConfig | null {
   return config;
 }
 
-/** The square app mark. Tenants get their initials on a neutral tile (brand guide 4, white-label). */
-export function WorkspaceMark({ initials, size = 28 }: { initials?: string; size?: number }) {
+/**
+ * The square app mark. Tenants get their logo when they have one (Admin › Appearance; always an <img>, never inline
+ * markup), otherwise their initials on a neutral tile (brand guide 4, white-label). A logo that fails to load falls
+ * back to the initials.
+ */
+export function WorkspaceMark({ initials, logoSrc, size = 28 }: { initials?: string; logoSrc?: string | null; size?: number }) {
+  const [broken, setBroken] = React.useState<string | null>(null);
+  if (logoSrc && broken !== logoSrc) {
+    return (
+      <span
+        style={{ width: size, height: size }}
+        className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-surface"
+        data-testid="workspace-logo"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoSrc} alt="" className="size-full object-contain" onError={() => setBroken(logoSrc)} />
+      </span>
+    );
+  }
   if (initials) {
     return (
       <span
@@ -94,6 +111,8 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
       ? undefined
       : branding?.logoInitials || initialsOf(displayName);
   const interactive = canSwitch && !whiteLabel;
+  // The current workspace's own logo (never for the Appointmentlyy workspace, never on a white-label custom domain).
+  const logoUrl = !whiteLabel && !isHome && server.identity?.tenantCode === tenantCode ? (server.identity?.logoUrl ?? null) : null;
 
   React.useEffect(() => {
     if (!open) return;
@@ -153,7 +172,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 
   const trigger = (
     <>
-      <WorkspaceMark initials={markInitials} />
+      <WorkspaceMark initials={markInitials} logoSrc={logoUrl} />
       {!collapsed && (
         <>
           <span className="min-w-0 flex-1 truncate text-left text-body-strong text-fg">{displayName}</span>

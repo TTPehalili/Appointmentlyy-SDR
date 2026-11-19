@@ -19,6 +19,7 @@ import {
   type SelectionTheme,
 } from '@/lib/selectionColour';
 import { Badge, Button, Field, FilterChip, InlineError, Input, PageHeader, SegmentedControl, Skeleton, Switch, Tabs, useToast } from '@/components/ui';
+import { WorkspaceLogoCard } from '@/components/admin/WorkspaceLogoCard';
 
 const THEMES: SelectionTheme[] = ['light', 'dark'];
 const TITLE: Record<SelectionTheme, string> = { light: 'Light theme', dark: 'Dark theme' };
@@ -147,6 +148,8 @@ export default function AppearanceSettings() {
           View only. Ask an admin to change it.
         </p>
       )}
+
+      <WorkspaceLogoCard />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {THEMES.map((theme) => (

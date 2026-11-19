@@ -5,6 +5,7 @@
  */
 import { delayRows, taskKey, today } from '@/lib/server/clientProjects/core';
 import { eventText } from '@/components/clientProjects/eventText';
+import { PROVISION_STEPS } from '@/lib/clientProjects/provision';
 import {
   PHASES,
   PHASE_LABEL,
@@ -98,9 +99,24 @@ export function buildDeliveryReport(p: Project, tasks: Task[], events: CpEvent[]
     lines.push('', '7. CLIENT INTAKE THIS WEEK');
     lines.push(bullet(intake.slice(-40).map((e) => `${fmtAt(e.at)} ${eventText(e)}${e.actor.startsWith('client:') ? ` (by ${e.actor.slice(7)}, self-identified via the shared link)` : ''}`), 'None.'));
   }
+  // Provision workspace: one line with what is in place (counts only).
+  const prov = provisionLine(p);
+  if (prov) lines.push('', '8. WORKSPACE SET-UP', `- ${prov}`);
   lines.push('', 'Names on client actions (ticks, "done" reports, defect reports, retests, form submissions) are as typed or picked on the shared board link: self-identified, not signatures.');
   lines.push('', 'Please confirm this report within 2 Business Days. After that it is treated as confirmed.');
   return lines.join('\n');
+}
+
+/** The Delivery Report's workspace set-up line, from the provisioning record (null when provisioning never ran). */
+export function provisionLine(p: Pick<Project, 'settings'>): string | null {
+  const steps = p.settings?.provision?.steps;
+  if (!steps) return null;
+  const parts = PROVISION_STEPS.map((k) => steps[k])
+    .filter((r): r is NonNullable<typeof r> => Boolean(r) && r!.status !== 'failed')
+    .map((r) => `${r.summary}${r.status === 'partial' ? ' (partly)' : ''}`);
+  if (!parts.length) return null;
+  const sop = p.settings?.provision?.sopCompletedAt;
+  return `Workspace provisioning: ${parts.join('; ')}.${sop ? ` Workspace set-up complete (${fmtDateLong(sop.slice(0, 10))}).` : ''}`;
 }
 
 /** Drafted when the Readiness milestone is marked Done. The owner reviews and sends it themselves. */

@@ -29,6 +29,8 @@ export interface ServerIdentity {
   isPlatformAdmin: boolean;
   branding: TenantBrandingInfo;
   modules: Record<string, boolean>;
+  /** The current workspace's logo (GET /api/tenant/logo/image), or null/undefined for its initials tile. */
+  logoUrl?: string | null;
 }
 
 export interface WorkspaceOption {

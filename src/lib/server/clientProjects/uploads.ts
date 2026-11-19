@@ -253,18 +253,62 @@ function checkOoxml(buf: Buffer): { ok: true; kind: 'docx' | 'xlsx' } | { ok: fa
   return { ok: true, kind: isDoc ? 'docx' : 'xlsx' };
 }
 
-function readEntry(buf: Buffer, e: { method: number; csize: number; usize: number; local: number }): string | null {
+function readEntry(buf: Buffer, e: { method: number; csize: number; usize: number; local: number }, maxOut = 1024 * 1024): string | null {
   const nlen = buf.readUInt16LE(e.local + 26);
   const xlen = buf.readUInt16LE(e.local + 28);
   const start = e.local + 30 + nlen + xlen;
   if (start + e.csize > buf.length) return null;
   const data = buf.subarray(start, start + e.csize);
   try {
-    const out = e.method === 0 ? data : zlib.inflateRawSync(data, { maxOutputLength: 1024 * 1024 });
+    const out = e.method === 0 ? data : zlib.inflateRawSync(data, { maxOutputLength: maxOut });
     return out.toString('utf8');
   } catch {
     return null;
   }
+}
+
+const XML_ENT: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+
+/**
+ * The plain text of a DOCX that already passed checkIntakeFile (a real OOXML zip, no macros): the text runs (<w:t>) of
+ * word/document.xml, one line per paragraph, capped at `maxChars`. Null when it cannot be read. Used to give the
+ * provisioning AI the client's scripts as DATA (the caller fences it as untrusted).
+ */
+export function docxText(bytes: Uint8Array, maxChars = 20_000): string | null {
+  const buf = Buffer.from(bytes);
+  if (checkOoxml(buf).ok !== true) return null;
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return null;
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let i = 0; i < count && p + 46 <= buf.length; i++) {
+    const nlen = buf.readUInt16LE(p + 28);
+    const name = buf.subarray(p + 46, p + 46 + nlen).toString('utf8');
+    const entry = { method: buf.readUInt16LE(p + 10), csize: buf.readUInt32LE(p + 20), usize: buf.readUInt32LE(p + 24), local: buf.readUInt32LE(p + 42) };
+    if (name === 'word/document.xml') {
+      const xml = readEntry(buf, entry, 8 * 1024 * 1024);
+      if (xml === null) return null;
+      const out: string[] = [];
+      let len = 0;
+      // Linear scan: paragraph ends become new lines; only the text of <w:t> runs is kept. The attribute part never
+      // crosses a "<" (security review H1: with [^>]* every "<w:t " without a ">" rescanned to the end: quadratic).
+      for (const m of xml.matchAll(/<w:t(?:\s[^<>]*)?>([^<]*)<\/w:t>|<\/w:p>|<w:tab\/>|<w:br\/>/g)) {
+        const piece = m[1] !== undefined ? m[1].replace(/&(amp|lt|gt|quot|apos);/g, (_, k: string) => XML_ENT[k]) : m[0] === '</w:p>' || m[0] === '<w:br/>' ? '\n' : ' ';
+        out.push(piece);
+        len += piece.length;
+        if (len >= maxChars) break;
+      }
+      return out.join('').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars);
+    }
+    p += 46 + nlen + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------ SVG sanitiser (allow-list rebuild)

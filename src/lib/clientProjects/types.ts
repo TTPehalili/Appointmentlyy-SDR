@@ -143,6 +143,8 @@ export interface ProjectSettings {
   wip?: WipLimits;
   /** Client Intake (per project): on/off, the client's workspace (for branding and invites), the accepted company profile. */
   intake?: IntakeSettings;
+  /** "Provision workspace" (owner only): each step's status, time and actor, the starter-template drafts and what was seeded. */
+  provision?: import('@/lib/clientProjects/provision').ProvisionRecord;
 }
 
 /** The company details the client submitted and the owner accepted (data only: shown on Client data, copied into Agreements by hand). */
@@ -330,7 +332,10 @@ export type CpEventType =
   | 'sop_loaded'
   | 'bulk_update'
   // Client Intake: detail.action says what happened (submitted, accepted, changes_requested, applied, dns_checked, ...)
-  | 'intake';
+  | 'intake'
+  // Provision workspace: detail.action is the step (workspace, branding, logo, members, invites, templates_drafted,
+  // templates_seeded, sop_completed), with counts only (never client-typed text).
+  | 'provision';
 
 // ------------------------------------------------------------------ automations (a small fixed set, no rules engine)
 

@@ -8,11 +8,17 @@ import {
   buildLoginEmailSubject,
   buildLoginEmailText,
 } from '@/lib/loginEmail';
+import { authOutboxRequested, writeAuthOutbox } from '@/lib/server/agreements/mail';
 
 export async function sendAuthEmail(
   to: string,
   params: LoginEmailParams
 ): Promise<{ ok: boolean; error?: string; id?: string }> {
+  // Test-only dev outbox (local test servers only; refused anywhere else). See lib/server/agreements/mail.ts.
+  if (authOutboxRequested()) {
+    const r = await writeAuthOutbox(to, buildLoginEmailSubject(params), buildLoginEmailText(params), `auth-${params.kind}`);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  }
   const apiKey = getResendApiKey();
   if (!apiKey) return { ok: false, error: 'Email provider is not configured.' };
 

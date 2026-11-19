@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession, publicIdentity, clearSessionCookie } from '@/lib/server/session';
 import { listWorkspacesFor } from '@/lib/server/tenancy';
 import { getTenantStore } from '@/lib/server/tenantStore';
+import { tenantLogoMeta } from '@/lib/server/tenantLogos';
+import { logoSrc } from '@/lib/tenantLogo';
 
 /**
  * GET /api/auth/me
@@ -15,8 +17,8 @@ export async function GET(req: NextRequest) {
     clearSessionCookie(res);
     return res;
   }
-  // Both reads are independent: one round trip instead of two in a row.
-  const [tenants, cred] = await Promise.all([listWorkspacesFor(session.email), getTenantStore().getCredential(session.email)]);
+  // The reads are independent: one round trip instead of several in a row. (The logo read is cached and never fails.)
+  const [tenants, cred, logo] = await Promise.all([listWorkspacesFor(session.email), getTenantStore().getCredential(session.email), tenantLogoMeta(session.tenantCode)]);
   const workspaces = tenants.map((t) => ({
     code: t.code,
     name: t.name,
@@ -27,7 +29,8 @@ export async function GET(req: NextRequest) {
   // Everyone must create a password on first sign-in; the app sends them to /login/set-password until they do.
   const hasPassword = Boolean(cred);
   return NextResponse.json(
-    { success: true, identity: publicIdentity(session.identity), workspaces, hasPassword },
+    // logoUrl: the current workspace's logo for the shell's workspace tile (null = its initials).
+    { success: true, identity: { ...publicIdentity(session.identity), logoUrl: logo ? logoSrc(logo.version) : null }, workspaces, hasPassword },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

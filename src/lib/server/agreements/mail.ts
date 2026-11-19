@@ -88,6 +88,24 @@ function writeOutbox(mail: AgreementMail, from: string, replyTo: string): Promis
   return run;
 }
 
+/**
+ * Test-only: with AUTH_DEV_OUTBOX=1 on a local test server, sign-in and invite emails (lib/authMailer) are written to the
+ * same outbox file instead of being sent. Off unless asked for, so suites that expect "mail not configured" (and the
+ * staff-only invite link it returns) are unchanged. It fails closed: anywhere with a production credential or a Railway
+ * marker the email is refused, never sent and never written.
+ */
+export function authOutboxRequested(): boolean {
+  return process.env.AUTH_DEV_OUTBOX === '1';
+}
+export async function writeAuthOutbox(to: string, subject: string, text: string, kind: string): Promise<MailResult> {
+  if (!isLocalTestServer()) {
+    console.error('[auth/mail] AUTH_DEV_OUTBOX is set on a server with production settings: email blocked.');
+    return { ok: false, error: 'Email is blocked on this server (test outbox misconfigured).' };
+  }
+  await writeOutbox({ to, subject: subject.replace(/[\r\n\u2028\u2029]+/g, ' ').slice(0, 250), html: '', text, kind }, 'auth-dev-outbox', '');
+  return { ok: true, outbox: true };
+}
+
 export function senderOf(settings: AgreementSettings): { from: string; replyTo: string } {
   // Display name: no characters that could split or extend the address list (or a header).
   const name = settings.senderName.replace(/[<>"\,;:\r\n]/g, '').trim();

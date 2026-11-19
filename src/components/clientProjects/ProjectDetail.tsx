@@ -70,8 +70,9 @@ import { PeoplePanel } from '@/components/clientProjects/PeoplePanel';
 import { NotificationsBell } from '@/components/clientProjects/Notifications';
 import { actorLabel, eventText } from '@/components/clientProjects/eventText';
 import { ClientDataTab, SubmissionsTab } from '@/components/clientProjects/intake/OwnerIntake';
+import { ProvisionPanel } from '@/components/clientProjects/ProvisionPanel';
 
-const TABS = ['kanban', 'roadmap', 'list', 'timeline', 'dashboard', 'activity', 'delays', 'submissions', 'clientdata', 'ai', 'people', 'automations'] as const;
+const TABS = ['kanban', 'roadmap', 'list', 'timeline', 'dashboard', 'activity', 'delays', 'submissions', 'clientdata', 'provision', 'ai', 'people', 'automations'] as const;
 type Tab = (typeof TABS)[number];
 const VIEW_TABS: Tab[] = ['kanban', 'roadmap', 'list', 'timeline'];
 
@@ -457,6 +458,7 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
             { value: 'delays', label: 'Client delays', count: data.delays.length || undefined },
             { value: 'submissions', label: 'Submissions', count: tasks.filter((t) => t.intake?.review).length || undefined },
             { value: 'clientdata', label: 'Client data' },
+            { value: 'provision', label: 'Provision' },
             { value: 'ai', label: 'Documents & AI' },
             { value: 'people', label: 'People', count: people.length || undefined },
             { value: 'automations', label: 'Automations' },
@@ -491,6 +493,7 @@ function Detail({ id, initialTab }: { id: string; initialTab: Tab }) {
       {tab === 'people' && <PeoplePanel project={p} tasks={tasks} onChanged={reload} />}
       {tab === 'submissions' && <SubmissionsTab projectId={id} onOpenTask={(taskId) => setOpenId(taskId)} />}
       {tab === 'clientdata' && <ClientDataTab projectId={id} project={p} onChanged={reload} onOpenTask={(taskId) => setOpenId(taskId)} />}
+      {tab === 'provision' && <ProvisionPanel projectId={id} onChanged={reload} />}
       {tab === 'automations' && <AutomationsPanel project={p} onChanged={reload} />}
 
       <TaskDrawer projectId={id} project={p} task={openTask} tasks={tasks} attachments={data.attachments ?? []} onClose={() => setOpenId(null)} onChanged={reload} />
