@@ -269,6 +269,23 @@ body.cp-dragging, body.cp-dragging * { cursor: grabbing !important; user-select:
 .cpi-table th { text-align: left; font-weight: 500; color: var(--text-tertiary); font-size: 12px; padding: 4px 6px; }
 .cpi-table td { padding: 3px 4px; vertical-align: top; }
 .cpi-table td[data-bad="1"] input, .cpi-table td[data-bad="1"] select { box-shadow: inset 0 0 0 1.5px var(--danger-fg); }
+/* Editable table rows as cards: 6-column grid, text/email fields take half, selects and dates a third. */
+.cpi-row { container-type: inline-size; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); padding: 10px 12px 12px; transition: border-color var(--cp-dur-2, 180ms) var(--ease-out); }
+.cpi-row:focus-within { border-color: color-mix(in srgb, var(--brand-500) 55%, var(--border-default)); }
+.cpi-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cpi-row-num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: var(--bg-subtle); color: var(--text-secondary); font: 600 11px/1 var(--font-mono); }
+.cpi-row-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px 12px; }
+.cpi-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; grid-column: span 3; }
+.cpi-cell.is-short { grid-column: span 2; }
+.cpi-cell input, .cpi-cell select { width: 100%; }
+.cpi-cell[data-bad="1"] input, .cpi-cell[data-bad="1"] select { box-shadow: inset 0 0 0 1.5px var(--danger-fg); }
+@container (max-width: 460px) {
+  .cpi-cell { grid-column: span 6; }
+  .cpi-cell.is-short { grid-column: span 3; }
+}
+@container (max-width: 300px) {
+  .cpi-cell.is-short { grid-column: span 6; }
+}
 .cpi-diff-add { color: var(--success-fg); }
 .cpi-diff-del { color: var(--danger-fg); text-decoration: line-through; }
 @media (max-width: 520px) {

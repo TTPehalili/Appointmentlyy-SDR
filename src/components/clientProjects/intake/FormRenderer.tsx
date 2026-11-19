@@ -237,25 +237,32 @@ function TableField({ field, rows, errors, onRows, upload }: { field: IntakeFiel
         {field.required ? '' : ' (optional)'}
       </legend>
       {field.help && <p className="text-caption text-fg-tertiary">{field.help}</p>}
-      <div className="overflow-x-auto">
-        <table className="cpi-table">
-          <thead>
-            <tr>
-              {cols.map((c) => (
-                <th key={c.key}>{c.label}</th>
-              ))}
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((r, i) => (
-              <tr key={i} data-testid="cpi-row">
+      {/* One roomy card per row (a person, a user...), with a visible label on every field. A table squeezed 5+
+          inputs into the panel width until names and emails could not be read. */}
+      <div className="flex flex-col gap-2.5">
+        {shown.map((r, i) => {
+          const first = cols[0] ? (r[cols[0].key] ?? '').trim() : '';
+          return (
+            <div key={i} className="cpi-row" data-testid="cpi-row">
+              <div className="cpi-row-head">
+                <span className="cpi-row-num">{i + 1}</span>
+                <span className={cn('min-w-0 flex-1 truncate text-body-strong', first ? 'text-fg' : 'text-fg-tertiary')}>{first || `New ${field.label.toLowerCase().includes('user') ? 'user' : 'person'}`}</span>
+                <IconButton label={`Remove row ${i + 1}`} size="sm" variant="ghost" onClick={() => onRows(shown.filter((_, j) => j !== i))}>
+                  <Trash2 />
+                </IconButton>
+              </div>
+              <div className="cpi-row-grid">
                 {cols.map((c) => {
                   const bad = errors[`${field.key}.${i}.${c.key}`];
+                  const cid = `cpi-${field.key}-${i}-${c.key}`;
                   return (
-                    <td key={c.key} data-bad={bad ? '1' : '0'} title={bad}>
+                    <div key={c.key} className={cn('cpi-cell', c.type === 'select' || c.type === 'date' ? 'is-short' : 'is-wide')} data-bad={bad ? '1' : '0'}>
+                      <label htmlFor={cid} className="text-caption text-fg-secondary">
+                        {c.label}
+                        {c.required ? '' : <span className="text-fg-tertiary"> (optional)</span>}
+                      </label>
                       {c.type === 'select' ? (
-                        <Select aria-label={`${c.label}, row ${i + 1}`} value={r[c.key] ?? ''} onChange={(e) => setCell(i, c.key, e.target.value)} data-col={c.key}>
+                        <Select id={cid} aria-label={`${c.label}, row ${i + 1}`} value={r[c.key] ?? ''} onChange={(e) => setCell(i, c.key, e.target.value)} data-col={c.key}>
                           <option value="">Choose…</option>
                           {(c.options ?? []).map((o) => (
                             <option key={o} value={o}>
@@ -264,21 +271,27 @@ function TableField({ field, rows, errors, onRows, upload }: { field: IntakeFiel
                           ))}
                         </Select>
                       ) : (
-                        <Input aria-label={`${c.label}, row ${i + 1}`} type={c.type === 'email' ? 'email' : c.type === 'date' ? 'date' : c.type === 'phone' ? 'tel' : 'text'} value={r[c.key] ?? ''} maxLength={160} onChange={(e) => setCell(i, c.key, e.target.value)} data-col={c.key} />
+                        <Input
+                          id={cid}
+                          aria-label={`${c.label}, row ${i + 1}`}
+                          type={c.type === 'email' ? 'email' : c.type === 'date' ? 'date' : c.type === 'phone' ? 'tel' : 'text'}
+                          inputMode={c.type === 'email' ? 'email' : c.type === 'phone' ? 'tel' : undefined}
+                          placeholder={c.type === 'email' ? 'name@company.com' : c.type === 'date' ? undefined : c.label}
+                          value={r[c.key] ?? ''}
+                          maxLength={160}
+                          autoComplete="off"
+                          onChange={(e) => setCell(i, c.key, e.target.value)}
+                          data-col={c.key}
+                        />
                       )}
-                      {bad && <span className="sr-only">{bad}</span>}
-                    </td>
+                      {bad && <span className="text-caption text-danger-fg">{bad}</span>}
+                    </div>
                   );
                 })}
-                <td>
-                  <IconButton label={`Remove row ${i + 1}`} size="sm" variant="ghost" onClick={() => onRows(shown.filter((_, j) => j !== i))}>
-                    <Trash2 />
-                  </IconButton>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="secondary" icon={<Plus />} disabled={shown.length >= max} onClick={() => onRows([...shown, blank()])} data-testid="cpi-add-row">
