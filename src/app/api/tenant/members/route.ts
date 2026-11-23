@@ -5,6 +5,7 @@ import { displayNameFor, seatsUsed } from '@/lib/server/tenancy';
 import { avatarSrcs } from '@/lib/server/avatars';
 import { getServerSession, hasRank } from '@/lib/server/session';
 import { readDelegates } from '@/lib/server/emailDelegation';
+import { serverSender } from '@/lib/server/sendingPolicy';
 
 /**
  * GET /api/tenant/members
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     const d = delegates.find((x) => x.delegateEmail === m.email.toLowerCase());
     return {
       // Who this member sends as (null = nobody), and whether that is the signed-in owner.
-      sendsAs: d ? { name: d.ownerEmail === session.email.toLowerCase() ? session.name : ownerNames.get(d.ownerEmail) ?? displayNameFor(d.ownerEmail), mine: d.ownerEmail === session.email.toLowerCase() } : null,
+      sendsAs: d ? { name: serverSender({ email: d.ownerEmail, name: d.ownerEmail === session.email.toLowerCase() ? session.name : ownerNames.get(d.ownerEmail) ?? displayNameFor(d.ownerEmail) }).name, mine: d.ownerEmail === session.email.toLowerCase() } : null,
       canSendAsMe: m.email.toLowerCase() !== session.email.toLowerCase() && m.role !== 'Super Admin',
     };
   };
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     {
       success: true,
-      ...(ownerView ? { emailDelegation: { ownerName: session.name } } : {}),
+      ...(ownerView ? { emailDelegation: { ownerName: serverSender(session).name } } : {}),
       tenant: { code: tenant.code, name: tenant.name, seatLimit: tenant.code === PLATFORM_TENANT_CODE ? 0 : tenant.seatLimit },
       seatsUsed: seatsUsed(members),
       canManage: hasRank(session, 'Admin'),

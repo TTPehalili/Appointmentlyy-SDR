@@ -22,6 +22,8 @@ export interface LeadFootprintItem {
   summary: string;   // detailed text, qualification audit, or pitch note
   repName: string;
   disposition?: string;
+  /** Set only on entries ticked on the lead's activity checklist (see lib/leadActivityChecklist). */
+  activityKey?: string;
 }
 
 export interface ContactRecord {
@@ -1163,6 +1165,7 @@ export function recordContactTouch(
     summary: string;
     repName?: string;
     disposition?: string;
+    activityKey?: string;
   }
 ): ContactRecord | null {
   if (!contactIdOrEmail) return null;
@@ -1186,7 +1189,8 @@ export function recordContactTouch(
     title: touch.title,
     summary: touch.summary,
     repName: touch.repName || 'Emil Halili',
-    disposition: touch.disposition
+    disposition: touch.disposition,
+    ...(touch.activityKey ? { activityKey: touch.activityKey } : {})
   };
 
   const nextStatus = touch.disposition || contacts[index].status;
@@ -1195,6 +1199,32 @@ export function recordContactTouch(
     ...contacts[index],
     status: nextStatus,
     footprint: [newFootprint, ...(contacts[index].footprint || [])]
+  };
+
+  contacts[index] = updatedContact;
+  saveStoredContacts(contacts);
+  return updatedContact;
+}
+
+/**
+ * Undo activity checklist ticks: remove the given timeline entries from a lead. Only entries that
+ * were ticked on the checklist (they carry an activityKey) can be removed; other history is kept.
+ */
+export function removeContactActivityTicks(
+  contactId: string,
+  footprintIds: string[]
+): ContactRecord | null {
+  if (!contactId || footprintIds.length === 0) return null;
+
+  const contacts = getStoredContacts();
+  const index = contacts.findIndex(c => c.id === contactId);
+  if (index === -1) return null;
+
+  const updatedContact: ContactRecord = {
+    ...contacts[index],
+    footprint: (contacts[index].footprint || []).filter(
+      fp => !(fp.activityKey && footprintIds.includes(fp.id))
+    )
   };
 
   contacts[index] = updatedContact;

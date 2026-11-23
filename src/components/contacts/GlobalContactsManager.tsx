@@ -33,6 +33,7 @@ import {
   Button,
   buttonClasses,
   Drawer,
+  Checkbox,
   EmptyState,
   FilterChip,
   IconButton,
@@ -49,6 +50,8 @@ import {
   getStoredFolders,
   getStoredPipelineStages,
   addContactNote,
+  recordContactTouch,
+  removeContactActivityTicks,
   updateContactPipelineStage,
   getContactDealValue,
   updateContactDealValue,
@@ -67,6 +70,13 @@ import {
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 import { AssignToTeammateDialog, useCanAssignLeads } from '@/components/contacts/LeadHandoff';
 import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
+import {
+  LEAD_ACTIVITY_CHECKLIST,
+  LEAD_ACTIVITY_TICK_SUMMARY,
+  getLeadActivityState,
+  type LeadActivityGroup,
+  type LeadActivityOption,
+} from '@/lib/leadActivityChecklist';
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
@@ -411,6 +421,30 @@ export default function GlobalContactsManager() {
       setNoteSavedToast(true);
       setTimeout(() => setNoteSavedToast(false), 2500);
     }
+  };
+
+  // Activity checklist: a tick is one timeline entry for today; unticking removes that entry.
+  // Works from the stored lead so a fast double click cannot record the same activity twice.
+  // Never touches the notes box or the lead's status.
+  const handleActivityTick = (group: LeadActivityGroup, item: LeadActivityOption, checked: boolean) => {
+    if (!selectedContact) return;
+    const stored = getStoredContacts().find((c) => c.id === selectedContact.id);
+    if (!stored) return;
+    const todayIds = getLeadActivityState(stored.footprint)[item.key]?.todayIds || [];
+    let updated: ContactRecord | null = null;
+    if (checked && todayIds.length === 0) {
+      updated = recordContactTouch(stored.id, {
+        type: group.type,
+        title: item.label,
+        summary: LEAD_ACTIVITY_TICK_SUMMARY,
+        repName: repName || role,
+        activityKey: item.key,
+      });
+    } else if (!checked && todayIds.length > 0) {
+      updated = removeContactActivityTicks(stored.id, todayIds);
+    }
+    setContacts(getStoredContacts());
+    setSelectedContact(updated || stored);
   };
 
   // Status dot color helper
@@ -1256,6 +1290,42 @@ export default function GlobalContactsManager() {
                 </div>
                 )}
               </section>
+
+              {/* ACTIVITY CHECKLIST: what the rep did for this lead today */}
+              {(() => {
+                const activityState = getLeadActivityState(selectedContact.footprint);
+                return (
+                  <section className="rounded-lg border border-line p-4 space-y-3" data-testid="activity-checklist">
+                    <div>
+                      <h3 className="text-h3 text-fg">Activity checklist</h3>
+                      <p className="text-small text-fg-tertiary">Tick what you did for this lead today.</p>
+                    </div>
+                    {LEAD_ACTIVITY_CHECKLIST.map((group) => (
+                      <fieldset key={group.type} className="space-y-2 min-w-0">
+                        <legend className="text-caption text-fg-tertiary mb-1.5">{group.label}</legend>
+                        {group.items.map((item) => {
+                          const st = activityState[item.key];
+                          return (
+                            <div key={item.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+                              <Checkbox
+                                label={item.label}
+                                data-activity-key={item.key}
+                                checked={st.todayIds.length > 0}
+                                onChange={(e) => handleActivityTick(group, item, e.target.checked)}
+                              />
+                              {st.earlierCount > 0 && (
+                                <span className="ml-auto text-caption text-fg-tertiary tabular-nums" data-activity-history={item.key}>
+                                  done {st.earlierCount}x, last {st.earlierLast}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </fieldset>
+                    ))}
+                  </section>
+                );
+              })()}
 
               {/* DIRECT LEAD NOTES SECTION (FOR CLIENTS WITHOUT CRM) */}
               <section className="space-y-3">
