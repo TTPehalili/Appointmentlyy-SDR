@@ -4,6 +4,8 @@ import path from 'path';
 import { getResendApiKey } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
 import { getServerSession } from '@/lib/server/session';
+import { activeDelegation } from '@/lib/server/emailDelegation';
+import { PLATFORM_TENANT_CODE } from '@/lib/roles';
 import {
   allowUnsignedWithoutSecret,
   logRejection,
@@ -187,7 +189,15 @@ export async function GET(req: NextRequest) {
       writeStoredInboundEmails(emails);
     }
 
-    const visible = session.isPlatformAdmin ? emails : emails.filter((m: any) => m.tenantCode === session.tenantCode);
+    // An owner's email delegate also reads the owner workspace's shared reply mailbox: the untagged
+    // (provider-synced) replies plus the ones tagged with the platform workspace. Never another
+    // workspace's tagged replies, which only platform staff see.
+    const delegate = session.isPlatformAdmin ? null : await activeDelegation(session);
+    const visible = session.isPlatformAdmin
+      ? emails
+      : delegate
+        ? emails.filter((m: any) => !m.tenantCode || m.tenantCode === PLATFORM_TENANT_CODE)
+        : emails.filter((m: any) => m.tenantCode === session.tenantCode);
     return NextResponse.json({
       success: true,
       count: visible.length,

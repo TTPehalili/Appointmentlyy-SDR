@@ -950,6 +950,11 @@ export function createIcpFolderWithLeads(params: {
    * leads so far gets the next company), so one rep works the whole committee.
    */
   keepCompaniesTogether?: boolean;
+  /**
+   * Where the leads came from, when it was not a Lead Finder pull (e.g. leads a teammate assigned):
+   * the first history line on each lead and the activity event source. Unset = Lead Finder pull.
+   */
+  origin?: { footprintTitle: string; source: string };
 }): { folder: IcpFolder; addedContacts: ContactRecord[] } {
   const folderId = `folder_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const cleanReps = params.selectedReps.filter(Boolean);
@@ -996,7 +1001,7 @@ export function createIcpFolderWithLeads(params: {
           timestamp: timestampStr,
           isoDate: now.toISOString(),
           type: 'status',
-          title: 'Pulled via Appointmentlyy ICP Cloud',
+          title: params.origin?.footprintTitle || 'Pulled via Appointmentlyy ICP Cloud',
           summary: `Saved into folder "${params.folderName.trim()}" and assigned to ${assignedRep}.`,
           repName: params.createdBy,
         },
@@ -1030,7 +1035,7 @@ export function createIcpFolderWithLeads(params: {
   const existingIds = new Set(existingContacts.map((c) => `${c.tenantId}:${c.id}`));
   const uniqueNew = stampedLeads.filter((c) => !existingIds.has(`${c.tenantId}:${c.id}`));
   saveStoredContacts([...uniqueNew, ...existingContacts]);
-  emitContactsCreated(uniqueNew, { source: 'Lead Finder pull' });
+  emitContactsCreated(uniqueNew, { source: params.origin?.source || 'Lead Finder pull' });
 
   return { folder: newFolder, addedContacts: stampedLeads };
 }

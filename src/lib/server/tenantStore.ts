@@ -29,6 +29,19 @@ export interface TenantBranding {
   leadFinderAnimation?: 'playful' | 'professional';
   /** Selected-state colour per theme (Admin › Appearance), `#RRGGBB`. Unset = platform default. */
   selection?: { light?: string; dark?: string };
+  /**
+   * SERVER ONLY (platform workspace): who may send email as a platform owner. Written and read
+   * through emailDelegation.ts, never from a request body, and removed by publicBranding() before
+   * branding goes to a browser.
+   */
+  emailDelegates?: { delegateEmail: string; ownerEmail: string; setAt: string }[];
+}
+
+/** Branding as a browser may see it: without the server-only fields. */
+export function publicBranding(b: TenantBranding | null | undefined): TenantBranding {
+  const { emailDelegates: _d, ...rest } = b ?? {};
+  void _d;
+  return rest;
 }
 
 export interface Tenant {

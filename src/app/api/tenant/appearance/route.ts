@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantStore, type TenantBranding } from '@/lib/server/tenantStore';
+import { withStoredDelegates } from '@/lib/server/emailDelegation';
 import { getServerSession, hasRank } from '@/lib/server/session';
 import { cleanSelection } from '@/lib/selectionColour';
 
@@ -42,7 +43,7 @@ export async function PUT(req: NextRequest) {
   try {
     const store = getTenantStore();
     const tenant = session.identity.tenant;
-    const branding: TenantBranding = { ...tenant.branding };
+    const branding: TenantBranding = await withStoredDelegates(tenant.code, { ...tenant.branding });
     if (cleaned.value.light || cleaned.value.dark) branding.selection = cleaned.value;
     else delete branding.selection;
     const updated = await store.updateTenant(tenant.code, { branding });

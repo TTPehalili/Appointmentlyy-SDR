@@ -50,6 +50,7 @@ import {
 } from '@/lib/emailStore';
 import { useSession } from '@/lib/session';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { useServerAuth } from '@/lib/authClient';
 import type { InboxReplyAction, InboxReplyMove, InboxReplyTone } from '@/lib/inboxReply';
 
 type CopilotRun = { action: InboxReplyAction; tone?: InboxReplyTone };
@@ -71,9 +72,13 @@ export default function UnifiedEmailInbox() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'inbound' | 'outbound' | 'unread'>('all');
   
   // Dynamic sender based on authenticated session
-  const senderDisplayName = session?.repName || 'Emil Halili';
+  // An owner's email delegate sends as the owner: the server decides (GET /api/auth/me), this only shows it.
+  const sendsAs = useServerAuth().identity?.sendsAs ?? null;
+  const senderDisplayName = sendsAs?.name || session?.repName || 'Emil Halili';
   const senderEmailRaw = session?.email || 'emil@appointmentlyy.com';
-  const verifiedSenderEmail = senderEmailRaw.toLowerCase().endsWith('@appointmentlyy.com')
+  const verifiedSenderEmail = sendsAs
+    ? sendsAs.address
+    : senderEmailRaw.toLowerCase().endsWith('@appointmentlyy.com')
     ? senderEmailRaw
     : 'emil@appointmentlyy.com';
   const senderFrom = `${senderDisplayName} <${verifiedSenderEmail}>`;
@@ -822,6 +827,13 @@ export default function UnifiedEmailInbox() {
                     </>
                   );
                 })()}
+
+                {sendsAs && (
+                  <p role="note" data-sending-as={sendsAs.address} className="break-words text-small text-fg-secondary">
+                    Sending as <span className="font-medium text-fg">{sendsAs.name}</span>{' '}
+                    <span className="break-all font-mono">&lt;{sendsAs.address}&gt;</span>
+                  </p>
+                )}
 
                 <Textarea
                   rows={replyText.split('\n').length > 3 ? 7 : 3}

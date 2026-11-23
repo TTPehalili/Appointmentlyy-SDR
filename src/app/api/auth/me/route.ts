@@ -4,6 +4,7 @@ import { listWorkspacesFor } from '@/lib/server/tenancy';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { tenantLogoMeta } from '@/lib/server/tenantLogos';
 import { logoSrc } from '@/lib/tenantLogo';
+import { sendsAsFor } from '@/lib/server/sendingPolicy';
 
 /**
  * GET /api/auth/me
@@ -28,9 +29,11 @@ export async function GET(req: NextRequest) {
   }));
   // Everyone must create a password on first sign-in; the app sends them to /login/set-password until they do.
   const hasPassword = Boolean(cred);
+  // An owner's email delegate: whose name and address their email goes out under (null for everyone else).
+  const sendsAs = await sendsAsFor(session).catch(() => null);
   return NextResponse.json(
     // logoUrl: the current workspace's logo for the shell's workspace tile (null = its initials).
-    { success: true, identity: { ...publicIdentity(session.identity), logoUrl: logo ? logoSrc(logo.version) : null }, workspaces, hasPassword },
+    { success: true, identity: { ...publicIdentity(session.identity), logoUrl: logo ? logoSrc(logo.version) : null, sendsAs }, workspaces, hasPassword, sendsAs },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

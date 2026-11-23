@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PLATFORM_TENANT_CODE } from '@/lib/roles';
-import { getTenantStore, type Tenant } from '@/lib/server/tenantStore';
+import { getTenantStore, publicBranding, type Tenant } from '@/lib/server/tenantStore';
 import { DEFAULT_MODULES, TenancyError, cleanBranding, seatsUsed } from '@/lib/server/tenancy';
 import { getServerSession } from '@/lib/server/session';
 
@@ -52,7 +52,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ code: str
       tenantCode: code,
       action: patch.status ? `tenant.${patch.status === 'suspended' ? 'suspend' : 'activate'}` : 'tenant.update',
       target: code,
-      detail: patch as Record<string, unknown>,
+      // Server-only branding fields (the email delegate list) stay out of the audit log.
+      detail: (patch.branding ? { ...patch, branding: publicBranding(patch.branding) } : patch) as Record<string, unknown>,
     });
     return NextResponse.json({ success: true, tenant: updated });
   } catch (err) {

@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession, type ServerSession } from '@/lib/server/session';
 import { isDemoSession } from '@/lib/demoMode';
 import { getResendFromEmail, getResendInboundEmail } from '@/lib/resendConfig';
+import { activeDelegation, auditDelegatedSend, type ActiveDelegation } from '@/lib/server/emailDelegation';
 
 export const EMAIL_NOT_CONNECTED_MESSAGE =
   'Sending is paused for this workspace until your email is connected in Admin › Integrations. You can still draft and copy emails.';
@@ -75,4 +76,30 @@ export function serverSender(session: Pick<ServerSession, 'email' | 'name'>): Se
   const inbound = getResendInboundEmail();
   const personal = ADDRESS_RE.test(own) ? own : address;
   return { from: `${name} <${address}>`, address, name, replyTo: Array.from(new Set([inbound, personal])) };
+}
+
+/**
+ * The sender for this request. Normally the signed-in person (serverSender, unchanged). When they
+ * are an owner's active email delegate, it is the OWNER's identity, built by the same rule from the
+ * owner stored with the delegation: name, address and Reply-To exactly as if the owner were
+ * sending. `onBehalf` is then set, and the route must call recordDelegatedSend before it sends.
+ */
+export async function senderFor(session: ServerSession): Promise<{ sender: ServerSender; onBehalf: ActiveDelegation | null }> {
+  const onBehalf = await activeDelegation(session);
+  if (!onBehalf) return { sender: serverSender(session), onBehalf: null };
+  return { sender: serverSender({ email: onBehalf.ownerEmail, name: onBehalf.ownerName }), onBehalf };
+}
+
+/** Who a delegate sends as, for the UI notice (null for everyone else). Server-decided, like the send. */
+export async function sendsAsFor(session: ServerSession): Promise<{ name: string; address: string } | null> {
+  const { sender, onBehalf } = await senderFor(session);
+  return onBehalf ? { name: sender.name, address: sender.address } : null;
+}
+
+/**
+ * Audit record for a delegate's send ("sent by <delegate> as <owner>", recipients, no content).
+ * Written before the message goes out: if it can't be recorded, it isn't sent.
+ */
+export async function recordDelegatedSend(onBehalf: ActiveDelegation | null, info: { via: string; to: unknown }): Promise<void> {
+  if (onBehalf) await auditDelegatedSend(onBehalf, info);
 }

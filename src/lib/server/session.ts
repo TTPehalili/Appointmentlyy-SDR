@@ -7,7 +7,7 @@
 import type { NextRequest, NextResponse } from 'next/server';
 import { AUTH_COOKIE_NAME, signAuthToken, verifyAuthToken } from '@/lib/authToken';
 import { ROLE_RANK, type Role } from '@/lib/roles';
-import { getTenantStore } from '@/lib/server/tenantStore';
+import { getTenantStore, publicBranding } from '@/lib/server/tenantStore';
 import { resolveIdentity, type Actor, type ResolvedIdentity } from '@/lib/server/tenancy';
 import { credentialFingerprint } from '@/lib/server/passwords';
 import { forgetSession, memoSession } from '@/lib/server/sessionMemo';
@@ -105,7 +105,7 @@ export function publicIdentity(identity: ResolvedIdentity) {
     tenantCode: t.code,
     tenantName: t.name,
     isPlatformAdmin: identity.isPlatformAdmin,
-    branding: t.branding,
+    branding: publicBranding(t.branding),
     modules: t.modules,
   };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenantStore } from '@/lib/server/tenantStore';
+import { getTenantStore, publicBranding } from '@/lib/server/tenantStore';
+import { withStoredDelegates } from '@/lib/server/emailDelegation';
 import { TenancyError, cleanBranding } from '@/lib/server/tenancy';
 import { getServerSession, hasRank } from '@/lib/server/session';
 
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(req);
   if (!session) return NextResponse.json({ success: false, error: 'Please sign in again.' }, { status: 401 });
   const t = session.identity.tenant;
-  return NextResponse.json({ success: true, tenantCode: t.code, tenantName: t.name, branding: t.branding, canEdit: hasRank(session, 'Admin') });
+  return NextResponse.json({ success: true, tenantCode: t.code, tenantName: t.name, branding: publicBranding(t.branding), canEdit: hasRank(session, 'Admin') });
 }
 
 /**
@@ -24,10 +25,10 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const store = getTenantStore();
     const tenant = session.identity.tenant;
-    const branding = cleanBranding(body, tenant.branding);
+    const branding = await withStoredDelegates(tenant.code, cleanBranding(body, tenant.branding));
     const updated = await store.updateTenant(tenant.code, { branding });
-    await store.addAudit({ actorEmail: session.email, tenantCode: tenant.code, action: 'tenant.branding', target: tenant.code, detail: { ...branding } });
-    return NextResponse.json({ success: true, branding: updated?.branding ?? branding });
+    await store.addAudit({ actorEmail: session.email, tenantCode: tenant.code, action: 'tenant.branding', target: tenant.code, detail: { ...publicBranding(branding) } });
+    return NextResponse.json({ success: true, branding: publicBranding(updated?.branding ?? branding) });
   } catch (e) {
     if (e instanceof TenancyError) return NextResponse.json({ success: false, error: e.message }, { status: e.status });
     console.error('[tenant/branding]', e);

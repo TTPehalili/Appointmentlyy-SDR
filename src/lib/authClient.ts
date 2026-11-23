@@ -31,6 +31,8 @@ export interface ServerIdentity {
   modules: Record<string, boolean>;
   /** The current workspace's logo (GET /api/tenant/logo/image), or null/undefined for its initials tile. */
   logoUrl?: string | null;
+  /** Set only for an owner's email delegate: the name and address their email goes out under. */
+  sendsAs?: { name: string; address: string } | null;
 }
 
 export interface WorkspaceOption {

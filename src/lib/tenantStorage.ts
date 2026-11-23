@@ -50,6 +50,7 @@ const DATA_KEYS = [
   'appy_tenant_brand',
   'appointmentlyy_practice_history_v1',
   'appointmentlyy_outreach_campaign_v1',
+  'appointmentlyy_lead_handoffs_applied_v1',
 ];
 const DATA_PREFIXES = ['tenant_'];
 

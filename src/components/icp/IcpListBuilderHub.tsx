@@ -79,6 +79,7 @@ import QuotaTopUpModal from './QuotaTopUpModal';
 import IcpBrainstorm, { type BrainstormProposal } from './IcpBrainstorm';
 import PullProgressPanel, { type PullProgressPanelProps } from './PullProgressPanel';
 import { useIcpTargetTenant } from './LeadCreditsAdmin';
+import { AssignToTeammateDialog, useCanAssignLeads } from '@/components/contacts/LeadHandoff';
 import { Button, Badge, Dialog, Meter, PageHeader, buttonClasses } from '@/components/ui';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useServerAuth } from '@/lib/authClient';
@@ -550,6 +551,9 @@ export default function IcpListBuilderHub() {
 
   // Redistribute modal state
   const [redistributeFolder, setRedistributeFolder] = useState<IcpFolder | null>(null);
+  // Send a copy of a folder's leads to a teammate's own Contacts (Admin and above; the server decides again).
+  const canAssignToTeammate = useCanAssignLeads();
+  const [assignFolder, setAssignFolder] = useState<{ name: string; leads: ContactRecord[] } | null>(null);
   const [redistributeReps, setRedistributeReps] = useState<string[]>([]);
   const [newRepInput, setNewRepInput] = useState('');
 
@@ -2987,6 +2991,19 @@ export default function IcpListBuilderHub() {
                             </Button>
                           )}
 
+                          {canAssignToTeammate && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={<UserPlus />}
+                              disabled={folderContacts.length === 0}
+                              onClick={() => setAssignFolder({ name: folder.name, leads: folderContacts })}
+                              data-handoff-open
+                            >
+                              Assign to teammate
+                            </Button>
+                          )}
+
                           {canExport ? (
                             <Button
                               variant="secondary"
@@ -3402,6 +3419,15 @@ export default function IcpListBuilderHub() {
         </main>
         )}
       </div>
+
+      {canAssignToTeammate && (
+        <AssignToTeammateDialog
+          open={assignFolder !== null}
+          onClose={() => setAssignFolder(null)}
+          leads={assignFolder?.leads ?? []}
+          folderName={assignFolder?.name ?? ''}
+        />
+      )}
 
       {/* Modal: Re-Distribute Folder Equally Across X Reps */}
       <Dialog

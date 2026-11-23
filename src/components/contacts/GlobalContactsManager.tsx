@@ -65,6 +65,7 @@ import {
   updateTenantRepsRoster,
 } from '@/lib/icpQuotaStore';
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
+import { AssignToTeammateDialog, useCanAssignLeads } from '@/components/contacts/LeadHandoff';
 import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 
 export default function GlobalContactsManager() {
@@ -72,6 +73,9 @@ export default function GlobalContactsManager() {
   const adminClearance = isRoleAdmin(role);
   const canReassign = canUserReassignLeads(role);
   const canExportCsv = canUserExportCsv(role);
+  // Send a copy of leads to a teammate's own Contacts (Admin and above; the server decides again).
+  const canAssignToTeammate = useCanAssignLeads();
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
 
   const [contacts, setContacts] = useState<ContactRecord[]>(() => getStoredContacts());
   const [folders, setFolders] = useState<IcpFolder[]>(() => getStoredFolders());
@@ -348,6 +352,18 @@ export default function GlobalContactsManager() {
     );
   }, [baseContactsBeforeStatus, selectedStatus]);
 
+  // "Assign to teammate": the ticked leads, or everything in the current view (e.g. one folder).
+  const leadsToAssign = useMemo(
+    () =>
+      selectedLeadIds.length > 0
+        ? contacts.filter((c) => selectedLeadIds.includes(c.id))
+        : filteredContacts,
+    [contacts, selectedLeadIds, filteredContacts]
+  );
+  const assignFolderName =
+    (selectedFolderFilter !== 'all' && folders.find((f) => f.id === selectedFolderFilter)?.name) ||
+    'Assigned leads';
+
   // Update a contact's Status inline
   const handleStatusChange = (contactId: string, nextStatus: string) => {
     if (!nextStatus) return;
@@ -457,6 +473,23 @@ export default function GlobalContactsManager() {
                     <Lock className="size-4" aria-hidden />
                     <span>Lead finder (admin only)</span>
                   </div>
+                )}
+
+                {canAssignToTeammate && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsAssignOpen(true)}
+                    disabled={leadsToAssign.length === 0}
+                    title={
+                      selectedLeadIds.length > 0
+                        ? 'Send a copy of the selected leads to a teammate'
+                        : 'Send a copy of the leads in this view to a teammate'
+                    }
+                    icon={<UserPlus className="text-fg-secondary" />}
+                    data-handoff-open
+                  >
+                    Assign to teammate ({leadsToAssign.length})
+                  </Button>
                 )}
 
                 {canExportCsv && (
@@ -1351,6 +1384,15 @@ export default function GlobalContactsManager() {
           </div>
         )}
       </Drawer>
+
+      {canAssignToTeammate && (
+        <AssignToTeammateDialog
+          open={isAssignOpen}
+          onClose={() => setIsAssignOpen(false)}
+          leads={leadsToAssign}
+          folderName={assignFolderName}
+        />
+      )}
 
       {/* CSV Import Modal (Restricted to Admins) */}
       {isCsvModalOpen && (

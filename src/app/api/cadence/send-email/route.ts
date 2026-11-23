@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSendingSession, serverSender } from '@/lib/server/sendingPolicy';
+import { recordDelegatedSend, requireSendingSession, senderFor } from '@/lib/server/sendingPolicy';
 import { getResendApiKey } from '@/lib/resendConfig';
 
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     const payload = await req.json();
     // The sender is decided on the server; a `from` in the body is ignored.
     const { to, subject, body, cadence_day, touch_number } = payload;
-    const sender = serverSender(gate.session);
+    const { sender, onBehalf } = await senderFor(gate.session);
 
     if (!to || !subject || !body) {
       return NextResponse.json(
@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
     let externalDispatchResult = null;
 
     if (resendApiKey) {
+      // A delegate's send is recorded under their own name first (no content). No record, no send.
+      await recordDelegatedSend(onBehalf, { via: 'cadence/send-email', to });
       try {
         const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',

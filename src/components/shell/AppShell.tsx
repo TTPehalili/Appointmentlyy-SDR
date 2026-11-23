@@ -13,6 +13,7 @@ import { ShellCommandPalette } from './ShellCommandPalette';
 import { ThemeSync } from './ThemeSync';
 import { SessionSync } from './SessionSync';
 import { ActivityEventSync } from '@/components/integrations/ActivityEventSync';
+import { LeadHandoffSync } from '@/components/contacts/LeadHandoff';
 import { ProductTour } from '@/components/tour/ProductTour';
 import { cn } from '@/lib/cn';
 
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SessionSync />
         </React.Suspense>
         <ActivityEventSync />
+        <LeadHandoffSync />
         <React.Suspense fallback={null}>
           <ProductTour />
         </React.Suspense>

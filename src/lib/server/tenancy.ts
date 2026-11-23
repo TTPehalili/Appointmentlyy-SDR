@@ -23,6 +23,7 @@ import {
   type Tenant,
   type TenantBranding,
 } from '@/lib/server/tenantStore';
+import { endEmailDelegationsFor } from '@/lib/server/emailDelegation';
 
 export class TenancyError extends Error {
   constructor(message: string, readonly status: number = 400) {
@@ -328,6 +329,10 @@ export async function inviteMember(
 
   let member: Member;
   if (existing) {
+    // A re-invite can change the role too (not through changeMemberRole): the same rule applies.
+    if (existing.role !== input.role && (existing.role === 'Super Admin' || input.role === 'Super Admin')) {
+      await endEmailDelegationsFor(existing, actor.email, { asDelegate: true, asOwner: existing.role === 'Super Admin', reason: 'role changed' });
+    }
     member = (await store.updateMember(existing.id, {
       name: input.name || existing.name,
       role: input.role,
@@ -385,6 +390,12 @@ export async function changeMemberRole(actor: Actor, memberId: string, role: Rol
   if (!(GRANTABLE[actor.role] ?? []).includes(role)) throw new TenancyError(`As ${actor.role} you can't give the ${role} role.`, 403);
   if (target.tenantCode !== PLATFORM_TENANT_CODE && !CLIENT_ROLES.includes(role)) throw new TenancyError('Super Admin is only for Appointmentlyy staff.');
   if (role !== 'Admin') await assertNotLastAdmin(target);
+  // Staff never hold a delegation, and someone who stops being staff can't keep delegates.
+  if (role !== target.role) {
+    // (To OR from Super Admin: a delegation that was parked while they were staff must not come back.)
+    const staffChange = role === 'Super Admin' || target.role === 'Super Admin';
+    await endEmailDelegationsFor(target, actor.email, { asDelegate: staffChange, asOwner: target.role === 'Super Admin', reason: 'role changed' });
+  }
   const updated = (await store.updateMember(memberId, { role }))!;
   await store.addAudit({ actorEmail: actor.email, tenantCode: target.tenantCode, action: 'member.role', target: target.email, detail: { from: target.role, to: role } });
   return updated;
@@ -396,6 +407,8 @@ export async function removeMember(actor: Actor, memberId: string): Promise<Memb
   if (!target) throw new TenancyError('Not found.', 404);
   assertCanManage(actor, target);
   await assertNotLastAdmin(target);
+  // Removal ends any email delegation they hold or gave (a later re-invite starts without it).
+  await endEmailDelegationsFor(target, actor.email, { asDelegate: true, asOwner: true, reason: 'member removed' });
   const updated = (await store.updateMember(memberId, { status: 'removed', inviteNonce: null }))!;
   await store.addAudit({ actorEmail: actor.email, tenantCode: target.tenantCode, action: 'member.remove', target: target.email, detail: {} });
   return updated;

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireApiSession } from '@/lib/server/apiSession';
+import { apiError, requireApiSession } from '@/lib/server/apiSession';
+import { PLATFORM_TENANT_CODE } from '@/lib/roles';
+import { limitPerUser } from '@/lib/server/userRateLimit';
 import type {
   IcpPullProgressEvent,
   IcpPullStreamEvent,
@@ -899,6 +901,15 @@ export async function POST(req: NextRequest) {
     if (session instanceof NextResponse) return session;
     // The workspace (used for de-duplicating pulls) comes from the session, never the request.
     const tenantCode = session.tenantCode;
+    // The platform's own workspace is shared by the owner, staff and the demo logins: there, only
+    // platform staff may search or pull (every POST mode reaches the data provider). The Lead Finder
+    // screen already hides the tool from the others; this is the same rule on the server. Client
+    // workspaces are unchanged.
+    if (tenantCode === PLATFORM_TENANT_CODE && !session.isPlatformAdmin) {
+      return apiError(403, 'Lead Finder is switched off for your login in this workspace. Ask the workspace owner to assign leads to you.');
+    }
+    const limited = limitPerUser('lead-finder', session, { maxRequests: 120 });
+    if (limited) return limited;
     const body = (await req.json()) as IcpSearchRequestPayload;
 
     // Paid calls (a pull, or one LinkedIn-URL enrich) go through the server-side caps first; free

@@ -52,6 +52,7 @@ import MergeFieldGaps, { unfilledMergeFields } from '@/components/outreach/Merge
 import { useSession } from '@/lib/session';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
+import { useServerAuth } from '@/lib/authClient';
 
 // B2B spam trigger words list
 const COMMON_SPAM_WORDS = [
@@ -69,9 +70,13 @@ export default function ColdEmailStudio() {
   // Dynamic verified sender from session
   // Demo workspace sends from the platform's verified domain. Client workspaces show the rep's own
   // name and address (their sending is paused until their email is connected in Admin › Integrations).
-  const senderDisplayName = session?.repName || (isDemo ? 'Emil Halili' : 'You');
+  // An owner's email delegate sends as the owner: the server decides (GET /api/auth/me), this only shows it.
+  const sendsAs = useServerAuth().identity?.sendsAs ?? null;
+  const senderDisplayName = sendsAs?.name || session?.repName || (isDemo ? 'Emil Halili' : 'You');
   const senderEmailRaw = session?.email || (isDemo ? 'emil@appointmentlyy.com' : '');
-  const verifiedSenderEmail = !isDemo
+  const verifiedSenderEmail = sendsAs
+    ? sendsAs.address
+    : !isDemo
     ? senderEmailRaw
     : senderEmailRaw.toLowerCase().endsWith('@appointmentlyy.com')
       ? senderEmailRaw
@@ -769,8 +774,9 @@ export default function ColdEmailStudio() {
 
             <div className="flex flex-wrap items-center gap-2 text-small text-fg-tertiary">
               <ShieldCheck className="h-4 w-4 shrink-0 text-fg-secondary" />
-              <span>
-                Sending as <span className="font-mono text-fg-secondary">{senderFrom}</span>
+              <span data-sending-as={sendsAs ? sendsAs.address : undefined}>
+                Sending as <span className="break-all font-mono text-fg-secondary">{senderFrom}</span>
+                {sendsAs && <span> (on their behalf)</span>}
               </span>
               {directSendStatus && (
                 <span className={`inline-flex items-center gap-1.5 text-small ${

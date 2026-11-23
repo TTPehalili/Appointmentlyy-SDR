@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Camera, Copy, Mail, Plus, Send, Trash2, Users } from 'lucide-react';
+import { Camera, Copy, Mail, MailCheck, MailX, Plus, Send, Trash2, Users } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -38,6 +38,9 @@ interface MemberRow {
   lastLoginAt: string | null;
   /** Photo to show (null = initials). */
   avatar?: string | null;
+  /** Platform owner's view only: who this person sends email as, and whether the owner may let them. */
+  sendsAs?: { name: string; mine: boolean } | null;
+  canSendAsMe?: boolean;
 }
 
 interface MembersReply {
@@ -47,6 +50,8 @@ interface MembersReply {
   grantable: Role[];
   me: string;
   members: MemberRow[];
+  /** Present only for the platform owner in the Appointmentlyy workspace. */
+  emailDelegation?: { ownerName: string };
 }
 
 const TH_ROW = 'h-9 bg-subtle';
@@ -68,6 +73,8 @@ export function MembersManager() {
   // The invite email failed. Platform staff get the link back to pass on; everyone else gets Resend.
   const [linkFor, setLinkFor] = React.useState<{ email: string; url?: string; memberId?: string } | null>(null);
   const [photoFor, setPhotoFor] = React.useState<MemberRow | null>(null);
+  // Owner only: let a member send email as the owner, or stop it.
+  const [delegating, setDelegating] = React.useState<{ member: MemberRow; stop: boolean } | null>(null);
 
   const load = React.useCallback(async () => {
     const res = await apiJson<MembersReply>('/api/tenant/members');
@@ -113,6 +120,15 @@ export function MembersManager() {
     const res = await apiJson(`/api/tenant/members/${m.id}`, { method: 'DELETE' });
     if (!res.success) return toast({ message: res.error || 'Could not remove this person.' });
     toast({ message: m.status === 'invited' ? `Invite to ${m.email} withdrawn.` : `${m.name || m.email} removed and signed out.` });
+    load();
+  };
+
+  const setSendAsMe = async (m: MemberRow, stop: boolean) => {
+    setBusy(m.id);
+    const res = await apiJson(`/api/tenant/members/${m.id}/delegate`, { method: stop ? 'DELETE' : 'POST' });
+    setBusy(null);
+    if (!res.success) return toast({ message: res.error || 'Could not save this. Nothing changed.' });
+    toast({ message: stop ? `${m.name || m.email} no longer sends as you.` : `${m.name || m.email} can now send and reply as you.` });
     load();
   };
 
@@ -220,6 +236,11 @@ export function MembersManager() {
                               <div className="text-body-strong text-fg">
                                 {display}
                                 {isMe && <span className="ml-1.5 text-small font-normal text-fg-tertiary">(you)</span>}
+                                {m.sendsAs && (
+                                  <span className="ml-2 align-middle" data-sends-as={m.email}>
+                                    <Badge tone="brand">Sends as {m.sendsAs.name}</Badge>
+                                  </span>
+                                )}
                               </div>
                               <div className="text-small text-fg-secondary">{m.email}</div>
                             </div>
@@ -259,6 +280,18 @@ export function MembersManager() {
                             {photoEditable && (
                               <IconButton label={`Change photo for ${display}`} size="sm" onClick={() => setPhotoFor(m)} data-member-photo={m.email}>
                                 <Camera className="h-4 w-4" />
+                              </IconButton>
+                            )}
+                            {data.emailDelegation && m.canSendAsMe && (!m.sendsAs || m.sendsAs.mine) && (
+                              <IconButton
+                                label={m.sendsAs ? `Stop sending as me: ${display}` : `Let this person send as me: ${display}`}
+                                size="sm"
+                                onClick={() => setDelegating({ member: m, stop: Boolean(m.sendsAs) })}
+                                disabled={busy === m.id}
+                                data-send-as-me={m.email}
+                                data-send-as-state={m.sendsAs ? 'on' : 'off'}
+                              >
+                                {m.sendsAs ? <MailX className="h-4 w-4" /> : <MailCheck className="h-4 w-4" />}
                               </IconButton>
                             )}
                             {m.status === 'invited' && canInvite && (
@@ -318,6 +351,34 @@ export function MembersManager() {
         }
         confirmLabel={removing?.status === 'invited' ? 'Withdraw invite' : 'Remove person'}
         icon={<Trash2 className="h-4 w-4" />}
+      />
+
+      <ConfirmDialog
+        open={delegating !== null}
+        onClose={() => setDelegating(null)}
+        onConfirm={() => {
+          if (delegating) setSendAsMe(delegating.member, delegating.stop);
+          setDelegating(null);
+        }}
+        tone={delegating?.stop ? 'danger' : 'primary'}
+        title={
+          delegating?.stop
+            ? `Stop ${delegating.member.name || delegating.member.email} sending as you?`
+            : `Let ${delegating?.member.name || delegating?.member.email} send as you?`
+        }
+        description={
+          delegating?.stop ? (
+            'From their next email they send under their own name again, and they no longer see replies to your emails.'
+          ) : (
+            <span data-send-as-explainer>
+              They can send new emails and reply to prospects as you: people see your name and address, not theirs. They also see the
+              replies in the Inbox. They get no access to Agreements, the Platform Console or Client Projects. Each email they send is
+              logged under their own name, and you can stop this at any time.
+            </span>
+          )
+        }
+        confirmLabel={delegating?.stop ? 'Stop sending as me' : 'Let this person send as me'}
+        icon={delegating?.stop ? <MailX className="h-4 w-4" /> : <MailCheck className="h-4 w-4" />}
       />
 
       {photoFor && (

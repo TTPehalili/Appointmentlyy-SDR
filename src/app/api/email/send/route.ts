@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSendingSession, serverSender } from '@/lib/server/sendingPolicy';
+import { recordDelegatedSend, requireSendingSession, senderFor } from '@/lib/server/sendingPolicy';
 import { formatEmailToParagraphs } from '@/lib/coldEmailStudio';
 import { getResendApiKey } from '@/lib/resendConfig';
 import { getConversationThreadKey, extractCleanEmailAddress } from '@/lib/emailStore';
@@ -83,7 +83,8 @@ export async function POST(req: NextRequest) {
     `.trim();
 
     // The sender comes from the signed-in person and the workspace's configured sender only.
-    const sender = serverSender(gate.session);
+    // An owner's email delegate sends as the owner (decided on the server, see emailDelegation.ts).
+    const { sender, onBehalf } = await senderFor(gate.session);
     const sanitizedFrom = sender.from;
 
     // The workspace's (platform) sending key. Per-workspace keys will come from Admin › Integrations.
@@ -96,6 +97,9 @@ export async function POST(req: NextRequest) {
     }
 
     let liveSendResult: any = null;
+
+    // A delegate's send is recorded under their own name first (no content). No record, no send.
+    await recordDelegatedSend(onBehalf, { via: 'email/send', to });
 
     try {
       const resendPayload: any = {
