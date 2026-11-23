@@ -9,6 +9,7 @@
  * with it and the regression test loads it directly.
  */
 import type { ContactRecord, LeadFootprintItem } from '@/lib/leadStore';
+import { LEAD_ACTIVITY_CHECKLIST } from '@/lib/leadActivityChecklist';
 
 export const MAX_HANDOFF_LEADS = 500;
 export const MAX_HANDOFF_FOLDER_NAME = 80;
@@ -65,6 +66,7 @@ const link = (v: unknown, max: number): string => {
 };
 
 const FOOTPRINT_TYPES: LeadFootprintItem['type'][] = ['call', 'email', 'linkedin', 'note', 'status'];
+const ACTIVITY_KEYS: ReadonlySet<string> = new Set(LEAD_ACTIVITY_CHECKLIST.flatMap((g) => g.items.map((i) => i.key)));
 
 function sanitiseFootprint(v: unknown): LeadFootprintItem[] {
   if (!Array.isArray(v)) return [];
@@ -84,6 +86,8 @@ function sanitiseFootprint(v: unknown): LeadFootprintItem[] {
     };
     const disposition = text(f.disposition, 80);
     if (disposition) item.disposition = disposition;
+    // Activity checklist ticks keep their key (known keys only), so the history still counts as ticks.
+    if (typeof f.activityKey === 'string' && ACTIVITY_KEYS.has(f.activityKey)) item.activityKey = f.activityKey;
     out.push(item);
   }
   return out;

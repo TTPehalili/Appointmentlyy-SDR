@@ -7,12 +7,15 @@
 import {
   ACTIVITY_EVENT_LABEL,
   ACTIVITY_EVENT_TYPES,
+  LEAD_ACTIVITY_EVENT_TYPE,
   type ActivityEventInput,
+  type LeadActivityEventInput,
   type ActivityEventType,
   type EventContact,
   type WebhookPayload,
 } from '@/lib/integrations';
 import { INTEGRATION_LIMITS } from '@/lib/integrations';
+import { LEAD_ACTIVITY_CHECKLIST } from '@/lib/leadActivityChecklist';
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]+$/;
@@ -100,11 +103,37 @@ function section(v: unknown, field: string, required: boolean): Record<string, u
   return v;
 }
 
-function oneEvent(raw: unknown, field: string, now: number): ActivityEventInput {
+/** Checklist activity key -> its label, from the one shared list (the browser's label is never used). */
+const LEAD_ACTIVITY_LABELS: ReadonlyMap<string, string> = new Map(LEAD_ACTIVITY_CHECKLIST.flatMap((g) => g.items.map((i) => [i.key, i.label] as const)));
+export const leadActivityLabel = (key: string): string | undefined => LEAD_ACTIVITY_LABELS.get(key);
+const FOOTPRINT_ID_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
+
+export const isLeadActivityEvent = (e: ActivityEventInput | LeadActivityEventInput): e is LeadActivityEventInput => e.type === LEAD_ACTIVITY_EVENT_TYPE;
+
+/** An activity checklist tick or untick. Only the key, the action and the timeline entry id are taken from the browser. */
+function leadActivityEvent(raw: Record<string, unknown>, id: string, field: string, now: number): LeadActivityEventInput {
+  const f = `${field}.activity`;
+  const a = section(raw.activity, f, true)!;
+  const key = a.key;
+  const label = typeof key === 'string' ? leadActivityLabel(key) : undefined;
+  if (typeof key !== 'string' || !label) throw new Bad(`${f}.key`, 'key is not an activity on the checklist.');
+  if (a.action !== 'ticked' && a.action !== 'unticked') throw new Bad(`${f}.action`, "action must be 'ticked' or 'unticked'.");
+  if (typeof a.footprintId !== 'string' || !FOOTPRINT_ID_RE.test(a.footprintId)) throw new Bad(`${f}.footprintId`, 'footprintId is not valid.');
+  return {
+    clientEventId: id.toLowerCase(),
+    type: LEAD_ACTIVITY_EVENT_TYPE,
+    occurredAt: isoTime(raw.occurredAt, `${field}.occurredAt`, { required: true, bounded: true }, now)!,
+    contact: contactOf(raw.contact, `${field}.contact`),
+    activity: { key, label, action: a.action, footprintId: a.footprintId },
+  };
+}
+
+function oneEvent(raw: unknown, field: string, now: number): ActivityEventInput | LeadActivityEventInput {
   if (!isObj(raw)) throw new Bad(field, 'Each event must be an object.');
   const id = raw.clientEventId;
   if (typeof id !== 'string' || !UUID_RE.test(id)) throw new Bad(`${field}.clientEventId`, 'clientEventId must be a UUID.');
   const type = raw.type;
+  if (type === LEAD_ACTIVITY_EVENT_TYPE) return leadActivityEvent(raw, id, field, now);
   if (typeof type !== 'string' || !(ACTIVITY_EVENT_TYPES as readonly string[]).includes(type)) {
     throw new Bad(`${field}.type`, `type must be one of: ${ACTIVITY_EVENT_TYPES.join(', ')}.`);
   }
@@ -165,7 +194,7 @@ function oneEvent(raw: unknown, field: string, now: number): ActivityEventInput 
 }
 
 /** Validate a whole batch: any invalid event rejects the batch (400) with the field path, e.g. "events[2].contact.email". */
-export function validateEventBatch(body: unknown, now = Date.now()): Result<ActivityEventInput[]> {
+export function validateEventBatch(body: unknown, now = Date.now()): Result<(ActivityEventInput | LeadActivityEventInput)[]> {
   if (!isObj(body) || !Array.isArray(body.events)) return { ok: false, error: 'Send { events: [...] }.', field: 'events' };
   const list = body.events;
   if (list.length === 0) return { ok: false, error: 'Send at least one event.', field: 'events' };
@@ -208,6 +237,11 @@ export function payloadOf(e: ActivityEventInput, workspace: Workspace, actor: Ac
   const { clientEventId: _id, type, occurredAt, ...data } = e;
   void _id;
   return { type, occurredAt, workspace, actor, data, version: 1 };
+}
+
+/** The stored payload of a checklist tick: same envelope, never sent to a webhook. */
+export function leadActivityPayloadOf(e: LeadActivityEventInput, workspace: Workspace, actor: ActorInfo): Record<string, unknown> {
+  return { type: e.type, occurredAt: e.occurredAt, workspace, actor, data: { contact: e.contact, activity: e.activity }, version: 1 };
 }
 
 /** The exact JSON body sent to receivers. `id` first so it's easy to spot in logs. */

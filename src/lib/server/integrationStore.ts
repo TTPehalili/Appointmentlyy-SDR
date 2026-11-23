@@ -19,7 +19,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { newId, nowIso } from '@/lib/server/tenantStore';
 import { open, seal } from '@/lib/server/secretBox';
 import { backoffAfter, BACKOFF_SECONDS, AUTO_DISABLE_REASON } from '@/lib/server/integrations/policy';
-import { INTEGRATION_LIMITS } from '@/lib/integrations';
+import { INTEGRATION_LIMITS, LEAD_ACTIVITY_EVENT_TYPE } from '@/lib/integrations';
 
 export type ConnectionStatus = 'connected' | 'needs_attention' | 'disconnected' | 'pending';
 
@@ -181,6 +181,21 @@ export interface DeliveryFilter {
   limit?: number;
 }
 
+export interface EventTypeFilter {
+  tenantCode: string;
+  type: string;
+  /** ISO times the server RECEIVED the event (createdAt): from inclusive, to exclusive. */
+  from: string;
+  to: string;
+  limit: number;
+  /**
+   * Only events sent by these people (actor_email as stored; pass every spelling you hold, e.g. the
+   * member's email as saved and lower-cased). Applied BEFORE `limit`, so a busy workspace or one
+   * person sending a lot can't push another person's rows past the cap. Omit for everyone.
+   */
+  actorEmails?: string[];
+}
+
 export type RetryResult = { ok: true; delivery: Delivery } | { ok: false; reason: 'not_found' | 'not_retryable' };
 
 export class EndpointLimitError extends Error {
@@ -215,6 +230,8 @@ export interface IntegrationStore {
    */
   recordEvent(e: NewEvent, summary: string): Promise<{ event: IntegrationEvent; duplicate: boolean; deliveries: Delivery[] }>;
   getEvent(id: string): Promise<IntegrationEvent | null>;
+  /** One workspace's events of one type received in [from, to), newest first, at most `limit`. */
+  listEventsByType(filter: EventTypeFilter): Promise<IntegrationEvent[]>;
   /** Event + one delivery to one endpoint, not scheduled for the worker (the caller sends it now). */
   createDirectDelivery(e: NewEvent, endpoint: WebhookEndpoint, summary: string): Promise<{ event: IntegrationEvent; delivery: Delivery }>;
   // deliveries
@@ -305,7 +322,9 @@ export function nextEndpointState(e: Pick<WebhookEndpoint, 'consecutiveFailures'
   } satisfies Partial<WebhookEndpoint>;
 }
 
-const subscribes = (e: WebhookEndpoint, type: string) => e.active && e.events.includes(type);
+/** Stored for reports only: never fanned out, whatever an endpoint row lists and however the event got here (a replayed client id included). */
+const neverDelivered = (type: string) => type === LEAD_ACTIVITY_EVENT_TYPE;
+const subscribes = (e: WebhookEndpoint, type: string) => e.active && !neverDelivered(type) && e.events.includes(type);
 
 function newWebhookDelivery(event: IntegrationEvent, endpoint: WebhookEndpoint, summary: string, scheduled: boolean): Omit<Delivery, 'id' | 'createdAt' | 'updatedAt'> {
   return {
@@ -531,6 +550,20 @@ class FileIntegrationStore implements IntegrationStore {
   }
   async getEvent(id: string) {
     return (await this.snapshot()).events.find((e) => e.id === id) ?? null;
+  }
+  async listEventsByType(f: EventTypeFilter) {
+    const from = Date.parse(f.from);
+    const to = Date.parse(f.to);
+    const actors = f.actorEmails?.length ? new Set(f.actorEmails.map((x) => x.toLowerCase())) : null;
+    return (await this.snapshot()).events
+      .filter((e) => {
+        if (e.tenantCode !== f.tenantCode || e.type !== f.type) return false;
+        if (actors && !actors.has((e.actorEmail || '').toLowerCase())) return false;
+        const t = Date.parse(e.createdAt);
+        return t >= from && t < to;
+      })
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+      .slice(0, Math.max(1, f.limit));
   }
   createDirectDelivery(e: NewEvent, endpoint: WebhookEndpoint, summary: string) {
     return this.mutate((d) => {
@@ -832,6 +865,7 @@ class SupabaseIntegrationStore implements IntegrationStore {
     return evFromRow(this.check(res) as Row);
   }
   private async fanOut(event: IntegrationEvent, summary: string): Promise<Delivery[]> {
+    if (neverDelivered(event.type)) return [];
     const endpoints = (
       this.check(
         await this.db
@@ -866,6 +900,34 @@ class SupabaseIntegrationStore implements IntegrationStore {
   async getEvent(id: string) {
     const r = this.check(await this.db.from('integration_events').select('*').eq('id', id).maybeSingle()) as Row | null;
     return r ? evFromRow(r) : null;
+  }
+  async listEventsByType(f: EventTypeFilter) {
+    // PostgREST returns at most 1,000 rows per request by default, so read in pages.
+    const PAGE = 1000;
+    const limit = Math.max(1, f.limit);
+    const out: IntegrationEvent[] = [];
+    const actors = [...new Set(f.actorEmails ?? [])].filter(Boolean);
+    while (out.length < limit) {
+      let q = this.db
+        .from('integration_events')
+        .select('*')
+        .eq('tenant_code', f.tenantCode)
+        .eq('type', f.type)
+        .gte('created_at', f.from)
+        .lt('created_at', f.to);
+      // Values go out as URL-encoded filter values (never spliced into an or() string).
+      if (actors.length === 1) q = q.eq('actor_email', actors[0]);
+      else if (actors.length > 1) q = q.in('actor_email', actors);
+      const rows = this.check(
+        await q
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(out.length, Math.min(out.length + PAGE, limit) - 1),
+      ) as Row[];
+      out.push(...rows.map(evFromRow));
+      if (rows.length < PAGE) break;
+    }
+    return out;
   }
   async createDirectDelivery(e: NewEvent, endpoint: WebhookEndpoint, summary: string) {
     const event = await this.insertEvent(e);

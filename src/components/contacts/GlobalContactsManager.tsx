@@ -70,6 +70,7 @@ import {
 import UploadLeadsCsvModal from '@/components/cockpit/UploadLeadsCsvModal';
 import { AssignToTeammateDialog, useCanAssignLeads } from '@/components/contacts/LeadHandoff';
 import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
+import { emitLeadActivityEvent } from '@/lib/activityEvents';
 import {
   LEAD_ACTIVITY_CHECKLIST,
   LEAD_ACTIVITY_TICK_SUMMARY,
@@ -440,8 +441,12 @@ export default function GlobalContactsManager() {
         repName: repName || role,
         activityKey: item.key,
       });
+      // Also report it for Reports > Lead activity (queued and retried; never blocks or undoes the tick).
+      const made = updated?.footprint?.[0];
+      if (made?.activityKey === item.key) emitLeadActivityEvent({ contact: stored, key: item.key, action: 'ticked', footprintId: made.id, occurredAt: made.isoDate });
     } else if (!checked && todayIds.length > 0) {
       updated = removeContactActivityTicks(stored.id, todayIds);
+      if (updated) for (const id of todayIds) emitLeadActivityEvent({ contact: stored, key: item.key, action: 'unticked', footprintId: id });
     }
     setContacts(getStoredContacts());
     setSelectedContact(updated || stored);

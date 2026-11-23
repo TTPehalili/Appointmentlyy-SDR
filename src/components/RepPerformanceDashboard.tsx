@@ -39,6 +39,7 @@ import { PageHeader, SegmentedControl, Button, StatTile, Badge, Tooltip, EmptySt
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { getStoredActivities, subscribeToActivities, type CadenceActivityRecord } from '@/lib/activityStore';
 import { csvCell } from '@/lib/csv';
+import LeadActivitySection from '@/components/reports/LeadActivitySection';
 
 export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
@@ -2424,6 +2425,9 @@ export default function RepPerformanceDashboard() {
           </div>
 
           </>)}
+
+          {/* LEAD ACTIVITY: activity checklist ticks, per person and lead (real data in every workspace) */}
+          <LeadActivitySection />
         </div>
       </div>
     </div>

@@ -17,7 +17,7 @@
  * - Flushes on `online`, when the tab becomes visible again, and (with `keepalive`) when it is hidden.
  * - Demo builds (browser-only login, no server session) send nothing.
  */
-import { ACTIVITY_EVENT_TYPES, INTEGRATION_LIMITS, type ActivityEventInput, type EventContact } from './integrations';
+import { ACTIVITY_EVENT_TYPES, INTEGRATION_LIMITS, LEAD_ACTIVITY_EVENT_TYPE, type ActivityEventInput, type EventContact, type LeadActivityAction, type LeadActivityEventInput } from './integrations';
 import { DEMO_LOGIN } from './demoMode';
 import { STORAGE_OWNER_KEY } from './tenantStorage';
 
@@ -46,8 +46,11 @@ const CONTACT_LIMITS = { id: 100, name: 200, email: 320, phone: 50, company: 200
 /** Same check as the server (src/lib/server/integrations/eventInput.ts). */
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]+$/;
 
+/** What the queue holds: webhook-able activity events and activity checklist ticks (same endpoint, same retries). */
+type OutboxEvent = ActivityEventInput | LeadActivityEventInput;
+
 interface QueuedEvent {
-  e: ActivityEventInput;
+  e: OutboxEvent;
   /** Queued at (ms). */
   q: number;
   /** Unconfirmed 2xx answers so far. */
@@ -235,7 +238,7 @@ function prune(key: string, now = Date.now()): QueuedEvent[] {
   return live;
 }
 
-function enqueue(events: ActivityEventInput[]) {
+function enqueue(events: OutboxEvent[]) {
   const key = queueKey();
   if (!key || events.length === 0) return;
   const now = Date.now();
@@ -249,7 +252,7 @@ function enqueue(events: ActivityEventInput[]) {
 }
 
 /** Removes settled ids; ids the server neither accepted nor flagged count as unconfirmed. */
-function settle(key: string, sent: ActivityEventInput[], done: Set<string>) {
+function settle(key: string, sent: OutboxEvent[], done: Set<string>) {
   const sentIds = new Set(sent.map((e) => e.clientEventId));
   let gaveUp = 0;
   const next: QueuedEvent[] = [];
@@ -279,7 +282,7 @@ function dropOne(key: string, id: string, reason: string) {
 
 /* ------------------------------------------------------------------ sending */
 
-async function post(events: ActivityEventInput[], keepalive = false): Promise<SendResult> {
+async function post(events: OutboxEvent[], keepalive = false): Promise<SendResult> {
   let res: Response;
   try {
     res = await fetch(ACTIVITY_EVENTS_ENDPOINT, {
@@ -465,6 +468,40 @@ export function emitActivityEvent(draft: ActivityEventDraft): string | null {
     return ev.clientEventId;
   } catch (err) {
     console.warn('[activityEvents] could not queue an activity event:', err);
+    return null;
+  }
+}
+
+/**
+ * An activity checklist tick or untick on a lead (Contacts lead panel), for the Lead activity report.
+ * Queued and retried like every other event; the tick itself already lives on the lead in this
+ * browser, so a failed or late send never blocks or undoes it. Never throws.
+ */
+export function emitLeadActivityEvent(input: {
+  contact: Parameters<typeof eventContact>[0];
+  key: string;
+  action: LeadActivityAction;
+  footprintId: string;
+  occurredAt?: string;
+}): string | null {
+  try {
+    if (!hasWindow() || DEMO_LOGIN) return null;
+    const key = clip(input.key, 80);
+    const footprintId = clip(input.footprintId, 80);
+    if (!key || !footprintId || !input.contact) return null;
+    const ev: LeadActivityEventInput = {
+      clientEventId: uuid(),
+      type: LEAD_ACTIVITY_EVENT_TYPE,
+      occurredAt: isoOrUndefined(input.occurredAt) ?? new Date().toISOString(),
+      contact: eventContact(input.contact),
+      activity: { key, action: input.action === 'unticked' ? 'unticked' : 'ticked', footprintId },
+    };
+    ensureStarted();
+    enqueue([ev]);
+    scheduleFlush(DEBOUNCE_MS);
+    return ev.clientEventId;
+  } catch (err) {
+    console.warn('[activityEvents] could not queue a lead activity event:', err);
     return null;
   }
 }

@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server';
 import { INTEGRATION_LIMITS } from '@/lib/integrations';
 import { getIntegrationStore } from '@/lib/server/integrationStore';
 import { fail, json, readJsonBody, requireMember } from '@/lib/server/integrations/api';
-import { eventSummary, payloadOf, subjectKeyOf, validateEventBatch } from '@/lib/server/integrations/eventInput';
+import { eventSummary, isLeadActivityEvent, leadActivityPayloadOf, payloadOf, subjectKeyOf, validateEventBatch } from '@/lib/server/integrations/eventInput';
 import { limiter } from '@/lib/server/integrations/rateLimit';
 import { nudgeDeliveryWorker } from '@/lib/server/integrations/worker';
 
@@ -13,6 +13,7 @@ const EVENTS_PER_MINUTE = 120;
  * POST /api/activity/events  body { events: ActivityEventInput[] } (1..20), any signed-in member.
  * Stores each event once (idempotent on clientEventId per workspace) and queues one delivery per
  * subscribed, active webhook endpoint. -> { accepted: string[]; duplicates: string[] }
+ * 'lead.activity' (activity checklist ticks) is stored the same way but never queues a delivery.
  */
 export async function POST(req: NextRequest) {
   const session = await requireMember(req);
@@ -48,6 +49,21 @@ export async function POST(req: NextRequest) {
         continue;
       }
       seen.add(e.clientEventId);
+      if (isLeadActivityEvent(e)) {
+        // Checklist ticks are for the Lead activity report only: stored once, never fanned out (no deliveries).
+        const stored = await store.insertEvent({
+          tenantCode: session.tenantCode,
+          type: e.type,
+          idempotencyKey: e.clientEventId,
+          payload: leadActivityPayloadOf(e, workspace, actor),
+          actorEmail: session.email,
+          schemaVersion: 1,
+          source: 'browser',
+          subjectKey: subjectKeyOf(e.contact),
+        });
+        (stored ? accepted : duplicates).push(e.clientEventId);
+        continue;
+      }
       const r = await store.recordEvent(
         {
           tenantCode: session.tenantCode,

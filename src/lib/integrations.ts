@@ -45,6 +45,62 @@ export const ACTIVITY_EVENT_LABEL: Record<ActivityEventType, string> = {
   'email.sent': 'Email sent',
 };
 
+/**
+ * Activity checklist ticks (Contacts lead panel). Stored in the same outbox so a supervisor can see
+ * a rep's lead activity (GET /api/activity/lead-activity), but it is NOT a webhook / CRM event:
+ * deliberately not in ACTIVITY_EVENT_TYPES or WEBHOOK_EVENT_TYPES, never fanned out, no deliveries.
+ */
+export const LEAD_ACTIVITY_EVENT_TYPE = 'lead.activity';
+export type LeadActivityAction = 'ticked' | 'unticked';
+
+export interface LeadActivityEventInput {
+  clientEventId: string;
+  type: typeof LEAD_ACTIVITY_EVENT_TYPE;
+  occurredAt: string;
+  contact: EventContact;
+  activity: {
+    /** One of the LEAD_ACTIVITY_CHECKLIST keys (lib/leadActivityChecklist). */
+    key: string;
+    /** Set by the server from the checklist; a label sent by the browser is ignored. */
+    label?: string;
+    action: LeadActivityAction;
+    /** The lead timeline entry this tick made (an untick names the same entry). */
+    footprintId: string;
+  };
+}
+
+/** GET /api/activity/lead-activity?from=&to=&member=&tz=  (who did what on which lead, by day). */
+export interface LeadActivityReport {
+  from: string;
+  to: string;
+  /** Supervisor and above see everyone in the workspace; everyone else sees only themselves. */
+  canSeeEveryone: boolean;
+  /** People the viewer may pick (just the viewer when canSeeEveryone is false). */
+  members: { email: string; name: string }[];
+  activities: { key: string; label: string; group: string }[];
+  reps: LeadActivityRep[];
+  /** True when the row cap was reached: narrow the dates to see everything. */
+  truncated: boolean;
+}
+export interface LeadActivityRep {
+  email: string;
+  name: string;
+  total: number;
+  totals: Record<string, number>;
+  days: {
+    /** Local day of the viewer, e.g. "2026-11-23". */
+    day: string;
+    leads: {
+      name: string;
+      company: string;
+      title: string;
+      linkedinUrl: string;
+      activities: { key: string; label: string; at: string }[];
+    }[];
+  }[];
+}
+export const LEAD_ACTIVITY_LIMITS = { maxRangeDays: 31, maxRows: 5000, requestsPerMinute: 60 } as const;
+
 /** The prospect as the browser knows it at the time of the event. */
 export interface EventContact {
   /** Browser contact id (stable per workspace browser data). */
