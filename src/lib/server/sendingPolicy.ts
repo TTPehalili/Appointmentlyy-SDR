@@ -72,7 +72,11 @@ export function serverSender(session: Pick<ServerSession, 'email' | 'name'>): Se
   const domain = configured.address.split('@')[1] || '';
   const own = (session.email || '').trim().toLowerCase();
   const address = domain && ADDRESS_RE.test(own) && own.endsWith(`@${domain}`) ? own : configured.address;
-  const name = cleanDisplayName(session.name || '') || cleanDisplayName(configured.name) || 'Appointmentlyy';
+  const fullName = cleanDisplayName(configured.name);
+  let name = cleanDisplayName(session.name || '') || fullName || 'Appointmentlyy';
+  // The mailbox's own person, known only by a first name taken from their email ("Emil"): sign with
+  // the mailbox's full name ("Emil Halili"). Anyone with a different name keeps their own.
+  if (address === configured.address && fullName.toLowerCase().startsWith(`${name.toLowerCase()} `)) name = fullName;
   const inbound = getResendInboundEmail();
   const personal = ADDRESS_RE.test(own) ? own : address;
   return { from: `${name} <${address}>`, address, name, replyTo: Array.from(new Set([inbound, personal])) };
