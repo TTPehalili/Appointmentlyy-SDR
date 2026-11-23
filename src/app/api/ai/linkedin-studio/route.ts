@@ -17,6 +17,18 @@ import { getServerSession } from '@/lib/server/session';
 import { isDemoSession } from '@/lib/demoMode';
 import { sanitizeColdEmail } from '@/lib/coldEmailStudio';
 import { campaignBrief, type AssistantCampaign } from '@/lib/coldEmailAssistant';
+import { contentSystemPost } from '@/lib/linkedinStudio';
+import {
+  LINKEDIN_AUDIENCE,
+  LINKEDIN_COMMENT_VOICE_RULES,
+  LINKEDIN_PILLARS,
+  auditStudioPost,
+  buildOwnerSeriesPrompt,
+  buildRetryNote,
+  joinCommentHashtags,
+  splitCommentHashtags,
+} from '@/lib/linkedinContentSystem';
+import { isLocalTestServer } from '@/lib/server/agreements/mail';
 
 interface LinkedInStudioPayload {
   action: 'generate_series' | 'generate_viral_comment' | 'generate_thread_reply';
@@ -49,6 +61,115 @@ function cleanPostText(v: unknown): string {
 }
 
 const NO_AI = { error: 'The writing model is unavailable right now. Try again in a moment.' };
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.5-flash'];
+
+/**
+ * Where the model calls go. Test only: on a local test server (file store, no production credential
+ * or Railway marker: isLocalTestServer) LINKEDIN_AI_TEST_BASE_URL may point at a loopback stand-in so
+ * the regression suite can read the outgoing prompt and script the reply. Anywhere else, and for any
+ * non-loopback value, it is ignored.
+ */
+function geminiBase(): string {
+  const test = (process.env.LINKEDIN_AI_TEST_BASE_URL || '').trim();
+  if (test && isLocalTestServer() && /^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(test)) return test;
+  return GEMINI_BASE;
+}
+
+/*
+ * Appointmentlyy (owner) workspace series: written by the LinkedIn Content System
+ * (src/lib/linkedinContentSystem.ts). Five posts, Monday to Friday, one per pillar, three comments each.
+ */
+type OwnerDraft = { title: string; posts: ReturnType<typeof contentSystemPost>[] };
+
+/** Straight quotes and tidy line breaks only. Dashes and bullets are left in place so the rules can catch them. */
+function plainModelText(v: unknown, max: number): string {
+  return (typeof v === 'string' ? v : '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .slice(0, max)
+    .trim();
+}
+
+/** One model reply in the tool's existing post shape, each post checked against the content rules. */
+function mapOwnerDraft(parsed: any): OwnerDraft | null {
+  if (!parsed || !Array.isArray(parsed.posts) || parsed.posts.length === 0) return null;
+  const stamp = Date.now();
+  const posts = parsed.posts.slice(0, 5).map((p: any, idx: number) => {
+    const slot = LINKEDIN_PILLARS[idx];
+    const comments: string[] = (Array.isArray(p?.comments) ? p.comments : []).slice(0, 5).map((c: any) => {
+      // The comment text may already end with its hashtags: keep one set, at the end.
+      const fromText = splitCommentHashtags(plainModelText(typeof c === 'string' ? c : c?.text, 600));
+      const listed: string[] = (Array.isArray(c?.hashtags) ? c.hashtags : [])
+        .filter((h: unknown): h is string => typeof h === 'string' && h.trim().length > 0)
+        .slice(0, 6)
+        .map((h: string) => `#${h.replace(/[#\s]/g, '').slice(0, 40)}`);
+      return joinCommentHashtags({ text: fromText.text, hashtags: listed.length > 0 ? listed : fromText.hashtags });
+    });
+    const parts = {
+      hook: plainModelText(p?.scene ?? p?.hook, 400),
+      body: plainModelText(p?.body, 1500),
+      cta: plainModelText(p?.ask ?? p?.cta, 300),
+    };
+    return contentSystemPost({
+      id: `post-ep${idx + 1}-${stamp}`,
+      episodeNumber: idx + 1,
+      day: slot.day,
+      pillar: slot.pillar,
+      title: plainModelText(p?.title, 120) || slot.pillar,
+      ...parts,
+      comments,
+      swapNote: plainModelText(p?.swap_notes ?? p?.swapNote, 300) || 'Check every name, number and detail is real before posting.',
+      issues: auditStudioPost({ ...parts, injectedComments: comments }),
+    });
+  });
+  return { title: plainModelText(parsed.seriesTitle, 120), posts };
+}
+
+/** Ask the model once (first candidate model that answers with usable JSON). Null when none does. */
+async function askOwnerSeries(prompt: string, apiKey: string): Promise<{ draft: OwnerDraft; model: string } | null> {
+  for (const model of GEMINI_MODELS) {
+    try {
+      const res = await fetch(`${geminiBase()}/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const draft = mapOwnerDraft(JSON.parse(rawText.replace(/```json/gi, '').replace(/```/g, '').trim()));
+      if (draft) return { draft, model };
+    } catch (modelErr) {
+      console.warn(`[LinkedIn Studio] Owner series model ${model} attempt failed:`, modelErr);
+    }
+  }
+  return null;
+}
+
+const brokenPosts = (d: OwnerDraft) => d.posts.filter((p) => (p.issues || []).length > 0);
+/** A draft is complete when it has all 5 weekday posts and none breaks a rule. */
+const needsRetry = (d: OwnerDraft) => d.posts.length < 5 || brokenPosts(d).length > 0;
+
+/**
+ * Write the owner-workspace series: one attempt, the rules checked on the server, and ONE retry when any
+ * post breaks a rule (or a weekday is missing). Posts that still fail come back with their issues listed.
+ */
+async function writeOwnerSeries(prompt: string, apiKey: string): Promise<{ draft: OwnerDraft; model: string } | null> {
+  const first = await askOwnerSeries(prompt, apiKey);
+  if (!first || !needsRetry(first.draft)) return first;
+  const problems = brokenPosts(first.draft).map((p) => ({ day: p.dayLabel.split('•')[0].trim(), issues: p.issues || [] }));
+  if (first.draft.posts.length < 5) problems.push({ day: 'Whole week', issues: ['exactly 5 posts, Monday to Friday'] });
+  const second = await askOwnerSeries(prompt + buildRetryNote(problems), apiKey);
+  if (!second) return first;
+  // Keep the better of the two: the full week first, then fewer rule-breaking posts (the retry wins a tie).
+  const score = (d: OwnerDraft) => (5 - d.posts.length) * 10 + brokenPosts(d).length;
+  return score(second.draft) <= score(first.draft) ? second : first;
+}
 
 /*
  * Client workspaces: the prompts below are written around the rep's own angle and campaign
@@ -196,6 +317,7 @@ MANDATORY RULES (CRITICAL VIOLATION IF BROKEN):
 3. SHORT AND PUNCHY: Keep comments between 18 and 42 words maximum. No bloated paragraphs.
 4. AUTHENTIC OPERATOR TONE: Sound like a sharp, thoughtful operator with genuine floor experience, NOT an AI bot, telemarketer, or sycophant.
 5. NO PITCHING: Never pitch Appointmentlyy or any product. Provide pure perspective, consultative inquiry, or frontline BPO observations.
+6. ${LINKEDIN_COMMENT_VOICE_RULES}
 
 Provide exactly 4 comment angles:
 1. "Counter-Perspective": Respectfully challenges an assumption in the post using operational reality, BPO floor economics, or broker dependency traps.
@@ -223,7 +345,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
 
       for (const model of candidateModels) {
         try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
+          const endpoint = `${geminiBase()}/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -322,6 +444,7 @@ MANDATORY RULES:
 2. ZERO EMOJIS: Do NOT use any emojis.
 3. SHORTER COMMENTS: Strictly between 18 and 38 words maximum.
 4. AUTHENTIC OPERATOR TONE: Sound like a sharp operational peer, not a generic AI bot or telemarketer.
+5. ${LINKEDIN_COMMENT_VOICE_RULES}
 
 Provide 3 stages:
 1. "Deepen Dialogue": Validates their reply thoughtfully while offering a specific operational perspective.
@@ -348,7 +471,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
 
       for (const model of candidateModels) {
         try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
+          const endpoint = `${geminiBase()}/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
           const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -427,131 +550,32 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
       });
     }
 
-    const seriesPrompt = !demo ? clientSeriesPrompt(userRawIdea, campaign, summary, framework, sender) : `You are a world-class B2B LinkedIn Thought Leadership strategist and 17-year veteran BDM specializing in BPO Operations, Outbound Client Acquisition, and Enterprise Appointment Setting.
-You are designing a high-retention, 3-Post Sequential LinkedIn Series for a BPO Business Development Manager (BDM), Founder, or Head of Floor Operations.
-
-=============================================================================
-CRITICAL STEP 1: DEEP ANALYSIS OF THE END USER'S IDEA BOX (USER RAW INPUT)
-=============================================================================
-The user typed the following raw thought, experience, or strategic direction into the Idea Box:
-"""
-${userRawIdea || 'Brokers take up to a 60% cut on cheap pay-per-performance campaigns while the BPO carries 100% of the OPEX burden. They take over control of operations without risking any capital. It is time to take internal acquisition back to all BPOs.'}
-"""
-
-YOU MUST ACCURATELY READ AND DEEPLY ANALYZE THIS USER INPUT:
-1. CORE THESIS EXTRACTION: What is the exact argument, observation, friction, or operational reality the user is asserting?
-2. OPERATIONAL NUANCE & NUMBERS: Pull out all specific figures, pain points, or historical context mentioned (e.g., 60% broker cut, 100% BPO OPEX burden, cheap pay-per-performance, loss of operational control, 17-year BDM problem, taking internal acquisition back).
-3. ARCHITECTURAL THROUGH-LINE: The entire 3-post series MUST be directly constructed around this specific idea. Do NOT ignore the user's idea. Do NOT output generic canned outbound advice. The user's idea is the primary anchor of the 3-post arc.
-
-=============================================================================
-CRITICAL STEP 2: FOUNDATIONAL BPO INDUSTRY POINT OF VIEW (POV) & SELLING POINT
-=============================================================================
-As an experienced BDM who has seen the industry from the trenches for 17 years, you understand the real BPO battlefield:
-- THE MIDDLEMAN / BROKER TRAP: Brokers supply BPOs with campaigns or outsourced tasks on cheap pay-per-performance or low commodity rates (for sales-driven outbound, appointment setting, lead gen, and non-sales BPO tasks).
-- THE 60% MARGIN SKIM: Brokers pocket up to 60% of the total client contract value.
-- TAKEOVER OF CONTROL: Brokers micromanage and take over control of the BPO's floor operations, imposing harsh penalties and dictating floor rules, while hiding the end client relationship.
-- TOTAL DISREGARD FOR BPO OPEX: Brokers do NOT care about the BPO's OPEX (rent, workstations, high-speed fiber, hardware, software licenses, agent healthcare, benefits, supervisor salaries, recruitment, attrition). The broker risks zero capital. The BPO carries 100% of the operational risk and cost burden in exchange for razor-thin, cheap profits.
-- 17-YEAR HISTORICAL PERSPECTIVE: This predatory cycle has trapped BPO startups and mid-size agencies for over 17 years since the BDM days 17 years ago.
-- THE CORE RALLYING CRY & SELLING POINT OF OUR LINKEDIN POSTS:
-  "IT IS TIME TO TAKE INTERNAL ACQUISITION BACK TO ALL BPOS."
-  When a BPO builds its own autonomous internal client acquisition engine, it bypasses middlemen, deals directly with North American and European enterprise clients, commands $22-$25+/hr direct retainers, retains 100% operational sovereignty and margin, and doubles enterprise valuation.
-
-=============================================================================
-CRITICAL STEP 3: ACCURATE FRAMEWORK EXECUTION (${framework.name.toUpperCase()})
-=============================================================================
-You must strictly incorporate the structure and philosophy of the selected writing framework:
-- Framework Name: ${framework.name} [${framework.tag}]
-- Description: ${framework.description}
-- Hook Architecture: ${framework.hookPhilosophy}
-- Body Architecture: ${framework.bodyPhilosophy}
-- CTA Architecture: ${framework.ctaPhilosophy}
-
-Every post's Hook, Body, and CTA must rigorously follow these exact architectural guidelines:
-- HOOK (First 2 Lines): Scroll-stopping before "see more". First line states the common belief or comfortable setup; second line drops the hammer with operational truth based on the user's idea and framework.
-- BODY: Strictly under 90 words per post. Use short 1-2 sentence paragraphs with clean line breaks. High retention readability. Razor-sharp operational diagnostic clarity. Zero corporate fluff.
-- CTA: A non-salesy, high-engagement open question that forces executives, founders, and operators to debate their own floor reality in the comments. Never say "DM me" or "link in bio".
-
-=============================================================================
-DATASET & CONTINUITY CONTEXT:
-=============================================================================
-- Grounded Accounts Analyzed: ${summary.totalLeads} accounts
-- Dominant Floor Size: ${summary.dominantHeadcount}
-- Target Account Pain Points: ${summary.topPainPoints.join(', ')}
-- Dominant Tech Stacks: ${summary.topTechStacks.join(', ')}
-- Incumbent Competitors: ${summary.topCompetitors.join(', ')}
-- Series Theme: ${preset.theme}
-- Campaign message (the rep's cold emails mirror these posts: keep the same angle, pain, proof, offer and terminology; never invent numbers):
-${campaignBrief(campaign)}
-- Continuity Hook Connecting to Last Drop: "${preset.recapHook}"
-
-=============================================================================
-EPISODIC CONTINUITY FOR THE 3 POSTS:
-=============================================================================
-- Episode 1 (Tuesday): The Bottleneck Unveiled (Presents the hidden trap, unmasks the 60% broker skim / OPEX exploitation / user's specific idea, and challenges conventional assumptions).
-- Episode 2 (Thursday): The Tactical Playbook (Breaks down the operational fix, how to regain operational sovereignty, and deploy an internal acquisition pod without burning client leads).
-- Episode 3 (Friday): The Debate & Series Bridge (Presents a high-stakes executive dilemma between broker dependency vs direct enterprise retainers, invites community debate, and bridges to next week's drop).
-
-=============================================================================
-MANDATORY RULES:
-=============================================================================
-1. ZERO EM DASHES: Do NOT use em dashes ("—" or "–" or "--"). Use commas, periods, or clean short clauses instead.
-2. ZERO EMOJIS: Do NOT use a single emoji anywhere in the post body, hooks, CTAs, or comments.
-3. BODY LENGTH: Strictly under 90 words per post body.
-4. INJECTED DISCUSSION COMMENTS (MUST BE BOLD, CONTROVERSIAL & ENGAGEMENT-IGNITING):
-   The primary purpose of injected comments is to provide the creator with follow-up comment injections to post directly beneath their own post immediately after publishing. This continues the engagement, provokes strong reactions, and compels readers (BPO founders, CROs, brokers, and floor directors) to comment their thoughts.
-   - THEY MUST BE BOLD, CONTROVERSIAL, AND UNAPOLOGETIC.
-   - Strictly NO polite, bland corporate PR platitudes or timid questions.
-   - MUST GENERATE EXACTLY 3 DISTINCT ENGAGEMENT-IGNITING COMMENTS:
-     * Comment 1 (The Sacred Cow Sledgehammer / Bold Truth Bomb): An unapologetic stance that exposes an uncomfortable truth about broker exploitation, OPEX subsidization, or operational delusions. End with a provocative challenge like "Agree or disagree?" or "Prove me wrong." (e.g. "Unpopular truth: If your BPO relies on broker pay-per-performance deals, you do not own a real business. You own a rented boiler room subsidizing a middleman margin. Agree or disagree?")
-     * Comment 2 (The Direct Executive Call-Out / Controversial Debate Flame): A spicy challenge or polarizing question that forces founders, brokers, and ops leaders to defend their position, reveal their floor realities, or confess their frustration in the comments. (e.g. "Brokers take home 60% while you carry 100% of the rent, workstations, and HMOs. At what point does accepting pay-per-performance become self-inflicted exploitation? Drop your thoughts below.")
-     * Comment 3 (The Devil's Advocate / Excuse-Shredder): Anticipates the typical defensive excuse (e.g. "brokers absorb the sales risk" or "classroom training builds culture") and dismantles it aggressively, daring commenters to push back or defend the broker model. (e.g. "I already hear brokers screaming: 'we absorb the sales risk.' Really? When campaigns fail, who pays the agent severance and lease penalties? You or the BPO? Let us hear the defense.")
-   - MANDATORY RESTRICTIONS:
-     * Strictly ZERO EM DASHES (no "—", "–", or "--").
-     * Strictly ZERO EMOJIS (no icons or smileys).
-     * Keep each comment punchy (between 18 and 38 words).
-5. HASHTAGS: Exactly 4 to 5 hyper-targeted hashtags (e.g. #BPOOperations #ClientAcquisition #DealEconomics #OperationalSovereignty #OutboundStrategy).
-6. GEMINI IMAGE GENERATION PROMPT: Clean minimalist editorial visual or infographic card on dark graphite/zinc backdrop with crisp typography and metric callout.
-7. GEMINI REALISTIC & RELATABLE PHOTO PROMPT (STRICT TOPIC & POV ALIGNMENT):
-   - Episode 1 / Broker Posts: Depict an arrogant, manipulative lead broker as a "devil in disguise" in an expensive dark charcoal bespoke suit with a crimson silk pocket square, steepled hands, calculating cynical smirk in a shadowy high-rise boardroom, over contracts stamped with 60% broker cut and cheap pay-per-performance terms, dramatic chiaroscuro lighting.
-   - Episode 2 / Sparring / Teleprompter Posts: Authentic young Filipino male SDR wearing an ergonomic headset in a high-tech Manila BGC outbound center, intensely engaged in live consultative calling with real-time teleprompter cues and discarded static PDF script.
-   - Episode 3 / Direct Equity / Client Posts: Collaborative peer partnership between a senior North American client executive and an articulate Filipino female BPO operations director analyzing direct seat contract economics ($24/hr direct retainer, 100% equity retention) by a transparent glass architectural whiteboard in Manila.
-   - Demographic Mandate: Frontline SDRs, callers, team leads, and operations managers MUST be explicitly described as authentic Filipino professionals with Southeast Asian features in Manila or Cebu tech offices. Foreign characters strictly reserved for showing client partnership.
-
-OUTPUT FORMAT:
-Return strictly a valid JSON object with the following schema:
-{
-  "seriesTitle": "The Autonomous BPO Outbound Series: Part 1-3",
-  "seriesHookRecap": "Recap connecting to last week's discussions",
-  "targetBottleneckSummary": "1-sentence summary of the core pain point addressed",
-  "targetAudience": "BPO Founders, CROs, and Outbound Operations Directors",
-  "posts": [
-    {
-      "episodeNumber": 1,
-      "dayLabel": "Tuesday • Episode 1",
-      "title": "Episode 1 Title",
-      "hook": "Scroll-stopping first 2 lines",
-      "body": "Post body under 90 words with clean line breaks",
-      "cta": "Engaging closing question",
-      "hashtags": ["#BPOOperations", "#ClientAcquisition"],
-      "imagePrompt": "Detailed prompt for Gemini / Imagen graphic generation",
-      "realisticPhotoPrompt": "Detailed candid 35mm photo prompt resonating with the specific topic (e.g. predatory broker devil in disguise with 60% margin contracts, scriptless teleprompter SDR, or client equity partnership)",
-      "visualCard": {
-        "type": "metric_callout",
-        "headline": "Short punchy card title",
-        "subheadline": "Context line",
-        "metric": "60%",
-        "metricLabel": "Description of metric",
-        "tag": "EPISODE 01 • THE BOTTLENECK"
-      },
-      "injectedComments": [
-        "Comment 1 under 35 words: bold provocative truth bomb ending in a challenge, no em dashes, no emojis",
-        "Comment 2 under 35 words: controversial executive call-out compelling readers to comment thoughts, no em dashes, no emojis",
-        "Comment 3 under 35 words: spicy devil advocate shredding common excuses and daring pushback, no em dashes, no emojis"
-      ]
+    // Appointmentlyy (owner) workspace: the LinkedIn Content System writes the series (5 posts, Monday to
+    // Friday, one per pillar). The story and campaign text go in as fenced untrusted data, the rules are checked
+    // here on the server, and a draft that breaks one is retried once. Client workspaces never take this branch.
+    if (demo) {
+      const author = { name: session.name || '', role: session.isPlatformAdmin ? 'founder' : session.role };
+      const written = await writeOwnerSeries(buildOwnerSeriesPrompt({ author, story: userRawIdea, campaignBrief: campaignBrief(campaign) }), googleApiKey);
+      if (written) {
+        const ownerSeries: LinkedInSeries = {
+          seriesTitle: written.draft.title || 'This week: Monday to Friday',
+          seriesHookRecap: '',
+          targetBottleneckSummary: 'One short true story per pillar, Monday to Friday.',
+          targetAudience: LINKEDIN_AUDIENCE,
+          posts: written.draft.posts,
+        };
+        return NextResponse.json({ source: `gemini_${written.model}`, csvSummary: summary, series: ownerSeries });
+      }
+      // No usable reply from any model: the built-in posts for the selected week.
+      return NextResponse.json({
+        source: 'deterministic_fallback',
+        csvSummary: summary,
+        series: getDeterministicLinkedInSeries(summary, frameworkId, presetId)
+      });
     }
-  ]
-}
-Output ONLY valid JSON. No markdown ticks, no preamble.`;
+
+    // Client workspaces from here on (demo is false below; the demo-only mapping further down is no longer reached).
+    const seriesPrompt = clientSeriesPrompt(userRawIdea, campaign, summary, framework, sender);
 
     const candidateModels = [
       'gemini-3.5-flash-lite',
@@ -561,7 +585,7 @@ Output ONLY valid JSON. No markdown ticks, no preamble.`;
 
     for (const model of candidateModels) {
       try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
+        const endpoint = `${geminiBase()}/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

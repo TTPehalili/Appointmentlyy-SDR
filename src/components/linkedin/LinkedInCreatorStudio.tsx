@@ -54,6 +54,7 @@ import {
   ViralCommentDraft, 
   ThreadFollowUpDraft 
 } from '@/lib/linkedinStudio';
+import { LINKEDIN_COMMENT_PLAN, auditStudioPost, joinPostParts } from '@/lib/linkedinContentSystem';
 import { DEMO_CADENCE_LEADS, CadenceLeadRecord } from '@/lib/cadenceMaster';
 import { isDemoWorkspace } from '@/lib/demoMode';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
@@ -108,9 +109,8 @@ export default function LinkedInCreatorStudio() {
       const fromCampaign = describeCampaign(getCampaignMessage());
       if (fromCampaign) return fromCampaign;
     }
-    return isDemoWorkspace()
-      ? 'Brokers take up to a 60% cut on cheap pay-per-performance campaigns while the BPO carries 100% of the OPEX burden. They take over operations without risking any capital. It is time to take internal acquisition back to all BPOs.'
-      : '';
+    // Starts empty in every workspace: the writer may only use story details the person typed (never invented numbers).
+    return '';
   });
   const [isGeneratingSeries, setIsGeneratingSeries] = useState(false);
   // The sample series is the platform owner's: client workspaces start empty until they write one.
@@ -155,6 +155,9 @@ export default function LinkedInCreatorStudio() {
 
   // Copy Feedback State
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Appointmentlyy workspace: what "Audit rules" found on a post (content rules from validatePost).
+  const [auditByPost, setAuditByPost] = useState<Record<string, { issues: string[]; fixed: string[] }>>({});
 
   // Load cached CSV leads from localStorage
   useEffect(() => {
@@ -232,12 +235,41 @@ export default function LinkedInCreatorStudio() {
           const bodyText = field === 'body' ? value : p.body;
           const ctaText = field === 'cta' ? value : p.cta;
           updated.wordCount = `${hookText} ${bodyText} ${ctaText}`.trim().split(/\s+/).filter(Boolean).length;
+          if (isDemo) delete updated.issues;
           return updated;
         }
         return p;
       });
       return { ...prev, posts: updatedPosts };
     });
+    if (isDemo) setAuditByPost(prev => { const next = { ...prev }; delete next[postId]; return next; });
+  };
+
+  // Appointmentlyy workspace: "Audit rules" checks the post against the content rules (validatePost), then runs
+  // the same clean-up as before, one line at a time so the short lines of the post stay as written.
+  const handleAuditPost = (postId: string) => {
+    const post = seriesData?.posts.find(p => p.id === postId);
+    if (!post) return;
+    const cleanLines = (t: string) => (t || '').split('\n').map(line => sanitizeTextForLinkedIn(line)).join('\n');
+    const cleaned = {
+      hook: cleanLines(post.hook),
+      body: cleanLines(post.body),
+      cta: cleanLines(post.cta),
+      injectedComments: (post.injectedComments || []).map(c => sanitizeTextForLinkedIn(c))
+    };
+    const before = auditStudioPost(post);
+    const after = auditStudioPost(cleaned);
+    const { issues: _checked, ...rest } = post;
+    void _checked;
+    const updated: LinkedInPost = {
+      ...rest,
+      ...cleaned,
+      wordCount: `${cleaned.hook} ${cleaned.body} ${cleaned.cta}`.trim().split(/\s+/).filter(Boolean).length
+    };
+    setSeriesData(prev => (prev ? { ...prev, posts: prev.posts.map(p => (p.id === postId ? updated : p)) } : prev));
+    setAuditByPost(prev => ({ ...prev, [postId]: { issues: before, fixed: before.filter(i => !after.includes(i)) } }));
+    setCopiedKey(`cleaned-${postId}`);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   // Sanitize post (remove em dashes and emojis)
@@ -390,7 +422,12 @@ export default function LinkedInCreatorStudio() {
   // Active post in the LinkedIn feed
   const posts = seriesData?.posts ?? [];
   const activePost: LinkedInPost | undefined = posts[activeEpisodeIdx] || posts[0];
-  const fullPostText = activePost ? `${activePost.hook}\n\n${activePost.body}\n\n${activePost.cta}\n\n${activePost.hashtags.join(' ')}` : '';
+  // Appointmentlyy workspace: the post is copied without a hashtag line (hashtags live in the comments).
+  const fullPostText = !activePost ? '' : isDemo ? joinPostParts(activePost) : `${activePost.hook}\n\n${activePost.body}\n\n${activePost.cta}\n\n${activePost.hashtags.join(' ')}`;
+  // What the server (or the last "Audit rules" click) found on the active post.
+  const activeAudit = isDemo && activePost
+    ? auditByPost[activePost.id] || (activePost.issues ? { issues: activePost.issues, fixed: [] as string[] } : null)
+    : null;
 
   // Campaign message -> the idea box of this tab.
   const useCampaignHere = (c: CampaignMessage) => {
@@ -516,9 +553,10 @@ export default function LinkedInCreatorStudio() {
 
             {/* Episode switcher and post actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              {/* Appointmentlyy workspace: five weekdays wrap onto a second row on a phone instead of overflowing. */}
+              <div className={isDemo ? 'flex min-w-0 max-w-full items-center gap-2' : 'flex items-center gap-2'}>
                 <span className="text-small text-fg-secondary">Episode</span>
-                <div className="inline-flex rounded-md border border-line bg-subtle p-0.5">
+                <div className={isDemo ? 'inline-flex max-w-full flex-wrap rounded-md border border-line bg-subtle p-0.5' : 'inline-flex rounded-md border border-line bg-subtle p-0.5'}>
                   {posts.map((p, idx) => {
                     const isSelected = activeEpisodeIdx === idx;
                     return (
@@ -555,11 +593,11 @@ export default function LinkedInCreatorStudio() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleCleanPost(activePost.id)}
-                  title="Verify 0 em-dashes and 0 emojis"
+                  onClick={() => (isDemo ? handleAuditPost(activePost.id) : handleCleanPost(activePost.id))}
+                  title={isDemo ? 'Check the post against the content rules, then clean up dashes and emojis' : 'Verify 0 em-dashes and 0 emojis'}
                 >
                   {copiedKey === `cleaned-${activePost.id}` ? <Check /> : <ShieldCheck />}
-                  <span>{copiedKey === `cleaned-${activePost.id}` ? 'Cleaned' : 'Audit rules'}</span>
+                  <span>{copiedKey === `cleaned-${activePost.id}` ? (isDemo ? 'Checked' : 'Cleaned') : 'Audit rules'}</span>
                 </Button>
 
                 <Button
@@ -592,6 +630,29 @@ export default function LinkedInCreatorStudio() {
                 </Button>
               </div>
             </div>
+
+            {activeAudit && (
+              <div data-li-audit role="status" className="rounded-lg border border-line bg-surface px-4 py-3 text-left text-small shadow-xs">
+                {activeAudit.issues.length === 0 ? (
+                  <p className="flex items-center gap-1.5 text-fg">
+                    <CheckCircle className="h-4 w-4 shrink-0 text-success-fg" aria-hidden />
+                    <span>All content rules pass.</span>
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-medium text-fg">Rules to fix before posting</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-fg-secondary">
+                      {activeAudit.issues.map((issue, iIdx) => (
+                        <li key={iIdx}>
+                          {issue}
+                          {activeAudit.fixed.includes(issue) ? ' (cleaned up for you)' : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Post preview card */}
             <div className="overflow-hidden rounded-lg border border-line bg-surface text-left shadow-xs">
@@ -647,7 +708,7 @@ export default function LinkedInCreatorStudio() {
                       />
                     </label>
                     <label className="block space-y-1.5">
-                      <span className="block text-small font-medium text-fg">Body (under 90 words)</span>
+                      <span className="block text-small font-medium text-fg">{isDemo ? 'Body (whole post under 100 words)' : 'Body (under 90 words)'}</span>
                       <Textarea
                         rows={5}
                         value={activePost.body}
@@ -686,6 +747,7 @@ export default function LinkedInCreatorStudio() {
                       {activePost.cta}
                     </div>
 
+                    {(!isDemo || activePost.hashtags.length > 0) && (
                     <div className="space-x-1.5 pt-1 text-small text-fg-secondary">
                       {activePost.hashtags.map((tag, tIdx) => (
                         <span key={tIdx}>
@@ -693,6 +755,13 @@ export default function LinkedInCreatorStudio() {
                         </span>
                       ))}
                     </div>
+                    )}
+
+                    {isDemo && activePost.swapNote && (
+                      <p data-li-swap className="border-t border-line pt-2 text-small text-fg-secondary">
+                        Before posting: {activePost.swapNote}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -821,7 +890,9 @@ export default function LinkedInCreatorStudio() {
                               <span className="text-caption text-fg-tertiary">Author</span>
                             </div>
                             <span className="text-caption text-fg-tertiary">
-                              {cIdx === 0 ? 'Comment 1 (Sacred Cow)' : cIdx === 1 ? 'Comment 2 (Debate Flame)' : 'Comment 3 (Excuse Shredder)'}
+                              {isDemo
+                                ? `Comment ${cIdx + 1}${LINKEDIN_COMMENT_PLAN[cIdx] ? ` (${LINKEDIN_COMMENT_PLAN[cIdx].label})` : ''}`
+                                : cIdx === 0 ? 'Comment 1 (Sacred Cow)' : cIdx === 1 ? 'Comment 2 (Debate Flame)' : 'Comment 3 (Excuse Shredder)'}
                             </span>
                           </div>
                           <p className="text-small leading-snug text-fg">
@@ -868,7 +939,7 @@ export default function LinkedInCreatorStudio() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-fg-secondary">Cadence</dt>
-                  <dd className="text-right text-fg">Tue, Thu, Fri</dd>
+                  <dd className="text-right text-fg">Mon to Fri</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-fg-secondary">This week</dt>
@@ -976,7 +1047,7 @@ export default function LinkedInCreatorStudio() {
               <Button
                 variant="primary"
                 onClick={() => handleGenerateSeries()}
-                disabled={isGeneratingSeries || (!isDemo && !customTopic.trim() && !describeCampaign(campaign))}
+                disabled={isGeneratingSeries || (!customTopic.trim() && !describeCampaign(campaign))}
                 className="w-full"
               >
                 {isGeneratingSeries ? (
@@ -987,7 +1058,7 @@ export default function LinkedInCreatorStudio() {
                 ) : (
                   <>
                     <Sparkles />
-                    <span>Write 3-post series</span>
+                    <span>{isDemo ? 'Write 5-post series' : 'Write 3-post series'}</span>
                   </>
                 )}
               </Button>
