@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -111,6 +111,9 @@ export default function ColdEmailStudio() {
         if (toParam) {
           setProspectEmailState(toParam);
           localStorage.setItem('sdr_target_recipient_email', toParam);
+          // A lead opened from Contacts is a new email: never carry the previous email's "Sent" lock over.
+          setSendButtonState('idle');
+          setDirectSendStatus(null);
         }
         if (nameParam) setProspectName(nameParam);
         if (companyParam) setProspectCompany(companyParam);
@@ -175,6 +178,15 @@ export default function ColdEmailStudio() {
   const [sendButtonState, setSendButtonState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [directSendStatus, setDirectSendStatus] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // This page stays mounted (hidden) while the rep is elsewhere (cacheComponents keeps it in an Activity).
+  // When it is hidden, clear the previous send's "Sent" lock so the next lead's email can be sent.
+  useLayoutEffect(() => {
+    return () => {
+      setSendButtonState('idle');
+      setDirectSendStatus(null);
+    };
+  }, []);
 
   // Deliverability Playbook Expansion State
   const [showPlaybookDetails, setShowPlaybookDetails] = useState<boolean>(false);
