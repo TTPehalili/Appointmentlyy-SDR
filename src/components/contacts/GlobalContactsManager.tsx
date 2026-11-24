@@ -424,16 +424,18 @@ export default function GlobalContactsManager() {
     }
   };
 
-  // Activity checklist: a tick is one timeline entry for today; unticking removes that entry.
-  // Works from the stored lead so a fast double click cannot record the same activity twice.
+  // Activity checklist: a tick is one timeline entry and stays ticked (progress tracker). 'again'
+  // logs the same activity on a later day; unticking removes only the most recent entry.
+  // Works from the stored lead so a fast double click cannot record the same activity twice in a day.
   // Never touches the notes box or the lead's status.
-  const handleActivityTick = (group: LeadActivityGroup, item: LeadActivityOption, checked: boolean) => {
+  const handleActivityTick = (group: LeadActivityGroup, item: LeadActivityOption, action: 'tick' | 'again' | 'untick') => {
     if (!selectedContact) return;
     const stored = getStoredContacts().find((c) => c.id === selectedContact.id);
     if (!stored) return;
-    const todayIds = getLeadActivityState(stored.footprint)[item.key]?.todayIds || [];
+    const st = getLeadActivityState(stored.footprint)[item.key];
+    if (!st) return;
     let updated: ContactRecord | null = null;
-    if (checked && todayIds.length === 0) {
+    if ((action === 'tick' && st.count === 0) || (action === 'again' && st.count > 0 && !st.doneToday)) {
       updated = recordContactTouch(stored.id, {
         type: group.type,
         title: item.label,
@@ -444,9 +446,9 @@ export default function GlobalContactsManager() {
       // Also report it for Reports > Lead activity (queued and retried; never blocks or undoes the tick).
       const made = updated?.footprint?.[0];
       if (made?.activityKey === item.key) emitLeadActivityEvent({ contact: stored, key: item.key, action: 'ticked', footprintId: made.id, occurredAt: made.isoDate });
-    } else if (!checked && todayIds.length > 0) {
-      updated = removeContactActivityTicks(stored.id, todayIds);
-      if (updated) for (const id of todayIds) emitLeadActivityEvent({ contact: stored, key: item.key, action: 'unticked', footprintId: id });
+    } else if (action === 'untick' && st.lastId) {
+      updated = removeContactActivityTicks(stored.id, [st.lastId]);
+      if (updated) emitLeadActivityEvent({ contact: stored, key: item.key, action: 'unticked', footprintId: st.lastId });
     }
     setContacts(getStoredContacts());
     setSelectedContact(updated || stored);
@@ -1296,14 +1298,14 @@ export default function GlobalContactsManager() {
                 )}
               </section>
 
-              {/* ACTIVITY CHECKLIST: what the rep did for this lead today */}
+              {/* ACTIVITY CHECKLIST: the steps done for this lead so far, with dates */}
               {(() => {
                 const activityState = getLeadActivityState(selectedContact.footprint);
                 return (
                   <section className="rounded-lg border border-line p-4 space-y-3" data-testid="activity-checklist">
                     <div>
                       <h3 className="text-h3 text-fg">Activity checklist</h3>
-                      <p className="text-small text-fg-tertiary">Tick what you did for this lead today.</p>
+                      <p className="text-small text-fg-tertiary">Tick each step as you do it. Ticks stay on the lead.</p>
                     </div>
                     {LEAD_ACTIVITY_CHECKLIST.map((group) => (
                       <fieldset key={group.type} className="space-y-2 min-w-0">
@@ -1315,12 +1317,23 @@ export default function GlobalContactsManager() {
                               <Checkbox
                                 label={item.label}
                                 data-activity-key={item.key}
-                                checked={st.todayIds.length > 0}
-                                onChange={(e) => handleActivityTick(group, item, e.target.checked)}
+                                checked={st.count > 0}
+                                onChange={(e) => handleActivityTick(group, item, e.target.checked ? 'tick' : 'untick')}
                               />
-                              {st.earlierCount > 0 && (
-                                <span className="ml-auto text-caption text-fg-tertiary tabular-nums" data-activity-history={item.key}>
-                                  done {st.earlierCount}x, last {st.earlierLast}
+                              {st.count > 0 && (
+                                <span className="ml-auto flex items-center gap-2 text-caption text-fg-tertiary">
+                                  <span className="tabular-nums" data-activity-history={item.key}>{st.hint}</span>
+                                  {!st.doneToday && (
+                                    <button
+                                      type="button"
+                                      data-activity-again={item.key}
+                                      aria-label={`Log again: ${item.label}`}
+                                      onClick={() => handleActivityTick(group, item, 'again')}
+                                      className="focus-ring rounded-sm text-caption text-fg-secondary underline hover:text-fg cursor-pointer"
+                                    >
+                                      Log again
+                                    </button>
+                                  )}
                                 </span>
                               )}
                             </div>
