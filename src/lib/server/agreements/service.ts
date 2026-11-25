@@ -742,7 +742,6 @@ export async function recordPayment(
     `Hi ${first},`,
     `Thank you: we received ${fmtMoney(input.amount, b.currency)} on ${input.date} for billing statement ${b.number} (Wise reference ${input.reference}).`,
     full ? 'The statement is now paid in full. A copy stamped PAID is attached.' : `The remaining balance is ${fmtMoney(balanceOf(b), b.currency)}. A copy showing the payment is attached.`,
-    'An official BIR invoice is issued separately for this payment.',
   ];
   const r = await sendAgreementMail(
     {

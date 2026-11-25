@@ -120,14 +120,13 @@ function money2(n: number): string {
 
 const FOOTER_LINES = (days: string) => [
   'Transfer fees are paid by the sender, so the full amount is received.',
-  'An official BIR invoice is issued upon receipt of payment.',
   `Payable within ${days} business days.`,
 ];
 
 export const billingStatementV1: AgreementTemplateDef = {
   id: 'billing-statement-v1',
   name: 'Billing Statement',
-  description: 'A one-page payment request (USD; Wise, bank transfer or PayPal). Not a BIR invoice: that is issued when payment is received.',
+  description: 'A one-page payment request (USD; Wise, bank transfer or PayPal).',
   action: 'view',
   countersign: false,
   fields: FIELDS,
