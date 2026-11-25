@@ -102,6 +102,7 @@ export default function NewTicketModal({
           priority,
           affectedUrl,
           systemInfo,
+          source: 'desk',
         }),
       });
 

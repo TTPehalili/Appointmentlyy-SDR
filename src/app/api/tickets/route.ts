@@ -1,193 +1,156 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { 
-  readStoredTicketsServer, 
-  writeStoredTicketsServer, 
-  generateTicketId, 
-  TroubleTicket, 
-  TicketPriority, 
-  TicketCategory 
-} from '@/lib/ticketStore';
-import { 
-  sendCustomerTicketConfirmation, 
-  sendAdminTicketAlert 
-} from '@/lib/ticketEmailer';
+import { NextRequest } from 'next/server';
 import { getServerSession } from '@/lib/server/session';
-import { scopeTicketsFor } from '@/lib/server/ticketScope';
+import { limitPerUser } from '@/lib/server/userRateLimit';
+import { getSupportTicketStore, type NewTicketInput } from '@/lib/server/supportTickets';
+import { canViewTicket, ticketScopeFor, ticketViewFor } from '@/lib/server/ticketScope';
+import { cleanText, fail, ok, readJsonObject, sendLater, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
+import { sendAdminTicketAlert, sendCustomerTicketConfirmation } from '@/lib/ticketEmailer';
+import {
+  SUPPORT_AREAS,
+  SUPPORT_LIMITS,
+  URGENCY_OPTIONS,
+  URGENCY_PRIORITY,
+  cleanSupportContext,
+  guessArea,
+  isSupportArea,
+  type TicketUrgency,
+} from '@/lib/supportReport';
+import { TICKET_CATEGORY_VALUES, TICKET_PRIORITIES, TICKET_STATUSES, type TicketCategory, type TicketPriority, type TicketStatus } from '@/lib/ticketTypes';
+import { EMAIL_RE, TENANT_CODE_RE } from '@/lib/roles';
 
+/** A report (text + captured context) is small; screenshots go up separately, one per request. */
+const MAX_BODY = 96 * 1024;
+const LIST_LIMIT = 200;
 
 /**
- * GET /api/tickets
- * Query params: tenant, status, priority, search
+ * GET /api/tickets?status=&priority=&tenant=&search=&mine=1
+ * The tickets this person may see (ticketScope.ts): staff every workspace, Supervisor+ their workspace, Reps their own.
+ * Every filter only narrows that list.
  */
 export async function GET(req: NextRequest) {
+  const session = await getServerSession(req);
+  if (!session) return fail(401, 'Please sign in again.');
+  const limited = limitPerUser('tickets-read', session, { maxRequests: 120 });
+  if (limited) return limited;
+  const viewer = viewerOf(session);
+  const sp = req.nextUrl.searchParams;
+  const status = sp.get('status') || '';
+  const priority = sp.get('priority') || '';
+  const tenant = (sp.get('tenant') || '').trim().slice(0, 100);
+  const search = (sp.get('search') || '').trim().toLowerCase().slice(0, 100);
+  const mine = sp.get('mine') === '1';
+  const tenantCode = tenant && tenant !== 'all' && TENANT_CODE_RE.test(tenant.toUpperCase()) ? tenant.toUpperCase() : undefined;
+  const badStatus = !!status && status !== 'all' && !TICKET_STATUSES.includes(status as TicketStatus);
+  const badPriority = !!priority && priority !== 'all' && !TICKET_PRIORITIES.includes(priority as TicketPriority);
+  if (badStatus || badPriority) return ok({ count: 0, tickets: [] });
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-    const { searchParams } = new URL(req.url);
-    const tenantFilter = searchParams.get('tenant');
-    const statusFilter = searchParams.get('status');
-    const priorityFilter = searchParams.get('priority');
-    const searchQuery = searchParams.get('search');
-
-    let tickets = scopeTicketsFor(readStoredTicketsServer(), session);
-
-    if (tenantFilter && tenantFilter !== 'all') {
-      tickets = tickets.filter(t => 
-        t.tenantName.toLowerCase() === tenantFilter.toLowerCase() || 
-        (t.tenantCode && t.tenantCode.toLowerCase() === tenantFilter.toLowerCase())
-      );
-    }
-
-    if (statusFilter && statusFilter !== 'all') {
-      tickets = tickets.filter(t => t.status.toLowerCase() === statusFilter.toLowerCase());
-    }
-
-    if (priorityFilter && priorityFilter !== 'all') {
-      tickets = tickets.filter(t => t.priority.toLowerCase() === priorityFilter.toLowerCase());
-    }
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      tickets = tickets.filter(t => 
-        t.id.toLowerCase().includes(q) ||
-        t.subject.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.tenantName.toLowerCase().includes(q) ||
-        t.requesterName.toLowerCase().includes(q) ||
-        t.requesterEmail.toLowerCase().includes(q)
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      count: tickets.length,
-      tickets
+    let tickets = await getSupportTicketStore().list(ticketScopeFor(viewer), {
+      status: TICKET_STATUSES.includes(status as TicketStatus) ? (status as TicketStatus) : undefined,
+      priority: TICKET_PRIORITIES.includes(priority as TicketPriority) ? (priority as TicketPriority) : undefined,
+      tenantCode: session.isPlatformAdmin ? tenantCode : undefined,
+      requesterEmail: mine ? session.email : undefined,
+      limit: LIST_LIMIT,
     });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Failed to fetch tickets';
-    console.error('[API /api/tickets GET error]', errorMsg);
-    return NextResponse.json(
-      { error: errorMsg },
-      { status: 500 }
-    );
+    // Belt and braces: the scope is in the query; check every row again before it leaves.
+    tickets = tickets.filter((t) => canViewTicket(t, viewer));
+    if (tenant && tenant !== 'all') {
+      const q = tenant.toLowerCase();
+      tickets = tickets.filter((t) => t.tenantCode.toLowerCase() === q || t.tenantName.toLowerCase() === q);
+    }
+    if (search) {
+      tickets = tickets.filter((t) =>
+        [t.id, t.subject, t.description, t.tenantName, t.requesterName, t.requesterEmail].some((f) => (f || '').toLowerCase().includes(search)),
+      );
+    }
+    const out = tickets.map((t) => ticketViewFor(t, viewer));
+    return ok({ count: out.length, tickets: out });
+  } catch (err) {
+    return storageFail(err, 'list');
   }
 }
 
 /**
- * POST /api/tickets
- * Submits a new trouble ticket, persists it, and sends confirmation + alert emails.
+ * POST /api/tickets  (JSON)
+ * File a report. Workspace, requester and role always come from the session; Appointmentlyy staff may file on a
+ * client's behalf (requesterName / requesterEmail). Screenshots follow with POST /api/tickets/[id]/attachments.
  */
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(req);
+  if (!session) return fail(401, 'Please sign in again.');
+  const limited = limitPerUser('tickets-create', session, { maxRequests: SUPPORT_LIMITS.reportsPerHour, windowMs: 3_600_000 });
+  if (limited) return limited;
+  const body = await readJsonObject(req, MAX_BODY);
+  if (body === 'too_large') return fail(413, 'That report is too long. Please shorten it and try again.');
+  if (!body) return fail(400, 'That report could not be read. Please try again.');
+
+  const description = cleanText(body.whatHappened ?? body.description, SUPPORT_LIMITS.whatHappened);
+  if (!description) return fail(400, 'Please tell us what happened.');
+  const tried = cleanText(body.tried, SUPPORT_LIMITS.tried);
+  const urgency: TicketUrgency | null = URGENCY_OPTIONS.some((o) => o.value === body.urgency) ? (body.urgency as TicketUrgency) : null;
+  const context = cleanSupportContext(body.context);
+  const area = isSupportArea(body.area) ? body.area : guessArea(context.page.path);
+  const category: TicketCategory = TICKET_CATEGORY_VALUES.includes(body.category as TicketCategory)
+    ? (body.category as TicketCategory)
+    : SUPPORT_AREAS.find((a) => a.value === area)?.category ?? 'bug_general';
+  const priority: TicketPriority = urgency
+    ? URGENCY_PRIORITY[urgency]
+    : TICKET_PRIORITIES.includes(body.priority as TicketPriority)
+      ? (body.priority as TicketPriority)
+      : 'medium';
+  const firstLine = description.split('\n').find((l) => l.trim()) || description;
+  const subject = cleanText(body.subject, SUPPORT_LIMITS.subject, false) || cleanText(firstLine, SUPPORT_LIMITS.subject, false);
+
+  // Who and where: the session. Staff may name the client they are filing for.
+  let requesterEmail = session.email.toLowerCase();
+  let requesterName = session.name;
+  let filedByEmail: string | null = null;
+  if (session.isPlatformAdmin && typeof body.requesterEmail === 'string' && body.requesterEmail.trim()) {
+    const e = body.requesterEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(e) || e.length > 254) return fail(400, 'A valid requester email address is required.');
+    if (e !== requesterEmail) {
+      filedByEmail = requesterEmail;
+      requesterEmail = e;
+      requesterName = cleanText(body.requesterName, 120, false) || e;
+    }
+  }
+  context.workspace = session.tenantCode;
+  context.role = filedByEmail ? '' : session.role;
+  context.receivedAt = new Date().toISOString();
+  context.serverVersion = (process.env.NEXT_PUBLIC_APP_VERSION || '').slice(0, 80);
+
+  const input: NewTicketInput = {
+    tenantCode: session.tenantCode,
+    tenantName: session.identity.tenant.name.slice(0, 200),
+    requesterEmail,
+    requesterName: requesterName.slice(0, 200),
+    requesterRole: filedByEmail ? '' : session.role,
+    filedByEmail,
+    subject,
+    description,
+    tried,
+    area,
+    urgency,
+    category,
+    priority,
+    source: session.isPlatformAdmin && body.source === 'desk' ? 'desk' : 'report',
+    context,
+    assignedTo: 'Appointmentlyy support',
+  };
+  const screenshots = Math.min(SUPPORT_LIMITS.screenshots, Math.max(0, Math.floor(Number(body.screenshots) || 0)));
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-    const body = await req.json();
-    // Workspace and requester come from the session; staff may file on a client's behalf.
-    const tenantName = session.identity.tenant.name;
-    const tenantCode = session.tenantCode;
-    const requesterName: string = session.isPlatformAdmin && body.requesterName ? String(body.requesterName) : session.name;
-    const requesterEmail: string = session.isPlatformAdmin && body.requesterEmail ? String(body.requesterEmail) : session.email;
-    const {
-      subject,
-      description,
-      category = 'bug_general',
-      priority = 'medium',
-      affectedUrl,
-      systemInfo,
-    } = body;
-
-    if (!subject || !subject.trim()) {
-      return NextResponse.json({ error: 'Subject is required' }, { status: 400 });
-    }
-    if (!description || !description.trim()) {
-      return NextResponse.json({ error: 'Description is required' }, { status: 400 });
-    }
-    if (!requesterEmail || !requesterEmail.trim() || !requesterEmail.includes('@')) {
-      return NextResponse.json({ error: 'A valid requester email address is required' }, { status: 400 });
-    }
-
-    const ticketId = generateTicketId();
-    const now = new Date().toISOString();
-
-    const initialMessage = {
-      id: `msg_${ticketId.toLowerCase().replace(/[^a-z0-9]/g, '_')}_01`,
-      ticketId: ticketId,
-      senderName: requesterName.trim(),
-      senderEmail: requesterEmail.trim().toLowerCase(),
-      senderRole: 'customer' as const,
+    const ticket = await getSupportTicketStore().create(input, {
+      senderName: input.requesterName,
+      senderEmail: requesterEmail,
+      senderRole: 'customer',
       isInternalNote: false,
-      content: description.trim(),
-      createdAt: now,
-    };
-
-    const newTicket: TroubleTicket = {
-      id: ticketId,
-      tenantName: tenantName.trim(),
-      tenantCode: tenantCode?.trim(),
-      requesterName: requesterName.trim(),
-      requesterEmail: requesterEmail.trim().toLowerCase(),
-      subject: subject.trim(),
-      description: description.trim(),
-      category: (category as TicketCategory) || 'bug_general',
-      priority: (priority as TicketPriority) || 'medium',
-      status: 'open',
-      affectedUrl: affectedUrl?.trim() || undefined,
-      systemInfo: systemInfo || undefined,
-      assignedTo: 'Emil Halili',
-      createdAt: now,
-      updatedAt: now,
-      messages: [initialMessage],
-    };
-
-    // 1. Persist to server store
-    const existingTickets = readStoredTicketsServer();
-    const updatedTickets = [newTicket, ...existingTickets.filter(t => t.id !== ticketId)];
-    writeStoredTicketsServer(updatedTickets);
-
-    console.log(`[TICKET CREATED] ID: ${ticketId} | Tenant: ${tenantName} | From: ${requesterEmail}`);
-
-    // 2. Dispatch Confirmation Email to Customer and Alert Email to Admin
-    let customerEmailResult: { success: boolean; messageId?: string; error?: string } = { success: false };
-    let adminEmailResult: { success: boolean; messageId?: string; error?: string } = { success: false };
-
-    try {
-      // Send both concurrently to minimize latency
-      const [custRes, adminRes] = await Promise.allSettled([
-        sendCustomerTicketConfirmation(newTicket),
-        sendAdminTicketAlert(newTicket),
-      ]);
-
-      if (custRes.status === 'fulfilled') {
-        customerEmailResult = custRes.value;
-      } else {
-        console.warn('[Ticket Confirmation Error]', custRes.reason);
-      }
-
-      if (adminRes.status === 'fulfilled') {
-        adminEmailResult = adminRes.value;
-      } else {
-        console.warn('[Admin Alert Error]', adminRes.reason);
-      }
-    } catch (emailErr) {
-      console.warn('[Ticket Email Dispatch Notice]', emailErr);
-    }
-
-    return NextResponse.json({
-      success: true,
-      ticket: newTicket,
-      emailsSent: {
-        customerConfirmation: customerEmailResult.success,
-        customerMessageId: customerEmailResult.messageId,
-        adminAlert: adminEmailResult.success,
-        adminMessageId: adminEmailResult.messageId,
-      }
+      content: description,
     });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Failed to submit trouble ticket';
-    console.error('[API /api/tickets POST error]', errorMsg);
-    return NextResponse.json(
-      { error: errorMsg },
-      { status: 500 }
-    );
+    console.log(`[tickets] created ${ticket.id} in ${ticket.tenantCode} (${urgency || priority})`);
+    // Email never decides whether the report was filed.
+    sendLater('confirmation', () => sendCustomerTicketConfirmation(ticket));
+    sendLater('alert', () => sendAdminTicketAlert(ticket, { screenshots }));
+    return ok({ ticket: ticketViewFor(ticket, viewerOf(session)), uploadUrl: `/api/tickets/${ticket.id}/attachments` }, 201);
+  } catch (err) {
+    return storageFail(err, 'create');
   }
 }

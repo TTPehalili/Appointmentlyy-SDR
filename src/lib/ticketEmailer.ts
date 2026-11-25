@@ -3,19 +3,37 @@
  * 
  * Powered by Resend integration. Automatically handles:
  * 1. Customer Ticket Confirmation ("Ticket received & actively being worked on")
- * 2. Admin Alert Email to Emil Halili (with full diagnostics & quick response link)
+ * 2. Alert to the support inbox (support@appointmentlyy.com, or SUPPORT_ALERT_EMAIL)
  * 3. Customer Reply Notifications when Admin responds inside the SDR Ticket Dashboard
  */
 
 import { getResendApiKey, getResendFromEmail, getResendInboundEmail } from '@/lib/resendConfig';
-import { TroubleTicket, TicketMessage } from '@/lib/ticketStore';
+import type { TroubleTicket, TicketMessage } from '@/lib/ticketTypes';
+import { getAppBaseUrl } from '@/lib/authToken';
+import { EMAIL_RE } from '@/lib/roles';
+import { areaLabel, urgencyLabel } from '@/lib/supportReport';
+
+/** Where new-ticket alerts go: SUPPORT_ALERT_EMAIL, or support@appointmentlyy.com. */
+export const SUPPORT_ALERT_EMAIL_DEFAULT = 'support@appointmentlyy.com';
+export function supportAlertEmail(): string {
+  const v = (process.env.SUPPORT_ALERT_EMAIL || '').trim().toLowerCase();
+  return EMAIL_RE.test(v) && v.length <= 254 ? v : SUPPORT_ALERT_EMAIL_DEFAULT;
+}
+
+/** Subject lines: one line, capped (no header injection through a ticket subject). */
+const oneLine = (s: string, max: number) => String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, max);
+
+/** The requester's own view of a ticket: My reports on the Help page. */
+const myReportsLink = (id: string) => `${getAppBaseUrl()}/help?report=${encodeURIComponent(id)}#my-reports`;
 
 // Escape HTML special characters
 function escapeHtml(str: string): string {
   return String(str || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getPriorityColor(priority: string): { bg: string; text: string; label: string } {
@@ -46,7 +64,7 @@ export async function sendCustomerTicketConfirmation(ticket: TroubleTicket): Pro
   const inboundEmail = getResendInboundEmail();
   const priorityInfo = getPriorityColor(ticket.priority);
 
-  const subject = `[${ticket.id}] Ticket Received: ${ticket.subject}`;
+  const subject = oneLine(`[${ticket.id}] Ticket Received: ${ticket.subject}`, 200);
 
   const textBody = `
 Hi ${ticket.requesterName},
@@ -64,7 +82,7 @@ DESCRIPTION:
 ${ticket.description}
 
 You can view live updates and communicate directly with our team in your Appointmentlyy SDR Support Dashboard:
-http://localhost:3001/tickets?id=${ticket.id}
+${myReportsLink(ticket.id)}
 
 We will notify you the moment an update or fix is deployed.
 
@@ -157,7 +175,7 @@ support@appointmentlyy.com
               <table width="100%" cellpadding="0" cellspacing="0" style="margin: 28px 0 16px 0;">
                 <tr>
                   <td align="center">
-                    <a href="http://localhost:3001/tickets?id=${escapeHtml(ticket.id)}" style="display: inline-block; background-color: #18181b; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 13px; font-weight: 600; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <a href="${escapeHtml(myReportsLink(ticket.id))}" style="display: inline-block; background-color: #18181b; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 13px; font-weight: 600; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                       Open Ticket in SDR Dashboard &rarr;
                     </a>
                   </td>
@@ -199,7 +217,7 @@ support@appointmentlyy.com
         subject: subject,
         text: textBody,
         html: htmlBody,
-        reply_to: [inboundEmail, 'emil@appointmentlyy.com'],
+        reply_to: [inboundEmail, supportAlertEmail()].filter(Boolean),
       }),
     });
 
@@ -220,138 +238,107 @@ support@appointmentlyy.com
 }
 
 /**
- * 2. Send Alert Email to Admin (Emil Halili: emil@appointmentlyy.com)
+ * 2. Alert to the support inbox (SUPPORT_ALERT_EMAIL, default support@appointmentlyy.com). "Blocking my work" reports
+ * say URGENT in the subject. The body has the ticket id, workspace, who, urgency, area, what happened and a link to
+ * Platform › Support; never screenshots, never the captured context beyond the page, never secrets.
  */
-export async function sendAdminTicketAlert(ticket: TroubleTicket): Promise<{ success: boolean; messageId?: string; error?: string }> {
+export async function sendAdminTicketAlert(
+  ticket: TroubleTicket,
+  opts: { reply?: TicketMessage; screenshots?: number } = {},
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const apiKey = getResendApiKey();
   if (!apiKey) {
-    console.warn('[TicketEmailer] No Resend API key configured. Skipping admin alert email dispatch.');
+    console.warn('[TicketEmailer] No Resend API key configured. Skipping support alert email.');
     return { success: false, error: 'Resend API key not configured' };
   }
 
   const fromEmail = 'Appointmentlyy Support <emil@appointmentlyy.com>';
-  const adminEmail = 'emil@appointmentlyy.com';
+  const to = supportAlertEmail();
   const inboundEmail = getResendInboundEmail();
   const priorityInfo = getPriorityColor(ticket.priority);
+  const urgent = ticket.urgency === 'blocking' || (!ticket.urgency && ticket.priority === 'urgent');
+  const urgency = urgencyLabel(ticket.urgency) || priorityInfo.label;
+  const area = areaLabel(ticket.area) || ticket.category;
+  const link = `${getAppBaseUrl()}/platform/support?id=${encodeURIComponent(ticket.id)}`;
+  const page = ticket.context?.page?.path || '';
+  const shots = opts.screenshots ?? ticket.attachmentCount ?? 0;
+  const role = ticket.requesterRole ? `, ${ticket.requesterRole}` : '';
+  const what = opts.reply ? opts.reply.content : ticket.description;
 
-  const subject = `🚨 [${priorityInfo.label}] Trouble Ticket ${ticket.id}: ${ticket.subject} (${ticket.tenantName})`;
+  const subject = oneLine(
+    `${urgent ? 'URGENT: ' : ''}${opts.reply ? 'New reply on ' : ''}[${ticket.id}] ${ticket.tenantName}: ${ticket.subject}`,
+    200,
+  );
 
-  const textBody = `
-EMERGENCY / NEW TROUBLE TICKET ALERT
+  const textBody = [
+    opts.reply ? `New reply on support ticket ${ticket.id}` : `New support ticket ${ticket.id}`,
+    '',
+    `Ticket: ${ticket.id}`,
+    `Workspace: ${ticket.tenantName} (${ticket.tenantCode})`,
+    `From: ${ticket.requesterName} <${ticket.requesterEmail}>${role}`,
+    `Urgency: ${urgency}`,
+    `Area: ${area}`,
+    page ? `Page: ${page}` : '',
+    `Screenshots: ${shots}`,
+    '',
+    opts.reply ? `${opts.reply.senderName} wrote:` : 'What happened:',
+    what,
+    !opts.reply && ticket.tried ? `\nWhat they were trying to do:\n${ticket.tried}` : '',
+    '',
+    `Open it in Platform > Support: ${link}`,
+  ]
+    .filter((l, i, a) => l !== '' || a[i - 1] !== '')
+    .join('\n')
+    .trim();
 
-Ticket Reference: ${ticket.id}
-Tenant / Customer: ${ticket.tenantName}
-Contact: ${ticket.requesterName} <${ticket.requesterEmail}>
-Priority: ${priorityInfo.label}
-Category: ${ticket.category}
-Affected URL: ${ticket.affectedUrl || 'N/A'}
-Logged At: ${ticket.createdAt}
-
-ISSUE DESCRIPTION:
-${ticket.description}
-
-SYSTEM CONTEXT:
-- Browser/OS: ${ticket.systemInfo?.browser || 'Not provided'}
-- OS: ${ticket.systemInfo?.os || 'Not provided'}
-
-TAKE ACTION NOW:
-Open in Appointmentlyy SDR Ticket Dashboard:
-http://localhost:3001/tickets?id=${ticket.id}
-`.trim();
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding: 6px 0; width: 120px; vertical-align: top; font-size: 12px; color: #a1a1aa;">${escapeHtml(label)}</td><td style="padding: 6px 0; font-size: 13px; color: #f4f4f5;">${escapeHtml(value)}</td></tr>`;
 
   const htmlBody = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>New Trouble Ticket Alert</title>
+  <title>Support ticket ${escapeHtml(ticket.id)}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #09090b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f4f4f5;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #09090b; padding: 32px 16px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #18181b; border-radius: 12px; overflow: hidden; border: 1px solid #27272a; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
-          
-          <!-- Banner -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #18181b; border-radius: 12px; overflow: hidden; border: 1px solid #27272a;">
           <tr>
-            <td style="background-color: #27272a; padding: 20px 28px; border-bottom: 2px solid ${priorityInfo.text};">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td>
-                    <span style="font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px; color: ${priorityInfo.text};">
-                      NEW TENANT INCIDENT REPORT
-                    </span>
-                    <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 4px;">
-                      ${escapeHtml(ticket.subject)}
-                    </div>
-                  </td>
-                  <td align="right" valign="top">
-                    <span style="font-family: monospace; font-size: 12px; color: #ffffff; background-color: #09090b; padding: 4px 8px; border-radius: 4px; border: 1px solid #3f3f46;">
-                      ${escapeHtml(ticket.id)}
-                    </span>
-                  </td>
-                </tr>
-              </table>
+            <td style="background-color: #27272a; padding: 20px 28px; border-bottom: 2px solid ${urgent ? '#dc2626' : '#3f3f46'};">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px; color: ${urgent ? '#f87171' : '#a1a1aa'};">
+                ${urgent ? 'URGENT: blocking their work' : opts.reply ? 'New reply' : 'New support ticket'}
+              </div>
+              <div style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 4px;">${escapeHtml(ticket.subject)}</div>
+              <div style="font-family: monospace; font-size: 12px; color: #d4d4d8; margin-top: 6px;">${escapeHtml(ticket.id)}</div>
             </td>
           </tr>
-
-          <!-- Details -->
           <tr>
-            <td style="padding: 28px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
-                <tr>
-                  <td width="50%" style="padding-bottom: 12px;">
-                    <div style="font-size: 11px; text-transform: uppercase; color: #a1a1aa; font-weight: 600;">Customer / Tenant</div>
-                    <div style="font-size: 14px; font-weight: 600; color: #ffffff; margin-top: 2px;">${escapeHtml(ticket.tenantName)}</div>
-                  </td>
-                  <td width="50%" style="padding-bottom: 12px;">
-                    <div style="font-size: 11px; text-transform: uppercase; color: #a1a1aa; font-weight: 600;">Submitted By</div>
-                    <div style="font-size: 14px; font-weight: 600; color: #ffffff; margin-top: 2px;">
-                      ${escapeHtml(ticket.requesterName)} &lt;${escapeHtml(ticket.requesterEmail)}&gt;
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td width="50%">
-                    <div style="font-size: 11px; text-transform: uppercase; color: #a1a1aa; font-weight: 600;">Priority Level</div>
-                    <span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background-color: ${priorityInfo.bg}; color: ${priorityInfo.text};">
-                      ${priorityInfo.label}
-                    </span>
-                  </td>
-                  <td width="50%">
-                    <div style="font-size: 11px; text-transform: uppercase; color: #a1a1aa; font-weight: 600;">Category</div>
-                    <div style="font-size: 13px; color: #e4e4e7; margin-top: 4px;">${escapeHtml(ticket.category)}</div>
-                  </td>
-                </tr>
+            <td style="padding: 24px 28px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
+                ${row('Workspace', `${ticket.tenantName} (${ticket.tenantCode})`)}
+                ${row('From', `${ticket.requesterName} <${ticket.requesterEmail}>${role}`)}
+                ${row('Urgency', urgency)}
+                ${row('Area', area)}
+                ${page ? row('Page', page) : ''}
+                ${row('Screenshots', String(shots))}
               </table>
-
-              <!-- Description -->
-              <div style="background-color: #09090b; border: 1px solid #27272a; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-                <div style="font-size: 11px; text-transform: uppercase; color: #71717a; font-weight: 700; margin-bottom: 8px;">Incident Description</div>
-                <div style="font-size: 13px; line-height: 1.6; color: #d4d4d8; white-space: pre-wrap;">${escapeHtml(ticket.description)}</div>
-                ${ticket.affectedUrl ? `<div style="margin-top: 12px; font-size: 11px; color: #a1a1aa;"><strong>URL:</strong> ${escapeHtml(ticket.affectedUrl)}</div>` : ''}
+              <div style="background-color: #09090b; border: 1px solid #27272a; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #71717a; font-weight: 700; margin-bottom: 8px;">${opts.reply ? `${escapeHtml(opts.reply.senderName)} wrote` : 'What happened'}</div>
+                <div style="font-size: 13px; line-height: 1.6; color: #d4d4d8; white-space: pre-wrap;">${escapeHtml(what)}</div>
               </div>
-
-              <!-- Action Link -->
+              ${!opts.reply && ticket.tried ? `<div style="background-color: #09090b; border: 1px solid #27272a; border-radius: 8px; padding: 16px; margin-bottom: 16px;"><div style="font-size: 11px; text-transform: uppercase; color: #71717a; font-weight: 700; margin-bottom: 8px;">What they were trying to do</div><div style="font-size: 13px; line-height: 1.6; color: #d4d4d8; white-space: pre-wrap;">${escapeHtml(ticket.tried)}</div></div>` : ''}
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="http://localhost:3001/tickets?id=${escapeHtml(ticket.id)}" style="display: inline-block; background-color: #ED1C24; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 13px; font-weight: 700; border-radius: 8px; box-shadow: 0 4px 12px rgba(237,28,36,0.3);">
-                      Respond in SDR Ticket Desk &rarr;
-                    </a>
+                    <a href="${escapeHtml(link)}" style="display: inline-block; background-color: #ED1C24; color: #ffffff; text-decoration: none; padding: 12px 28px; font-size: 13px; font-weight: 700; border-radius: 8px;">Open in Platform &rsaquo; Support</a>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #09090b; padding: 16px 28px; border-top: 1px solid #27272a; text-align: center; font-size: 11px; color: #71717a;">
-              Appointmentlyy SDR Automatic Incident Pipeline &bull; Target: Emil Halili &lt;emil@appointmentlyy.com&gt;
-            </td>
-          </tr>
-
         </table>
       </td>
     </tr>
@@ -369,26 +356,24 @@ http://localhost:3001/tickets?id=${ticket.id}
       },
       body: JSON.stringify({
         from: fromEmail,
-        to: [adminEmail],
-        subject: subject,
+        to: [to],
+        subject,
         text: textBody,
         html: htmlBody,
-        reply_to: [ticket.requesterEmail, inboundEmail],
+        reply_to: [ticket.requesterEmail, inboundEmail].filter(Boolean),
       }),
     });
 
     if (res.ok) {
       const data = await res.json();
-      console.log('[TicketEmailer] Admin alert email sent:', data.id);
       return { success: true, messageId: data.id };
-    } else {
-      const errText = await res.text();
-      console.warn('[TicketEmailer] Resend API error sending admin alert:', errText);
-      return { success: false, error: errText };
     }
+    const errText = await res.text();
+    console.warn('[TicketEmailer] Resend API error sending support alert:', errText.slice(0, 300));
+    return { success: false, error: errText };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn('[TicketEmailer] Network error sending admin alert:', errorMsg);
+    console.warn('[TicketEmailer] Network error sending support alert:', errorMsg);
     return { success: false, error: errorMsg };
   }
 }
@@ -405,7 +390,7 @@ export async function sendCustomerReplyNotification(ticket: TroubleTicket, messa
   const fromEmail = getResendFromEmail();
   const inboundEmail = getResendInboundEmail();
 
-  const subject = `Re: [${ticket.id}] ${ticket.subject} - Support Update`;
+  const subject = oneLine(`Re: [${ticket.id}] ${ticket.subject} - Support Update`, 200);
 
   const textBody = `
 Hi ${ticket.requesterName},
@@ -415,7 +400,7 @@ Emil Halili (Appointmentlyy SDR Engineering) has updated your trouble ticket ${t
 "${message.content}"
 
 View full conversation or reply live in your dashboard:
-http://localhost:3001/tickets?id=${ticket.id}
+${myReportsLink(ticket.id)}
 
 Best regards,
 Emil Halili & The Appointmentlyy Engineering Team
@@ -452,7 +437,7 @@ Emil Halili & The Appointmentlyy Engineering Team
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="http://localhost:3001/tickets?id=${escapeHtml(ticket.id)}" style="display: inline-block; background-color: #18181b; color: #ffffff; text-decoration: none; padding: 10px 24px; font-size: 13px; font-weight: 600; border-radius: 6px;">
+                    <a href="${escapeHtml(myReportsLink(ticket.id))}" style="display: inline-block; background-color: #18181b; color: #ffffff; text-decoration: none; padding: 10px 24px; font-size: 13px; font-weight: 600; border-radius: 6px;">
                       Reply in Ticket Dashboard &rarr;
                     </a>
                   </td>
@@ -481,7 +466,7 @@ Emil Halili & The Appointmentlyy Engineering Team
         subject: subject,
         text: textBody,
         html: htmlBody,
-        reply_to: [inboundEmail, 'emil@appointmentlyy.com'],
+        reply_to: [inboundEmail, supportAlertEmail()].filter(Boolean),
       }),
     });
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { ReportThisProblem } from '@/components/support/ReportProblem';
 import {
   Sparkles,
   Copy,
@@ -800,6 +801,7 @@ export default function ColdEmailStudio() {
                     <Check className="h-3.5 w-3.5 shrink-0" />
                   )}
                   <span>{directSendStatus}</span>
+                  {directSendStatus.startsWith('Error') && <ReportThisProblem area="cold_email" errorText={directSendStatus} />}
                 </span>
               )}
             </div>

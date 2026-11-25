@@ -51,6 +51,7 @@ import {
 import { useSession } from '@/lib/session';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { useServerAuth } from '@/lib/authClient';
+import { ReportThisProblem } from '@/components/support/ReportProblem';
 import type { InboxReplyAction, InboxReplyMove, InboxReplyTone } from '@/lib/inboxReply';
 
 type CopilotRun = { action: InboxReplyAction; tone?: InboxReplyTone };
@@ -271,7 +272,8 @@ export default function UnifiedEmailInbox() {
       return;
     } finally {
       setIsSendingReply(false);
-      setTimeout(() => setReplyError(null), 6000);
+      // Long enough to read the error and click "Report this problem" next to it.
+      setTimeout(() => setReplyError(null), 20000);
     }
   };
 
@@ -853,9 +855,10 @@ export default function UnifiedEmailInbox() {
                         Reply sent via Resend
                       </span>
                     ) : replyError ? (
-                      <span className="flex items-center gap-1 text-danger-fg">
+                      <span className="flex min-w-0 items-center gap-1.5 text-danger-fg">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                        Error: {replyError}
+                        <span className="truncate">Error: {replyError}</span>
+                        <ReportThisProblem area="inbox" errorText={`Error: ${replyError}`} />
                       </span>
                     ) : (
                       <span className="truncate">

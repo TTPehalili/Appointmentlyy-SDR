@@ -15,6 +15,7 @@ import { SessionSync } from './SessionSync';
 import { ActivityEventSync } from '@/components/integrations/ActivityEventSync';
 import { LeadHandoffSync } from '@/components/contacts/LeadHandoff';
 import { ProductTour } from '@/components/tour/ProductTour';
+import { ReportProblemProvider } from '@/components/support/ReportProblem';
 import { cn } from '@/lib/cn';
 
 /**
@@ -28,6 +29,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ShellProvider>
       <ToastProvider>
+        {/* "Report a problem": one dialog for the whole app, opened from the ? menu, Help and inline error links. */}
+        <ReportProblemProvider>
         <div className="flex h-dvh w-full flex-col overflow-hidden bg-app text-fg">
           <a
             href="#main"
@@ -68,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <React.Suspense fallback={null}>
           <ProductTour />
         </React.Suspense>
+        </ReportProblemProvider>
       </ToastProvider>
     </ShellProvider>
   );

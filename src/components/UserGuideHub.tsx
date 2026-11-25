@@ -27,6 +27,7 @@ import {
   Keyboard
 } from 'lucide-react';
 import { Button, PageHeader, buttonClasses } from '@/components/ui';
+import { MyReports } from '@/components/support/MyReports';
 
 export default function UserGuideHub() {
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -162,6 +163,9 @@ export default function UserGuideHub() {
               </>
             }
           />
+
+          {/* Report a problem + the person's own reports and the conversation with support. */}
+          <MyReports />
 
           {/* Sequential Step Selector Tabs */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">

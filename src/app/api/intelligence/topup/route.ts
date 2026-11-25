@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/server/session';
-import {
-  readStoredTicketsServer,
-  writeStoredTicketsServer,
-  generateTicketId,
-  TroubleTicket,
-} from '@/lib/ticketStore';
+import { getSupportTicketStore } from '@/lib/server/supportTickets';
+import { getTenantStore } from '@/lib/server/tenantStore';
+import { sendLater } from '@/lib/server/supportTicketsHttp';
+import { limitPerUser } from '@/lib/server/userRateLimit';
 import {
   sendAppointmentlyySystemInvoiceEmail,
   sendAdminTicketAlert,
@@ -92,11 +90,12 @@ export async function POST(req: NextRequest) {
 
     let createdTicketId: string | undefined;
 
-    if (createSupportTicket) {
-      const ticketId = generateTicketId();
-      createdTicketId = ticketId;
-      const nowIso = now.toISOString();
+    // A billing ticket (and its alert to support) per request: clients get a few an hour, like "Report a problem", so
+    // this route cannot be used to flood the support inbox or the tickets table. Past that the invoice still goes out.
+    const ticketAllowed =
+      session.isPlatformAdmin || !limitPerUser('billing-topup-ticket', session, { maxRequests: 6, windowMs: 3_600_000 });
 
+    if (createSupportTicket && ticketAllowed) {
       const ticketSubject =
         scenario === 'onboarding_month1'
           ? `[${invNum}] New Client Signup Invoice ($${Number(totalAmountUsd).toLocaleString()} USD) — ${tenantName}`
@@ -111,43 +110,48 @@ export async function POST(req: NextRequest) {
         `Total Amount Due: $${Number(totalAmountUsd).toFixed(2)} USD`,
         `Records to Provision on Payment: +${Number(recordsToCredit).toLocaleString()} Verified Records`,
         `Wise Payment Link: https://wise.com/pay/me/emilhalilih (Tag: @emilhalilih)`,
-        notes ? `Notes: ${notes}` : '',
+        notes ? `Notes: ${String(notes).slice(0, 1000)}` : '',
       ]
         .filter(Boolean)
-        .join('\n');
+        .join('\n')
+        .slice(0, 4000);
 
-      const newTicket: TroubleTicket = {
-        id: ticketId,
-        tenantName: String(tenantName).trim(),
-        tenantCode: String(tenantCode).trim(),
-        requesterName: String(clientContactName).trim(),
-        requesterEmail: String(clientEmail).trim().toLowerCase(),
-        subject: ticketSubject,
-        description: ticketDescription,
-        category: 'account_billing',
-        priority: 'high',
-        status: 'open',
-        affectedUrl: '/icp-builder',
-        assignedTo: 'Emil Halili',
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        messages: [
+      // The billing ticket lives in a real workspace: the client's own, or (staff) the one named if it exists.
+      const named = String(tenantCode || '').trim().toUpperCase();
+      const ticketTenant =
+        !session.isPlatformAdmin || named === session.tenantCode
+          ? session.identity.tenant
+          : (await getTenantStore().getTenant(named).catch(() => null)) ?? session.identity.tenant;
+      const requesterEmail = String(clientEmail).trim().toLowerCase().slice(0, 254);
+      const requesterName = String(clientContactName).trim().slice(0, 200);
+      try {
+        const ticket = await getSupportTicketStore().create(
           {
-            id: `msg_${ticketId.toLowerCase().replace(/[^a-z0-9]/g, '_')}_01`,
-            ticketId,
-            senderName: String(clientContactName).trim(),
-            senderEmail: String(clientEmail).trim().toLowerCase(),
-            senderRole: 'customer',
-            isInternalNote: false,
-            content: ticketDescription,
-            createdAt: nowIso,
+            tenantCode: ticketTenant.code,
+            tenantName: ticketTenant.name.slice(0, 200),
+            requesterEmail,
+            requesterName,
+            requesterRole: session.isPlatformAdmin ? '' : session.role,
+            filedByEmail: session.isPlatformAdmin && requesterEmail !== session.email ? session.email : null,
+            subject: ticketSubject.replace(/\s+/g, ' ').slice(0, 160),
+            description: ticketDescription,
+            tried: '',
+            area: 'billing',
+            urgency: null,
+            category: 'account_billing',
+            priority: 'high',
+            source: 'billing',
+            context: null,
+            assignedTo: 'Appointmentlyy support',
           },
-        ],
-      };
-
-      const existingTickets = readStoredTicketsServer();
-      writeStoredTicketsServer([newTicket, ...existingTickets]);
-      sendAdminTicketAlert(newTicket).catch(() => {});
+          { senderName: requesterName, senderEmail: requesterEmail, senderRole: 'customer', isInternalNote: false, content: ticketDescription },
+        );
+        createdTicketId = ticket.id;
+        sendLater('billing alert', () => sendAdminTicketAlert(ticket));
+      } catch (err) {
+        // The invoice still goes out; the ticket is a convenience.
+        console.warn('[/api/intelligence/topup] billing ticket not saved:', err instanceof Error ? err.message : err);
+      }
     }
 
     const emailResult = await sendAppointmentlyySystemInvoiceEmail({

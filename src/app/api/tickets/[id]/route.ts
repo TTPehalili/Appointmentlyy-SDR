@@ -1,102 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { readStoredTicketsServer, writeStoredTicketsServer, TroubleTicket } from '@/lib/ticketStore';
+import { NextRequest } from 'next/server';
 import { getServerSession } from '@/lib/server/session';
-import { scopeTicketsFor } from '@/lib/server/ticketScope';
+import { limitPerUser } from '@/lib/server/userRateLimit';
+import { getSupportTicketStore, normalizeTicketId, type TicketPatch } from '@/lib/server/supportTickets';
+import { canViewTicket, ticketViewFor } from '@/lib/server/ticketScope';
+import { cleanText, fail, ok, readJsonObject, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
+import { STATUS_LABEL, TICKET_PRIORITIES, TICKET_STATUSES, type TicketPriority, type TicketStatus } from '@/lib/ticketTypes';
 
 /**
  * GET /api/tickets/[id]
+ * One ticket, if this person may see it (ticketScope.ts); anything else is "not found".
  */
-export async function GET(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(req);
+  if (!session) return fail(401, 'Please sign in again.');
+  const limited = limitPerUser('tickets-read', session, { maxRequests: 120 });
+  if (limited) return limited;
+  const id = normalizeTicketId((await context.params).id);
+  if (!id) return fail(404, 'Ticket not found');
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-    const { id } = await context.params;
-    const tickets = scopeTicketsFor(readStoredTicketsServer(), session);
-    const ticket = tickets.find(t => t.id.toLowerCase() === id.toLowerCase());
-
-    if (!ticket) {
-      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, ticket });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Error fetching ticket';
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const t = await getSupportTicketStore().get(id);
+    const viewer = viewerOf(session);
+    if (!t || !canViewTicket(t, viewer)) return fail(404, 'Ticket not found');
+    return ok({ ticket: ticketViewFor(t, viewer) });
+  } catch (err) {
+    return storageFail(err, 'get');
   }
 }
 
 /**
- * PATCH /api/tickets/[id]
- * Updates status, priority, or assignedTo
+ * PATCH /api/tickets/[id]  { status?, priority?, assignedTo? }
+ * Appointmentlyy support staff only. Each change leaves a short system note on the conversation.
  */
-export async function PATCH(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(req);
+  if (!session) return fail(401, 'Please sign in again.');
+  if (!session.isPlatformAdmin) return fail(404, 'Ticket not found');
+  const id = normalizeTicketId((await context.params).id);
+  if (!id) return fail(404, 'Ticket not found');
+  const body = await readJsonObject(req, 8 * 1024);
+  if (!body || body === 'too_large') return fail(400, 'That change could not be read.');
+  const patch: TicketPatch = {};
+  if (body.status !== undefined) {
+    if (!TICKET_STATUSES.includes(body.status as TicketStatus)) return fail(400, 'Unknown status.');
+    patch.status = body.status as TicketStatus;
+  }
+  if (body.priority !== undefined) {
+    if (!TICKET_PRIORITIES.includes(body.priority as TicketPriority)) return fail(400, 'Unknown priority.');
+    patch.priority = body.priority as TicketPriority;
+  }
+  if (body.assignedTo !== undefined) patch.assignedTo = cleanText(body.assignedTo, 120, false);
   try {
-    // Status, priority and assignment are managed by Appointmentlyy support staff.
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ error: 'Please sign in again.' }, { status: 401 });
-    if (!session.isPlatformAdmin) return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-    const { id } = await context.params;
-    const body = await req.json();
-    const { status, priority, assignedTo } = body;
-    const updatedBy = session.name;
-
-    const tickets = readStoredTicketsServer();
-    const ticketIndex = tickets.findIndex(t => t.id.toLowerCase() === id.toLowerCase());
-
-    if (ticketIndex === -1) {
-      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-    }
-
-    const currentTicket = tickets[ticketIndex];
-    const now = new Date().toISOString();
-    const auditLogs: string[] = [];
-
-    if (status && status !== currentTicket.status) {
-      auditLogs.push(`Status changed from "${currentTicket.status}" to "${status}" by ${updatedBy}`);
-    }
-    if (priority && priority !== currentTicket.priority) {
-      auditLogs.push(`Priority changed from "${currentTicket.priority}" to "${priority}" by ${updatedBy}`);
-    }
-    if (assignedTo && assignedTo !== currentTicket.assignedTo) {
-      auditLogs.push(`Assigned to "${assignedTo}" by ${updatedBy}`);
-    }
-
-    const newMessages = [...currentTicket.messages];
-    if (auditLogs.length > 0) {
-      newMessages.push({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        ticketId: currentTicket.id,
-        senderName: 'System',
-        senderEmail: 'system@appointmentlyy.com',
-        senderRole: 'system',
-        isInternalNote: false,
-        content: auditLogs.join('. '),
-        createdAt: now,
-      });
-    }
-
-    const updatedTicket: TroubleTicket = {
-      ...currentTicket,
-      status: status || currentTicket.status,
-      priority: priority || currentTicket.priority,
-      assignedTo: assignedTo || currentTicket.assignedTo,
-      resolvedAt: status === 'resolved' ? (currentTicket.resolvedAt || now) : (status ? undefined : currentTicket.resolvedAt),
-      updatedAt: now,
-      messages: newMessages,
-    };
-
-    tickets[ticketIndex] = updatedTicket;
-    writeStoredTicketsServer(tickets);
-
-    return NextResponse.json({ success: true, ticket: updatedTicket });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Error updating ticket';
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const store = getSupportTicketStore();
+    const cur = await store.get(id);
+    if (!cur) return fail(404, 'Ticket not found');
+    const notes: string[] = [];
+    if (patch.status && patch.status !== cur.status) notes.push(`Status changed from ${STATUS_LABEL[cur.status]} to ${STATUS_LABEL[patch.status]} by ${session.name}`);
+    if (patch.priority && patch.priority !== cur.priority) notes.push(`Priority changed from ${cur.priority} to ${patch.priority} by ${session.name}`);
+    if (patch.assignedTo !== undefined && patch.assignedTo !== (cur.assignedTo || '')) notes.push(`Assigned to ${patch.assignedTo || 'nobody'} by ${session.name}`);
+    const t = await store.update(
+      id,
+      patch,
+      notes.length ? { senderName: 'System', senderEmail: 'system@appointmentlyy.com', senderRole: 'system', isInternalNote: false, content: notes.join('. ').slice(0, 4000) } : null,
+    );
+    if (!t) return fail(404, 'Ticket not found');
+    return ok({ ticket: t });
+  } catch (err) {
+    return storageFail(err, 'update');
   }
 }

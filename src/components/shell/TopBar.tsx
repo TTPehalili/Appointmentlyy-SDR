@@ -1,16 +1,17 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import { Bell, HelpCircle, Search, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Bell, BookOpen, HelpCircle, LifeBuoy, ListChecks, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { EmptyState, IconButton, Kbd } from '@/components/ui';
+import { EmptyState, IconButton, Kbd, Menu } from '@/components/ui';
+import { useReportProblem } from '@/components/support/ReportProblem';
 import { useDemoWorkspace } from '@/lib/useDemoWorkspace';
 import { ChatButton } from '@/components/chat/ChatButton';
 import { useShell } from './ShellContext';
 
 /**
- * Slim top bar (56px): ⌘K search · Help · Team chat · Notifications · AI Copilot.
+ * Slim top bar (56px): ⌘K search · Help menu (guides, Report a problem, My reports) · Team chat · Notifications · AI Copilot.
  * No brand, domain pill, clock or tenant dropdown (redesign spec 4).
  */
 export function TopBar() {
@@ -36,14 +37,7 @@ export function TopBar() {
         <Search className="size-5 stroke-[1.5]" />
       </IconButton>
       <div className="ml-auto flex items-center gap-1">
-        <Link
-          href="/help"
-          aria-label="Help"
-          title="Help"
-          className="focus-ring inline-flex size-9 items-center justify-center rounded-md text-fg-secondary transition-colors duration-150 hover:bg-subtle hover:text-fg"
-        >
-          <HelpCircle className="size-5 stroke-[1.5]" />
-        </Link>
+        <HelpMenu />
         {/* Reads the URL: in Suspense so dynamic routes can still prerender (Cache Components). */}
         <React.Suspense fallback={<span className="size-9" aria-hidden />}>
           <ChatButton />
@@ -59,6 +53,28 @@ export function TopBar() {
         </IconButton>
       </div>
     </header>
+  );
+}
+
+/** The ? button: help guides, "Report a problem" (any user, any page) and the person's own reports. */
+function HelpMenu() {
+  const router = useRouter();
+  const { open } = useReportProblem();
+  return (
+    <Menu
+      label="Help"
+      items={[
+        { label: 'Report a problem', icon: <LifeBuoy />, onSelect: () => open() },
+        { label: 'My reports', icon: <ListChecks />, onSelect: () => router.push('/help#my-reports') },
+        'divider',
+        { label: 'Help center', icon: <BookOpen />, onSelect: () => router.push('/help') },
+      ]}
+      trigger={(p) => (
+        <IconButton label="Help" {...p} data-testid="help-menu">
+          <HelpCircle className="size-5 stroke-[1.5]" />
+        </IconButton>
+      )}
+    />
   );
 }
 

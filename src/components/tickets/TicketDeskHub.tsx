@@ -32,8 +32,11 @@ import {
   CreditCard
 } from 'lucide-react';
 import { useSession } from '@/lib/session';
-import { TroubleTicket, TicketMessage, TicketPriority, TicketStatus, TicketCategory, TICKET_CATEGORIES } from '@/lib/ticketTypes';
+import { TroubleTicket, TicketPriority, TicketStatus } from '@/lib/ticketTypes';
 import NewTicketModal from '@/components/tickets/NewTicketModal';
+import { useReportProblem } from '@/components/support/ReportProblem';
+import { TicketContextPanel, TicketScreenshots } from '@/components/support/TicketContextPanel';
+import { areaLabel, urgencyLabel } from '@/lib/supportReport';
 import { Badge, Button, EmptyState, IconButton, PageHeader } from '@/components/ui';
 import QuotaTopUpModal from '@/components/icp/QuotaTopUpModal';
 import { creditTenantRecords, normalizeTenantKey, WISE_PAYMENT_LINK, WISE_QR_PATH } from '@/lib/icpQuotaStore';
@@ -41,9 +44,11 @@ import { creditTenantRecords, normalizeTenantKey, WISE_PAYMENT_LINK, WISE_QR_PAT
 /**
  * perspective: when set, the desk is locked to that view and the switcher is hidden.
  * Admin › Support uses 'tenant' (customer desk); Platform Console › Support desk uses 'admin'.
+ * Which tickets arrive is decided by the server (src/lib/server/ticketScope.ts); this view only filters them further.
  */
 export default function TicketDeskHub({ perspective }: { perspective?: 'admin' | 'tenant' } = {}) {
   const { session, role, isAdmin, tenantName, repName, email } = useSession();
+  const { open: openReport } = useReportProblem();
 
   // Mode: Floor Admin (all tickets + internal notes) vs Customer/Tenant (tenant-focused view)
   const [chosenPerspective, setViewPerspective] = useState<'admin' | 'tenant'>(isAdmin ? 'admin' : 'tenant');
@@ -70,6 +75,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,17 +141,6 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
   // Filtered Tickets
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
-      // Perspective check: If in Tenant perspective, filter by tenant unless user is super admin testing
-      if (viewPerspective === 'tenant') {
-        const matchesTenant = t.tenantName.toLowerCase() === tenantName.toLowerCase() ||
-          t.requesterEmail.toLowerCase() === email.toLowerCase() ||
-          t.tenantCode?.toLowerCase() === session.tenantCode?.toLowerCase();
-        // If tenant doesn't match and tenantName is not default appointmentlyy, keep only matching
-        if (tenantName !== 'Appointmentlyy' && !matchesTenant) {
-          return false;
-        }
-      }
-
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
       if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
@@ -164,7 +159,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
 
       return true;
     });
-  }, [tickets, viewPerspective, tenantName, email, session.tenantCode, statusFilter, priorityFilter, categoryFilter, searchQuery]);
+  }, [tickets, statusFilter, priorityFilter, categoryFilter, searchQuery]);
 
   // Selected Ticket Object
   const selectedTicket = useMemo(() => {
@@ -229,31 +224,29 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
     if (!replyContent.trim() || !selectedTicket) return;
 
     setSendingReply(true);
+    setReplyError(null);
     try {
-      const senderRole = viewPerspective === 'admin' ? 'admin' : 'customer';
-      const senderName = viewPerspective === 'admin' ? (repName || 'Emil Halili') : (repName || 'Customer User');
-      const senderEmail = viewPerspective === 'admin' ? 'emil@appointmentlyy.com' : (email || selectedTicket.requesterEmail);
-
+      // Who is writing comes from the session on the server.
       const res = await fetch(`/api/tickets/${selectedTicket.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          senderName,
-          senderEmail,
-          senderRole,
           isInternalNote: viewPerspective === 'admin' ? isInternalNote : false,
           content: replyContent.trim(),
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ticket) {
         setTickets(prev => prev.map(t => t.id === data.ticket.id ? data.ticket : t));
         setReplyContent('');
         setIsInternalNote(false);
+      } else {
+        setReplyError(data.error || 'The reply could not be sent.');
       }
     } catch (err) {
       console.warn('[TicketDesk] Error posting reply:', err);
+      setReplyError('The reply could not be sent. Check your connection.');
     } finally {
       setSendingReply(false);
     }
@@ -388,10 +381,10 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
           /* New Trouble Ticket Button */
           <Button
             variant={viewPerspective === 'admin' ? 'primary' : 'brand'}
-            onClick={() => setIsNewTicketModalOpen(true)}
+            onClick={() => (viewPerspective === 'admin' ? setIsNewTicketModalOpen(true) : openReport({ area: 'other' }))}
             icon={<Plus />}
           >
-            New ticket
+            {viewPerspective === 'admin' ? 'New ticket' : 'Report a problem'}
           </Button>
         }
       />
@@ -426,11 +419,11 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
           <div className="text-h2 text-fg tabular-nums mt-0.5">{stats.resolvedCount}</div>
         </div>
         <div className="px-4 py-3 col-span-2 sm:col-span-1">
-          <div className="text-caption text-fg-tertiary">Avg first reply</div>
-          <div className="text-h2 text-fg mt-0.5 flex items-baseline gap-2">
-            <span className="tabular-nums">&lt; 14 mins</span>
-            <span className="text-caption text-success-fg">100% SLA</span>
+          <div className="text-caption text-fg-tertiary flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-danger-fg" aria-hidden />
+            <span>Urgent, not resolved</span>
           </div>
+          <div className="text-h2 text-fg tabular-nums mt-0.5">{stats.urgentCount}</div>
         </div>
       </div>
 
@@ -488,11 +481,11 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
         </div>
       </div>
 
-      {/* 4. Two-Column Workspace (Queue + Conversation Desk) */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      {/* 4. Two-Column Workspace (Queue + Conversation Desk); stacked on phones so the ticket is readable */}
+      <div className="flex-1 flex flex-col sm:flex-row overflow-y-auto sm:overflow-hidden min-h-0">
 
         {/* LEFT COLUMN: Ticket Queue */}
-        <div className="w-full sm:w-80 md:w-96 border-r border-line flex flex-col bg-surface shrink-0 overflow-hidden">
+        <div className="w-full sm:w-80 md:w-96 border-b sm:border-b-0 sm:border-r border-line flex flex-col bg-surface shrink-0 overflow-hidden max-h-72 sm:max-h-none">
           <div className="h-9 px-3 border-b border-line bg-subtle flex items-center justify-between text-caption text-fg-tertiary">
             <span>Queue <span className="tabular-nums">({filteredTickets.length})</span></span>
             <span className="truncate ml-2">
@@ -507,8 +500,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                 icon={<Inbox />}
                 title="No tickets match these filters"
                 action={
-                  <Button size="sm" variant="secondary" onClick={() => setIsNewTicketModalOpen(true)}>
-                    Create a ticket
+                  <Button size="sm" variant="secondary" onClick={() => (viewPerspective === 'admin' ? setIsNewTicketModalOpen(true) : openReport({ area: 'other' }))}>
+                    {viewPerspective === 'admin' ? 'Create a ticket' : 'Report a problem'}
                   </Button>
                 }
               />
@@ -568,7 +561,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
         </div>
 
         {/* RIGHT COLUMN: Ticket Conversation Desk */}
-        <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-[36rem] sm:min-h-0 min-w-0">
           {selectedTicket ? (
             <>
               {/* Selected Ticket Header */}
@@ -603,11 +596,25 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                       <span>{selectedTicket.requesterName}</span>
                       <span className="text-fg-tertiary">({selectedTicket.requesterEmail})</span>
                     </span>
-                    {selectedTicket.affectedUrl && (
+                    {selectedTicket.requesterRole && (
+                      <>
+                        <span className="text-fg-disabled" aria-hidden>&bull;</span>
+                        <span className="text-fg-tertiary">{selectedTicket.requesterRole}</span>
+                      </>
+                    )}
+                    {(selectedTicket.urgency || selectedTicket.area) && (
                       <>
                         <span className="text-fg-disabled" aria-hidden>&bull;</span>
                         <span className="text-fg-tertiary">
-                          Page: <span className="font-mono text-caption">{selectedTicket.affectedUrl}</span>
+                          {[urgencyLabel(selectedTicket.urgency), areaLabel(selectedTicket.area)].filter(Boolean).join(', ')}
+                        </span>
+                      </>
+                    )}
+                    {selectedTicket.context?.page?.path && (
+                      <>
+                        <span className="text-fg-disabled" aria-hidden>&bull;</span>
+                        <span className="text-fg-tertiary">
+                          Page: <span className="font-mono text-caption">{selectedTicket.context.page.path}</span>
                         </span>
                       </>
                     )}
@@ -651,7 +658,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                       <span className="text-fg-tertiary">Assigned to</span>
                       <span className="flex items-center gap-1.5 text-fg font-medium">
                         <ShieldCheck className="h-4 w-4 text-fg-secondary" aria-hidden />
-                        <span>Emil Halili</span>
+                        <span>Appointmentlyy support</span>
                       </span>
                     </div>
                   )}
@@ -727,12 +734,22 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                   <div className="text-body text-fg whitespace-pre-wrap">
                     {selectedTicket.description}
                   </div>
-                  {selectedTicket.systemInfo && (
+                  {selectedTicket.tried && (
+                    <div className="pt-2 border-t border-line">
+                      <div className="text-caption text-fg-tertiary">What they were trying to do</div>
+                      <div className="text-body text-fg whitespace-pre-wrap break-words">{selectedTicket.tried}</div>
+                    </div>
+                  )}
+                  {viewPerspective === 'tenant' && <TicketScreenshots ticket={selectedTicket} size="sm" />}
+                  {viewPerspective === 'tenant' && !selectedTicket.attachments && (selectedTicket.attachmentCount ?? 0) > 0 && (
                     <div className="pt-2 text-caption text-fg-tertiary border-t border-line">
-                      Client context: {selectedTicket.systemInfo.browser} &bull; {selectedTicket.systemInfo.os}
+                      {selectedTicket.attachmentCount} screenshot{selectedTicket.attachmentCount === 1 ? '' : 's'} attached. Only the person who reported it and Appointmentlyy support can see screenshots.
                     </div>
                   )}
                 </div>
+
+                {/* What the browser captured, screenshots and "Copy for Claude" (staff desk) */}
+                {viewPerspective === 'admin' && <TicketContextPanel key={selectedTicket.id} ticket={selectedTicket} showCopy />}
 
                 {/* Messages Timeline */}
                 {selectedTicket.messages.map((msg, index) => {
@@ -828,7 +845,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                   ) : (
                     <div className="text-small text-fg-secondary flex items-center gap-1.5">
                       <MessageSquare className="h-4 w-4 text-fg-tertiary" aria-hidden />
-                      <span>Reply to Emil Halili and the support team</span>
+                      <span>Reply to the Appointmentlyy support team</span>
                     </div>
                   )}
 
@@ -873,7 +890,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                           ? "Add an internal engineering note (only visible to Appointmentlyy admins)..."
                           : viewPerspective === 'admin'
                           ? `Reply to ${selectedTicket.requesterName} (will notify ${selectedTicket.requesterEmail} via email)...`
-                          : "Type your message or update for Emil Halili and the support team..."
+                          : "Write a reply to the Appointmentlyy support team"
                       }
                       className={`focus-ring w-full px-3 py-2.5 rounded-sm border text-body focus:outline-none resize-none placeholder:text-fg-disabled ${
                         isInternalNote
@@ -885,7 +902,9 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
 
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-caption text-fg-tertiary min-w-0">
-                      {isInternalNote ? (
+                      {replyError ? (
+                        <span className="text-danger-fg" role="alert">{replyError}</span>
+                      ) : isInternalNote ? (
                         <span className="text-warning-fg flex items-center gap-1">
                           <Lock className="h-3.5 w-3.5" aria-hidden />
                           <span>Private team note. Not emailed to the customer.</span>
@@ -893,7 +912,11 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                       ) : (
                         <span className="flex items-center gap-1">
                           <Mail className="h-3.5 w-3.5" aria-hidden />
-                          <span className="truncate">We will email <span className="font-medium text-fg-secondary">{selectedTicket.requesterEmail}</span></span>
+                          <span className="truncate">
+                            {viewPerspective === 'admin'
+                              ? <>We will email <span className="font-medium text-fg-secondary">{selectedTicket.requesterEmail}</span></>
+                              : <>Appointmentlyy support is emailed about your reply</>}
+                          </span>
                         </span>
                       )}
                     </div>
