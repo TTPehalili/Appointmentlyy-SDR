@@ -98,32 +98,32 @@ export default function ColdEmailStudio() {
   const [prospectCompany, setProspectCompany] = useState<string>(!demoAtMount ? '' : isCallviewDefault ? 'Callview AI' : 'Apex Global BPO');
   const [prospectTitle, setProspectTitle] = useState<string>(!demoAtMount ? '' : isCallviewDefault ? 'Founder / CEO' : 'Director of Outbound Operations');
 
-  // Sync stored CSV leads or URL query parameters on mount
+  // ?campaign=1 (from the LinkedIn tab) starts from the campaign message; ?mirror=linkedin mirrors the last post.
+  // useSearchParams (not window.location): on client navigation the URL updates after this renders.
+  const searchParams = useSearchParams();
+
+  // A lead opened from Contacts or the Dialer (?to=&name=&prospectCompany=&title=) replaces the whole recipient.
+  // A value the link leaves empty (e.g. a lead with no email yet) clears that field: it must never keep the
+  // previous lead's address next to this lead's name. Runs again whenever the page is shown (it stays mounted
+  // in a hidden Activity) and when the params change. No lead params (Outreach tab): the saved recipient stays.
   useEffect(() => {
+    // 'prospectCompany', not 'company': ?company= is the workspace-onboarding param read by
+    // syncSessionFromUrl, and would rename the rep's own workspace to the prospect's company.
+    if (!['to', 'name', 'prospectCompany', 'title'].some((k) => searchParams.has(k))) return;
+    const toParam = (searchParams.get('to') || '').trim();
+    setProspectEmailState(toParam);
     try {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const toParam = params.get('to');
-        const nameParam = params.get('name');
-        // 'prospectCompany', not 'company': ?company= is the workspace-onboarding param read by
-        // syncSessionFromUrl, and would rename the rep's own workspace to the prospect's company.
-        const companyParam = params.get('prospectCompany');
-        const titleParam = params.get('title');
-        if (toParam) {
-          setProspectEmailState(toParam);
-          localStorage.setItem('sdr_target_recipient_email', toParam);
-          // A lead opened from Contacts is a new email: never carry the previous email's "Sent" lock over.
-          setSendButtonState('idle');
-          setDirectSendStatus(null);
-        }
-        if (nameParam) setProspectName(nameParam);
-        if (companyParam) setProspectCompany(companyParam);
-        if (titleParam) setProspectTitle(titleParam);
-      }
+      if (toParam) localStorage.setItem('sdr_target_recipient_email', toParam);
     } catch (e) {
-      console.warn('Could not read URL params:', e);
+      console.warn('Could not save the recipient:', e);
     }
-  }, []);
+    setProspectName(searchParams.get('name') || '');
+    setProspectCompany(searchParams.get('prospectCompany') || '');
+    setProspectTitle(searchParams.get('title') || '');
+    // A lead opened from Contacts is a new email: never carry the previous email's "Sent" lock over.
+    setSendButtonState('idle');
+    setDirectSendStatus(null);
+  }, [searchParams]);
 
   // Studio Mode: 'editor' | 'preview'
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
@@ -149,9 +149,7 @@ export default function ColdEmailStudio() {
     setSelectedFrameworkIdState(id);
     saveCampaignMessage({ frameworkId: id });
   };
-  // ?campaign=1 (from the LinkedIn tab) starts from the campaign message; ?mirror=linkedin mirrors the last post.
-  // useSearchParams (not window.location): on client navigation the URL updates after this renders.
-  const searchParams = useSearchParams();
+  // searchParams (declared above) for ?campaign=1 and ?mirror=linkedin.
   const [assistantStart, setAssistantStart] = useState<AssistantAutoStart | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = searchParams;

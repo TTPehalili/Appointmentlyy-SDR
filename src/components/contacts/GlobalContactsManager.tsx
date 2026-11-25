@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   Users,
@@ -78,6 +78,12 @@ import {
   type LeadActivityGroup,
   type LeadActivityOption,
 } from '@/lib/leadActivityChecklist';
+
+/** Cold email for this lead. Every field is passed (an empty one too), so Cold email shows this lead only. */
+function coldEmailHref(c: Pick<ContactRecord, 'email' | 'name' | 'company' | 'title'>): string {
+  const q = (v: string | undefined) => encodeURIComponent(v || '');
+  return `/outreach/email?to=${q(c.email)}&name=${q(c.name)}&prospectCompany=${q(c.company)}&title=${q(c.title)}`;
+}
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
@@ -393,10 +399,16 @@ export default function GlobalContactsManager() {
     }
   };
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when a filter really changes. Not on mount and not when the page is shown again:
+  // Contacts stays mounted in a hidden Activity when the rep leaves (e.g. Draft email) and every effect
+  // re-runs on return, which used to send them back to page 1.
+  const filterKey = JSON.stringify([searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter]);
+  const lastFilterKey = useRef(filterKey);
   useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
     setCurrentPage(1);
-  }, [searchQuery, selectedStatus, selectedRepFilter, selectedFolderFilter]);
+  }, [filterKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredContacts.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -1048,7 +1060,7 @@ export default function GlobalContactsManager() {
                                 <PhoneCall className="size-4" />
                               </Link>
                               <Link
-                                href={`/outreach/email?to=${encodeURIComponent(c.email)}&name=${encodeURIComponent(c.name)}&prospectCompany=${encodeURIComponent(c.company)}`}
+                                href={coldEmailHref(c)}
                                 className={rowIconLinkClass}
                                 title="Draft Cold Email"
                                 aria-label={`Email ${c.name}`}
@@ -1165,7 +1177,7 @@ export default function GlobalContactsManager() {
                 </Link>
 
                 <Link
-                  href={`/outreach/email?to=${encodeURIComponent(selectedContact.email)}&name=${encodeURIComponent(selectedContact.name)}&prospectCompany=${encodeURIComponent(selectedContact.company)}`}
+                  href={coldEmailHref(selectedContact)}
                   className={buttonClasses('secondary', 'md', 'flex-1')}
                 >
                   <Mail className="size-4 text-fg-secondary" aria-hidden />

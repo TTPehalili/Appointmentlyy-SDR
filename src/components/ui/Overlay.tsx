@@ -24,6 +24,17 @@ function useModal(open: boolean, onClose: () => void) {
     }
     if (!open && el.open) el.close();
   }, [open]);
+  // Routes stay mounted in a hidden <Activity> when the user navigates away (cacheComponents). A modal
+  // <dialog> left open there stays in the top layer, unseen, and blocks the document: the next screen
+  // ignores every click and key until a hard refresh (e.g. "Draft email" in the Contacts lead drawer).
+  // Close it when hidden (layout cleanup runs before the next screen paints); the effect above opens it
+  // again when the screen is shown, so Back still returns to the open drawer.
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    return () => {
+      if (el?.open) el.close();
+    };
+  }, []);
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
