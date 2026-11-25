@@ -32,8 +32,8 @@ const FIELDS: TemplateField[] = [
   { group: 'Client', key: 'clientLegal', label: 'Client legal name', type: 'text', required: true, default: 'GDV Business Services Co.' },
   { group: 'Client', key: 'clientShort', label: 'Client short name', type: 'text', required: true, default: 'STACKph', help: 'Used throughout the proposal and annexes, e.g. "STACKph".' },
   { group: 'Client', key: 'clientCity', label: 'Client city / province', type: 'text', required: true, default: 'Taytay, Rizal', help: 'Also where the onsite training days take place.' },
-  { group: 'Client', key: 'clientSecNo', label: 'Client SEC registration no.', type: 'text', default: '', help: 'Annex A "Parties". Left blank, it shows as a yellow placeholder.' },
-  { group: 'Client', key: 'clientStreet', label: 'Client street address', type: 'text', default: '', help: 'Street part only; the city / province follows it. Left blank, it shows as a yellow placeholder.' },
+  { group: 'Client', key: 'clientSecNo', label: 'Client SEC registration no.', type: 'text', default: '', help: 'Annex A "Parties". Optional: left blank, it is left out of the agreement.' },
+  { group: 'Client', key: 'clientStreet', label: 'Client street address', type: 'text', default: '', help: 'Street part only; the city / province follows it. Optional: left blank, it is left out of the agreement.' },
   { group: 'Client', key: 'preparedFor', label: 'Prepared-for line (cover)', type: 'text', required: true, default: 'STACKph leadership' },
   { group: 'Client', key: 'salesLead', label: 'Client sales lead (first name)', type: 'text', required: true, default: 'Brian', help: 'The person Emil trains and mentors with, named on the founder-led enablement page.' },
   {
@@ -776,6 +776,8 @@ function AnnexPage({ head, client, children }: { head: string; client: string; c
  * Each swap must match exactly once, so a change to the v1 source text fails loudly instead of silently.
  */
 const ANNEX_A_V2_SWAPS: [string, string][] = [
+  // SEC no. and street are optional in v2: left blank, they are simply left out (no placeholder).
+  ['{{clientLegal}}, {{clientSecNo}}, of {{clientStreet}}, {{clientCity}}.', '{{clientLegal}}{{clientSecPart}}, of {{clientAddressLine}}.'],
   [
     'For {{clientShort}}, UAT means you pay the second half of the build fee only after you have seen the platform working for your team.',
     'For {{clientShort}}, UAT means you see the platform working for your team before you sign it off. The second half of the build fee is due at sign-off, or on the fixed date in clause 9 if that comes first.',
@@ -841,6 +843,8 @@ function annexVars(v: Record<string, string>, m: ReturnType<typeof compute>): Re
     clientLegal: valueOrMark(v.clientLegal, 'client legal name'),
     clientSecNo: valueOrMark(v.clientSecNo, 'SEC registration no.'),
     clientStreet: valueOrMark(v.clientStreet, 'street address'),
+    clientSecPart: (v.clientSecNo ?? '').trim() ? `, SEC registration no. ${(v.clientSecNo ?? '').trim()}` : '',
+    clientAddressLine: [(v.clientStreet ?? '').trim(), valueOrMark(v.clientCity, 'city / province')].filter(Boolean).join(', '),
     clientCity: valueOrMark(v.clientCity, 'city / province'),
     proposalDate: valueOrMark(formatDate(v.proposalDate), 'proposal date'),
     buildFee: usdWords(m.build),
