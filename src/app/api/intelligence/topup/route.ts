@@ -8,6 +8,7 @@ import {
   sendAppointmentlyySystemInvoiceEmail,
   sendAdminTicketAlert,
 } from '@/lib/ticketEmailer';
+import { readInvoiceTextFromRequest, DEFAULT_INVOICE_TEXT } from '@/lib/invoiceText';
 
 /**
  * POST /api/intelligence/topup
@@ -36,6 +37,11 @@ export async function POST(req: NextRequest) {
           lineItems: undefined,
           issueDate: undefined,
           dueDate: undefined,
+          // Clients' own top-ups always carry the standard invoice text.
+          invoiceNote: undefined,
+          refundPolicy: undefined,
+          paymentInstructions: undefined,
+          inquiriesEmail: undefined,
         };
     if (!session.isPlatformAdmin && raw?.scenario && raw.scenario !== 'icp_topup') {
       return NextResponse.json({ error: 'Only Appointmentlyy staff can issue that invoice.' }, { status: 403 });
@@ -61,6 +67,20 @@ export async function POST(req: NextRequest) {
         { error: 'A valid recipient email address is required to send the invoice.' },
         { status: 400 }
       );
+    }
+
+    // The note, policy, payment line and inquiries email (staff only; clients get the standard text).
+    // Cleaned and capped here; the email escapes every one of them.
+    const invoiceText = session.isPlatformAdmin
+      ? readInvoiceTextFromRequest({
+          note: body.invoiceNote,
+          refundPolicy: body.refundPolicy,
+          paymentInstructions: body.paymentInstructions,
+          inquiriesEmail: body.inquiriesEmail,
+        })
+      : DEFAULT_INVOICE_TEXT;
+    if (!invoiceText) {
+      return NextResponse.json({ error: 'Enter a valid email address for inquiries.' }, { status: 400 });
     }
 
     const now = new Date();
@@ -97,7 +117,9 @@ export async function POST(req: NextRequest) {
 
     if (createSupportTicket && ticketAllowed) {
       const ticketSubject =
-        scenario === 'onboarding_month1'
+        scenario === 'gtm_plan'
+          ? `[${invNum}] GTM Plan Invoice ($${Number(totalAmountUsd).toLocaleString()} USD) — ${tenantName}`
+          : scenario === 'onboarding_month1'
           ? `[${invNum}] New Client Signup Invoice ($${Number(totalAmountUsd).toLocaleString()} USD) — ${tenantName}`
           : scenario === 'renewal_month2'
           ? `[${invNum}] Month 2+ Subscription & ICP Volume ($${Number(totalAmountUsd).toLocaleString()} USD) — ${tenantName}`
@@ -164,6 +186,7 @@ export async function POST(req: NextRequest) {
       totalAmountUsd: Number(totalAmountUsd),
       lineItems,
       ticketId: createdTicketId,
+      text: invoiceText,
     });
 
     return NextResponse.json({

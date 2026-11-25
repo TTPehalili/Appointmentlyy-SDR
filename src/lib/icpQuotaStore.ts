@@ -1,4 +1,12 @@
 import { isDemoWorkspace } from '@/lib/demoMode';
+import {
+  DEFAULT_INVOICE_TEXT,
+  INVOICE_TEXT_LIMITS,
+  LEGACY_INVOICE_TEXT,
+  cleanInvoiceBlock,
+  isValidInvoiceEmail,
+  type InvoiceTextBlocks,
+} from '@/lib/invoiceText';
 /**
  * Appointmentlyy ICP Data Cloud — Multi-Tenant Quota & Invoice Ledger
  *
@@ -83,7 +91,7 @@ export interface InvoiceLineItem {
   isIncludedBonus?: boolean;
 }
 
-export type InvoiceScenarioType = 'onboarding_month1' | 'renewal_month2' | 'icp_topup' | 'custom';
+export type InvoiceScenarioType = 'gtm_plan' | 'onboarding_month1' | 'renewal_month2' | 'icp_topup' | 'custom';
 
 export interface SystemInvoice {
   id: string;
@@ -102,11 +110,22 @@ export interface SystemInvoice {
   ticketId?: string;
   lineItems: InvoiceLineItem[];
   notes?: string;
+  /**
+   * The exact customer-facing text this invoice was sent with. Absent on invoices sent before the text
+   * was editable: those carried LEGACY_INVOICE_TEXT (see invoiceTextOf).
+   */
+  text?: InvoiceTextBlocks;
   createdAt: string;
+}
+
+/** The text blocks an invoice was sent with (older invoices: the text that was hard-coded then). */
+export function invoiceTextOf(inv: Pick<SystemInvoice, 'text'>): InvoiceTextBlocks {
+  return inv.text ? { ...LEGACY_INVOICE_TEXT, ...inv.text } : LEGACY_INVOICE_TEXT;
 }
 
 const QUOTA_STORAGE_KEY = 'appointmentlyy_icp_tenant_quotas_v1';
 const INVOICES_STORAGE_KEY = 'appointmentlyy_system_invoices_v1';
+const INVOICE_TEXT_DEFAULTS_KEY = 'appointmentlyy_invoice_text_defaults_v1';
 const MASTER_KEY_STORAGE = 'appointmentlyy_data_cloud_master_key_v1';
 const QUOTA_BROADCAST = 'appointmentlyy_icp_quota_sync';
 
@@ -546,6 +565,86 @@ export function addSystemInvoice(invoice: SystemInvoice): SystemInvoice[] {
 }
 
 /**
+ * The next unused invoice number: one past the highest INV-<this year>-<n> already stored (n from 1001),
+ * skipping any number already taken.
+ */
+export function nextInvoiceNumber(invoices: SystemInvoice[], year = new Date().getFullYear()): string {
+  const used = new Set(invoices.map((i) => String(i.invoiceNumber || '').trim().toUpperCase()));
+  const re = new RegExp(`^INV-${year}-(\\d{1,9})$`, 'i');
+  let max = 1000;
+  for (const inv of invoices) {
+    const m = re.exec(String(inv.invoiceNumber || '').trim());
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  let n = max + 1;
+  while (used.has(`INV-${year}-${String(n).padStart(4, '0')}`)) n++;
+  return `INV-${year}-${String(n).padStart(4, '0')}`;
+}
+
+/**
+ * The owner's own invoice text, remembered in this browser as the starting point for the next invoice:
+ * policy, payment line and inquiries email, plus a note per invoice type. Saved only when the owner
+ * sends an invoice or clicks "Save as default", never as they type.
+ */
+export interface InvoiceTextDefaults {
+  refundPolicy: string;
+  paymentInstructions: string;
+  inquiriesEmail: string;
+  notes: Partial<Record<InvoiceScenarioType, string>>;
+}
+
+export function getInvoiceTextDefaults(): InvoiceTextDefaults {
+  const base: InvoiceTextDefaults = {
+    refundPolicy: DEFAULT_INVOICE_TEXT.refundPolicy,
+    paymentInstructions: DEFAULT_INVOICE_TEXT.paymentInstructions,
+    inquiriesEmail: DEFAULT_INVOICE_TEXT.inquiriesEmail,
+    notes: {},
+  };
+  if (typeof window === 'undefined') return base;
+  try {
+    const o = JSON.parse(localStorage.getItem(INVOICE_TEXT_DEFAULTS_KEY) || 'null');
+    if (!o || typeof o !== 'object') return base;
+    const notes: InvoiceTextDefaults['notes'] = {};
+    if (o.notes && typeof o.notes === 'object') {
+      for (const [k, v] of Object.entries(o.notes)) if (typeof v === 'string') notes[k as InvoiceScenarioType] = cleanInvoiceBlock(v, INVOICE_TEXT_LIMITS.note);
+    }
+    return {
+      refundPolicy: typeof o.refundPolicy === 'string' ? cleanInvoiceBlock(o.refundPolicy, INVOICE_TEXT_LIMITS.refundPolicy) : base.refundPolicy,
+      paymentInstructions: typeof o.paymentInstructions === 'string' ? cleanInvoiceBlock(o.paymentInstructions, INVOICE_TEXT_LIMITS.paymentInstructions) : base.paymentInstructions,
+      inquiriesEmail: typeof o.inquiriesEmail === 'string' && isValidInvoiceEmail(o.inquiriesEmail) ? o.inquiriesEmail.trim() : base.inquiriesEmail,
+      notes,
+    };
+  } catch {
+    return base;
+  }
+}
+
+export function saveInvoiceTextDefaults(scenario: InvoiceScenarioType, text: InvoiceTextBlocks): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const cur = getInvoiceTextDefaults();
+    const next: InvoiceTextDefaults = {
+      refundPolicy: cleanInvoiceBlock(text.refundPolicy, INVOICE_TEXT_LIMITS.refundPolicy),
+      paymentInstructions: cleanInvoiceBlock(text.paymentInstructions, INVOICE_TEXT_LIMITS.paymentInstructions),
+      inquiriesEmail: isValidInvoiceEmail(text.inquiriesEmail) ? text.inquiriesEmail.trim() : cur.inquiriesEmail,
+      notes: { ...cur.notes, [scenario]: cleanInvoiceBlock(text.note, INVOICE_TEXT_LIMITS.note) },
+    };
+    localStorage.setItem(INVOICE_TEXT_DEFAULTS_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn('[IcpQuotaStore] Failed to save invoice text defaults:', err);
+  }
+}
+
+export function clearInvoiceTextDefaults(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(INVOICE_TEXT_DEFAULTS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Mark a System Invoice as Paid and automatically provision its ICP credits to the tenant
  */
 export function markInvoicePaidAndProvision(invoiceId: string): {
@@ -559,7 +658,8 @@ export function markInvoicePaidAndProvision(invoiceId: string): {
   const target = invoices[idx];
   let updatedQuota: TenantQuotaState | null = null;
 
-  if (!target.creditsProvisioned && target.creditsToProvision > 0) {
+  // GTM plan invoices carry no ICP records: marking one paid never credits any.
+  if (!target.creditsProvisioned && target.creditsToProvision > 0 && target.scenario !== 'gtm_plan') {
     if (target.scenario === 'onboarding_month1') {
       updatedQuota = creditTenantRecords(target.tenantCode, 0, {
         setBillingStage: 'month1',

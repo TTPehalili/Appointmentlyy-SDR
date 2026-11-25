@@ -9,6 +9,7 @@ import {
   WISE_QR_PATH,
   OFFICIAL_LOGO_PATH,
 } from '@/lib/icpQuotaStore';
+import { DEFAULT_INVOICE_TEXT } from '@/lib/invoiceText';
 
 export interface MinimalistInvoiceCardProps {
   invoiceNumber: string;
@@ -18,7 +19,14 @@ export interface MinimalistInvoiceCardProps {
   clientEmail: string;
   totalAmountUsd: number;
   lineItems: InvoiceLineItem[];
+  /** Invoice note. Empty or missing hides it. */
   footerNote?: string;
+  /** Body of the refund and cancellation policy (default: the standard policy). Empty hides the section. */
+  refundPolicy?: string;
+  /** The line above the Wise link (default: the standard line). */
+  paymentInstructions?: string;
+  /** Inquiries contact (default: support). */
+  inquiriesEmail?: string;
   ticketId?: string;
   compact?: boolean;
 }
@@ -32,10 +40,17 @@ export default function MinimalistInvoiceCard({
   totalAmountUsd,
   lineItems,
   footerNote,
+  refundPolicy = DEFAULT_INVOICE_TEXT.refundPolicy,
+  paymentInstructions = DEFAULT_INVOICE_TEXT.paymentInstructions,
+  inquiriesEmail = DEFAULT_INVOICE_TEXT.inquiriesEmail,
   ticketId,
   compact = false,
 }: MinimalistInvoiceCardProps) {
   const [copiedRef, setCopiedRef] = React.useState(false);
+  const note = (footerNote || '').trim();
+  const policy = (refundPolicy || '').trim();
+  const paymentLine = (paymentInstructions || '').trim();
+  const inquiries = (inquiriesEmail || '').trim();
 
   const copyInvoiceRef = () => {
     navigator.clipboard.writeText(invoiceNumber);
@@ -150,7 +165,11 @@ export default function MinimalistInvoiceCard({
               Pay via Wise
             </div>
             <p className="text-small text-fg-secondary">
-              Transfer via Wise using the link below or scan the QR code.
+              {paymentLine && (
+                <span data-testid="invoice-payment-line" className="whitespace-pre-line break-words">
+                  {paymentLine}{' '}
+                </span>
+              )}
               Reference{' '}
               <button
                 type="button"
@@ -197,41 +216,35 @@ export default function MinimalistInvoiceCard({
           </div>
         </div>
 
-        {/* Subtle Note & Official Refund Policy */}
-        <div className="mt-8 pt-5 border-t border-line space-y-3 text-caption font-normal text-fg-tertiary">
-          <div className="text-fg-secondary">
-            {footerNote ||
-              'Month 1 includes platform setup, BYOK access, and 8,000 ICP credits (2,000/wk). Month 2+ renews at $249/mo (BYOK) + selected ICP volume.'}
+        {/* Note, refund policy and inquiries: the owner's own text (Admin > Billing) */}
+        {(note || policy || inquiries) && (
+          <div className="mt-8 pt-5 border-t border-line space-y-3 text-caption font-normal text-fg-tertiary">
+            {note && (
+              <div data-testid="invoice-note" className="text-fg-secondary whitespace-pre-line break-words">
+                {note}
+              </div>
+            )}
+            {policy && (
+              <div
+                data-testid="invoice-policy"
+                className={`space-y-1 text-fg-tertiary ${note ? 'pt-3 border-t border-line' : ''}`}
+              >
+                <div className="font-medium text-fg-secondary">
+                  Refund and cancellation policy
+                </div>
+                <p data-testid="invoice-policy-body" className="whitespace-pre-line break-words">
+                  {policy}
+                </p>
+              </div>
+            )}
+            {inquiries && (
+              <p data-testid="invoice-inquiries" className="text-fg-tertiary break-words">
+                Inquiries:{' '}
+                <span className="text-fg-secondary font-mono">{inquiries}</span>
+              </p>
+            )}
           </div>
-          <div className="pt-3 border-t border-line space-y-1 text-fg-tertiary">
-            <div className="font-medium text-fg-secondary">
-              Refund and cancellation policy
-            </div>
-
-            <p>
-              <strong className="font-medium text-fg-tertiary">
-                Setup &amp; Infrastructure:
-              </strong>{' '}
-              Initial workspace deployment, configuration, and setup fees
-              ($2,500) are non-refundable once resource provisioning has begun.{' '}
-              <strong className="font-medium text-fg-tertiary">
-                Monthly Subscriptions:
-              </strong>{' '}
-              Recurring monthly charges ($249/mo BYOK) operate on a flexible
-              30-day model with zero multi-year lock-in and are non-refundable
-              once a billing cycle commences; cancel anytime prior to the next
-              billing date.{' '}
-              <strong className="font-medium text-fg-tertiary">
-                Data Credits &amp; Consumables:
-              </strong>{' '}
-              Contact enrichment batches and ICP Data Cloud record allocations
-              are non-refundable once provisioned or processed. Inquiries:{' '}
-              <span className="text-fg-secondary font-mono">
-                Admin@appointmentlyy.com
-              </span>
-            </p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

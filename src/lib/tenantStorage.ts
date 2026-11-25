@@ -34,6 +34,7 @@ const DATA_KEYS = [
   'appointmentlyy_call_dispositions_v1',
   'appointmentlyy_icp_tenant_quotas_v1',
   'appointmentlyy_system_invoices_v1',
+  'appointmentlyy_invoice_text_defaults_v1',
   'appointmentlyy_data_cloud_master_key_v1',
   'appointmentlyy_custom_domains_v1',
   'appointmentlyy_simulated_custom_host_v1',

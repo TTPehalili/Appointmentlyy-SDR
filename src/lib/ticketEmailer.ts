@@ -12,6 +12,7 @@ import type { TroubleTicket, TicketMessage } from '@/lib/ticketTypes';
 import { getAppBaseUrl } from '@/lib/authToken';
 import { EMAIL_RE } from '@/lib/roles';
 import { areaLabel, urgencyLabel } from '@/lib/supportReport';
+import { readInvoiceTextFromRequest, DEFAULT_INVOICE_TEXT, type InvoiceTextBlocks } from '@/lib/invoiceText';
 
 /** Where new-ticket alerts go: SUPPORT_ALERT_EMAIL, or support@appointmentlyy.com. */
 export const SUPPORT_ALERT_EMAIL_DEFAULT = 'support@appointmentlyy.com';
@@ -554,6 +555,8 @@ export async function sendAppointmentlyySystemInvoiceEmail(params: {
   totalAmountUsd: number;
   lineItems: { description: string; subtext?: string; amountUsd: number }[];
   ticketId?: string;
+  /** The owner's note, policy, payment line and inquiries email (missing: the standard text). */
+  text?: InvoiceTextBlocks;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const apiKey = getResendApiKey();
   if (!apiKey) {
@@ -564,6 +567,21 @@ export async function sendAppointmentlyySystemInvoiceEmail(params: {
   const fromEmail = getResendFromEmail();
   const inboundEmail = getResendInboundEmail();
   const wiseUrl = 'https://wise.com/pay/me/emilhalilih';
+  // Cleaned and capped again here (the route already did): line breaks kept, everything escaped below.
+  const asRecord = (t?: InvoiceTextBlocks) => (t ? ({ ...t } as unknown as Record<string, unknown>) : undefined);
+  const text: InvoiceTextBlocks =
+    readInvoiceTextFromRequest(asRecord(params.text)) ??
+    readInvoiceTextFromRequest({ ...asRecord(params.text), inquiriesEmail: DEFAULT_INVOICE_TEXT.inquiriesEmail }) ??
+    DEFAULT_INVOICE_TEXT;
+  /** Escaped, with the owner's line breaks shown as line breaks. */
+  const escLines = (v: string) => escapeHtml(v).replace(/\n/g, '<br/>');
+  const textFooter = [
+    text.note,
+    text.refundPolicy ? `Refund & Cancellation Policy:\n${text.refundPolicy}` : '',
+    `Inquiries: ${text.inquiriesEmail}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const subject = `Invoice ${params.invoiceNumber} from Appointmentlyy ($${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)`;
 
@@ -589,16 +607,12 @@ ${rowsText}
 
 Total Due: $${params.totalAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
 
-Pay via Wise:
+Pay via Wise:${text.paymentInstructions ? `\n${text.paymentInstructions}` : ''}
 ${wiseUrl}
 Wise Tag: @emilhalilih
 Please reference ${params.invoiceNumber} in your transfer note.
 
-Refund & Cancellation Policy:
-- Setup & Infrastructure: Initial workspace deployment, configuration, and setup fees ($2,500) are non-refundable once resource provisioning has begun.
-- Monthly Subscriptions: Recurring monthly charges ($249/mo BYOK) operate on a flexible 30-day model with zero multi-year lock-in and are non-refundable once a billing cycle commences; cancel anytime prior to the next billing date.
-- Data Credits & Consumables: Contact enrichment batches and ICP Data Cloud record allocations are non-refundable once provisioned or processed.
-Inquiries: Admin@appointmentlyy.com
+${textFooter}
 `.trim();
 
   const rowsHtml = params.lineItems
@@ -704,7 +718,7 @@ Inquiries: Admin@appointmentlyy.com
                   <td>
                     <div style="font-size: 12px; font-weight: 600; color: #18181b; margin-bottom: 6px;">Pay via Wise</div>
                     <div style="font-size: 12px; color: #71717a; line-height: 1.6; margin-bottom: 14px;">
-                      Transfer via Wise using the link below (Tag: <strong style="font-family: monospace; color: #18181b;">@emilhalilih</strong>). Please reference <strong style="font-family: monospace; color: #18181b;">${escapeHtml(params.invoiceNumber)}</strong> in your payment note.
+                      ${text.paymentInstructions ? `${escLines(text.paymentInstructions)} ` : ''}Wise tag: <strong style="font-family: monospace; color: #18181b;">@emilhalilih</strong>. Please reference <strong style="font-family: monospace; color: #18181b;">${escapeHtml(params.invoiceNumber)}</strong> in your payment note.
                     </div>
                     <a href="${wiseUrl}" style="display: inline-block; background-color: #09090b; color: #ffffff; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 12px; font-weight: 500;">
                       wise.com/pay/me/emilhalilih &nearr;
@@ -713,15 +727,13 @@ Inquiries: Admin@appointmentlyy.com
                 </tr>
               </table>
 
-              <!-- Refund & Cancellation Policy -->
+              <!-- Note, Refund & Cancellation Policy, Inquiries (the owner's text; an empty note or policy is left out) -->
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #f4f4f5;">
                 <tr>
                   <td style="font-size: 11px; color: #a1a1aa; line-height: 1.6;">
-                    <div style="font-weight: 600; color: #52525b; margin-bottom: 4px;">Refund &amp; Cancellation Policy</div>
-                    <strong>Setup &amp; Infrastructure:</strong> Initial workspace deployment, configuration, and setup fees ($2,500) are non-refundable once resource provisioning has begun.
-                    <strong>Monthly Subscriptions:</strong> Recurring monthly charges ($249/mo BYOK) operate on a flexible 30-day model with zero multi-year lock-in and are non-refundable once a billing cycle commences; cancel anytime prior to the next billing date.
-                    <strong>Data Credits &amp; Consumables:</strong> Contact enrichment batches and ICP Data Cloud record allocations are non-refundable once provisioned or processed.
-                    Inquiries: <span style="font-family: monospace; color: #52525b;">Admin@appointmentlyy.com</span>
+                    ${text.note ? `<div data-block="note" style="font-size: 12px; color: #52525b; margin-bottom: 14px;">${escLines(text.note)}</div>` : ''}
+                    ${text.refundPolicy ? `<div data-block="policy" style="margin-bottom: 10px;"><div style="font-weight: 600; color: #52525b; margin-bottom: 4px;">Refund &amp; Cancellation Policy</div>${escLines(text.refundPolicy)}</div>` : ''}
+                    <div data-block="inquiries">Inquiries: <span style="font-family: monospace; color: #52525b;">${escapeHtml(text.inquiriesEmail)}</span></div>
                   </td>
                 </tr>
               </table>

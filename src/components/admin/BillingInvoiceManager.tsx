@@ -1,8 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Plus, Send, Trash2, Printer, Eye, ExternalLink } from 'lucide-react';
-import { Badge, Button, buttonClasses, Card, CardHeader, Dialog, Field, IconButton, Input, PageHeader } from '@/components/ui';
+import { CheckCircle2, Plus, Send, Trash2, Printer, Eye, ExternalLink, RotateCcw, Save } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  buttonClasses,
+  Card,
+  CardHeader,
+  Checkbox,
+  Dialog,
+  Field,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  Textarea,
+} from '@/components/ui';
 import {
   SystemInvoice,
   InvoiceLineItem,
@@ -12,9 +26,71 @@ import {
   markInvoicePaidAndProvision,
   subscribeToQuotaStore,
   WISE_PAYMENT_LINK,
+  nextInvoiceNumber,
+  invoiceTextOf,
+  getInvoiceTextDefaults,
+  saveInvoiceTextDefaults,
+  clearInvoiceTextDefaults,
 } from '@/lib/icpQuotaStore';
+import {
+  DEFAULT_INVOICE_TEXT,
+  GTM_PLAN_NOTE,
+  INVOICE_TEXT_LIMITS,
+  cleanInvoiceBlock,
+  isValidInvoiceEmail,
+  type InvoiceTextBlocks,
+} from '@/lib/invoiceText';
 import MinimalistInvoiceCard from '@/components/icp/MinimalistInvoiceCard';
+import InvoiceTextAi from '@/components/admin/InvoiceTextAi';
 import { isDemoWorkspace } from '@/lib/demoMode';
+
+/** Each preset's starting note (editable in the form; the owner's own saved note wins). */
+const PRESET_NOTES: Record<InvoiceScenarioType, string> = {
+  gtm_plan: GTM_PLAN_NOTE,
+  onboarding_month1:
+    'Month 1 includes setup, platform access, and 8,000 ICP credits. Starting Month 2, platform access is $249/mo (BYOK) and ICP list volume is billed per selected tier.',
+  renewal_month2: 'Recurring Month 2+ billing: $249/mo BYOK platform access + selected ICP Data Cloud volume tier.',
+  icp_topup: 'On-demand ICP credit top-up. Credited immediately upon Wise transfer confirmation.',
+  custom: '',
+};
+
+type GtmSetupPart = 'full' | 'first' | 'second';
+interface GtmOptions {
+  setupAmount: number;
+  setupPart: GtmSetupPart;
+  monthly: boolean;
+  monthlyAmount: number;
+}
+const GTM_DEFAULTS: GtmOptions = { setupAmount: 10000, setupPart: 'full', monthly: false, monthlyAmount: 1500 };
+
+const usdPlain = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+/** "November 2026" from the issue date (today if it can't be read). */
+function monthYearOf(issueDate: string): string {
+  const d = new Date(issueDate);
+  return (Number.isNaN(d.getTime()) ? new Date() : d).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+/** GTM plan lines: the setup fee (full, or one of two 50% payments) and, when ticked, the monthly fee. */
+function gtmLineItems(o: GtmOptions, issueDate: string): InvoiceLineItem[] {
+  const setup = Math.max(0, Number(o.setupAmount) || 0);
+  const items: InvoiceLineItem[] =
+    o.setupPart === 'full'
+      ? [{ description: 'GTM plan: custom build and setup fee', amountUsd: setup }]
+      : [
+          {
+            description: `GTM plan: custom build fee, ${o.setupPart === 'first' ? '1st' : '2nd'} payment (50% of USD ${usdPlain(setup)} setup)`,
+            amountUsd: Math.round(setup * 50) / 100,
+          },
+        ];
+  if (o.monthly) {
+    items.push({
+      description: `GTM plan: monthly platform and support, ${monthYearOf(issueDate)}`,
+      amountUsd: Math.max(0, Number(o.monthlyAmount) || 0),
+    });
+  }
+  return items;
+}
 
 export default function BillingInvoiceManager() {
   const [invoices, setInvoices] = useState<SystemInvoice[]>(() => getStoredInvoices());
@@ -22,8 +98,9 @@ export default function BillingInvoiceManager() {
     useState<SystemInvoice | null>(null);
 
   // Manual Invoice Generator Studio State
-  const [scenario, setScenario] = useState<InvoiceScenarioType>('onboarding_month1');
-  const [invoiceNumber, setInvoiceNumber] = useState('INV-2026-1008');
+  const [scenario, setScenario] = useState<InvoiceScenarioType>('gtm_plan');
+  // The next number not used by any stored invoice (editable).
+  const [invoiceNumber, setInvoiceNumber] = useState(() => nextInvoiceNumber(getStoredInvoices()));
   const [issueDate, setIssueDate] = useState(() =>
     new Date().toLocaleDateString('en-US', {
       month: 'short',
@@ -31,36 +108,37 @@ export default function BillingInvoiceManager() {
       year: 'numeric',
     })
   );
+  const [gtm, setGtm] = useState<GtmOptions>(GTM_DEFAULTS);
+
+  // Customer-facing text blocks: the owner's saved defaults (or the standard text), editable per invoice.
+  const [textDefaults, setTextDefaults] = useState(() => getInvoiceTextDefaults());
+  const noteFor = (s: InvoiceScenarioType) => textDefaults.notes[s] ?? PRESET_NOTES[s];
+  const [invoiceNote, setInvoiceNote] = useState(() => noteFor('gtm_plan'));
+  const [refundPolicy, setRefundPolicy] = useState(() => textDefaults.refundPolicy);
+  const [paymentInstructions, setPaymentInstructions] = useState(() => textDefaults.paymentInstructions);
+  const [inquiriesEmail, setInquiriesEmail] = useState(() => textDefaults.inquiriesEmail);
+  const [textSavedNote, setTextSavedNote] = useState('');
+  const inquiriesValid = isValidInvoiceEmail(inquiriesEmail);
+  /** The text exactly as it is sent and kept with the invoice. */
+  const currentText = (): InvoiceTextBlocks => ({
+    note: cleanInvoiceBlock(invoiceNote, INVOICE_TEXT_LIMITS.note),
+    refundPolicy: cleanInvoiceBlock(refundPolicy, INVOICE_TEXT_LIMITS.refundPolicy),
+    paymentInstructions: cleanInvoiceBlock(paymentInstructions, INVOICE_TEXT_LIMITS.paymentInstructions),
+    inquiriesEmail: inquiriesEmail.trim(),
+  });
   // The sample client is prefilled in the demo workspace only.
   const [tenantName, setTenantName] = useState(() => (isDemoWorkspace() ? 'Apex Global BPO' : ''));
   const [tenantCode, setTenantCode] = useState(() => (isDemoWorkspace() ? 'APEX-GLOBAL' : ''));
   const [clientContactName, setClientContactName] = useState(() => (isDemoWorkspace() ? 'Julian Vance' : ''));
   const [clientEmail, setClientEmail] = useState(() => (isDemoWorkspace() ? 'julian@apexglobalbpo.com' : ''));
-  const [creditsToProvision, setCreditsToProvision] = useState<number>(8000);
+  // GTM plan (the default) provisions no ICP records.
+  const [creditsToProvision, setCreditsToProvision] = useState<number>(0);
   const [month2VolumePack, setMonth2VolumePack] = useState<{
     records: number;
     price: number;
   }>({ records: 5000, price: 75 });
 
-  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([
-    {
-      description: 'Platform Setup & Workspace Deployment',
-      subtext: 'One-time onboarding & configuration',
-      amountUsd: 2500,
-    },
-    {
-      description: 'Monthly Platform Access (BYOK) — Month 1',
-      subtext: 'Included in Month 1 ($249.00/mo begins Month 2)',
-      amountUsd: 0,
-      isIncludedBonus: true,
-    },
-    {
-      description: 'ICP Data Cloud — 8,000 Records (Month 1)',
-      subtext: '2,000 records/week × 4 weeks included in Month 1',
-      amountUsd: 0,
-      isIncludedBonus: true,
-    },
-  ]);
+  const [lineItems, setLineItems] = useState<InvoiceLineItem[]>(() => gtmLineItems(GTM_DEFAULTS, issueDate));
 
   const [sendingEmail, setSendingEmail] = useState(false);
   const [dispatchBanner, setDispatchBanner] = useState<{
@@ -78,12 +156,18 @@ export default function BillingInvoiceManager() {
   // Apply Commercial Preset
   const applyPreset = (
     nextScenario: InvoiceScenarioType,
-    packOverride?: { records: number; price: number }
+    packOverride?: { records: number; price: number },
+    gtmOverride?: GtmOptions
   ) => {
+    // Switching invoice type fills the note with that type's note; tweaking the same type keeps edits.
+    if (nextScenario !== scenario) setInvoiceNote(noteFor(nextScenario));
     setScenario(nextScenario);
     const activePack = packOverride || month2VolumePack;
 
-    if (nextScenario === 'onboarding_month1') {
+    if (nextScenario === 'gtm_plan') {
+      setCreditsToProvision(0);
+      setLineItems(gtmLineItems(gtmOverride || gtm, issueDate));
+    } else if (nextScenario === 'onboarding_month1') {
       setCreditsToProvision(8000);
       setLineItems([
         {
@@ -144,7 +228,31 @@ export default function BillingInvoiceManager() {
   const invoiceSignature = JSON.stringify([
     tenantName.trim(), tenantCode.trim().toUpperCase(), clientContactName.trim(),
     clientEmail.trim().toLowerCase(), scenario, issueDate, creditsToProvision, lineItems,
+    invoiceNote, refundPolicy, paymentInstructions, inquiriesEmail,
   ]);
+
+  const updateGtm = (patch: Partial<GtmOptions>) => {
+    const next = { ...gtm, ...patch };
+    setGtm(next);
+    applyPreset('gtm_plan', undefined, next);
+  };
+  const gtmPresetTotal = gtmLineItems(gtm, issueDate).reduce((s, i) => s + i.amountUsd, 0);
+
+  const handleSaveTextDefaults = () => {
+    saveInvoiceTextDefaults(scenario, currentText());
+    setTextDefaults(getInvoiceTextDefaults());
+    setTextSavedNote('Saved. New invoices start with this text.');
+  };
+
+  const handleResetText = () => {
+    clearInvoiceTextDefaults();
+    setTextDefaults(getInvoiceTextDefaults());
+    setInvoiceNote(PRESET_NOTES[scenario]);
+    setRefundPolicy(DEFAULT_INVOICE_TEXT.refundPolicy);
+    setPaymentInstructions(DEFAULT_INVOICE_TEXT.paymentInstructions);
+    setInquiriesEmail(DEFAULT_INVOICE_TEXT.inquiriesEmail);
+    setTextSavedNote('Standard text restored.');
+  };
   const [sentSignature, setSentSignature] = useState<string | null>(null);
   const invoiceSent = sentSignature === invoiceSignature;
 
@@ -184,9 +292,18 @@ export default function BillingInvoiceManager() {
       });
       return;
     }
+    if (!inquiriesValid) {
+      setDispatchBanner({
+        type: 'info',
+        text: 'Please enter a valid email address for inquiries before sending.',
+      });
+      return;
+    }
 
     setSendingEmail(true);
     setDispatchBanner(null);
+    const text = currentText();
+    const credits = scenario === 'gtm_plan' ? 0 : creditsToProvision;
 
     try {
       const res = await fetch('/api/intelligence/topup', {
@@ -199,16 +316,24 @@ export default function BillingInvoiceManager() {
           clientContactName: clientContactName.trim(),
           clientEmail: clientEmail.trim(),
           scenario,
-          recordsToCredit: creditsToProvision,
+          recordsToCredit: credits,
           totalAmountUsd,
           issueDate,
           dueDate: issueDate,
           lineItems,
           createSupportTicket: true,
+          invoiceNote: text.note,
+          refundPolicy: text.refundPolicy,
+          paymentInstructions: text.paymentInstructions,
+          inquiriesEmail: text.inquiriesEmail,
         }),
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        setDispatchBanner({ type: 'info', text: data?.error || 'The invoice was not sent. Please try again.' });
+        return;
+      }
       const createdInvoice: SystemInvoice = {
         id: `inv_${Date.now()}`,
         invoiceNumber: invoiceNumber.trim(),
@@ -221,19 +346,23 @@ export default function BillingInvoiceManager() {
         dueDate: issueDate,
         status: 'Awaiting Wise Transfer',
         totalAmountUsd,
-        creditsToProvision,
+        creditsToProvision: credits,
         creditsProvisioned: false,
         ticketId: data.ticketId,
         lineItems,
+        text,
         createdAt: new Date().toISOString(),
       };
 
       setSentSignature(invoiceSignature);
       const updatedList = addSystemInvoice(createdInvoice);
       setInvoices(updatedList);
+      // The text the owner just sent becomes the starting point for the next invoice.
+      saveInvoiceTextDefaults(scenario, text);
+      setTextDefaults(getInvoiceTextDefaults());
 
-      // Increment next invoice number for convenience
-      setInvoiceNumber(`INV-2026-${Math.floor(1000 + Math.random() * 8999)}`);
+      // The next unused invoice number
+      setInvoiceNumber(nextInvoiceNumber(updatedList));
 
       setDispatchBanner({
         type: 'success',
@@ -255,13 +384,6 @@ export default function BillingInvoiceManager() {
     markInvoicePaidAndProvision(invId);
     setInvoices(getStoredInvoices());
   };
-
-  const footerNoteText =
-    scenario === 'onboarding_month1'
-      ? 'Month 1 includes setup, platform access, and 8,000 ICP credits. Starting Month 2, platform access is $249/mo (BYOK) and ICP list volume is billed per selected tier.'
-      : scenario === 'renewal_month2'
-      ? 'Recurring Month 2+ billing: $249/mo BYOK platform access + selected ICP Data Cloud volume tier.'
-      : 'On-demand ICP credit top-up. Credited immediately upon Wise transfer confirmation.';
 
   const presetClass = (active: boolean) =>
     `focus-ring flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-small transition-colors ${
@@ -315,6 +437,17 @@ export default function BillingInvoiceManager() {
             <div className="grid grid-cols-1 gap-2">
               <button
                 type="button"
+                data-testid="preset-gtm_plan"
+                onClick={() => applyPreset('gtm_plan')}
+                className={presetClass(scenario === 'gtm_plan')}
+              >
+                <span>GTM plan (custom build and setup, optional monthly fee)</span>
+                <span className="tabular-nums">${usdPlain(gtmPresetTotal)}</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="preset-onboarding_month1"
                 onClick={() => applyPreset('onboarding_month1')}
                 className={presetClass(scenario === 'onboarding_month1')}
               >
@@ -324,6 +457,7 @@ export default function BillingInvoiceManager() {
 
               <button
                 type="button"
+                data-testid="preset-renewal_month2"
                 onClick={() => applyPreset('renewal_month2')}
                 className={presetClass(scenario === 'renewal_month2')}
               >
@@ -333,6 +467,7 @@ export default function BillingInvoiceManager() {
 
               <button
                 type="button"
+                data-testid="preset-icp_topup"
                 onClick={() => applyPreset('icp_topup')}
                 className={presetClass(scenario === 'icp_topup')}
               >
@@ -340,6 +475,58 @@ export default function BillingInvoiceManager() {
                 <span className="tabular-nums">${month2VolumePack.price || 75}</span>
               </button>
             </div>
+
+            {/* GTM plan: setup amount and payment, optional monthly fee */}
+            {scenario === 'gtm_plan' && (
+              <div className="space-y-3 pt-2" data-testid="gtm-options">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Setup amount (USD)">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={gtm.setupAmount}
+                      onChange={(e) => updateGtm({ setupAmount: Number(e.target.value) })}
+                      className="tabular-nums"
+                      data-testid="gtm-setup-amount"
+                    />
+                  </Field>
+                  <Field label="Setup payment">
+                    <Select
+                      value={gtm.setupPart}
+                      onChange={(e) => updateGtm({ setupPart: e.target.value as GtmSetupPart })}
+                      data-testid="gtm-setup-part"
+                    >
+                      <option value="full">Full setup</option>
+                      <option value="first">1st payment (50%, due on signing)</option>
+                      <option value="second">2nd payment (50%, at UAT sign-off / go-live)</option>
+                    </Select>
+                  </Field>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Checkbox
+                    label="Monthly fee"
+                    checked={gtm.monthly}
+                    onChange={(e) => updateGtm({ monthly: e.target.checked })}
+                    data-testid="gtm-monthly"
+                  />
+                  <div className="relative w-32">
+                    <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-small text-fg-tertiary">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={gtm.monthlyAmount}
+                      disabled={!gtm.monthly}
+                      onChange={(e) => updateGtm({ monthlyAmount: Number(e.target.value) })}
+                      className="pl-6 pr-2 text-right tabular-nums"
+                      aria-label="Monthly fee amount (USD)"
+                      data-testid="gtm-monthly-amount"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Volume Tier Selector for Month 2+ or Tap-Up */}
             {(scenario === 'renewal_month2' || scenario === 'icp_topup') && (
@@ -429,6 +616,7 @@ export default function BillingInvoiceManager() {
                   type="text"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
+                  data-testid="invoice-number"
                 />
               </Field>
               <Field label="Issue date">
@@ -441,9 +629,12 @@ export default function BillingInvoiceManager() {
               <Field label="ICP credits included">
                 <Input
                   type="number"
-                  value={creditsToProvision}
+                  value={scenario === 'gtm_plan' ? 0 : creditsToProvision}
+                  disabled={scenario === 'gtm_plan'}
+                  title={scenario === 'gtm_plan' ? 'The GTM plan includes no ICP records' : undefined}
                   onChange={(e) => setCreditsToProvision(Number(e.target.value))}
                   className="tabular-nums"
+                  data-testid="icp-credits"
                 />
               </Field>
             </div>
@@ -505,6 +696,83 @@ export default function BillingInvoiceManager() {
             </div>
           </div>
 
+          {/* Customer-facing text blocks (shown live in the preview and sent in the email) */}
+          <div className="space-y-3 border-t border-line pt-4" data-testid="invoice-text-blocks">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-h3 text-fg">Invoice text</h3>
+              <div className="flex flex-wrap gap-1">
+                <Button size="sm" variant="ghost" icon={<Save />} onClick={handleSaveTextDefaults} data-testid="text-save-default">
+                  Save as default
+                </Button>
+                <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={handleResetText} data-testid="text-reset">
+                  Reset to standard
+                </Button>
+              </div>
+            </div>
+            {textSavedNote && <p className="text-small text-fg-tertiary" role="status">{textSavedNote}</p>}
+
+            <Field label="Invoice note" htmlFor="inv-note" hint="Optional. Leave empty to hide the note.">
+              <Textarea
+                id="inv-note"
+                rows={3}
+                value={invoiceNote}
+                maxLength={INVOICE_TEXT_LIMITS.note}
+                onChange={(e) => setInvoiceNote(e.target.value)}
+                className="min-h-20 text-small"
+                data-testid="text-note"
+              />
+            </Field>
+            <InvoiceTextAi field="note" value={invoiceNote} onChange={setInvoiceNote} />
+
+            <Field
+              label="Refund and cancellation policy"
+              htmlFor="inv-policy"
+              hint="Leave empty to hide the policy."
+            >
+              <Textarea
+                id="inv-policy"
+                rows={5}
+                value={refundPolicy}
+                maxLength={INVOICE_TEXT_LIMITS.refundPolicy}
+                onChange={(e) => setRefundPolicy(e.target.value)}
+                className="text-small"
+                data-testid="text-policy"
+              />
+            </Field>
+            <InvoiceTextAi field="refundPolicy" value={refundPolicy} onChange={setRefundPolicy} />
+
+            <Field
+              label="Payment instructions"
+              htmlFor="inv-payment"
+              hint="Shown above the Wise link. The reference is always the invoice number."
+            >
+              <Textarea
+                id="inv-payment"
+                rows={2}
+                value={paymentInstructions}
+                maxLength={INVOICE_TEXT_LIMITS.paymentInstructions}
+                onChange={(e) => setPaymentInstructions(e.target.value)}
+                className="min-h-16 text-small"
+                data-testid="text-payment"
+              />
+            </Field>
+
+            <Field
+              label="Contact for inquiries"
+              htmlFor="inv-inquiries"
+              error={inquiriesValid ? undefined : 'Enter a valid email address.'}
+            >
+              <Input
+                id="inv-inquiries"
+                type="email"
+                value={inquiriesEmail}
+                maxLength={INVOICE_TEXT_LIMITS.inquiriesEmail}
+                onChange={(e) => setInquiriesEmail(e.target.value)}
+                data-testid="text-inquiries"
+              />
+            </Field>
+          </div>
+
           {/* Send Button */}
           <Button
             variant="brand"
@@ -529,7 +797,7 @@ export default function BillingInvoiceManager() {
         </Card>
 
         {/* RIGHT 7 COLS: Live Ultra-Minimalist Invoice Preview */}
-        <div className="space-y-2 lg:col-span-7">
+        <div className="space-y-2 lg:col-span-7" data-testid="invoice-preview">
           <div className="flex items-center justify-between px-1">
             <span className="text-caption text-fg-tertiary">Live preview (matches email and PDF)</span>
             <span className="text-small tabular-nums text-fg-secondary">
@@ -545,7 +813,10 @@ export default function BillingInvoiceManager() {
             clientEmail={clientEmail}
             totalAmountUsd={totalAmountUsd}
             lineItems={lineItems}
-            footerNote={footerNoteText}
+            footerNote={invoiceNote}
+            refundPolicy={refundPolicy}
+            paymentInstructions={paymentInstructions}
+            inquiriesEmail={inquiriesEmail}
           />
         </div>
       </div>
@@ -660,6 +931,10 @@ export default function BillingInvoiceManager() {
               totalAmountUsd={selectedPreviewInvoice.totalAmountUsd}
               lineItems={selectedPreviewInvoice.lineItems}
               ticketId={selectedPreviewInvoice.ticketId}
+              footerNote={invoiceTextOf(selectedPreviewInvoice).note}
+              refundPolicy={invoiceTextOf(selectedPreviewInvoice).refundPolicy}
+              paymentInstructions={invoiceTextOf(selectedPreviewInvoice).paymentInstructions}
+              inquiriesEmail={invoiceTextOf(selectedPreviewInvoice).inquiriesEmail}
             />
           </div>
         )}
