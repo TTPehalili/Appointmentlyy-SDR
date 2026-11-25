@@ -70,9 +70,10 @@ const FIELDS: TemplateField[] = [
   { group: 'Pricing', key: 'entSetup', label: 'Enterprise setup, "from" (USD)', type: 'money', required: true, default: '25000' },
   { group: 'Pricing', key: 'entMonthly', label: 'Enterprise monthly (USD)', type: 'money', required: true, default: '3500' },
   {
-    group: 'Legal', key: 'liquidatedDamages', label: 'Liquidated damages, Annex B cl. 12.2(b) (USD)', type: 'money', default: '',
-    help: 'Leave blank to use 3 × the build fee (USD 30,000 at the default fee).',
+    group: 'Legal', key: 'liquidatedDamages', label: 'Liquidated damages amount, Annex B cl. 12.2(b) (breach of cl. 6.1 or 6.3)', type: 'money', default: '3000000',
+    help: 'In the currency below. Leave blank to use 3 × the build fee in USD.',
   },
+  { group: 'Legal', key: 'ldCurrency', label: 'Liquidated damages currency', type: 'select', required: true, options: ['PHP', 'USD'], default: 'PHP' },
   {
     group: 'Legal', key: 'courtVenue', label: 'Court venue (Annex B cl. 15.5)', type: 'text', required: true,
     default: "Angeles City, Pampanga, or of Taytay, Rizal, at Appointmentlyy's choice",
@@ -731,7 +732,7 @@ function NextStepsAcceptance({ v, client, cs, cl, month, window }: Ctx) {
         <H2>Acceptance</H2>
         <P
           style={[sty.body2, { fontSize: 9.5, lineHeight: 1.6, marginBottom: 6 }]}
-          text={`By signing, ${cs} accepts this proposal together with Annex A (User Acceptance Testing) and Annex B (Non-compete, Non-solicitation, Confidentiality and IP Safeguards), which form the Agreement. Each signatory confirms they are authorised to sign.`}
+          text={`By signing, ${cs} accepts this proposal together with Annex A (User Acceptance Testing) and Annex B (Non-compete, Non-solicitation, Confidentiality and IP Safeguards), which together form the Service Agreement (the "Agreement"). Each signatory confirms they are authorised to sign.`}
         />
         <View wrap={false} style={{ flexDirection: 'row', marginTop: 8 }}>
           <View style={{ flex: 1, marginRight: 32 }}>
@@ -832,6 +833,14 @@ function buildAnnexAV2(src: string): string {
 
 const ANNEX_A_V2_MD = buildAnnexAV2(ANNEX_A_MD);
 
+/** Annex B for v2: liquidated damages cover the no-derived-product (6.1) and non-compete (6.3) clauses, in a chosen currency. */
+const ANNEX_B_V2_MD = (() => {
+  const from = '(b) For a breach of clause 6.1, {{clientShort}} pays USD {{liquidatedDamages}}.';
+  const n = ANNEX_B_MD.split(from).length - 1;
+  if (n !== 1) throw new Error(`proposal-growth-v2 Annex B: expected 1 match, found ${n}`);
+  return ANNEX_B_MD.replace(from, () => '(b) For a breach of clause 6.1 or clause 6.3, {{clientShort}} pays {{liquidatedDamagesText}}.');
+})();
+
 /* ---------------- template ---------------- */
 
 function annexVars(v: Record<string, string>, m: ReturnType<typeof compute>): Record<string, string> {
@@ -853,6 +862,9 @@ function annexVars(v: Record<string, string>, m: ReturnType<typeof compute>): Re
     buildMonth: valueOrMark(v.buildMonth, 'build month'),
     trainingWindow: valueOrMark(v.trainingWindow, 'training window'),
     liquidatedDamages: usdWords(m.liquidated),
+    liquidatedDamagesText: (v.liquidatedDamages ?? '').trim() && m.liquidated.n !== null
+      ? `${v.ldCurrency === 'USD' ? 'USD' : 'PHP'} ${usdWords(m.liquidated)}`
+      : `USD ${usdWords(m.liquidated)}`,
     courtVenue: valueOrMark(v.courtVenue, 'court venue'),
     arbitrationSeat: valueOrMark(v.arbitrationSeat, 'arbitration seat'),
   };
@@ -910,7 +922,7 @@ function ProposalDocument({ values }: { values: Record<string, string> }) {
       <AnnexPage head="Annex B: Non-compete, confidentiality and IP" client={client}>
         <AnnexKicker>Annex B</AnnexKicker>
         <AnnexH2>{ANNEX_B_TITLE}</AnnexH2>
-        <LegalMarkdown md={fillTokens(ANNEX_B_MD, av)} />
+        <LegalMarkdown md={fillTokens(ANNEX_B_V2_MD, av)} />
         <AnnexSign annex="B" {...sign} />
       </AnnexPage>
     </AgreementDocument>
@@ -925,7 +937,7 @@ const SIGNER_FORM: SignerFormField[] = [
 
 export const proposalGrowthV2: AgreementTemplateDef = {
   id: ID,
-  name: 'Proposal + Annexes (Growth, v2: founder-led training)',
+  name: 'Service Agreement: Proposal + Annexes (Growth, v2)',
   description: 'Growth proposal with founder-led sales enablement (workstream 11, Annex A clause 10B), a "down from" original price, 2 equal build payments, and a build-month / training-window plan. Annex A (UAT) and Annex B as v1. STACKph final terms pre-filled.',
   action: 'sign',
   countersign: true,
@@ -933,7 +945,7 @@ export const proposalGrowthV2: AgreementTemplateDef = {
   signerForm: SIGNER_FORM,
   title(values) {
     const v = withDefaults(FIELDS, values);
-    return `Appointmentlyy x ${v.clientShort || 'Client'}: Proposal and Annexes (Growth)`;
+    return `Appointmentlyy x ${v.clientShort || 'Client'}: Service Agreement (Proposal and Annexes)`;
   },
   render(values) {
     return renderPdf(<ProposalDocument values={values} />);

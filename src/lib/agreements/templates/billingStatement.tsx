@@ -20,7 +20,7 @@ const FIELDS: TemplateField[] = [
   { group: 'Statement', key: 'statementDate', label: 'Statement date', type: 'date', required: true, default: '' },
   { group: 'Statement', key: 'payableDays', label: 'Payable within (business days)', type: 'number', required: true, default: '3', help: 'Business days, Monday to Friday.' },
   { group: 'Statement', key: 'dueDate', label: 'Due date', type: 'date', required: false, default: '', help: 'Leave blank to use the statement date plus the payable business days (Mon–Fri).' },
-  { group: 'Statement', key: 'reference', label: 'Reference (agreement title)', type: 'text', required: true, default: 'Appointmentlyy x STACKph: Proposal and Annexes (Growth)' },
+  { group: 'Statement', key: 'reference', label: 'Reference (agreement title)', type: 'text', required: true, default: 'Appointmentlyy x STACKph: Service Agreement (Proposal and Annexes)' },
   { group: 'Client', key: 'clientShort', label: 'Client short name', type: 'text', required: true, default: 'STACKph' },
   { group: 'Client', key: 'clientLegal', label: 'Bill to: client legal name', type: 'text', required: true, default: 'GDV Business Services Co.' },
   { group: 'Client', key: 'clientAddress', label: 'Bill to: address', type: 'textarea', required: true, default: '' },
