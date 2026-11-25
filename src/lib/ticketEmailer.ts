@@ -379,6 +379,62 @@ export async function sendAdminTicketAlert(
 }
 
 /**
+ * 2b. Screenshot storage alert to the support inbox: a workspace has passed 80% of its 30-day screenshot allowance.
+ * Sent once per workspace per 30 days (deduplicated by the caller with a durable note, see supportShotQuota.ts).
+ * Numbers and names only: no screenshots, no ticket text.
+ */
+export async function sendScreenshotQuotaAlert(a: {
+  tenantCode: string;
+  tenantName: string;
+  ticketId: string;
+  percent: number;
+  bytes: number;
+  capBytes: number;
+  shots: number;
+  capShots: number;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const apiKey = getResendApiKey();
+  if (!apiKey) {
+    console.warn('[TicketEmailer] No Resend API key configured. Skipping screenshot storage alert.');
+    return { success: false, error: 'Resend API key not configured' };
+  }
+  const mb = (b: number) => `${Math.round((b / (1024 * 1024)) * 10) / 10} MB`;
+  const link = `${getAppBaseUrl()}/platform/support?id=${encodeURIComponent(a.ticketId)}`;
+  const subject = oneLine(`Screenshot storage at ${a.percent}%: ${a.tenantName} (${a.tenantCode})`, 200);
+  const lines = [
+    `Workspace ${a.tenantName} (${a.tenantCode}) has passed 80% of its screenshot allowance for "Report a problem".`,
+    '',
+    `Last 30 days: ${mb(a.bytes)} of ${mb(a.capBytes)}, ${a.shots} of ${a.capShots} screenshots (${a.percent}%).`,
+    'At 100% new screenshots are refused (reports are still saved). Screenshots are deleted after 90 days.',
+    'This alert is sent once per workspace per 30 days.',
+    '',
+    `Latest report: ${a.ticketId}: ${link}`,
+  ];
+  const textBody = lines.join('\n');
+  const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head><body style="margin:0;padding:24px;background-color:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f4f4f5;"><div style="max-width:600px;margin:0 auto;background-color:#18181b;border:1px solid #27272a;border-radius:12px;padding:24px 28px;font-size:13px;line-height:1.6;">${lines
+    .map((l) => (l ? `<p style="margin:0 0 8px;">${escapeHtml(l)}</p>` : ''))
+    .join('')}</div></body></html>`;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'Appointmentlyy Support <emil@appointmentlyy.com>', to: [supportAlertEmail()], subject, text: textBody, html: htmlBody }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, messageId: data.id };
+    }
+    const errText = await res.text();
+    console.warn('[TicketEmailer] Resend API error sending screenshot storage alert:', errText.slice(0, 300));
+    return { success: false, error: errText };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.warn('[TicketEmailer] Network error sending screenshot storage alert:', errorMsg);
+    return { success: false, error: errorMsg };
+  }
+}
+
+/**
  * 3. Send Notification to Customer when Admin / Emil replies in the Dashboard
  */
 export async function sendCustomerReplyNotification(ticket: TroubleTicket, message: TicketMessage): Promise<{ success: boolean; messageId?: string; error?: string }> {

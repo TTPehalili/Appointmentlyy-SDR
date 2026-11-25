@@ -3,33 +3,61 @@
 import * as React from 'react';
 import { Check, ClipboardCopy } from 'lucide-react';
 import { Button } from '@/components/ui';
-import type { TroubleTicket } from '@/lib/ticketTypes';
-import { formatTicketForClaude } from '@/lib/supportReport';
+import type { TicketAttachmentMeta, TroubleTicket } from '@/lib/ticketTypes';
+import { SCREENSHOT_REMOVED_LABEL, formatTicketForClaude, screenshotIsExpired, screenshotsWereRemoved } from '@/lib/supportReport';
 
-/** Screenshot thumbnails (the reporter and staff get the URLs; the image route checks again). */
+/** In place of a screenshot that is no longer there (removed after 90 days, or could not be loaded). */
+function RemovedShot({ box, label }: { box: string; label: string }) {
+  return (
+    <span
+      className={`flex items-center justify-center rounded-md border border-dashed border-line bg-subtle px-2 text-center text-caption text-fg-tertiary ${box}`}
+      data-testid="ticket-shot-removed"
+    >
+      {label}
+    </span>
+  );
+}
+
+/** One thumbnail; if the picture cannot be loaded (e.g. removed since the list was loaded) it says so, not a broken image. */
+function ShotThumb({ ticketId, a, i, box }: { ticketId: string; a: TicketAttachmentMeta; i: number; box: string }) {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) return <RemovedShot box={box} label={screenshotIsExpired(a.createdAt) ? SCREENSHOT_REMOVED_LABEL : 'Screenshot unavailable'} />;
+  const href = `/api/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(a.id)}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`focus-ring block overflow-hidden rounded-md border border-line bg-subtle ${box}`}
+      title={`Screenshot ${i + 1}: ${a.width} x ${a.height}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={href} alt={`Screenshot ${i + 1} of ${ticketId}`} loading="lazy" className="size-full object-cover" onError={() => setFailed(true)} />
+    </a>
+  );
+}
+
+/**
+ * Screenshot thumbnails (the reporter and staff get the URLs; the image route checks again). Screenshots are kept for
+ * 90 days; after that the report shows "Screenshot removed after 90 days" in their place.
+ */
 export function TicketScreenshots({ ticket, size = 'md' }: { ticket: TroubleTicket; size?: 'sm' | 'md' }) {
   const shots = ticket.attachments ?? [];
-  if (!shots.length) return null;
+  const removed = !!ticket.attachments && screenshotsWereRemoved(ticket);
+  if (!shots.length && !removed) return null;
   const box = size === 'sm' ? 'h-16 w-24' : 'h-24 w-36';
   return (
     <ul className="flex flex-wrap gap-2" data-testid="ticket-shots">
-      {shots.map((a, i) => {
-        const href = `/api/tickets/${encodeURIComponent(ticket.id)}/attachments/${encodeURIComponent(a.id)}`;
-        return (
-          <li key={a.id}>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`focus-ring block overflow-hidden rounded-md border border-line bg-subtle ${box}`}
-              title={`Screenshot ${i + 1}: ${a.width} x ${a.height}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={href} alt={`Screenshot ${i + 1} of ${ticket.id}`} loading="lazy" className="size-full object-cover" />
-            </a>
-          </li>
-        );
-      })}
+      {shots.map((a, i) => (
+        <li key={a.id}>
+          <ShotThumb ticketId={ticket.id} a={a} i={i} box={box} />
+        </li>
+      ))}
+      {removed && (
+        <li>
+          <RemovedShot box={box} label={SCREENSHOT_REMOVED_LABEL} />
+        </li>
+      )}
     </ul>
   );
 }

@@ -91,6 +91,44 @@ export interface TicketListFilter {
 /** The tables aren't there yet (migration not run). */
 export class SupportStorageError extends Error {}
 
+/**
+ * Durable screenshot caps, counted from the stored rows themselves (so they hold across restarts, deploys and server
+ * instances). The workspace is the ticket's own tenant_code, read from the database, never from the request.
+ */
+export interface AttachmentQuota {
+  /** Screenshots on one report. */
+  perTicket: number;
+  /** Screenshots one person may add in their workspace in any 24 hours. */
+  userPerDay: number;
+  /** Screenshots, and their stored bytes, one workspace may add in any 30 days. */
+  workspaceShots: number;
+  workspaceBytes: number;
+}
+/** What a workspace (and the uploader in it) has stored: the last 30 days, and the uploader's last 24 hours. */
+export interface ShotUsage {
+  workspaceShots: number;
+  workspaceBytes: number;
+  userShotsToday: number;
+}
+export type QuotaRefusal = 'ticket_full' | 'user_daily' | 'workspace_shots' | 'workspace_bytes';
+export type AddAttachmentResult =
+  | { ok: true; attachment: TicketAttachmentMeta; tenantCode: string; usage: ShotUsage }
+  | { ok: false; reason: 'not_found' | QuotaRefusal };
+
+export const DAY_MS = 86_400_000;
+export const QUOTA_WINDOW_MS = 30 * DAY_MS;
+
+/**
+ * Which cap `usage` breaks once `adding` more screenshots/bytes are stored, or null. Before the insert pass what is
+ * about to be stored; after it (the row is already counted) pass zeros, so a racing upload that went over is caught.
+ */
+export function quotaBreach(usage: ShotUsage, q: AttachmentQuota, adding: { shots: number; bytes: number }): QuotaRefusal | null {
+  if (usage.userShotsToday + adding.shots > q.userPerDay) return 'user_daily';
+  if (usage.workspaceShots + adding.shots > q.workspaceShots) return 'workspace_shots';
+  if (usage.workspaceBytes + adding.bytes > q.workspaceBytes) return 'workspace_bytes';
+  return null;
+}
+
 export interface SupportTicketStore {
   readonly backend: 'supabase' | 'file';
   create(input: NewTicketInput, first: NewMessageInput): Promise<TroubleTicket>;
@@ -98,9 +136,20 @@ export interface SupportTicketStore {
   get(id: string): Promise<TroubleTicket | null>;
   update(id: string, patch: TicketPatch, audit: NewMessageInput | null): Promise<TroubleTicket | null>;
   addMessage(id: string, msg: NewMessageInput, status: TicketStatus | null): Promise<TroubleTicket | null>;
-  /** 'full' when the ticket already has `max` screenshots. */
-  addAttachment(ticketId: string, att: NewAttachmentInput, max: number): Promise<TicketAttachmentMeta | 'full' | null>;
+  /** Stores a screenshot unless the ticket is full or a durable quota (AttachmentQuota) would be passed. */
+  addAttachment(ticketId: string, att: NewAttachmentInput, quota: AttachmentQuota): Promise<AddAttachmentResult>;
   getAttachment(ticketId: string, attachmentId: string): Promise<StoredAttachment | null>;
+  /**
+   * Retention: deletes at most `limit` screenshot rows created before `beforeIso` (nothing else is ever deleted), then
+   * leaves `note(ticketId)` once on each report that lost screenshots. Returns how many screenshots were deleted.
+   */
+  pruneScreenshots(beforeIso: string, limit: number, note: (ticketId: string) => NewMessageInput & { id: string }): Promise<number>;
+  /**
+   * Durable once-only system note: adds `note` (with its fixed id) to the ticket unless that id already exists, or the
+   * workspace already has a system note starting with `prefix` created since `sinceIso`. True only for the call that
+   * added it, so racing callers and other servers cannot both act on it.
+   */
+  claimWorkspaceNote(tenantCode: string, ticketId: string, note: NewMessageInput & { id: string }, prefix: string, sinceIso: string): Promise<boolean>;
 }
 
 // ------------------------------------------------------------------ ids
@@ -167,11 +216,11 @@ class FileSupportTicketStore implements SupportTicketStore {
     const d = this.readJson<Partial<FileData>>(this.file, {});
     return { tickets: d.tickets ?? [], messages: d.messages ?? [], attachments: d.attachments ?? [] };
   }
-  private mutate<T>(fn: (d: FileData) => T): Promise<T> {
+  private mutate<T>(fn: (d: FileData) => T, changed: (out: T) => boolean = () => true): Promise<T> {
     const run = this.queue.then(() => {
       const d = this.read();
       const out = fn(d);
-      this.writeJson(this.file, d);
+      if (changed(out)) this.writeJson(this.file, d);
       return out;
     });
     this.queue = run.catch(() => undefined);
@@ -245,11 +294,30 @@ class FileSupportTicketStore implements SupportTicketStore {
       return this.assemble(d, t);
     });
   }
-  addAttachment(ticketId: string, att: NewAttachmentInput, max: number) {
-    const run = this.queue.then(() => {
+  /** The same counts as the Supabase backend: the ticket's workspace over 30 days, the uploader's last 24 hours. */
+  private usage(d: FileData, tenantCode: string, uploader: string, now: number): ShotUsage {
+    const inTenant = new Set(d.tickets.filter((t) => t.tenantCode === tenantCode).map((t) => t.id));
+    const me = lower(uploader);
+    const u: ShotUsage = { workspaceShots: 0, workspaceBytes: 0, userShotsToday: 0 };
+    for (const a of d.attachments) {
+      const at = Date.parse(a.createdAt);
+      if (!inTenant.has(a.ticketId) || !(at >= now - QUOTA_WINDOW_MS)) continue;
+      u.workspaceShots++;
+      u.workspaceBytes += Number(a.size) || 0;
+      if (lower(a.uploadedBy || '') === me && at >= now - DAY_MS) u.userShotsToday++;
+    }
+    return u;
+  }
+  addAttachment(ticketId: string, att: NewAttachmentInput, quota: AttachmentQuota) {
+    // One queue for every write: the checks and the insert cannot interleave with another upload in this process.
+    const run = this.queue.then((): AddAttachmentResult => {
       const d = this.read();
-      if (!d.tickets.some((t) => t.id === ticketId)) return null;
-      if (d.attachments.filter((a) => a.ticketId === ticketId).length >= max) return 'full' as const;
+      const t = d.tickets.find((x) => x.id === ticketId);
+      if (!t) return { ok: false, reason: 'not_found' };
+      if (d.attachments.filter((a) => a.ticketId === ticketId).length >= quota.perTicket) return { ok: false, reason: 'ticket_full' };
+      const before = this.usage(d, t.tenantCode, att.uploadedBy, Date.now());
+      const breach = quotaBreach(before, quota, { shots: 1, bytes: att.size });
+      if (breach) return { ok: false, reason: breach };
       const { data, ...meta } = att;
       const row = { id: crypto.randomUUID(), ticketId, ...meta, createdAt: nowIso() };
       const blobs = this.readJson<Record<string, string>>(this.blobFile, {});
@@ -257,10 +325,50 @@ class FileSupportTicketStore implements SupportTicketStore {
       this.writeJson(this.blobFile, blobs);
       d.attachments.push(row);
       this.writeJson(this.file, d);
-      return { id: row.id, mime: row.mime, size: row.size, width: row.width, height: row.height, createdAt: row.createdAt };
+      return {
+        ok: true,
+        attachment: { id: row.id, mime: row.mime, size: row.size, width: row.width, height: row.height, createdAt: row.createdAt },
+        tenantCode: t.tenantCode,
+        usage: { workspaceShots: before.workspaceShots + 1, workspaceBytes: before.workspaceBytes + row.size, userShotsToday: before.userShotsToday + 1 },
+      };
     });
     this.queue = run.catch(() => undefined);
     return run;
+  }
+  pruneScreenshots(beforeIso: string, limit: number, note: (ticketId: string) => NewMessageInput & { id: string }) {
+    const cutoff = Date.parse(beforeIso);
+    return this.mutate((d) => {
+      const old = d.attachments
+        .filter((a) => Date.parse(a.createdAt) < cutoff)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .slice(0, Math.max(0, limit));
+      if (!old.length) return 0;
+      const gone = new Set(old.map((a) => a.id));
+      d.attachments = d.attachments.filter((a) => !gone.has(a.id));
+      const blobs = this.readJson<Record<string, string>>(this.blobFile, {});
+      for (const id of gone) delete blobs[id];
+      this.writeJson(this.blobFile, blobs);
+      const at = nowIso();
+      for (const ticketId of new Set(old.map((a) => a.ticketId))) {
+        const m = note(ticketId);
+        if (!d.messages.some((x) => x.id === m.id)) d.messages.push({ ...m, ticketId, createdAt: at });
+      }
+      return gone.size;
+    }, (n) => n > 0);
+  }
+  claimWorkspaceNote(tenantCode: string, ticketId: string, note: NewMessageInput & { id: string }, prefix: string, sinceIso: string) {
+    const since = Date.parse(sinceIso);
+    return this.mutate((d) => {
+      if (!d.tickets.some((t) => t.id === ticketId && t.tenantCode === tenantCode)) return false;
+      if (d.messages.some((m) => m.id === note.id)) return false;
+      const inTenant = new Set(d.tickets.filter((t) => t.tenantCode === tenantCode).map((t) => t.id));
+      const prior = d.messages.some(
+        (m) => inTenant.has(m.ticketId) && m.senderRole === 'system' && m.isInternalNote && m.content.startsWith(prefix) && Date.parse(m.createdAt) >= since,
+      );
+      if (prior) return false;
+      d.messages.push({ ...note, ticketId, createdAt: nowIso() });
+      return true;
+    }, (added) => added);
   }
   async getAttachment(ticketId: string, attachmentId: string) {
     const meta = this.read().attachments.find((a) => a.ticketId === ticketId && a.id === attachmentId);
@@ -280,6 +388,10 @@ const MISSING_TABLE = new Set(['42P01', 'PGRST205', 'PGRST204', 'PGRST200', '427
 const MSG_COLS = 'id, ticket_id, sender_name, sender_email, sender_role, is_internal_note, content, created_at';
 const ATT_COLS = 'id, ticket_id, mime, size, width, height, created_at';
 const FULL_SELECT = `*, ${T_MESSAGES}(${MSG_COLS}), ${T_ATTACH}(${ATT_COLS})`;
+/** Quota reads: 1000 rows a page (Supabase's default max-rows), at most 10 pages. Retention deletes in chunks of 50 ids. */
+const USAGE_PAGE = 1000;
+const USAGE_MAX_PAGES = 10;
+const PRUNE_CHUNK = 50;
 
 const msgFromRow = (r: Row): TicketMessage => ({
   id: String(r.id),
@@ -423,12 +535,52 @@ class SupabaseSupportTicketStore implements SupportTicketStore {
     this.check(await this.db.from(T_TICKETS).update({ updated_at: nowIso(), ...(status ? { status } : {}) }).eq('id', id));
     return this.get(id);
   }
-  async addAttachment(ticketId: string, att: NewAttachmentInput, max: number) {
-    const exists = this.check(await this.db.from(T_TICKETS).select('id').eq('id', ticketId).maybeSingle()) as Row | null;
-    if (!exists) return null;
+  private async ticketShotCount(ticketId: string): Promise<number> {
     const { count, error } = await this.db.from(T_ATTACH).select('id', { count: 'exact', head: true }).eq('ticket_id', ticketId);
     if (error) this.check({ data: null, error });
-    if ((count ?? 0) >= max) return 'full' as const;
+    return count ?? 0;
+  }
+  /**
+   * The workspace's screenshots of the last 30 days (only id, size, uploader and time: never the image data), joined to
+   * their tickets for the workspace, summed here. No new SQL: a PostgREST inner-join select, paged, with an exact
+   * count so a lower max-rows setting cannot make it undercount. Too many rows to page through counts as full.
+   */
+  private async usage(tenantCode: string, uploader: string, now: number): Promise<ShotUsage> {
+    const since = new Date(now - QUOTA_WINDOW_MS).toISOString();
+    const me = lower(uploader);
+    const u: ShotUsage = { workspaceShots: 0, workspaceBytes: 0, userShotsToday: 0 };
+    let seen = 0;
+    let total = 0;
+    for (let page = 0; page < USAGE_MAX_PAGES; page++) {
+      const res = await this.db
+        .from(T_ATTACH)
+        .select(`id, size, uploaded_by, created_at, ${T_TICKETS}!inner(tenant_code)`, { count: 'exact' })
+        .eq(`${T_TICKETS}.tenant_code`, tenantCode)
+        .gte('created_at', since)
+        .order('id', { ascending: true })
+        .range(seen, seen + USAGE_PAGE - 1);
+      const rows = (this.check(res) as Row[] | null) ?? [];
+      total = res.count ?? total;
+      for (const r of rows) {
+        u.workspaceBytes += Number(r.size) || 0;
+        if (lower(String(r.uploaded_by ?? '')) === me && Date.parse(String(r.created_at)) >= now - DAY_MS) u.userShotsToday++;
+      }
+      seen += rows.length;
+      if (!rows.length || seen >= total) {
+        u.workspaceShots = Math.max(total, seen);
+        return u;
+      }
+    }
+    // More rows than we are willing to read for one upload: fail closed (the workspace cap is far below this).
+    return { workspaceShots: Number.MAX_SAFE_INTEGER, workspaceBytes: Number.MAX_SAFE_INTEGER, userShotsToday: u.userShotsToday };
+  }
+  async addAttachment(ticketId: string, att: NewAttachmentInput, quota: AttachmentQuota): Promise<AddAttachmentResult> {
+    const t = this.check(await this.db.from(T_TICKETS).select('id, tenant_code').eq('id', ticketId).maybeSingle()) as Row | null;
+    if (!t) return { ok: false, reason: 'not_found' };
+    const tenantCode = String(t.tenant_code);
+    if ((await this.ticketShotCount(ticketId)) >= quota.perTicket) return { ok: false, reason: 'ticket_full' };
+    const breach = quotaBreach(await this.usage(tenantCode, att.uploadedBy, Date.now()), quota, { shots: 1, bytes: att.size });
+    if (breach) return { ok: false, reason: breach };
     const r = this.check(
       await this.db
         .from(T_ATTACH)
@@ -436,15 +588,62 @@ class SupabaseSupportTicketStore implements SupportTicketStore {
         .select(ATT_COLS)
         .single(),
     ) as Row;
-    // The count above and the insert are two requests: uploads racing each other could pass the same count. Count
-    // again; if this one went over the cap, take it back (racing uploads may all be refused; one retry fixes that).
-    const after = await this.db.from(T_ATTACH).select('id', { count: 'exact', head: true }).eq('ticket_id', ticketId);
-    if (after.error) this.check({ data: null, error: after.error });
-    if ((after.count ?? 0) > max) {
+    // The checks above and the insert are separate requests: uploads racing each other (on any server) could all pass
+    // the same counts. Count again with this row included; if any cap is now passed, take this row back. Racing
+    // uploads may then all be refused, but together they can never go over a cap.
+    const takeBack = async (reason: QuotaRefusal): Promise<AddAttachmentResult> => {
       await this.db.from(T_ATTACH).delete().eq('id', String(r.id)).eq('ticket_id', ticketId);
-      return 'full' as const;
+      return { ok: false, reason };
+    };
+    if ((await this.ticketShotCount(ticketId)) > quota.perTicket) return takeBack('ticket_full');
+    const usage = await this.usage(tenantCode, att.uploadedBy, Date.now());
+    const over = quotaBreach(usage, quota, { shots: 0, bytes: 0 });
+    if (over) return takeBack(over);
+    return { ok: true, attachment: attFromRow(r), tenantCode, usage };
+  }
+  async pruneScreenshots(beforeIso: string, limit: number, note: (ticketId: string) => NewMessageInput & { id: string }) {
+    const old = this.check(
+      await this.db.from(T_ATTACH).select('id, ticket_id').lt('created_at', beforeIso).order('created_at', { ascending: true }).limit(Math.max(0, limit)),
+    ) as Row[];
+    if (!old.length) return 0;
+    const ids = old.map((r) => String(r.id));
+    const touched = new Set<string>();
+    let removed = 0;
+    for (let i = 0; i < ids.length; i += PRUNE_CHUNK) {
+      // Only screenshot rows, only these ids, and only if still older than the cutoff.
+      const gone = this.check(
+        await this.db.from(T_ATTACH).delete().in('id', ids.slice(i, i + PRUNE_CHUNK)).lt('created_at', beforeIso).select('id, ticket_id'),
+      ) as Row[];
+      removed += gone.length;
+      for (const g of gone) touched.add(String(g.ticket_id));
     }
-    return attFromRow(r);
+    if (touched.size) {
+      // One note per report (fixed id per ticket, so a second run adds nothing). A failure here is only cosmetic.
+      const notes = [...touched].map((tid) => msgRow(tid, note(tid)));
+      const res = await this.db.from(T_MESSAGES).upsert(notes, { onConflict: 'id', ignoreDuplicates: true });
+      if (res.error) console.warn('[supportTickets] retention note not saved:', res.error.message);
+    }
+    return removed;
+  }
+  async claimWorkspaceNote(tenantCode: string, ticketId: string, note: NewMessageInput & { id: string }, prefix: string, sinceIso: string) {
+    const prior = this.check(
+      await this.db
+        .from(T_MESSAGES)
+        .select(`id, ${T_TICKETS}!inner(tenant_code)`)
+        .eq(`${T_TICKETS}.tenant_code`, tenantCode)
+        .eq('sender_role', 'system')
+        .eq('is_internal_note', true)
+        .like('content', `${prefix}%`)
+        .gte('created_at', sinceIso)
+        .limit(1),
+    ) as Row[];
+    if (prior.length) return false;
+    const t = this.check(await this.db.from(T_TICKETS).select('id').eq('id', ticketId).eq('tenant_code', tenantCode).maybeSingle()) as Row | null;
+    if (!t) return false;
+    const ins = await this.db.from(T_MESSAGES).insert(msgRow(ticketId, note));
+    if (ins.error?.code === '23505') return false; // another request or server added it first
+    this.check(ins);
+    return true;
   }
   async getAttachment(ticketId: string, attachmentId: string) {
     const r = this.check(await this.db.from(T_ATTACH).select('*').eq('ticket_id', ticketId).eq('id', attachmentId).maybeSingle()) as Row | null;

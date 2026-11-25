@@ -99,7 +99,21 @@ export const SUPPORT_LIMITS = {
   repliesPer10Min: 30,
   /** Screenshots can be added by the person who filed, this long after filing. */
   uploadWindowMs: 30 * 60 * 1000,
+  /** Screenshots are deleted this long after upload (the report and its messages are kept). */
+  screenshotRetentionDays: 90,
 } as const;
+
+/**
+ * The note the retention cleanup leaves on a report whose screenshots it removed (a system message, visible to the
+ * reporter). The ticket view shows "Screenshot removed after 90 days" in place of the pictures when it is there.
+ */
+export const SCREENSHOTS_REMOVED_NOTE = `Screenshots on this report were removed after ${SUPPORT_LIMITS.screenshotRetentionDays} days. The report and its messages are kept.`;
+export const SCREENSHOT_REMOVED_LABEL = `Screenshot removed after ${SUPPORT_LIMITS.screenshotRetentionDays} days`;
+export const screenshotsWereRemoved = (t: { messages?: { senderRole: string; content: string }[] }): boolean =>
+  (t.messages ?? []).some((m) => m.senderRole === 'system' && m.content === SCREENSHOTS_REMOVED_NOTE);
+/** True when a screenshot this old has been (or is about to be) removed by the retention cleanup. */
+export const screenshotIsExpired = (createdAt: string, now = Date.now()): boolean =>
+  now - Date.parse(createdAt) >= SUPPORT_LIMITS.screenshotRetentionDays * 86_400_000;
 
 export const SCREENSHOT_MIME = ['image/png', 'image/jpeg', 'image/webp'] as const;
 export type ScreenshotMime = (typeof SCREENSHOT_MIME)[number];
@@ -426,7 +440,7 @@ export function formatTicketForClaude(t: ClaudeTicketInput, origin: string, mark
   }
   L.push(`----- END UNTRUSTED ${marker} -----`);
   const shots = t.attachments ?? [];
-  L.push('', `Screenshots (${shots.length}):`);
+  L.push('', `Screenshots (${shots.length}${screenshotsWereRemoved(t) ? `; older ones removed after ${SUPPORT_LIMITS.screenshotRetentionDays} days` : ''}):`);
   for (const a of shots) L.push(`  ${origin}/api/tickets/${t.id}/attachments/${a.id} (${a.mime}, ${a.width} x ${a.height}, ${Math.round(a.size / 1024)} KB)`);
   return L.join('\n');
 }

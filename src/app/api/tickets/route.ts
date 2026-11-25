@@ -5,6 +5,7 @@ import { getSupportTicketStore, type NewTicketInput } from '@/lib/server/support
 import { canViewTicket, ticketScopeFor, ticketViewFor } from '@/lib/server/ticketScope';
 import { cleanText, fail, ok, readJsonObject, sendLater, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
 import { sendAdminTicketAlert, sendCustomerTicketConfirmation } from '@/lib/ticketEmailer';
+import { scheduleScreenshotRetention } from '@/lib/server/supportShotQuota';
 import {
   SUPPORT_AREAS,
   SUPPORT_LIMITS,
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
   if (!session) return fail(401, 'Please sign in again.');
   const limited = limitPerUser('tickets-read', session, { maxRequests: 120 });
   if (limited) return limited;
+  scheduleScreenshotRetention(); // at most hourly, after the response (supportShotQuota.ts)
   const viewer = viewerOf(session);
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || '';
