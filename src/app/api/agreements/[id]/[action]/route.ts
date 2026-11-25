@@ -17,6 +17,7 @@ import {
   sendEnvelope,
 } from '@/lib/server/agreements/service';
 import { toEnvelopeView } from '@/lib/agreements/envelope';
+import { WelcomeError, sendWelcome } from '@/lib/server/agreements/welcome';
 
 type Ctx = { params: Promise<{ id: string; action: string }> };
 
@@ -33,6 +34,7 @@ export const maxDuration = 60;
  * POST /api/agreements/:id/revoke        the link stops working
  * POST /api/agreements/:id/countersign   { password, signature?: dataUrl, useSaved?: true, saveSignature?: true }
  * POST /api/agreements/:id/pay           { date: YYYY-MM-DD, reference, amount }  billing statements: record a payment
+ * POST /api/agreements/:id/welcome       contracts: "Send welcome email now" (completed, not sent yet; once only)
  */
 export async function POST(req: NextRequest, ctx: Ctx) {
   const owner = await requireOwner(req);
@@ -114,11 +116,18 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         const r = await recordPayment(id, { date, reference, amount }, owner.email, meta);
         return json({ success: true, envelope: toEnvelopeView(r.envelope), email: r.email });
       }
+      case 'welcome': {
+        // "Send welcome email now": a completed contract with no welcome email yet. The same once-only claim as the
+        // automatic send, so a double click or a retry never sends twice.
+        if (!rateLimit(`agr-welcome:${id}`, 5, 60 * 60_000)) return fail(429, 'Too many tries. Wait a few minutes.');
+        const r = await sendWelcome(id, { trigger: 'manual', by: owner.email, origin: meta.origin });
+        return json({ success: true, welcome: r });
+      }
       default:
         return fail(404, 'Unknown action.');
     }
   } catch (err) {
-    if (err instanceof AgreementError) return fail(err.status, err.message);
+    if (err instanceof AgreementError || err instanceof WelcomeError) return fail(err.status, err.message);
     console.error(`[agreements/:id/${action}]`, err instanceof Error ? err.message : 'error');
     return fail(500, 'Something went wrong. Try again.');
   }

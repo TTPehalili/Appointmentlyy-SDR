@@ -14,6 +14,7 @@ import { seal, open } from '@/lib/server/secretBox';
 import { getAppBaseUrl } from '@/lib/authToken';
 import { isPaymentLinkKey, isPaymentQrKey, safePaymentLink, safeQrDataUrl } from '@/lib/server/agreements/payment';
 import { BANK_KEYS, PAYMENT_LIMITS, cleanBank, hasBank, oneLine, paymentOptionsProblem } from '@/lib/agreements/paymentOptions';
+import { DEFAULT_WELCOME_BODY, DEFAULT_WELCOME_SUBJECT, isWelcomeTemplate, safeBookingLink, welcomeTemplateProblem } from '@/lib/agreements/welcome';
 import {
   AGREEMENT_LIMITS,
   CC_LIMITS,
@@ -41,8 +42,14 @@ export function signerFormOf(t: AgreementTemplate, values: Record<string, string
   return typeof fn === 'function' ? fn(values) : t.signerForm;
 }
 
-export function metaOf(t: AgreementTemplate, values: Record<string, string>): TemplateMeta {
-  return { name: t.name, action: t.action, countersign: t.countersign, signerForm: signerFormOf(t, values) };
+/**
+ * The frozen signing setup. Contract templates also carry the owner's "Send welcome email when fully signed"
+ * switch (`welcome`, default on); every other template never has it, so it can never send one.
+ */
+export function metaOf(t: AgreementTemplate, values: Record<string, string>, welcome?: boolean): TemplateMeta {
+  const m: TemplateMeta = { name: t.name, action: t.action, countersign: t.countersign, signerForm: signerFormOf(t, values) };
+  if (isWelcomeTemplate(t.id) && t.action === 'sign') m.welcome = welcome !== false;
+  return m;
 }
 
 /** What the owner console needs to know about a template (no render function). */
@@ -91,7 +98,16 @@ export function validateSettings(raw: Record<string, unknown>): { ok: true; valu
     ...cleanBank(raw),
     paypalLink: String(raw.paypalLink ?? '').trim(),
     paypalFeeNote: oneLine(raw.paypalFeeNote, PAYMENT_LIMITS.paypalFeeNote),
+    kickoffBookingLink: String(raw.kickoffBookingLink ?? '').trim(),
+    // The default wording is stored as '' so later improvements to it reach owners who never changed it.
+    welcomeSubject: normTemplate(raw.welcomeSubject, DEFAULT_WELCOME_SUBJECT),
+    welcomeBody: normTemplate(raw.welcomeBody, DEFAULT_WELCOME_BODY),
   };
+  if (value.kickoffBookingLink && !safeBookingLink(value.kickoffBookingLink)) return { ok: false, error: 'The kickoff booking link must be a full https:// address (a Google Calendar booking page or Calendly).' };
+  const subjectProblem = welcomeTemplateProblem('subject', value.welcomeSubject);
+  if (subjectProblem) return { ok: false, error: subjectProblem };
+  const bodyProblem = welcomeTemplateProblem('body', value.welcomeBody);
+  if (bodyProblem) return { ok: false, error: bodyProblem };
   if (value.paymentLink && !safePaymentLink(value.paymentLink)) return { ok: false, error: 'The payment link must be a full https:// address.' };
   // Bank transfer + PayPal: checked on the raw input so over-long values are refused, not cut.
   const payProblem = paymentOptionsProblem(raw);
@@ -108,6 +124,12 @@ export function validateSettings(raw: Record<string, unknown>): { ok: true; valu
   if (value.replyTo && !EMAIL_RE.test(value.replyTo)) return { ok: false, error: 'Enter a valid reply-to email.' };
   if (!value.replyTo) value.replyTo = value.senderEmail;
   return { ok: true, value };
+}
+
+/** A welcome-email template from the owner: new lines normalised, trimmed; the default (or nothing) is stored as ''. */
+function normTemplate(raw: unknown, dflt: string): string {
+  const v = String(raw ?? '').replace(/\r\n?/g, '\n').trim();
+  return !v || v === dflt.trim() ? '' : v;
 }
 
 // ------------------------------------------------------------------ tokens and grants

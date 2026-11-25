@@ -68,8 +68,12 @@ export interface AgreementStore {
    */
   ccSupported(): Promise<boolean>;
   createEnvelope(e: Envelope): Promise<Envelope>;
-  /** Patch the given fields. With `ifStatus`, only when the current status is one of them (else null). */
-  updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }): Promise<Envelope | null>;
+  /**
+   * Patch the given fields. With `ifStatus`, only when the current status is one of them (else null).
+   * `ifWelcomeClaim`: only when the stored welcome-email claim id (notified.welcome.claimId) equals it, `null` meaning
+   * "no welcome claim yet" (compare-and-set, so a welcome email is claimed by exactly one request).
+   */
+  updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: UpdateOpts): Promise<Envelope | null>;
   deleteEnvelope(id: string): Promise<boolean>;
   addEvent(ev: NewEvent): Promise<AgreementEvent>;
   listEvents(envelopeId: string): Promise<AgreementEvent[]>;
@@ -85,6 +89,11 @@ export interface AgreementStore {
   getFile(envelopeId: string, kind: AgreementFileKind): Promise<{ bytes: Buffer; mime: string; sha256: string } | null>;
   getSettings(): Promise<StoredAgreementSettings | null>;
   putSettings(value: StoredAgreementSettings, updatedBy: string): Promise<void>;
+}
+
+export interface UpdateOpts {
+  ifNoOwnerSignature?: boolean;
+  ifWelcomeClaim?: string | null;
 }
 
 /** The database tables aren't there yet (migration not run). */
@@ -192,13 +201,14 @@ class FileAgreementStore implements AgreementStore {
       return { ...e, cc: e.cc ?? [] };
     });
   }
-  updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }) {
+  updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: UpdateOpts) {
     const p = patch;
     return this.mutate((d) => {
       const i = d.envelopes.findIndex((e) => e.id === id);
       if (i < 0) return null;
       if (ifStatus && !ifStatus.includes(d.envelopes[i].status)) return null;
       if (opts?.ifNoOwnerSignature && d.envelopes[i].ownerSignature) return null;
+      if (opts && 'ifWelcomeClaim' in opts && (d.envelopes[i].notified?.welcome?.claimId ?? null) !== opts.ifWelcomeClaim) return null;
       d.envelopes[i] = { ...d.envelopes[i], ...p, id, updatedAt: nowIso() };
       return { ...d.envelopes[i], cc: d.envelopes[i].cc ?? [] };
     });
@@ -508,11 +518,18 @@ class SupabaseAgreementStore implements AgreementStore {
     const r = this.check(await this.db.from('agreement_envelopes').insert({ ...envToRow(e), updated_at: e.updatedAt }).select().single()) as Row;
     return envFromRow(r);
   }
-  async updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }) {
+  async updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: UpdateOpts) {
     if (!isEnvelopeId(id)) return null;
     let q = this.db.from('agreement_envelopes').update({ ...envToRow(await this.withCc(id, patch)), updated_at: nowIso() }).eq('id', id);
     if (ifStatus) q = q.in('status', ifStatus);
     if (opts?.ifNoOwnerSignature) q = q.is('owner_signature', null);
+    // Welcome-email claim: a filter on the existing `notified` jsonb column (no migration). Claim ids are
+    // base64url, so they are safe inside a PostgREST filter value.
+    if (opts && 'ifWelcomeClaim' in opts) {
+      if (opts.ifWelcomeClaim === null) q = q.is('notified->>welcome', null);
+      else if (/^[A-Za-z0-9_-]{8,64}$/.test(opts.ifWelcomeClaim ?? '')) q = q.eq('notified->welcome->>claimId', opts.ifWelcomeClaim as string);
+      else return null;
+    }
     const r = this.check(await q.select().maybeSingle()) as Row | null;
     return r ? envFromRow(r) : null;
   }

@@ -10,6 +10,7 @@ import { apiJson } from '@/lib/authClient';
 import { cn } from '@/lib/cn';
 import type { TemplateField } from '@/lib/agreements/templates/types';
 import { CC_LIMITS, activeCopies, type AgreementSettings, type EnvelopeView } from '@/lib/agreements/envelope';
+import { isWelcomeTemplate } from '@/lib/agreements/welcome';
 import { PdfViewer } from '@/components/agreements/PdfViewer';
 import { BankFieldInput, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
 import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, PAYMENT_LIMITS, hasBank, type BankKey } from '@/lib/agreements/paymentOptions';
@@ -204,6 +205,7 @@ function Wizard() {
   const [values, setValues] = React.useState<Record<string, string>>({});
   const [recipient, setRecipient] = React.useState({ name: '', title: '', email: '' });
   const [copies, setCopies] = React.useState<CopyRow[]>([]);
+  const [welcome, setWelcome] = React.useState(true);
   const [expiresAt, setExpiresAt] = React.useState(toLocalInput(new Date(Date.now() + 3 * 86_400_000).toISOString()));
   const [maxOpens, setMaxOpens] = React.useState('');
   const [openFrom, setOpenFrom] = React.useState('');
@@ -233,6 +235,7 @@ function Wizard() {
           setValues(e.fieldValues);
           setRecipient(e.recipient);
           setCopies(activeCopies(e.cc).map((c) => ({ name: c.name, email: c.email })));
+          setWelcome(e.templateMeta?.welcome !== false);
           setExpiresAt(toLocalInput(e.access.expiresAt));
           setMaxOpens(e.access.maxOpens ? String(e.access.maxOpens) : '');
           setOpenFrom(toLocalInput(e.access.openFrom));
@@ -312,12 +315,14 @@ function Wizard() {
     // Empty rows are left out; the server checks the rest again.
     const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
     let r: Awaited<ReturnType<typeof apiJson<R>>>;
+    // Contracts only: the welcome email switch (the server ignores it for every other template).
+    const wel = isWelcomeTemplate(t.id) ? { welcomeEmail: welcome } : {};
     if (draft) {
-      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values, recipient, cc, access: access() } });
+      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values, recipient, cc, access: access(), ...wel } });
       if (!u.success || !send) r = u;
       else r = await apiJson<R>(`/api/agreements/${draft.id}/send`, { method: 'POST' });
     } else {
-      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values, recipient, ...(cc.length ? { cc } : {}), access: access(), send, sourceEnvelopeId: source?.id ?? null } });
+      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values, recipient, ...(cc.length ? { cc } : {}), access: access(), send, sourceEnvelopeId: source?.id ?? null, ...wel } });
     }
     setBusy(null);
     if (!r.success) return setError(r.error || 'Could not save.');
@@ -500,6 +505,21 @@ function Wizard() {
               </div>
             </section>
             <CopyList rows={copies} onChange={setCopies} signerEmail={recipient.email} available={ccAvailable} problem={list.copies?.problem ?? null} otpView={otpView} />
+            {t && isWelcomeTemplate(t.id) && (
+              <section className="flex flex-col gap-2" data-testid="welcome-switch-section" aria-labelledby="welcome-heading">
+                <div className="flex items-start justify-between gap-4 rounded-md border border-line px-3 py-3">
+                  <div className="min-w-0">
+                    <h2 id="welcome-heading" className="text-body-strong text-fg">
+                      Send welcome email when fully signed
+                    </h2>
+                    <p className="text-small text-fg-secondary">
+                      Once {t.countersign ? 'the client has signed and you have countersigned' : 'the client has signed'}, {copies.some((c) => c.email.trim()) ? 'the signer and each copy recipient get' : 'the signer gets'} the kickoff email with next steps. Edit the wording in Agreements settings.
+                    </p>
+                  </div>
+                  <Switch checked={welcome} onCheckedChange={setWelcome} label="Send welcome email when fully signed" />
+                </div>
+              </section>
+            )}
             <section className="flex flex-col gap-3">
               <h2 className="text-h3 text-fg">Link rules</h2>
               <div className="grid gap-4 md:grid-cols-2">

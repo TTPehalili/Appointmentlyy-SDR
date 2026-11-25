@@ -70,6 +70,24 @@ export const devTemplate: AgreementTemplate = {
 
 if (DEV_TEMPLATES_ON) registerTemplate(devTemplate);
 
+/** Dev-only contract WITHOUT a countersignature: completes at the client's signature (welcome email tests). */
+export const devContractTemplate: AgreementTemplate = {
+  ...devTemplate,
+  id: 'dev-contract-v1',
+  name: 'Dev test contract, no countersign (local only)',
+  description: 'A test contract that completes when the client signs, with a short name, build month and training window.',
+  countersign: false,
+  fields: [
+    ...devTemplate.fields,
+    { key: 'clientShort', label: 'Client short name', type: 'text', default: '', group: 'Client' },
+    { key: 'buildMonth', label: 'Build phase (month)', type: 'text', default: '', group: 'Dates' },
+    { key: 'trainingWindow', label: 'Training window', type: 'text', default: '', group: 'Dates' },
+  ],
+  title: (v) => `Test Contract: ${v.clientName || 'Client'}`,
+};
+
+if (DEV_TEMPLATES_ON) registerTemplate(devContractTemplate);
+
 /** Dev-only billing statement ('view'): exercises numbering, payments and the PAID stamp locally. */
 export const devBillingTemplate: AgreementTemplate = {
   id: 'dev-billing-v1',

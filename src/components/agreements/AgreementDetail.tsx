@@ -4,7 +4,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, RotateCcw, Ban, Copy, Download, Eye, FilePlus2, FileSignature, Pencil, Receipt, Send, Trash2, X } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Ban, Copy, Download, Eye, FilePlus2, FileSignature, Mail, Pencil, Receipt, Send, Trash2, X } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -39,6 +39,7 @@ import {
   type EnvelopeView,
   type ViewRow,
 } from '@/lib/agreements/envelope';
+import type { WelcomeStatus } from '@/lib/agreements/welcome';
 import { PdfViewer } from '@/components/agreements/PdfViewer';
 import { SignaturePad, type SignatureValue } from '@/components/agreements/SignaturePad';
 import { OwnerGate, StatusChip, copyText, fetchPdf, fromLocalInput, toLocalInput, trackingSummary, type TemplateSummary } from '@/components/agreements/ownerShared';
@@ -53,6 +54,8 @@ interface Detail {
   /** Copy recipients, with their own (separate) views. */
   copies?: CopyStatus[];
   copiesAvailable?: boolean;
+  /** Contracts: the welcome email's state. */
+  welcome?: WelcomeStatus;
 }
 
 const EVENT_TEXT: Record<string, string> = {
@@ -87,11 +90,17 @@ const EVENT_TEXT: Record<string, string> = {
   cc_final_emailed: 'Final copy emailed to copy recipient',
   cc_downloaded: 'Final PDF downloaded by copy recipient',
   cc_pay_link_clicked: 'Copy recipient clicked a payment link:',
+  welcome_sent: 'Welcome email sent',
+  welcome_failed: 'Welcome email not sent',
+  welcome_no_checklist: 'Welcome email sent without a checklist link: create or share the client’s onboarding board.',
 };
+
+const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 
 /** Timeline text for one event; copy events name the copy recipient (never the signer's counters). */
 function eventText(ev: AgreementEvent, copies: CopyStatus[]): string {
   if (ev.type === 'pay_link_clicked' && ev.data?.provider === 'paypal') return 'Client clicked Pay with PayPal';
+  if (ev.type === 'welcome_sent') return `Welcome email sent to ${people(Number(ev.data?.count) || 0)}${ev.data?.trigger === 'manual' ? ' (sent by hand)' : ''}`;
   const base = EVENT_TEXT[ev.type] ?? ev.type;
   if (!ev.type.startsWith('cc_')) return base;
   const c = copies.find((x) => x.id === ev.data?.ccId);
@@ -443,6 +452,8 @@ function DetailInner({ id }: { id: string }) {
             </Card>
           )}
 
+          {d.welcome?.applies && <WelcomeCard e={e} w={d.welcome} copies={liveCopies.length} onDone={load} />}
+
           {(unsigned || e.status === 'draft') && <AccessCard e={e} onSaved={load} />}
 
           {e.status !== 'draft' && (
@@ -543,6 +554,69 @@ function DetailInner({ id }: { id: string }) {
         }}
       />
     </div>
+  );
+}
+
+/** Contracts: "Welcome email: sent … to N people" / "will send when fully signed", and "Send welcome email now". */
+function WelcomeCard({ e, w, copies, onDone }: { e: EnvelopeView; w: WelcomeStatus; copies: number; onDone: () => void }) {
+  const toast = useToast();
+  const [confirm, setConfirm] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const line =
+    w.state === 'sent'
+      ? `Sent ${fmtManila(w.sentAt)} to ${people(w.recipients)}.${w.failed ? ` Not sent to ${people(w.failed)}.` : ''}`
+      : w.state === 'pending'
+        ? `Will send when fully signed${e.templateMeta?.countersign ? ' (after your countersignature)' : ''}, to the signer${copies ? ` and ${copies} ${copies === 1 ? 'copy recipient' : 'copy recipients'}` : ''}.`
+        : w.state === 'sending'
+          ? w.canSendNow
+            ? 'Sending was interrupted. Check your Sent folder before sending it again.'
+            : 'Sending…'
+          : w.state === 'failed'
+            ? 'Not sent: the email could not be delivered.'
+            : w.state === 'not_sent'
+              ? 'Not sent for this document.'
+              : 'Off for this document.';
+  const sendNow = async () => {
+    setBusy(true);
+    const r = await apiJson<{ welcome: { sent: number; failed: number; checklist: boolean; error?: string } }>(`/api/agreements/${e.id}/welcome`, { method: 'POST' });
+    setBusy(false);
+    if (!r.success) toast({ message: r.error || 'Could not send the welcome email.' });
+    else toast({ message: r.welcome.sent ? `Welcome email sent to ${people(r.welcome.sent)}${r.welcome.checklist ? '' : ', without a checklist link'}.` : r.welcome.error || 'The welcome email was not sent.' });
+    onDone();
+  };
+  return (
+    <Card data-testid="welcome-card" data-state={w.state}>
+      <CardHeader title="Welcome email" description="The kickoff email with next steps, sent once when the agreement is fully signed." />
+      <CardBody className="flex flex-col gap-3">
+        <p className="text-body text-fg" data-testid="welcome-line">
+          {line}
+        </p>
+        {w.state === 'sent' && w.checklist === false && (
+          <p className="rounded-md bg-warning-bg px-3 py-2 text-small text-warning-fg" data-testid="welcome-no-checklist">
+            Sent without a checklist link: create or share the client’s onboarding board.
+          </p>
+        )}
+        {w.error && w.state !== 'sent' && <p className="text-small text-danger-fg">{w.error}</p>}
+        {w.canSendNow && (
+          <div className="flex justify-end">
+            <Button variant="secondary" size="sm" icon={<Mail />} onClick={() => setConfirm(true)} loading={busy} data-testid="welcome-send-now">
+              Send welcome email now
+            </Button>
+          </div>
+        )}
+      </CardBody>
+      <ConfirmDialog
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title="Send the welcome email now?"
+        description={`It goes to ${e.recipient.name || e.recipient.email}${copies ? ` and ${copies} ${copies === 1 ? 'copy recipient' : 'copy recipients'}` : ''}, once. It is never sent twice.`}
+        confirmLabel="Send welcome email"
+        onConfirm={() => {
+          setConfirm(false);
+          void sendNow();
+        }}
+      />
+    </Card>
   );
 }
 

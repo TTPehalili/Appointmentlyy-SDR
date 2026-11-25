@@ -21,6 +21,8 @@ export interface AgreementMail {
   /** For the test outbox only: what the email is (invite, otp, completed, notify). */
   kind: string;
   envelopeId?: string;
+  /** Overrides the settings' reply-to for this email (the welcome email replies to the owner). */
+  replyTo?: string;
 }
 
 export type MailResult = { ok: true; id?: string; outbox?: boolean } | { ok: false; error: string };
@@ -79,6 +81,7 @@ function writeOutbox(mail: AgreementMail, from: string, replyTo: string): Promis
       to: mail.to,
       subject: mail.subject,
       text: mail.text,
+      html: mail.html,
       attachments: (mail.attachments ?? []).map((a) => ({ filename: a.filename, size: a.content.length })),
     });
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -114,7 +117,10 @@ export function senderOf(settings: AgreementSettings): { from: string; replyTo: 
 }
 
 export async function sendAgreementMail(mail: AgreementMail, settings: AgreementSettings): Promise<MailResult> {
-  const { from, replyTo } = senderOf(settings);
+  const sender = senderOf(settings);
+  const from = sender.from;
+  const own = (mail.replyTo || '').replace(/[\s<>,;]/g, '');
+  const replyTo = own && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(own) ? own : sender.replyTo;
   // Subjects carry owner-entered titles: one line only.
   mail = { ...mail, subject: mail.subject.replace(/[\r\n\u2028\u2029]+/g, ' ').slice(0, 250) };
   if (outboxRequested()) {
@@ -266,6 +272,26 @@ export function completedMail(p: { to: string; name: string; title: string; url:
     ),
     text: `Hi ${first},\n\n${p.title} is now signed by everyone.\n${p.attached ? 'The final PDF is attached.\n' : ''}${p.url ? `Download: ${p.url}\n` : ''}\nSHA-256: ${p.finalSha256}\n`,
     attachments: undefined,
+  };
+}
+
+/**
+ * The welcome / kickoff email: the paragraphs come from renderWelcome() (template and values already escaped).
+ * No document link of any kind: it never carries a signer or copy link.
+ */
+export function welcomeMail(p: { to: string; subject: string; htmlParagraphs: string[]; text: string; envelopeId?: string; replyTo: string; kind?: 'welcome' | 'welcome_test' }): AgreementMail {
+  const body = p.htmlParagraphs.map((x) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1f2937">${x}</p>`).join('');
+  return {
+    kind: p.kind ?? 'welcome',
+    envelopeId: p.envelopeId,
+    to: p.to,
+    replyTo: p.replyTo,
+    subject: p.subject,
+    html: `<!doctype html><html><body style="margin:0;background:#f5f5f4;padding:24px;font-family:Inter,Segoe UI,Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:28px">${body}
+<p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${p.kind === 'welcome_test' ? 'Test email with sample values, sent from your Agreements settings.' : 'Reply to this email to reach us directly.'}</p>
+</div></body></html>`,
+    text: p.text,
   };
 }
 

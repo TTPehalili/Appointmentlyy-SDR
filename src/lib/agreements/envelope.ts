@@ -3,6 +3,7 @@
  * the owner console / signer pages. Browser + server safe (no Node imports).
  */
 import type { SignerFormField, TemplateAction } from '@/lib/agreements/templates/types';
+import type { WelcomeMark } from '@/lib/agreements/welcome';
 
 export type EnvelopeStatus = 'draft' | 'sent' | 'opened' | 'signed' | 'completed' | 'declined' | 'expired' | 'revoked';
 
@@ -79,6 +80,8 @@ export interface TemplateMeta {
   action: TemplateAction;
   countersign: boolean;
   signerForm: SignerFormField[];
+  /** Contract templates only: send the welcome email when fully signed (owner switch at send; missing = on). */
+  welcome?: boolean;
 }
 
 export interface Envelope {
@@ -109,7 +112,8 @@ export interface Envelope {
   billing: BillingInfo | null;
   /** Per visit (key = visit id): seconds visible and pages seen, from that visit's heartbeats. */
   visitStats: Record<string, VisitStat>;
-  notified: { firstOpen?: boolean; signed?: boolean; declined?: boolean; expiring?: boolean };
+  /** Notices already sent, once each. `welcome`: the welcome email's once-only claim and its result. */
+  notified: { firstOpen?: boolean; signed?: boolean; declined?: boolean; expiring?: boolean; welcome?: WelcomeMark };
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -154,7 +158,11 @@ export type AgreementEventType =
   | 'cc_removed'
   | 'cc_final_emailed'
   | 'cc_downloaded'
-  | 'cc_pay_link_clicked';
+  | 'cc_pay_link_clicked'
+  // The welcome / kickoff email (contracts only, once per envelope).
+  | 'welcome_sent'
+  | 'welcome_failed'
+  | 'welcome_no_checklist';
 
 export interface AgreementEvent {
   id: string;
@@ -193,6 +201,11 @@ export interface AgreementSettings {
   /** Default PayPal link (https://paypal.me or paypal.com only) and an optional fee note printed under it. */
   paypalLink: string;
   paypalFeeNote: string;
+  /** Welcome email: the owner's kickoff booking page (Google Calendar booking page or Calendly; https only, may be empty). */
+  kickoffBookingLink: string;
+  /** Welcome email subject and body template; empty = the default wording (lib/agreements/welcome). */
+  welcomeSubject: string;
+  welcomeBody: string;
 }
 
 /** Owner decision 2026-11-16: emails go out as Emil Halili <emil@appointmentlyy.com>. Editable in settings. */
@@ -215,6 +228,9 @@ export const DEFAULT_AGREEMENT_SETTINGS: AgreementSettings = {
   bankCurrency: 'USD',
   paypalLink: '',
   paypalFeeNote: '',
+  kickoffBookingLink: '',
+  welcomeSubject: '',
+  welcomeBody: '',
 };
 
 export const AGREEMENT_LIMITS = {

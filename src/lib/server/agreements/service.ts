@@ -40,6 +40,8 @@ import { buildFinalPdf, pdfPageCount } from '@/lib/server/agreements/finalPdf';
 import { EMAIL_RE } from '@/lib/roles';
 import { billingFor, nextStatementNumber, numberField, stampPaid } from '@/lib/server/agreements/billing';
 import { balanceOf, fmtMoney, type BillingInfo } from '@/lib/agreements/envelope';
+import { welcomeEnabled } from '@/lib/agreements/welcome';
+import { scheduleWelcome } from '@/lib/server/agreements/welcome';
 
 export class AgreementError extends Error {
   constructor(
@@ -187,7 +189,8 @@ export async function sendEnvelope(
     {
       status: 'sent',
       title: t.title(values).slice(0, AGREEMENT_LIMITS.titleMax) || e.title,
-      templateMeta: metaOf(t, values),
+      // The owner's welcome-email switch, set on the draft, is kept when the setup is frozen.
+      templateMeta: metaOf(t, values, e.templateMeta?.welcome !== false),
       fieldValues: values,
       ...(billing ? { billing } : {}),
       originalSha256: sha256,
@@ -628,6 +631,8 @@ export async function completeEnvelope(e: Envelope, meta: RequestMeta): Promise<
     const r = await sendAgreementMail(m, settings);
     await store().addEvent({ envelopeId: e.id, type: 'cc_final_emailed', data: { ccId: cc.id, to: cc.email, ok: r.ok, ...(r.ok ? {} : { error: r.error.slice(0, 200) }) } });
   }
+  // Fully executed contract: the welcome / kickoff email, once, after this response (never fails the completion).
+  if (welcomeEnabled(updated)) scheduleWelcome(updated.id, meta.origin);
   return updated;
 }
 

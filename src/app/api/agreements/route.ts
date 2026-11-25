@@ -31,6 +31,7 @@ import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, hasBank } from '@/lib/agreements/payme
  * GET  /api/agreements   envelopes, templates, settings and email status
  * POST /api/agreements   { templateId, values, recipient, cc?, access, send? } -> new draft (sent when send is true)
  *                        cc: [{ name?, email }] copy recipients (view only), at most 5
+ *                        welcomeEmail: false  contracts only: no welcome email when fully signed (default on)
  */
 export async function GET(req: NextRequest) {
   const owner = await requireOwner(req);
@@ -108,7 +109,8 @@ export async function POST(req: NextRequest) {
       recipient,
       cc,
       access: access.value,
-      templateMeta: metaOf(t, values),
+      // Contracts: "Send welcome email when fully signed" (default on); ignored for every other template.
+      templateMeta: metaOf(t, values, body.welcomeEmail !== false),
       createdBy: owner.email,
     });
     if (t.action === 'view') rec.billing = { number: '', currency: 'USD', total: 0, dueDate: null, payments: [], sourceEnvelopeId };

@@ -18,6 +18,7 @@ import {
 } from '@/lib/server/agreements/core';
 import { AgreementError, changeAccess, expireIfDue, needsCompletion } from '@/lib/server/agreements/service';
 import { AGREEMENT_LIMITS, copyStatuses, toEnvelopeView, viewRows, type CcRecipient } from '@/lib/agreements/envelope';
+import { welcomeStatus } from '@/lib/agreements/welcome';
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => fail(404, 'Document not found.');
@@ -46,13 +47,15 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     template: t ? templateSummary(t) : null,
     views: viewRows(events, e.visitStats ?? {}, e.templateId),
     needsCompletion: needsCompletion(e),
+    // Contracts: the welcome email's state ("sent … to N people", "will send when fully signed", "Send now").
+    welcome: welcomeStatus(e),
     files: { original: Boolean(e.originalSha256), final: Boolean(e.finalSha256), certificate: Boolean(e.finalSha256) && e.templateMeta?.action !== 'view' },
   });
 }
 
 /**
  * PATCH /api/agreements/:id
- * Draft: { values?, recipient?, cc?, access? }. Sent but unsigned (or expired): { access } only.
+ * Draft: { values?, recipient?, cc?, access?, welcomeEmail? }. Sent but unsigned (or expired): { access } only.
  * Copies are removed after sending with POST /api/agreements/:id/remove-copy.
  */
 export async function PATCH(req: NextRequest, ctx: Ctx) {
@@ -93,7 +96,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         {
           fieldValues: values,
           title: (t.title(values) || t.name).slice(0, AGREEMENT_LIMITS.titleMax),
-          templateMeta: metaOf(t, values),
+          templateMeta: metaOf(t, values, 'welcomeEmail' in body ? body.welcomeEmail !== false : e.templateMeta?.welcome !== false),
           recipient,
           ...ccPatch,
           access: access.value,

@@ -8,8 +8,86 @@ import type { AgreementSettings } from '@/lib/agreements/envelope';
 import { SignaturePad, type SignatureValue } from '@/components/agreements/SignaturePad';
 import { BankTransferInputs, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
 import { PAYMENT_LIMITS } from '@/lib/agreements/paymentOptions';
+import { DEFAULT_WELCOME_BODY, DEFAULT_WELCOME_SUBJECT, WELCOME_LIMITS, WELCOME_PLACEHOLDERS, safeBookingLink, welcomeTemplateProblem } from '@/lib/agreements/welcome';
 
 type Form = Omit<AgreementSettings, 'hasSavedSignature'>;
+
+/**
+ * Welcome email (contracts, sent once when fully signed): the kickoff booking link, the subject and body template
+ * with placeholders, "Reset to default", and "Send a test to me" (sample values, to the saved notification address).
+ */
+function WelcomeSection({ form, setForm }: { form: Form; setForm: React.Dispatch<React.SetStateAction<Form | null>> }) {
+  const toast = useToast();
+  const [testing, setTesting] = React.useState(false);
+  const [testMsg, setTestMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const link = form.kickoffBookingLink.trim();
+  const linkErr = link && !safeBookingLink(link) ? 'Use a full https:// address, e.g. your Google Calendar booking page or Calendly link.' : undefined;
+  const subjectErr = welcomeTemplateProblem('subject', form.welcomeSubject) ?? undefined;
+  const bodyErr = welcomeTemplateProblem('body', form.welcomeBody) ?? undefined;
+  const put = (k: 'kickoffBookingLink' | 'welcomeSubject' | 'welcomeBody') => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => (f ? { ...f, [k]: e.target.value } : f));
+  const sendTest = async () => {
+    setTesting(true);
+    setTestMsg(null);
+    const r = await apiJson<{ to: string }>('/api/agreements/settings/welcome-test', { body: { kickoffBookingLink: link, welcomeSubject: form.welcomeSubject, welcomeBody: form.welcomeBody } });
+    setTesting(false);
+    if (!r.success) return setTestMsg({ ok: false, text: r.error || 'The test email was not sent.' });
+    setTestMsg({ ok: true, text: `Test sent to ${r.to}, with sample values.` });
+    toast({ message: 'Test welcome email sent' });
+  };
+  return (
+    <section className="flex flex-col gap-4" aria-labelledby="agr-welcome-heading" data-testid="welcome-settings">
+      <div>
+        <p id="agr-welcome-heading" className="text-body-strong text-fg">
+          Welcome email
+        </p>
+        <p className="text-small text-fg-tertiary">Sent once to the signer and each copy recipient when a contract is fully signed. Never for billing statements.</p>
+      </div>
+      <Field
+        label="Kickoff booking link"
+        htmlFor="agr-kickoff-link"
+        hint="Your Google Calendar booking page or Calendly link. Empty: the email says you will send a Google Meet invite within 1 business day."
+        error={linkErr}
+      >
+        <Input id="agr-kickoff-link" type="url" inputMode="url" placeholder="https://calendar.app.google/…" value={form.kickoffBookingLink} onChange={put('kickoffBookingLink')} maxLength={WELCOME_LIMITS.bookingLinkMax} aria-invalid={linkErr ? true : undefined} />
+      </Field>
+      <Field label="Subject" htmlFor="agr-welcome-subject" error={subjectErr}>
+        <Input id="agr-welcome-subject" value={form.welcomeSubject} onChange={put('welcomeSubject')} maxLength={WELCOME_LIMITS.subjectMax} aria-invalid={subjectErr ? true : undefined} />
+      </Field>
+      <Field label="Message" htmlFor="agr-welcome-body" hint="**bold** text, a blank line between paragraphs. A line whose value is missing is left out." error={bodyErr}>
+        <Textarea id="agr-welcome-body" value={form.welcomeBody} onChange={put('welcomeBody')} rows={14} maxLength={WELCOME_LIMITS.bodyMax} className="font-mono text-small" aria-invalid={bodyErr ? true : undefined} />
+      </Field>
+      <details className="rounded-md border border-line px-3 py-2 text-small text-fg-secondary">
+        <summary className="cursor-pointer text-fg">Placeholders</summary>
+        <ul className="mt-2 flex flex-col gap-1" data-testid="welcome-placeholders">
+          {WELCOME_PLACEHOLDERS.map((p) => (
+            <li key={p.key}>
+              <code className="rounded bg-subtle px-1 font-mono text-fg">{`{${p.key}}`}</code> {p.label}
+            </li>
+          ))}
+        </ul>
+      </details>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setForm((f) => (f ? { ...f, welcomeSubject: DEFAULT_WELCOME_SUBJECT, welcomeBody: DEFAULT_WELCOME_BODY } : f))}
+          disabled={form.welcomeSubject === DEFAULT_WELCOME_SUBJECT && form.welcomeBody === DEFAULT_WELCOME_BODY}
+          data-testid="welcome-reset"
+        >
+          Reset to default
+        </Button>
+        <Button variant="secondary" size="sm" onClick={sendTest} loading={testing} disabled={!!(linkErr || subjectErr || bodyErr)} data-testid="welcome-test">
+          Send a test to me
+        </Button>
+      </div>
+      {testMsg && (
+        <p role="status" className={testMsg.ok ? 'text-small text-success-fg' : 'text-small text-danger-fg'} data-testid="welcome-test-result">
+          {testMsg.text}
+        </p>
+      )}
+    </section>
+  );
+}
 
 export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved?: () => void }) {
   const toast = useToast();
@@ -30,7 +108,8 @@ export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: bool
       if (!r.success) return setError(r.error || 'Could not load the settings.');
       const { hasSavedSignature: _h, ...rest } = r.settings;
       void _h;
-      setForm(rest);
+      // The welcome email template is edited as text: an empty stored value is the default wording.
+      setForm({ ...rest, kickoffBookingLink: rest.kickoffBookingLink ?? '', welcomeSubject: rest.welcomeSubject || DEFAULT_WELCOME_SUBJECT, welcomeBody: rest.welcomeBody || DEFAULT_WELCOME_BODY });
       setSaved(r.savedSignature);
       setNewSig(null);
       setDrawing(false);
@@ -122,6 +201,7 @@ export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: bool
               <Textarea id="agr-payment" value={form.paymentInstructions} onChange={set('paymentInstructions')} rows={3} maxLength={2000} />
             </Field>
           </section>
+          <WelcomeSection form={form} setForm={setForm} />
           <section className="flex flex-col gap-2">
             <p className="text-body-strong text-fg">Saved countersignature</p>
             {saved && !clearSig && !drawing && (
