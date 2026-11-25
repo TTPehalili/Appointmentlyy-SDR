@@ -43,6 +43,7 @@ import {
   cleanSchema,
   csvToTable,
   unifiedOf,
+  sameTemplateFamily,
   validateAnswers,
   type Answers,
   type ApplyResult,
@@ -396,7 +397,7 @@ async function syncEnvelope(p: Project, t: Task, r: CpRequest, envelopes: Envelo
   let e = r.config.envelopeId ? envelopes.find((x) => x.id === r.config.envelopeId) : undefined;
   let linked = false;
   if (!r.config.envelopeId && r.config.templateId) {
-    const mine = envelopes.filter((x) => x.templateId === r.config.templateId && sameClient(clientNameOf(x), p.clientName)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const mine = envelopes.filter((x) => sameTemplateFamily(x.templateId, r.config.templateId!) && sameClient(clientNameOf(x), p.clientName)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     // The Nth envelope of that template for this client (Delivery Report #2 is the second one), if no card has it.
     const want = mine[(r.config.ordinal ?? 1) - 1];
     const pick = want && !taken.has(want.id) ? want : undefined;
@@ -944,7 +945,7 @@ export interface EnvelopeOption {
 export async function envelopeOptions(): Promise<EnvelopeOption[]> {
   try {
     return (await getAgreementStore().listEnvelopes())
-      .filter((e) => ['proposal-growth-v1', 'delivery-report-v1', 'uat-certificate-v1', 'billing-statement-v1', 'dev-simple-v1', 'dev-billing-v1'].includes(e.templateId) || isLocalTestServer())
+      .filter((e) => ['proposal-growth-v1', 'proposal-growth-v2', 'delivery-report-v1', 'uat-certificate-v1', 'billing-statement-v1', 'dev-simple-v1', 'dev-billing-v1'].includes(e.templateId) || isLocalTestServer())
       .slice(0, 300)
       .map((e) => ({ id: e.id, title: e.title.slice(0, 200), templateId: e.templateId, status: e.status, client: clientNameOf(e).slice(0, 120), createdAt: e.createdAt, billing: e.billing ? { number: e.billing.number, total: e.billing.total, paid: paidSoFar(e.billing), balance: balanceOf(e.billing), currency: e.billing.currency, status: paymentStatus(e.billing) } : null }));
   } catch {

@@ -21,6 +21,7 @@ import {
   PROVIDER_LABEL,
   UNIFIED_LABEL,
   diffAnswers,
+  sameTemplateFamily,
   type ApplyResult,
   type CpSubmission,
   type DnsRecord,
@@ -408,7 +409,7 @@ function KeysControl({ req, data, act }: { req: OwnerRequestView; data: OwnerInt
 }
 
 function EnvelopeControl({ req, data, act }: { req: OwnerRequestView; data: OwnerIntake; act: (b: Record<string, unknown>, ok: string) => Promise<boolean> }) {
-  const opts = data.envelopes.filter((e) => !req.config.templateId || e.templateId === req.config.templateId || e.templateId.startsWith('dev-'));
+  const opts = data.envelopes.filter((e) => !req.config.templateId || sameTemplateFamily(e.templateId, req.config.templateId) || e.templateId.startsWith('dev-'));
   const cur = data.envelopes.find((e) => e.id === req.config.envelopeId);
   const env = req.state.envelope;
   return (

@@ -345,6 +345,8 @@ export interface ViewRow {
 /** Pages worth flagging when the client reads them again, per template. */
 export const WATCHED_PAGES: Record<string, Record<number, string>> = {
   'proposal-growth-v1': { 6: 'pricing', 9: 'terms' },
+  // v2 adds the founder-led training page (page 5), so Investment and Terms move down one page.
+  'proposal-growth-v2': { 7: 'pricing', 10: 'terms' },
 };
 
 /** "1–9", "1–3, 6, 9" */

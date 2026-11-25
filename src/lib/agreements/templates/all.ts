@@ -3,6 +3,7 @@
  * Template layer: add one `import './<template-file>';` line per template below.
  */
 import './proposalGrowth';
+import './proposalGrowthV2';
 import './uatCertificate';
 import './deliveryReport';
 import './billingStatement';
