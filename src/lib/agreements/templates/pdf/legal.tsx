@@ -102,6 +102,10 @@ export interface CertificateProps {
   appySignerTitle: string;
   /** document mode: e.g. "USD 7,500" (or a mark). */
   secondInstalment?: string;
+  /** Optional: the Deliverables rows. Default: the 10 Growth Deliverables (CERT_DELIVERABLES). */
+  deliverables?: readonly (readonly [string, string])[];
+  /** Optional: the acceptance statement ({{clientShort}} token). Default: CERT_ACCEPTANCE_STATEMENT. */
+  acceptanceStatement?: string;
 }
 
 function Box({ size = 9 }: { size?: number }) {
@@ -112,7 +116,7 @@ const certP: Style = { fontSize: 8.9, lineHeight: 1.5, color: C.ink, marginBotto
 
 export function Certificate(p: CertificateProps) {
   const vars = { clientShort: p.clientShort, clientLegal: p.clientLegal };
-  const statement = fillTokens(CERT_ACCEPTANCE_STATEMENT, vars);
+  const statement = fillTokens(p.acceptanceStatement ?? CERT_ACCEPTANCE_STATEMENT, vars);
   const parties = fillTokens(CERT_PARTIES, vars);
   const sp = (v: string) => (p.mode === 'specimen' ? '__________' : v);
   const doc = p.mode === 'document';
@@ -141,7 +145,7 @@ export function Certificate(p: CertificateProps) {
       <LegalTable
         head={['#', 'Deliverable', 'Accepted', 'Notes']}
         widths={[0.07, 0.63, 0.12, 0.18]}
-        rows={CERT_DELIVERABLES.map(([n, d]) => [n, d, <Box key="b" />, ''])}
+        rows={(p.deliverables ?? CERT_DELIVERABLES).map(([n, d]) => [n, d, <Box key="b" />, ''])}
       />
 
       <T style={[certP, { fontWeight: 600 }]}>Outstanding minor items (S3/S4 only)</T>

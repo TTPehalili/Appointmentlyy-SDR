@@ -364,11 +364,21 @@ export const FORM_TEMPLATES: Record<string, IntakeSchema> = {
 };
 
 /**
+ * The client's main contract: the proposal with annexes, or the standalone Service Agreement. A client
+ * signs one of them, so the "countersign" card links whichever was sent.
+ */
+const MAIN_CONTRACT_FAMILIES = new Set(['proposal-growth', 'service-agreement']);
+
+/**
  * True when two agreement template ids are versions of the same template ("proposal-growth-v1" and
  * "proposal-growth-v2"), so a card set up for one version also finds envelopes made from a newer one.
+ * The main-contract templates count as one family.
  */
 export function sameTemplateFamily(a: string, b: string): boolean {
-  const fam = (id: string) => id.replace(/-v\d+$/, '');
+  const fam = (id: string) => {
+    const f = id.replace(/-v\d+$/, '');
+    return MAIN_CONTRACT_FAMILIES.has(f) ? 'main-contract' : f;
+  };
   return a === b || fam(a) === fam(b);
 }
 

@@ -4,6 +4,7 @@
  */
 import './proposalGrowth';
 import './proposalGrowthV2';
+import './serviceAgreement';
 import './uatCertificate';
 import './deliveryReport';
 import './billingStatement';

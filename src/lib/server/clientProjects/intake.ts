@@ -945,7 +945,7 @@ export interface EnvelopeOption {
 export async function envelopeOptions(): Promise<EnvelopeOption[]> {
   try {
     return (await getAgreementStore().listEnvelopes())
-      .filter((e) => ['proposal-growth-v1', 'proposal-growth-v2', 'delivery-report-v1', 'uat-certificate-v1', 'billing-statement-v1', 'dev-simple-v1', 'dev-billing-v1'].includes(e.templateId) || isLocalTestServer())
+      .filter((e) => ['proposal-growth-v1', 'proposal-growth-v2', 'service-agreement-v1', 'delivery-report-v1', 'uat-certificate-v1', 'billing-statement-v1', 'dev-simple-v1', 'dev-billing-v1'].includes(e.templateId) || isLocalTestServer())
       .slice(0, 300)
       .map((e) => ({ id: e.id, title: e.title.slice(0, 200), templateId: e.templateId, status: e.status, client: clientNameOf(e).slice(0, 120), createdAt: e.createdAt, billing: e.billing ? { number: e.billing.number, total: e.billing.total, paid: paidSoFar(e.billing), balance: balanceOf(e.billing), currency: e.billing.currency, status: paymentStatus(e.billing) } : null }));
   } catch {

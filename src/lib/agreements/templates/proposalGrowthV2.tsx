@@ -831,10 +831,11 @@ function buildAnnexAV2(src: string): string {
   return out;
 }
 
-const ANNEX_A_V2_MD = buildAnnexAV2(ANNEX_A_MD);
+/** Exported for `service-agreement-v1`, which builds its Annex A on top of this text. */
+export const ANNEX_A_V2_MD = buildAnnexAV2(ANNEX_A_MD);
 
 /** Annex B for v2: liquidated damages cover the no-derived-product (6.1) and non-compete (6.3) clauses, in a chosen currency. */
-const ANNEX_B_V2_MD = (() => {
+export const ANNEX_B_V2_MD = (() => {
   const from = '(b) For a breach of clause 6.1, {{clientShort}} pays USD {{liquidatedDamages}}.';
   const n = ANNEX_B_MD.split(from).length - 1;
   if (n !== 1) throw new Error(`proposal-growth-v2 Annex B: expected 1 match, found ${n}`);
