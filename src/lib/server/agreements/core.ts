@@ -16,9 +16,11 @@ import { isPaymentLinkKey, isPaymentQrKey, safePaymentLink, safeQrDataUrl } from
 import { BANK_KEYS, PAYMENT_LIMITS, cleanBank, hasBank, oneLine, paymentOptionsProblem } from '@/lib/agreements/paymentOptions';
 import {
   AGREEMENT_LIMITS,
+  CC_LIMITS,
   DEFAULT_AGREEMENT_SETTINGS,
   type AccessRules,
   type AgreementSettings,
+  type CcRecipient,
   type Envelope,
   type TemplateMeta,
 } from '@/lib/agreements/envelope';
@@ -144,6 +146,78 @@ export function unsealToken(e: Envelope): string | null {
 
 export function signingUrl(token: string, origin?: string): string {
   return `${getAppBaseUrl(origin)}/s/${token}`;
+}
+
+// ------------------------------------------------------------------ copy (CC) recipients
+
+/**
+ * A copy recipient's view-only token: 256 random bits, like the signer's, but its own. Sealed with a
+ * different context (bound to the envelope AND the copy) and looked up only by the view-only routes,
+ * so it can never open the signer's routes, and the signer's token never opens a copy's page.
+ */
+export function newCcToken(envelopeId: string, ccId: string): { token: string; hash: string; sealed: string } {
+  const token = crypto.randomBytes(32).toString('base64url');
+  return { token, hash: sha256Hex(token), sealed: seal(token, `agreement_cc_token|${envelopeId}|${ccId}`) };
+}
+
+export function unsealCcToken(envelopeId: string, cc: CcRecipient): string | null {
+  if (!cc.tokenSealed || cc.removedAt) return null;
+  try {
+    return open(cc.tokenSealed, `agreement_cc_token|${envelopeId}|${cc.id}`);
+  } catch {
+    return null;
+  }
+}
+
+export const newCcId = () => crypto.randomBytes(9).toString('base64url');
+
+/** The copy recipient's page: view only. */
+export function ccViewUrl(token: string, origin?: string): string {
+  return `${getAppBaseUrl(origin)}/s/view/${token}`;
+}
+
+/** A copy recipient's visit: HMAC-bound to the envelope AND the copy (never valid on the signer routes). */
+export function issueCcVisit(envelopeId: string, ccId: string): string {
+  const visitId = crypto.randomBytes(9).toString('base64url');
+  const exp = Math.floor(Date.now() / 1000) + 4 * 3600;
+  const body = `c1.${visitId}.${exp}`;
+  return `${body}.${hmac(`ccvisit|${envelopeId}|${ccId}|${body}`)}`;
+}
+
+export function checkCcVisit(envelopeId: string, ccId: string, v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 200) return null;
+  const parts = v.split('.');
+  if (parts.length !== 4 || parts[0] !== 'c1') return null;
+  const body = parts.slice(0, 3).join('.');
+  if (!safeEqual(parts[3], hmac(`ccvisit|${envelopeId}|${ccId}|${body}`))) return null;
+  if (Number(parts[2]) < Date.now() / 1000) return null;
+  return parts[1];
+}
+
+/**
+ * Copy recipients from the owner: optional name, valid email, at most 5, no duplicates, never the
+ * signer's own address. Returns cleaned entries (lowercased emails) or a message for the owner.
+ */
+export function validateCopies(raw: unknown, signerEmail: string): { ok: true; value: { name: string; email: string }[] } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: 'Send the copy recipients as a list.' };
+  if (raw.length > CC_LIMITS.max) return { ok: false, error: `You can copy at most ${CC_LIMITS.max} people (${CC_LIMITS.totalRecipients} recipients in all).` };
+  const signer = signerEmail.trim().toLowerCase();
+  const seen = new Set<string>();
+  const out: { name: string; email: string }[] = [];
+  for (const [i, item] of raw.entries()) {
+    const r = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    const name = String(r.name ?? '').trim().replace(/\s+/g, ' ').slice(0, AGREEMENT_LIMITS.nameMax);
+    const email = String(r.email ?? '').trim().toLowerCase();
+    if (!email && !name) continue;
+    const n = i + 1;
+    if (email.length > AGREEMENT_LIMITS.emailMax || !EMAIL_RE.test(email)) return { ok: false, error: `Copy ${n}: enter a valid email address.` };
+    if (signer && email === signer) return { ok: false, error: `Copy ${n}: ${email} is the signer. The signer gets their own email, so leave them out of the copies.` };
+    if (seen.has(email)) return { ok: false, error: `Copy ${n}: ${email} is already in the list.` };
+    seen.add(email);
+    out.push({ name, email });
+  }
+  return { ok: true, value: out };
 }
 
 export function consoleUrl(id: string, origin?: string): string {

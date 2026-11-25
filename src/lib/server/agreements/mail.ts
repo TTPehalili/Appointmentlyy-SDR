@@ -195,6 +195,37 @@ export function inviteMail(p: { to: string; recipientName: string; title: string
   };
 }
 
+/**
+ * "For your information" to a copy (CC) recipient: its own email, its own view-only link. The
+ * signer's link is never in it, and the copy is never in the signer's email headers.
+ */
+export function ccMail(p: { to: string; ccName: string; signerName: string; title: string; url: string; expiresText: string; action: 'sign' | 'acknowledge' | 'view'; senderName: string; envelopeId: string }): AgreementMail {
+  const first = p.ccName.split(' ')[0] || 'there';
+  const what =
+    p.action === 'view'
+      ? `${p.senderName} has sent “${p.title}” to ${p.signerName}.`
+      : `${p.senderName} has sent “${p.title}” to ${p.signerName} to ${p.action === 'sign' ? 'sign' : 'review and confirm'}.`;
+  const role = p.action === 'view' ? 'This link shows you the document. It is view only.' : `This link shows you the document. It is view only: ${p.signerName} ${p.action === 'sign' ? 'signs' : 'confirms'} it, not you.`;
+  return {
+    kind: 'cc',
+    envelopeId: p.envelopeId,
+    to: p.to,
+    subject: `For your information: ${p.title}`,
+    html: layout(
+      'For your information',
+      [
+        `Hi ${esc(first)},`,
+        `${esc(what)} You are copied for your information.`,
+        esc(role),
+        `The link works until <strong>${esc(p.expiresText)}</strong> (Philippine time). Please don't forward it: it is personal to you.`,
+      ],
+      { label: 'View the document', url: p.url },
+      'You are receiving this because the sender copied you. If you were not expecting it, you can ignore this email.',
+    ),
+    text: `Hi ${first},\n\n${what} You are copied for your information.\n\n${role}\n\nView it here: ${p.url}\n\nThe link works until ${p.expiresText} (Philippine time). Please don't forward it: it is personal to you.\n`,
+  };
+}
+
 export function otpMail(p: { to: string; code: string; title: string; purpose: 'view' | 'sign'; envelopeId: string }): AgreementMail {
   const why = p.purpose === 'sign' ? 'to sign' : 'to open';
   return {

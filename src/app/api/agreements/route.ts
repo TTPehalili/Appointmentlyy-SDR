@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
-import { getAgreementStore, AgreementStorageError, isEnvelopeId } from '@/lib/server/agreementStore';
+import { getAgreementStore, AgreementStorageError, CC_UNAVAILABLE_MESSAGE, isEnvelopeId } from '@/lib/server/agreementStore';
 import { paymentField, statementDateField } from '@/lib/server/agreements/billing';
 import {
   allTemplates,
@@ -12,29 +12,32 @@ import {
   json,
   loadSettings,
   metaOf,
+  newCcId,
   pastExpiry,
   readJson,
   requireOwner,
   templateSummary,
   userAgentOf,
   validateAccess,
+  validateCopies,
 } from '@/lib/server/agreements/core';
 import { AgreementError, newEnvelopeRecord, sendEnvelope, sweep, sweepDue } from '@/lib/server/agreements/service';
 import { mailStatus } from '@/lib/server/agreements/mail';
-import { AGREEMENT_LIMITS, toEnvelopeView } from '@/lib/agreements/envelope';
+import { AGREEMENT_LIMITS, toEnvelopeView, type CcRecipient } from '@/lib/agreements/envelope';
 import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, hasBank } from '@/lib/agreements/paymentOptions';
 
 /**
  * Agreements (platform owner only).
  * GET  /api/agreements   envelopes, templates, settings and email status
- * POST /api/agreements   { templateId, values, recipient, access, send? } -> new draft (sent when send is true)
+ * POST /api/agreements   { templateId, values, recipient, cc?, access, send? } -> new draft (sent when send is true)
+ *                        cc: [{ name?, email }] copy recipients (view only), at most 5
  */
 export async function GET(req: NextRequest) {
   const owner = await requireOwner(req);
   if (owner instanceof NextResponse) return owner;
   try {
     const store = getAgreementStore();
-    const [rows, { settings }] = await Promise.all([store.listEnvelopes(), loadSettings()]);
+    const [rows, { settings }, ccOk] = await Promise.all([store.listEnvelopes(), loadSettings(), store.ccSupported()]);
     // Housekeeping (mark expired links, "expiring soon" notices) runs after the response, at most
     // once a minute per server, on the rows just read.
     const origin = req.nextUrl.origin;
@@ -48,6 +51,8 @@ export async function GET(req: NextRequest) {
       settings,
       mail: mailStatus(),
       storage: store.backend,
+      // Copy recipients (stored in template_meta; available on both backends).
+      copies: { available: ccOk, problem: ccOk ? null : CC_UNAVAILABLE_MESSAGE },
     });
   } catch (err) {
     if (err instanceof AgreementStorageError) return fail(503, 'The Agreements tables are not in the database yet. Run supabase/migrations/20261120000000_agreements.sql.');
@@ -67,6 +72,9 @@ export async function POST(req: NextRequest) {
   const access = validateAccess(body.access);
   if (!access.ok) return fail(400, access.error);
   const values = cleanFieldValues(t, body.values);
+  const recipient = cleanRecipient(body.recipient);
+  const copies = validateCopies(body.cc, recipient.email);
+  if (!copies.ok) return fail(400, copies.error);
   let sourceEnvelopeId: string | null = null;
   if (t.action === 'view') {
     // Billing statements: today's date and the owner's saved payment note fill empty fields.
@@ -90,11 +98,15 @@ export async function POST(req: NextRequest) {
     sourceEnvelopeId = src ? src.id : null;
   }
   try {
+    if (copies.value.length && !(await getAgreementStore().ccSupported())) return fail(409, CC_UNAVAILABLE_MESSAGE, { code: 'cc_unavailable' });
+    const addedAt = new Date().toISOString();
+    const cc: CcRecipient[] = copies.value.map((c) => ({ id: newCcId(), name: c.name, email: c.email, tokenHash: null, tokenSealed: null, addedAt, removedAt: null }));
     const rec = newEnvelopeRecord({
       templateId: t.id,
       title: (t.title(values) || t.name).slice(0, AGREEMENT_LIMITS.titleMax),
       fieldValues: values,
-      recipient: cleanRecipient(body.recipient),
+      recipient,
+      cc,
       access: access.value,
       templateMeta: metaOf(t, values),
       createdBy: owner.email,
@@ -102,7 +114,7 @@ export async function POST(req: NextRequest) {
     if (t.action === 'view') rec.billing = { number: '', currency: 'USD', total: 0, dueDate: null, payments: [], sourceEnvelopeId };
     const store = getAgreementStore();
     const created = await store.createEnvelope(rec);
-    await store.addEvent({ envelopeId: created.id, type: 'created', ip: clientIp(req), userAgent: userAgentOf(req), data: { by: owner.email, templateId: t.id } });
+    await store.addEvent({ envelopeId: created.id, type: 'created', ip: clientIp(req), userAgent: userAgentOf(req), data: { by: owner.email, templateId: t.id, ...(cc.length ? { copies: cc.length } : {}) } });
     if (body.send !== true) return json({ success: true, envelope: toEnvelopeView(created) });
     try {
       const sent = await sendEnvelope(created.id, owner.email, { ip: clientIp(req), userAgent: userAgentOf(req), origin: req.nextUrl.origin });

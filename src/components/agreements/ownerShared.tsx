@@ -31,6 +31,8 @@ export interface ListResponse {
   settings: AgreementSettings;
   mail: MailStatus;
   storage: 'supabase' | 'file';
+  /** Copy recipients: off (with the reason) until the database has the `cc` column. */
+  copies?: { available: boolean; problem: string | null };
 }
 
 export function StatusChip({ status, concern }: { status: EnvelopeStatus; concern?: boolean }) {

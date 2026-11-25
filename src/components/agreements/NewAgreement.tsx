@@ -4,18 +4,20 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, Copy, FileText, Send } from 'lucide-react';
+import { ArrowLeft, Check, Copy, FileText, Plus, Send, X } from 'lucide-react';
 import { Button, Card, Field, InlineError, Input, Select, Skeleton, Stepper, Switch, Textarea, useToast } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
 import { cn } from '@/lib/cn';
 import type { TemplateField } from '@/lib/agreements/templates/types';
-import type { AgreementSettings, EnvelopeView } from '@/lib/agreements/envelope';
+import { CC_LIMITS, activeCopies, type AgreementSettings, type EnvelopeView } from '@/lib/agreements/envelope';
 import { PdfViewer } from '@/components/agreements/PdfViewer';
 import { BankFieldInput, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
 import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, PAYMENT_LIMITS, hasBank, type BankKey } from '@/lib/agreements/paymentOptions';
 import { OwnerGate, copyText, fetchPdf, fromLocalInput, toLocalInput, type ListResponse, type TemplateSummary } from '@/components/agreements/ownerShared';
 
 const STEPS = ['Template', 'Details', 'Preview', 'Send'];
+
+type SendEmail = { ok: boolean; error?: string; outbox?: boolean; copies?: { sent: number; failed: number; error?: string } };
 
 const find = (fields: TemplateField[], re: RegExp) => fields.find((f) => re.test(f.key) || re.test(f.label));
 const isNumberField = (f: TemplateField) => /(statement|soa|invoice|billing).?(no|num|number)|^statementNo$/i.test(f.key) || /statement no/i.test(f.label);
@@ -126,6 +128,69 @@ function FieldInput({ f, value, onChange }: { f: TemplateField; value: string; o
   );
 }
 
+type CopyRow = { name: string; email: string };
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** What is wrong with one copy row, checked like the server does (the server has the last word). */
+function copyProblem(rows: CopyRow[], i: number, signerEmail: string): string | null {
+  const email = rows[i].email.trim().toLowerCase();
+  if (!email) return rows[i].name.trim() ? 'Enter an email address.' : null;
+  if (!EMAIL_OK.test(email)) return 'Enter a valid email address.';
+  if (email === signerEmail.trim().toLowerCase()) return 'This is the signer. They get their own email.';
+  if (rows.findIndex((r) => r.email.trim().toLowerCase() === email) !== i) return 'Already in the list.';
+  return null;
+}
+
+/**
+ * "Copy to (optional)": up to 5 people who get a view-only link and the final copy. They can never
+ * sign. Off, with the reason, until the database has the copies column.
+ */
+function CopyList({ rows, onChange, signerEmail, available, problem, otpView }: { rows: CopyRow[]; onChange: (rows: CopyRow[]) => void; signerEmail: string; available: boolean; problem: string | null; otpView: boolean }) {
+  const set = (i: number, k: keyof CopyRow, v: string) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <section className="flex flex-col gap-3" data-testid="copy-list" aria-labelledby="cc-heading">
+      <div>
+        <h2 id="cc-heading" className="text-h3 text-fg">
+          Copy to <span className="text-body font-normal text-fg-secondary">(optional)</span>
+        </h2>
+        <p className="text-small text-fg-secondary">
+          Each person gets their own view-only link, and the final copy when it is complete. They cannot sign. Up to {CC_LIMITS.max}.
+        </p>
+      </div>
+      {!available && (
+        <p className="rounded-md bg-warning-bg px-3 py-2 text-small text-warning-fg" data-testid="cc-unavailable">
+          {problem || 'Copy recipients are not available on this server yet.'}
+        </p>
+      )}
+      {rows.map((r, i) => {
+        const err = copyProblem(rows, i, signerEmail);
+        return (
+          <div key={i} className="grid items-start gap-3 rounded-md border border-line p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] md:border-0 md:p-0" data-testid="cc-row">
+            <Field label={`Name, copy ${i + 1} (optional)`} htmlFor={`cc-name-${i}`}>
+              <Input id={`cc-name-${i}`} value={r.name} onChange={(e) => set(i, 'name', e.target.value)} maxLength={120} autoComplete="off" />
+            </Field>
+            <Field label={`Email, copy ${i + 1}`} htmlFor={`cc-email-${i}`} error={err ?? undefined}>
+              <Input id={`cc-email-${i}`} type="email" value={r.email} onChange={(e) => set(i, 'email', e.target.value)} maxLength={254} autoComplete="off" aria-invalid={err ? true : undefined} />
+            </Field>
+            <Button variant="ghost" icon={<X />} onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label={`Remove copy ${i + 1}`} className="md:mt-6">
+              <span className="md:sr-only">Remove</span>
+            </Button>
+          </div>
+        );
+      })}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" size="sm" icon={<Plus />} onClick={() => onChange([...rows, { name: '', email: '' }])} disabled={!available || rows.length >= CC_LIMITS.max} data-testid="cc-add">
+          Add a copy
+        </Button>
+        <span className="text-caption text-fg-tertiary">
+          {rows.length} of {CC_LIMITS.max}
+        </span>
+      </div>
+      {otpView && rows.length > 0 && <p className="text-small text-fg-tertiary">The email code is for the signer. Copies open their view-only link without a code.</p>}
+    </section>
+  );
+}
+
 function Wizard() {
   const toast = useToast();
   const router = useRouter();
@@ -138,6 +203,7 @@ function Wizard() {
   const [templateId, setTemplateId] = React.useState('');
   const [values, setValues] = React.useState<Record<string, string>>({});
   const [recipient, setRecipient] = React.useState({ name: '', title: '', email: '' });
+  const [copies, setCopies] = React.useState<CopyRow[]>([]);
   const [expiresAt, setExpiresAt] = React.useState(toLocalInput(new Date(Date.now() + 3 * 86_400_000).toISOString()));
   const [maxOpens, setMaxOpens] = React.useState('');
   const [openFrom, setOpenFrom] = React.useState('');
@@ -147,7 +213,7 @@ function Wizard() {
   const [pdf, setPdf] = React.useState<ArrayBuffer | null>(null);
   const [pdfError, setPdfError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<'draft' | 'send' | null>(null);
-  const [done, setDone] = React.useState<{ id: string; url?: string; email?: { ok: boolean; error?: string; outbox?: boolean }; sendError?: string } | null>(null);
+  const [done, setDone] = React.useState<{ id: string; url?: string; email?: SendEmail; sendError?: string } | null>(null);
   const [source, setSource] = React.useState<EnvelopeView | null>(null);
   const [draft, setDraft] = React.useState<EnvelopeView | null>(null);
 
@@ -166,6 +232,7 @@ function Wizard() {
           setTemplateId(e.templateId);
           setValues(e.fieldValues);
           setRecipient(e.recipient);
+          setCopies(activeCopies(e.cc).map((c) => ({ name: c.name, email: c.email })));
           setExpiresAt(toLocalInput(e.access.expiresAt));
           setMaxOpens(e.access.maxOpens ? String(e.access.maxOpens) : '');
           setOpenFrom(toLocalInput(e.access.openFrom));
@@ -241,14 +308,16 @@ function Wizard() {
     if (!t) return;
     setBusy(send ? 'send' : 'draft');
     setError(null);
-    type R = { envelope: EnvelopeView; url?: string; email?: { ok: boolean; error?: string; outbox?: boolean }; sendError?: string };
+    type R = { envelope: EnvelopeView; url?: string; email?: SendEmail; sendError?: string };
+    // Empty rows are left out; the server checks the rest again.
+    const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
     let r: Awaited<ReturnType<typeof apiJson<R>>>;
     if (draft) {
-      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values, recipient, access: access() } });
+      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values, recipient, cc, access: access() } });
       if (!u.success || !send) r = u;
       else r = await apiJson<R>(`/api/agreements/${draft.id}/send`, { method: 'POST' });
     } else {
-      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values, recipient, access: access(), send, sourceEnvelopeId: source?.id ?? null } });
+      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values, recipient, ...(cc.length ? { cc } : {}), access: access(), send, sourceEnvelopeId: source?.id ?? null } });
     }
     setBusy(null);
     if (!r.success) return setError(r.error || 'Could not save.');
@@ -292,6 +361,13 @@ function Wizard() {
                   : done.email?.error || 'The email was not sent.'}{' '}
                 You can also copy the link and send it yourself.
               </p>
+              {done.email?.copies && (
+                <p className="mt-2 text-body text-fg-secondary" data-testid="sent-copies">
+                  {done.email.copies.failed
+                    ? `Copies: ${done.email.copies.sent} sent, ${done.email.copies.failed} not sent. ${done.email.copies.error ?? ''}`
+                    : `Each of the ${done.email.copies.sent} ${done.email.copies.sent === 1 ? 'copy' : 'copies'} got their own view-only link.`}
+                </p>
+              )}
               {done.url && (
                 <div className="mt-4 flex gap-2">
                   <Input readOnly value={done.url} aria-label="Signing link" mono data-testid="sent-link" />
@@ -317,7 +393,9 @@ function Wizard() {
   }
 
   const canNext = step === 0 ? !!t : step === 1 ? missing.length === 0 : true;
-  const sendable = recipient.name.trim() && /\S+@\S+\.\S+/.test(recipient.email) && !!fromLocalInput(expiresAt);
+  const ccAvailable = list.copies?.available !== false;
+  const ccBad = copies.some((_, i) => copyProblem(copies, i, recipient.email)) || (!ccAvailable && copies.some((c) => c.email.trim()));
+  const sendable = recipient.name.trim() && /\S+@\S+\.\S+/.test(recipient.email) && !!fromLocalInput(expiresAt) && !ccBad;
 
   return (
     <div className={cn('mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-8', step === 2 ? 'max-w-[1100px]' : 'max-w-[880px]')}>
@@ -421,6 +499,7 @@ function Wizard() {
                 </Field>
               </div>
             </section>
+            <CopyList rows={copies} onChange={setCopies} signerEmail={recipient.email} available={ccAvailable} problem={list.copies?.problem ?? null} otpView={otpView} />
             <section className="flex flex-col gap-3">
               <h2 className="text-h3 text-fg">Link rules</h2>
               <div className="grid gap-4 md:grid-cols-2">
@@ -457,7 +536,7 @@ function Wizard() {
         <div className="flex gap-2">
           {step === 3 ? (
             <>
-              <Button variant="secondary" onClick={() => submit(false)} loading={busy === 'draft'} disabled={!!busy}>
+              <Button variant="secondary" onClick={() => submit(false)} loading={busy === 'draft'} disabled={!!busy || ccBad}>
                 Save draft
               </Button>
               <Button variant="brand" icon={<Send />} onClick={() => submit(true)} loading={busy === 'send'} disabled={!!busy || !sendable} data-testid="send-now">

@@ -17,6 +17,7 @@ import {
   type AgreementEvent,
   type AgreementEventType,
   type AgreementSettings,
+  type CcRecipient,
   type Envelope,
   type EnvelopeStatus,
 } from '@/lib/agreements/envelope';
@@ -59,6 +60,13 @@ export interface AgreementStore {
   listEnvelopes(): Promise<Envelope[]>;
   getEnvelope(id: string): Promise<Envelope | null>;
   findByTokenHash(hash: string): Promise<Envelope | null>;
+  /** The envelope and the (not removed) copy recipient whose view-only token hashes to `hash`. */
+  findByCcTokenHash(hash: string): Promise<{ envelope: Envelope; cc: CcRecipient } | null>;
+  /**
+   * Whether copy recipients can be stored. True for both backends: Supabase keeps them inside the
+   * existing `template_meta` jsonb column (no migration needed).
+   */
+  ccSupported(): Promise<boolean>;
   createEnvelope(e: Envelope): Promise<Envelope>;
   /** Patch the given fields. With `ifStatus`, only when the current status is one of them (else null). */
   updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }): Promise<Envelope | null>;
@@ -81,6 +89,24 @@ export interface AgreementStore {
 
 /** The database tables aren't there yet (migration not run). */
 export class AgreementStorageError extends Error {}
+
+/** Shown to the owner if copies cannot be stored (kept for safety; both backends support them). */
+export const CC_UNAVAILABLE_MESSAGE = 'Copy recipients are not available on this server. Remove the copies to save or send now.';
+
+/** Constant-time compare of two hex hashes. */
+function sameHash(a: string | null | undefined, b: string): boolean {
+  if (!a) return false;
+  const x = Buffer.from(a, 'hex');
+  const y = Buffer.from(b, 'hex');
+  return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+}
+
+/** The live copy recipient for a token hash (removed copies and cleared tokens never match). */
+function ccMatch(e: Envelope, hash: string): CcRecipient | null {
+  let hit: CcRecipient | null = null;
+  for (const c of e.cc ?? []) if (!c.removedAt && sameHash(c.tokenHash, hash)) hit = c;
+  return hit;
+}
 
 export const sha256Hex = (b: Uint8Array | string) => crypto.createHash('sha256').update(b).digest('hex');
 
@@ -109,7 +135,9 @@ class FileAgreementStore implements AgreementStore {
   private read(): FileData {
     try {
       const p = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<FileData>;
-      return { envelopes: p.envelopes ?? [], events: p.events ?? [], otps: p.otps ?? [], settings: p.settings ?? null };
+      // Records written before copy recipients existed have no `cc`.
+      const envelopes = (p.envelopes ?? []).map((e) => (Array.isArray(e.cc) ? e : { ...e, cc: [] }));
+      return { envelopes, events: p.events ?? [], otps: p.otps ?? [], settings: p.settings ?? null };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { envelopes: [], events: [], otps: [], settings: null };
       throw err;
@@ -147,20 +175,32 @@ class FileAgreementStore implements AgreementStore {
     }
     return hit;
   }
+  async findByCcTokenHash(hash: string) {
+    let hit: { envelope: Envelope; cc: CcRecipient } | null = null;
+    for (const e of this.read().envelopes) {
+      const cc = ccMatch(e, hash);
+      if (cc) hit = { envelope: e, cc };
+    }
+    return hit;
+  }
+  async ccSupported() {
+    return true;
+  }
   createEnvelope(e: Envelope) {
     return this.mutate((d) => {
       d.envelopes.push(e);
-      return e;
+      return { ...e, cc: e.cc ?? [] };
     });
   }
   updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }) {
+    const p = patch;
     return this.mutate((d) => {
       const i = d.envelopes.findIndex((e) => e.id === id);
       if (i < 0) return null;
       if (ifStatus && !ifStatus.includes(d.envelopes[i].status)) return null;
       if (opts?.ifNoOwnerSignature && d.envelopes[i].ownerSignature) return null;
-      d.envelopes[i] = { ...d.envelopes[i], ...patch, id, updatedAt: nowIso() };
-      return d.envelopes[i];
+      d.envelopes[i] = { ...d.envelopes[i], ...p, id, updatedAt: nowIso() };
+      return { ...d.envelopes[i], cc: d.envelopes[i].cc ?? [] };
     });
   }
   async deleteEnvelope(id: string) {
@@ -263,14 +303,31 @@ const MISSING_TABLE = new Set(['42P01', 'PGRST205', 'PGRST204', '42703']);
 const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
 const iso = (v: unknown) => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
 
+/**
+ * Copy recipients are stored inside the existing `template_meta` jsonb column (key `cc`), so no
+ * migration is needed. After sending, template_meta is written only by owner actions (never by the
+ * signer's opens, heartbeats or signing), so copy updates are not overwritten by signer activity.
+ */
+function splitMeta(v: unknown): { templateMeta: Envelope['templateMeta']; cc: CcRecipient[] } {
+  if (!v || typeof v !== 'object') return { templateMeta: null, cc: [] };
+  const { cc, ...rest } = v as Record<string, unknown>;
+  return { templateMeta: Object.keys(rest).length ? (rest as unknown as Envelope['templateMeta']) : null, cc: Array.isArray(cc) ? (cc as CcRecipient[]) : [] };
+}
+function joinMeta(tm: Envelope['templateMeta'], cc: CcRecipient[]): Record<string, unknown> | null {
+  if (!tm && !cc.length) return null;
+  return { ...(tm ?? {}), ...(cc.length ? { cc } : {}) };
+}
+
 function envFromRow(r: Row): Envelope {
+  const meta = splitMeta(r.template_meta);
   return {
     id: String(r.id),
     templateId: String(r.template_id),
-    templateMeta: (r.template_meta as Envelope['templateMeta']) ?? null,
+    templateMeta: meta.templateMeta,
     title: String(r.title ?? ''),
     fieldValues: (r.field_values as Record<string, string>) ?? {},
     recipient: { name: String(r.recipient_name ?? ''), title: String(r.recipient_title ?? ''), email: String(r.recipient_email ?? '') },
+    cc: meta.cc,
     access: {
       expiresAt: iso(r.expires_at) ?? '',
       openFrom: iso(r.open_from),
@@ -346,6 +403,8 @@ function envToRow(p: Partial<Envelope>): Row {
     ['revokedAt', 'revoked_at'],
   ];
   for (const [k, col] of map) if (k in p) r[col] = p[k] ?? null;
+  // template_meta carries the copy list too (see splitMeta); callers pass both via withCc().
+  if ('templateMeta' in p || 'cc' in p) r.template_meta = joinMeta(p.templateMeta ?? null, p.cc ?? []);
   if (p.recipient) {
     r.recipient_name = p.recipient.name;
     r.recipient_title = p.recipient.title;
@@ -393,6 +452,33 @@ function fromBytea(v: unknown): Buffer {
 class SupabaseAgreementStore implements AgreementStore {
   readonly backend = 'supabase' as const;
   constructor(private db: SupabaseClient) {}
+  async ccSupported() {
+    return true;
+  }
+  /**
+   * A patch that touches templateMeta or cc must write both into template_meta: the missing half is
+   * read from the current row (owner actions only, so no race with the signer).
+   */
+  private async withCc(id: string, patch: Partial<Envelope>): Promise<Partial<Envelope>> {
+    if (!('templateMeta' in patch) && !('cc' in patch)) return patch;
+    if ('templateMeta' in patch && 'cc' in patch) return patch;
+    const cur = this.check(await this.db.from('agreement_envelopes').select('template_meta').eq('id', id).maybeSingle()) as Row | null;
+    const now = splitMeta(cur?.template_meta);
+    return { ...patch, templateMeta: 'templateMeta' in patch ? patch.templateMeta ?? null : now.templateMeta, cc: 'cc' in patch ? patch.cc ?? [] : now.cc };
+  }
+  async findByCcTokenHash(hash: string) {
+    if (!/^[0-9a-f]{64}$/.test(hash)) return null;
+    // jsonb containment on template_meta->cc, then a constant-time check in code. If the filter is
+    // refused for any reason, fall back to checking the (owner-scale) envelope list in code.
+    const res = await this.db.from('agreement_envelopes').select('*').filter('template_meta->cc', 'cs', JSON.stringify([{ tokenHash: hash }])).limit(2);
+    const rows = res.error ? ((this.check(await this.db.from('agreement_envelopes').select('*').limit(1000)) as Row[]) ?? []) : ((res.data as Row[]) ?? []);
+    for (const r of rows) {
+      const e = envFromRow(r);
+      const cc = ccMatch(e, hash);
+      if (cc) return { envelope: e, cc };
+    }
+    return null;
+  }
   private check<T>(res: { data: T; error: { message: string; code?: string } | null }): T {
     if (res.error) {
       if (res.error.code && MISSING_TABLE.has(res.error.code)) throw new AgreementStorageError(res.error.message);
@@ -424,7 +510,7 @@ class SupabaseAgreementStore implements AgreementStore {
   }
   async updateEnvelope(id: string, patch: Partial<Envelope>, ifStatus?: EnvelopeStatus[], opts?: { ifNoOwnerSignature?: boolean }) {
     if (!isEnvelopeId(id)) return null;
-    let q = this.db.from('agreement_envelopes').update({ ...envToRow(patch), updated_at: nowIso() }).eq('id', id);
+    let q = this.db.from('agreement_envelopes').update({ ...envToRow(await this.withCc(id, patch)), updated_at: nowIso() }).eq('id', id);
     if (ifStatus) q = q.in('status', ifStatus);
     if (opts?.ifNoOwnerSignature) q = q.is('owner_signature', null);
     const r = this.check(await q.select().maybeSingle()) as Row | null;

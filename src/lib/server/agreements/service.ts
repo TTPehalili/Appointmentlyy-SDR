@@ -7,14 +7,20 @@ import { newId, nowIso } from '@/lib/server/tenantStore';
 import { getAgreementStore, sha256Hex, type OtpPurpose } from '@/lib/server/agreementStore';
 import {
   AGREEMENT_LIMITS,
+  activeCopies,
   fmtManila,
   type AgreementSettings,
+  type CcRecipient,
   type Envelope,
   type EnvelopeStatus,
   type SignatureKind,
 } from '@/lib/agreements/envelope';
 import {
+  ccViewUrl,
   consoleUrl,
+  newCcToken,
+  unsealCcToken,
+  validateCopies,
   evaluateAccess,
   findTemplate,
   hashOtp,
@@ -29,7 +35,7 @@ import {
   fieldProblems,
   fileNameFor,
 } from '@/lib/server/agreements/core';
-import { completedMail, inviteMail, otpMail, ownerNoticeMail, sendAgreementMail } from '@/lib/server/agreements/mail';
+import { ccMail, completedMail, inviteMail, otpMail, ownerNoticeMail, sendAgreementMail } from '@/lib/server/agreements/mail';
 import { buildFinalPdf, pdfPageCount } from '@/lib/server/agreements/finalPdf';
 import { EMAIL_RE } from '@/lib/roles';
 import { billingFor, nextStatementNumber, numberField, stampPaid } from '@/lib/server/agreements/billing';
@@ -129,7 +135,17 @@ export async function renderOriginal(e: Envelope): Promise<Uint8Array> {
  * (only its hash and a sealed copy are stored) and email the link. Email failure leaves it sent:
  * the owner can copy the link.
  */
-export async function sendEnvelope(id: string, actorEmail: string, meta: RequestMeta): Promise<{ envelope: Envelope; url: string; email: { ok: boolean; error?: string; outbox?: boolean } }> {
+export interface CopyMailResult {
+  sent: number;
+  failed: number;
+  error?: string;
+}
+
+export async function sendEnvelope(
+  id: string,
+  actorEmail: string,
+  meta: RequestMeta,
+): Promise<{ envelope: Envelope; url: string; email: { ok: boolean; error?: string; outbox?: boolean; copies?: CopyMailResult } }> {
   const e = await store().getEnvelope(id);
   if (!e) throw new AgreementError('Not found.', 404);
   if (e.status !== 'draft') throw new AgreementError('This document has already been sent.', 409);
@@ -150,6 +166,16 @@ export async function sendEnvelope(id: string, actorEmail: string, meta: Request
   if (!e.recipient.name) throw new AgreementError('Enter the recipient’s name.');
   if (!EMAIL_RE.test(e.recipient.email)) throw new AgreementError('Enter the recipient’s email.');
   if (Date.parse(e.access.expiresAt) <= Date.now()) throw new AgreementError('The expiry date is in the past. Pick a later date.');
+  // Copies: checked again against the signer (the draft may have changed), each gets its own token.
+  const copies = activeCopies(e.cc);
+  const ccCheck = validateCopies(copies, e.recipient.email);
+  if (!ccCheck.ok) throw new AgreementError(ccCheck.error);
+  const ccTokens = new Map<string, string>();
+  const cc: CcRecipient[] = copies.map((c) => {
+    const k = newCcToken(e.id, c.id);
+    ccTokens.set(c.id, k.token);
+    return { ...c, tokenHash: k.hash, tokenSealed: k.sealed };
+  });
 
   const pdf = await t.render(values);
   const pageCount = await pdfPageCount(pdf);
@@ -168,16 +194,66 @@ export async function sendEnvelope(id: string, actorEmail: string, meta: Request
       pageCount,
       tokenHash: tok.hash,
       tokenSealed: tok.sealed,
+      // Only written when there are copies (documents without copies are stored exactly as before).
+      ...((e.cc ?? []).length ? { cc } : {}),
       sentAt,
       lastActivityAt: sentAt,
     },
     ['draft'],
   );
   if (!updated) throw new AgreementError('This document has already been sent.', 409);
-  await store().addEvent({ envelopeId: e.id, type: 'sent', ip: meta.ip, userAgent: meta.userAgent, data: { by: actorEmail, originalSha256: sha256, pageCount } });
+  await store().addEvent({ envelopeId: e.id, type: 'sent', ip: meta.ip, userAgent: meta.userAgent, data: { by: actorEmail, originalSha256: sha256, pageCount, ...(cc.length ? { copies: cc.length } : {}) } });
   const url = signingUrl(tok.token, meta.origin);
+  // The signer's email first and unchanged; then one SEPARATE email per copy, with its own link.
   const email = await emailInvite(updated, url, meta);
-  return { envelope: updated, url, email };
+  const copyMail = cc.length ? await emailCopies(updated, cc.map((c) => ({ cc: c, token: ccTokens.get(c.id)! })), meta, 'send') : null;
+  return { envelope: updated, url, email: copyMail ? { ...email, copies: copyMail } : email };
+}
+
+/**
+ * The "for your information" email to each copy recipient: a separate email per copy, with that
+ * copy's own view-only link. Never includes the signer's link, never sent to the signer's address.
+ */
+async function emailCopies(e: Envelope, list: { cc: CcRecipient; token: string }[], meta: RequestMeta, reason: 'send' | 'resend' | 'copies') {
+  const { settings } = await loadSettings();
+  let sent = 0;
+  let failed = 0;
+  let lastError: string | undefined;
+  for (const { cc, token } of list) {
+    const r = await sendAgreementMail(
+      ccMail({
+        to: cc.email,
+        ccName: cc.name,
+        signerName: e.recipient.name,
+        title: e.title,
+        url: ccViewUrl(token, meta.origin),
+        expiresText: fmtManila(e.access.expiresAt),
+        action: e.templateMeta?.action ?? 'sign',
+        senderName: settings.senderName,
+        envelopeId: e.id,
+      }),
+      settings,
+    );
+    if (r.ok) {
+      sent++;
+      await store().addEvent({ envelopeId: e.id, type: 'cc_sent', ip: meta.ip, userAgent: meta.userAgent, data: { ccId: cc.id, to: cc.email, reason } });
+    } else {
+      failed++;
+      lastError = r.error;
+      await store().addEvent({ envelopeId: e.id, type: 'cc_email_failed', data: { ccId: cc.id, to: cc.email, reason, error: r.error.slice(0, 300) } });
+    }
+  }
+  return { sent, failed, ...(lastError ? { error: lastError } : {}) };
+}
+
+/** Live copies with a link, and their tokens (removed copies and unreadable tokens are skipped). */
+function copyLinks(e: Envelope): { cc: CcRecipient; token: string }[] {
+  const out: { cc: CcRecipient; token: string }[] = [];
+  for (const c of activeCopies(e.cc)) {
+    const token = unsealCcToken(e.id, c);
+    if (token) out.push({ cc: c, token });
+  }
+  return out;
 }
 
 async function emailInvite(e: Envelope, url: string, meta: RequestMeta, resend = false) {
@@ -211,7 +287,45 @@ export async function resendEnvelope(id: string, meta: RequestMeta) {
   const token = unsealToken(e);
   if (!token) throw new AgreementError('The link for this document is not available. Revoke it and send a new one.', 409);
   const url = signingUrl(token, meta.origin);
-  return { url, email: await emailInvite(e, url, meta, true) };
+  const email = await emailInvite(e, url, meta, true);
+  const links = copyLinks(e);
+  const copies = links.length ? await emailCopies(e, links, meta, 'resend') : null;
+  return { url, email: copies ? { ...email, copies } : email };
+}
+
+/** "Resend to copies": the view-only email again, to every live copy (the signer gets nothing). */
+export async function resendCopies(id: string, meta: RequestMeta) {
+  const e = await store().getEnvelope(id);
+  if (!e) throw new AgreementError('Not found.', 404);
+  if (e.status !== 'sent' && e.status !== 'opened') throw new AgreementError('Copies can be sent again only while the document is waiting for the client.', 409);
+  if (pastExpiry(e)) throw new AgreementError('The link has expired. Extend the expiry first.', 409);
+  const links = copyLinks(e);
+  if (!links.length) throw new AgreementError('There are no copy recipients to send to.', 409);
+  return { copies: await emailCopies(e, links, meta, 'copies') };
+}
+
+/**
+ * Remove a copy recipient. A draft simply drops it; after sending, its view-only token is cleared
+ * at once (the link stops working) and the entry is kept, marked removed, for the record.
+ */
+export async function removeCopy(id: string, ccId: string, actorEmail: string, meta: RequestMeta): Promise<Envelope> {
+  const e = await store().getEnvelope(id);
+  if (!e) throw new AgreementError('Not found.', 404);
+  const target = (e.cc ?? []).find((c) => c.id === ccId);
+  if (!target || target.removedAt) throw new AgreementError('That copy recipient is not on this document.', 404);
+  const cc =
+    e.status === 'draft'
+      ? e.cc.filter((c) => c.id !== ccId)
+      : e.cc.map((c) => (c.id === ccId ? { ...c, tokenHash: null, tokenSealed: null, removedAt: nowIso() } : c));
+  const updated = await store().updateEnvelope(e.id, { cc }, [e.status]);
+  if (!updated) throw new AgreementError('This document changed meanwhile. Reload and try again.', 409);
+  await store().addEvent({ envelopeId: e.id, type: 'cc_removed', ip: meta.ip, userAgent: meta.userAgent, data: { ccId, to: target.email, by: actorEmail } });
+  return updated;
+}
+
+/** A copy recipient's rendered view: its own event, never the signer's opens, time or pages. */
+export async function recordCopyView(e: Envelope, cc: CcRecipient, meta: RequestMeta, visitId: string) {
+  await store().addEvent({ envelopeId: e.id, type: 'cc_viewed', ip: meta.ip, userAgent: meta.userAgent, data: { ccId: cc.id, visitId } });
 }
 
 export async function linkFor(id: string, origin?: string): Promise<string> {
@@ -506,6 +620,14 @@ export async function completeEnvelope(e: Envelope, meta: RequestMeta): Promise<
     type: 'final_emailed',
     data: { signer: a.ok ? 'sent' : a.error.slice(0, 200), owner: b.ok ? 'sent' : b.error.slice(0, 200), attached: !!attach },
   });
+  // Copies: the same completed copy, each in its own email, the download link being their own page.
+  for (const { cc, token } of copyLinks(updated)) {
+    const m = completedMail({ to: cc.email, name: cc.name, title: updated.title, url: ccViewUrl(token, meta.origin), attached: !!attach, envelopeId: e.id, finalSha256 });
+    m.kind = 'cc_completed';
+    m.attachments = attach;
+    const r = await sendAgreementMail(m, settings);
+    await store().addEvent({ envelopeId: e.id, type: 'cc_final_emailed', data: { ccId: cc.id, to: cc.email, ok: r.ok, ...(r.ok ? {} : { error: r.error.slice(0, 200) }) } });
+  }
   return updated;
 }
 
@@ -516,6 +638,7 @@ export function newEnvelopeRecord(input: {
   title: string;
   fieldValues: Record<string, string>;
   recipient: Envelope['recipient'];
+  cc?: CcRecipient[];
   access: Envelope['access'];
   templateMeta: Envelope['templateMeta'];
   createdBy: string;
@@ -528,6 +651,7 @@ export function newEnvelopeRecord(input: {
     title: input.title,
     fieldValues: input.fieldValues,
     recipient: input.recipient,
+    cc: input.cc ?? [],
     access: input.access,
     status: 'draft',
     originalSha256: null,

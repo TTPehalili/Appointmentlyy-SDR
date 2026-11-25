@@ -17,6 +17,27 @@ export interface EnvelopeRecipient {
   email: string;
 }
 
+/**
+ * A copy (CC) recipient: gets a "for your information" email with their OWN view-only link (never the
+ * signer's link), and the final copy on completion. A copy can never sign, decline or get a code.
+ */
+export interface CcRecipient {
+  /** Short random id (base64url), stable for the envelope's life. */
+  id: string;
+  name: string;
+  email: string;
+  /** sha256 of the view-only link token (set when sent; cleared when removed). */
+  tokenHash: string | null;
+  /** The token sealed (AES-GCM) for re-sending; never sent to a browser. */
+  tokenSealed: string | null;
+  addedAt: string;
+  /** Removed by the owner: the link stops working (token cleared). Kept for the record. */
+  removedAt: string | null;
+}
+
+/** At most 5 copies: 6 recipients in all, with the signer. */
+export const CC_LIMITS = { max: 5, totalRecipients: 6 };
+
 export interface AccessRules {
   /** ISO UTC. The link stops working after this (until signed). */
   expiresAt: string;
@@ -67,6 +88,8 @@ export interface Envelope {
   title: string;
   fieldValues: Record<string, string>;
   recipient: EnvelopeRecipient;
+  /** Copy recipients (view only). Empty when none, or before the `cc` column exists in the database. */
+  cc: CcRecipient[];
   access: AccessRules;
   status: EnvelopeStatus;
   originalSha256: string | null;
@@ -123,7 +146,15 @@ export type AgreementEventType =
   | 'payment_recorded'
   | 'payment_emailed'
   | 'pay_link_clicked'
-  | 'completion_retried';
+  | 'completion_retried'
+  // Copy (CC) recipients: kept apart from the signer's events (never counted as the signer's views).
+  | 'cc_sent'
+  | 'cc_email_failed'
+  | 'cc_viewed'
+  | 'cc_removed'
+  | 'cc_final_emailed'
+  | 'cc_downloaded'
+  | 'cc_pay_link_clicked';
 
 export interface AgreementEvent {
   id: string;
@@ -262,13 +293,64 @@ export function describeDevice(ua: string | null | undefined): string {
   return `${browser} on ${os}`;
 }
 
-/** Owner-safe view of an envelope (no token hash or sealed token). */
-export type EnvelopeView = Omit<Envelope, 'tokenHash' | 'tokenSealed'> & { hasLink: boolean };
+/** Owner-safe view of a copy recipient (no token hash or sealed token). */
+export type CcView = Omit<CcRecipient, 'tokenHash' | 'tokenSealed'> & { hasLink: boolean };
+
+/** Owner-safe view of an envelope (no token hash or sealed token, for the signer or any copy). */
+export type EnvelopeView = Omit<Envelope, 'tokenHash' | 'tokenSealed' | 'cc'> & { hasLink: boolean; cc: CcView[] };
 
 export function toEnvelopeView(e: Envelope): EnvelopeView {
-  const { tokenHash: _h, tokenSealed, ...rest } = e;
+  const { tokenHash: _h, tokenSealed, cc, ...rest } = e;
   void _h;
-  return { ...rest, hasLink: Boolean(tokenSealed) };
+  return {
+    ...rest,
+    hasLink: Boolean(tokenSealed),
+    cc: (cc ?? []).map(({ tokenHash: _ch, tokenSealed: cs, ...c }) => {
+      void _ch;
+      return { ...c, hasLink: Boolean(cs) };
+    }),
+  };
+}
+
+/** Active copies: not removed. */
+export const activeCopies = <T extends { removedAt: string | null }>(cc: T[] | undefined): T[] => (cc ?? []).filter((c) => !c.removedAt);
+
+/** One copy recipient as the owner sees it: email status and their own (separate) views. */
+export interface CopyStatus {
+  id: string;
+  name: string;
+  email: string;
+  removedAt: string | null;
+  hasLink: boolean;
+  /** not_sent: draft, or never emailed; sent: last email went out; failed: last email failed; removed. */
+  state: 'not_sent' | 'sent' | 'failed' | 'removed';
+  lastSentAt: string | null;
+  lastError: string | null;
+  finalSentAt: string | null;
+  views: { at: string; device: string; ip: string | null }[];
+}
+
+/** Copy statuses from the envelope and its events (copy views never touch the signer's counters). */
+export function copyStatuses(cc: CcView[], events: AgreementEvent[]): CopyStatus[] {
+  return cc.map((c) => {
+    const mine = events.filter((ev) => ev.type.startsWith('cc_') && ev.data?.ccId === c.id);
+    const mails = mine.filter((ev) => ev.type === 'cc_sent' || ev.type === 'cc_email_failed');
+    const last = mails[mails.length - 1];
+    const finals = mine.filter((ev) => ev.type === 'cc_final_emailed' && ev.data?.ok === true);
+    const state: CopyStatus['state'] = c.removedAt ? 'removed' : !last ? 'not_sent' : last.type === 'cc_sent' ? 'sent' : 'failed';
+    return {
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      removedAt: c.removedAt,
+      hasLink: c.hasLink,
+      state,
+      lastSentAt: [...mails].reverse().find((ev) => ev.type === 'cc_sent')?.at ?? null,
+      lastError: last?.type === 'cc_email_failed' && typeof last.data?.error === 'string' ? last.data.error : null,
+      finalSentAt: finals[finals.length - 1]?.at ?? null,
+      views: mine.filter((ev) => ev.type === 'cc_viewed').map((ev) => ({ at: ev.at, device: describeDevice(ev.userAgent), ip: ev.ip })),
+    };
+  });
 }
 
 // ------------------------------------------------------------------ billing statements

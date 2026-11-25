@@ -17,7 +17,7 @@ import { cn } from '@/lib/cn';
 const CONSENT =
   'I agree to sign electronically. My electronic signature has the same legal effect as a handwritten signature under the Philippine E-Commerce Act (RA 8792).';
 
-interface Doc {
+export interface Doc {
   title: string;
   emailMasked: string;
   action?: 'sign' | 'acknowledge' | 'view';
@@ -86,6 +86,76 @@ function CopyRow({ label, value, testId }: { label: string; value: string; testI
   );
 }
 
+/**
+ * Billing statements ('view'): how to pay and Download PDF. Shared by the recipient's page and a copy
+ * recipient's view-only page (`base` is that page's own API, so each link stays on its own routes).
+ */
+export function ViewPayPanel({ base, visit, doc, contact, onPay }: { base: string; visit: string | null; doc: Omit<Doc, 'emailMasked'>; contact: string; onPay: (provider: 'wise' | 'paypal') => void }) {
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <h2 className="text-h3 text-fg">{doc.title}</h2>
+      {/* How to pay, in order: Wise (Pay now), bank transfer, PayPal, QR, note. Each only when set. */}
+      {isHttps(doc.payLink) && (
+        <a
+          href={doc.payLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="pay-now"
+          onClick={() => onPay('wise')}
+          className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-brand-600 px-5 text-body font-semibold text-brand-contrast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
+        >
+          Pay now
+        </a>
+      )}
+      {isHttps(doc.payLink) && <p className="break-all text-caption text-fg-tertiary">{doc.payLink}</p>}
+      {doc.bank && doc.bank.length > 0 && (
+        <section aria-label="Bank transfer" className="rounded-md border border-line p-3" data-testid="pay-bank">
+          <h3 className="text-body-strong text-fg">Bank transfer</h3>
+          <div className="mt-1 divide-y divide-line">
+            {doc.bank.map((r) => (
+              <CopyRow key={r.key} label={r.label} value={r.value} testId={`bank-${r.key}`} />
+            ))}
+          </div>
+        </section>
+      )}
+      {isHttps(doc.paypalLink) && (
+        <div className="flex flex-col gap-1">
+          <a
+            href={doc.paypalLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="pay-paypal"
+            onClick={() => onPay('paypal')}
+            className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#003087] px-5 text-body font-semibold text-white hover:bg-[#00246B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
+          >
+            Pay with PayPal
+          </a>
+          <p className="break-all text-caption text-fg-tertiary">{doc.paypalLink}</p>
+          {doc.paypalFeeNote && <p className="text-small text-fg-secondary" data-testid="paypal-fee-note">{doc.paypalFeeNote}</p>}
+        </div>
+      )}
+      {doc.hasQr && (
+        <figure className="flex flex-col items-center gap-1 self-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- same-origin, token-checked image */}
+          <img src={`${base}/qr?visit=${encodeURIComponent(visit ?? '')}`} alt="Payment QR code" className="size-40 rounded-md border border-line bg-white object-contain p-2" data-testid="pay-qr" />
+          <figcaption className="text-caption text-fg-secondary">Scan to pay</figcaption>
+        </figure>
+      )}
+      {doc.payNote && <p className="whitespace-pre-line break-words text-small text-fg-secondary" data-testid="pay-note">{doc.payNote}</p>}
+      <p className="text-body text-fg-secondary">Questions about this statement? Reply to the email from {contact}.</p>
+      <a
+        href={`${base}/download?visit=${encodeURIComponent(visit ?? '')}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="download-view"
+        className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-md bg-action px-5 text-body font-medium text-action-fg hover:bg-action-hover"
+      >
+        <Download className="size-4" aria-hidden /> Download PDF
+      </a>
+    </Card>
+  );
+}
+
 type State =
   | { s: 'loading' }
   | { s: 'error'; message: string }
@@ -97,7 +167,7 @@ type State =
   | { s: 'otp_view'; doc: Doc; contact: string }
   | { s: 'open'; doc: Doc; contact: string };
 
-async function call(url: string, init?: { method?: string; body?: unknown; visit?: string | null }) {
+export async function call(url: string, init?: { method?: string; body?: unknown; visit?: string | null }) {
   const headers: Record<string, string> = {};
   if (init?.body) headers['Content-Type'] = 'application/json';
   if (init?.visit) headers['x-agr-visit'] = init.visit;
@@ -106,7 +176,7 @@ async function call(url: string, init?: { method?: string; body?: unknown; visit
   return { ok: res.ok && data.success === true, status: res.status, data };
 }
 
-function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
+export function Shell({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-line bg-surface/95 backdrop-blur">
@@ -126,7 +196,7 @@ function Shell({ children, title }: { children: React.ReactNode; title?: string 
   );
 }
 
-function Notice({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
+export function Notice({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
   return (
     <Shell>
       <main className="flex flex-1 items-center justify-center p-6">
@@ -371,67 +441,7 @@ export function SignerApp({ token }: { token: string }) {
             </section>
             <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto" aria-label="Sign">
               {state.doc.action === 'view' ? (
-                <Card className="flex flex-col gap-3 p-5">
-                  <h2 className="text-h3 text-fg">{state.doc.title}</h2>
-                  {/* How to pay, in order: Wise (Pay now), bank transfer, PayPal, QR, note. Each only when set. */}
-                  {isHttps(state.doc.payLink) && (
-                    <a
-                      href={state.doc.payLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid="pay-now"
-                      onClick={() => payClicked('wise')}
-                      className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-brand-600 px-5 text-body font-semibold text-brand-contrast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
-                    >
-                      Pay now
-                    </a>
-                  )}
-                  {isHttps(state.doc.payLink) && <p className="break-all text-caption text-fg-tertiary">{state.doc.payLink}</p>}
-                  {state.doc.bank && state.doc.bank.length > 0 && (
-                    <section aria-label="Bank transfer" className="rounded-md border border-line p-3" data-testid="pay-bank">
-                      <h3 className="text-body-strong text-fg">Bank transfer</h3>
-                      <div className="mt-1 divide-y divide-line">
-                        {state.doc.bank.map((r) => (
-                          <CopyRow key={r.key} label={r.label} value={r.value} testId={`bank-${r.key}`} />
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  {isHttps(state.doc.paypalLink) && (
-                    <div className="flex flex-col gap-1">
-                      <a
-                        href={state.doc.paypalLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-testid="pay-paypal"
-                        onClick={() => payClicked('paypal')}
-                        className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#003087] px-5 text-body font-semibold text-white hover:bg-[#00246B] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg"
-                      >
-                        Pay with PayPal
-                      </a>
-                      <p className="break-all text-caption text-fg-tertiary">{state.doc.paypalLink}</p>
-                      {state.doc.paypalFeeNote && <p className="text-small text-fg-secondary" data-testid="paypal-fee-note">{state.doc.paypalFeeNote}</p>}
-                    </div>
-                  )}
-                  {state.doc.hasQr && (
-                    <figure className="flex flex-col items-center gap-1 self-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- same-origin, token-checked image */}
-                      <img src={`${base}/qr?visit=${encodeURIComponent(visit ?? '')}`} alt="Payment QR code" className="size-40 rounded-md border border-line bg-white object-contain p-2" data-testid="pay-qr" />
-                      <figcaption className="text-caption text-fg-secondary">Scan to pay</figcaption>
-                    </figure>
-                  )}
-                  {state.doc.payNote && <p className="whitespace-pre-line break-words text-small text-fg-secondary" data-testid="pay-note">{state.doc.payNote}</p>}
-                  <p className="text-body text-fg-secondary">Questions about this statement? Reply to the email from {state.contact}.</p>
-                  <a
-                    href={`${base}/download?visit=${encodeURIComponent(visit ?? '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="download-view"
-                    className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-md bg-action px-5 text-body font-medium text-action-fg hover:bg-action-hover"
-                  >
-                    <Download className="size-4" aria-hidden /> Download PDF
-                  </a>
-                </Card>
+                <ViewPayPanel base={base} visit={visit} doc={state.doc} contact={state.contact} onPay={payClicked} />
               ) : (
               <SignPanel
                 base={base}

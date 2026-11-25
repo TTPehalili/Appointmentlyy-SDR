@@ -4,7 +4,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, RotateCcw, Ban, Copy, Download, FilePlus2, FileSignature, Pencil, Receipt, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Ban, Copy, Download, Eye, FilePlus2, FileSignature, Pencil, Receipt, Send, Trash2, X } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -35,6 +35,7 @@ import {
   fmtDuration,
   pageRanges,
   type AgreementEvent,
+  type CopyStatus,
   type EnvelopeView,
   type ViewRow,
 } from '@/lib/agreements/envelope';
@@ -49,6 +50,9 @@ interface Detail {
   files: { original: boolean; final: boolean; certificate: boolean; paid?: boolean };
   views: ViewRow[];
   needsCompletion: boolean;
+  /** Copy recipients, with their own (separate) views. */
+  copies?: CopyStatus[];
+  copiesAvailable?: boolean;
 }
 
 const EVENT_TEXT: Record<string, string> = {
@@ -76,6 +80,30 @@ const EVENT_TEXT: Record<string, string> = {
   payment_emailed: 'Payment receipt emailed',
   completion_retried: 'Completion retried',
   pay_link_clicked: 'Client clicked Pay now (Wise)',
+  cc_sent: 'View-only copy emailed to',
+  cc_email_failed: 'Copy email not sent to',
+  cc_viewed: 'Viewed by copy recipient',
+  cc_removed: 'Copy recipient removed:',
+  cc_final_emailed: 'Final copy emailed to copy recipient',
+  cc_downloaded: 'Final PDF downloaded by copy recipient',
+  cc_pay_link_clicked: 'Copy recipient clicked a payment link:',
+};
+
+/** Timeline text for one event; copy events name the copy recipient (never the signer's counters). */
+function eventText(ev: AgreementEvent, copies: CopyStatus[]): string {
+  if (ev.type === 'pay_link_clicked' && ev.data?.provider === 'paypal') return 'Client clicked Pay with PayPal';
+  const base = EVENT_TEXT[ev.type] ?? ev.type;
+  if (!ev.type.startsWith('cc_')) return base;
+  const c = copies.find((x) => x.id === ev.data?.ccId);
+  const who = c ? (c.name ? `${c.name} <${c.email}>` : c.email) : typeof ev.data?.to === 'string' ? ev.data.to : 'a copy recipient';
+  return `${base} ${who}`;
+}
+
+const COPY_STATE: Record<CopyStatus['state'], { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' | 'brand' }> = {
+  not_sent: { label: 'Not sent yet', tone: 'neutral' },
+  sent: { label: 'Sent', tone: 'brand' },
+  failed: { label: 'Email failed', tone: 'danger' },
+  removed: { label: 'Removed', tone: 'neutral' },
 };
 
 export function AgreementDetail({ id }: { id: string }) {
@@ -99,6 +127,8 @@ function DetailInner({ id }: { id: string }) {
   const [revokeOpen, setRevokeOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [retrying, setRetrying] = React.useState(false);
+  const [removeCc, setRemoveCc] = React.useState<CopyStatus | null>(null);
+  const [ccBusy, setCcBusy] = React.useState(false);
 
   const load = React.useCallback(async () => {
     const r = await apiJson<Detail>(`/api/agreements/${id}`);
@@ -156,6 +186,8 @@ function DetailInner({ id }: { id: string }) {
   const unsigned = ['sent', 'opened', 'expired'].includes(e.status);
   const isView = e.templateMeta?.action === 'view';
   const pay = e.billing ? paymentStatus(e.billing) : null;
+  const copies = d.copies ?? [];
+  const liveCopies = copies.filter((c) => c.state !== 'removed');
 
   const copyLink = async () => {
     const r = await apiJson<{ url: string }>(`/api/agreements/${e.id}/link`, { method: 'POST' });
@@ -165,7 +197,20 @@ function DetailInner({ id }: { id: string }) {
   const resend = async () => {
     const r = await apiJson<{ email: { ok: boolean; error?: string } }>(`/api/agreements/${e.id}/resend`, { method: 'POST' });
     if (!r.success) return toast({ message: r.error || 'Could not send it again.' });
-    toast({ message: r.email.ok ? `Sent again to ${e.recipient.email}` : r.email.error || 'The email was not sent. Copy the link instead.' });
+    toast({ message: r.email.ok ? `Sent again to ${e.recipient.email}${liveCopies.length ? `, and the view-only email to ${liveCopies.length} ${liveCopies.length === 1 ? 'copy' : 'copies'}` : ''}` : r.email.error || 'The email was not sent. Copy the link instead.' });
+    void load();
+  };
+  const resendToCopies = async () => {
+    setCcBusy(true);
+    const r = await apiJson<{ copies: { sent: number; failed: number; error?: string } }>(`/api/agreements/${e.id}/resend-copies`, { method: 'POST' });
+    setCcBusy(false);
+    if (!r.success) return toast({ message: r.error || 'Could not send to the copies.' });
+    toast({ message: r.copies.failed ? `Sent to ${r.copies.sent}, not sent to ${r.copies.failed}. ${r.copies.error ?? ''}` : `View-only email sent again to ${r.copies.sent} ${r.copies.sent === 1 ? 'copy' : 'copies'}` });
+    void load();
+  };
+  const doRemoveCopy = async (c: CopyStatus) => {
+    const r = await apiJson(`/api/agreements/${e.id}/remove-copy`, { method: 'POST', body: { ccId: c.id } });
+    toast({ message: r.success ? `${c.email} removed. Their view-only link no longer works.` : r.error || 'Could not remove the copy.' });
     void load();
   };
   const send = async () => {
@@ -319,6 +364,54 @@ function DetailInner({ id }: { id: string }) {
             </CardBody>
           </Card>
 
+          {copies.length > 0 && (
+            <Card data-testid="copies-card">
+              <CardHeader title={`Copy recipients (${liveCopies.length})`} description="View only. Their views are listed here, not counted as the client’s." />
+              <CardBody className="flex flex-col gap-3">
+                <ul className="flex flex-col divide-y divide-line">
+                  {copies.map((c) => (
+                    <li key={c.id} className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0" data-testid="copy-row" data-state={c.state}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          {c.name && <p className={c.state === 'removed' ? 'text-body text-fg-tertiary line-through' : 'text-body text-fg'}>{c.name}</p>}
+                          <p className={c.state === 'removed' ? 'break-all text-small text-fg-tertiary line-through' : 'break-all text-small text-fg-secondary'}>{c.email}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Badge tone={COPY_STATE[c.state].tone}>{COPY_STATE[c.state].label}</Badge>
+                          {c.state !== 'removed' && e.status !== 'draft' && (
+                            <Button variant="ghost" size="sm" icon={<X />} aria-label={`Remove ${c.email}`} onClick={() => setRemoveCc(c)} data-testid="copy-remove" />
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-small text-fg-tertiary">
+                        {c.lastSentAt ? `Emailed ${fmtManila(c.lastSentAt)}` : c.state === 'not_sent' ? 'Emailed when you send the document' : ''}
+                        {c.finalSentAt ? ` · final copy emailed ${fmtManila(c.finalSentAt)}` : ''}
+                      </p>
+                      {c.lastError && c.state === 'failed' && <p className="text-small text-danger-fg">{c.lastError}</p>}
+                      <p className="inline-flex items-center gap-1 text-small text-fg-secondary" data-testid="copy-views">
+                        <Eye className="size-3.5" aria-hidden />
+                        {c.views.length ? `Viewed ${c.views.length} ${c.views.length === 1 ? 'time' : 'times'}, last ${fmtManila(c.views[c.views.length - 1].at)} · ${c.views[c.views.length - 1].device}` : 'Not viewed yet'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                {(e.status === 'sent' || e.status === 'opened') && liveCopies.some((c) => c.hasLink) && (
+                  <div className="flex justify-end">
+                    <Button variant="secondary" size="sm" icon={<Send />} onClick={resendToCopies} loading={ccBusy} data-testid="resend-copies">
+                      Resend to copies
+                    </Button>
+                  </div>
+                )}
+                {e.access.requireOtpToView && <p className="text-caption text-fg-tertiary">The email code is for the client. Copies open their view-only link without a code.</p>}
+              </CardBody>
+            </Card>
+          )}
+          {d.copiesAvailable === false && e.status === 'draft' && (
+            <p className="rounded-md bg-warning-bg px-3 py-2 text-small text-warning-fg" data-testid="cc-unavailable">
+              Copy recipients are not available on this server.
+            </p>
+          )}
+
           {e.signer && (
             <Card>
               <CardHeader title={e.templateMeta?.action === 'sign' ? 'Client signature' : 'Client response'} />
@@ -398,15 +491,13 @@ function DetailInner({ id }: { id: string }) {
               <ol className="flex flex-col gap-3" data-testid="timeline">
                 {[...d.events].reverse().map((ev) => (
                   <li key={ev.id} className="flex flex-col">
-                    <span className="text-body text-fg">
-                      {ev.type === 'pay_link_clicked' && ev.data?.provider === 'paypal' ? 'Client clicked Pay with PayPal' : EVENT_TEXT[ev.type] ?? ev.type}
-                    </span>
+                    <span className="text-body text-fg">{eventText(ev, copies)}</span>
                     <span className="text-small text-fg-tertiary">
                       {fmtManila(ev.at, true)}
                       {ev.ip ? ` · ${ev.ip}` : ''}
                       {ev.userAgent ? ` · ${describeDevice(ev.userAgent)}` : ''}
                     </span>
-                    {ev.type === 'email_failed' && typeof ev.data.error === 'string' && <span className="text-small text-danger-fg">{ev.data.error}</span>}
+                    {(ev.type === 'email_failed' || ev.type === 'cc_email_failed') && typeof ev.data.error === 'string' && <span className="text-small text-danger-fg">{ev.data.error}</span>}
                   </li>
                 ))}
               </ol>
@@ -426,6 +517,18 @@ function DetailInner({ id }: { id: string }) {
         onConfirm={() => {
           setRevokeOpen(false);
           void revoke();
+        }}
+      />
+      <ConfirmDialog
+        open={!!removeCc}
+        onClose={() => setRemoveCc(null)}
+        title="Remove this copy recipient?"
+        description={removeCc ? `${removeCc.email} stops receiving emails about this document, and their view-only link stops working at once. ${e.recipient.name}’s link is not affected.` : ''}
+        confirmLabel="Remove copy"
+        onConfirm={() => {
+          const c = removeCc;
+          setRemoveCc(null);
+          if (c) void doRemoveCopy(c);
         }}
       />
       <ConfirmDialog

@@ -4,7 +4,18 @@ import { getAgreementStore, isEnvelopeId } from '@/lib/server/agreementStore';
 import { getTenantStore } from '@/lib/server/tenantStore';
 import { verifyPassword } from '@/lib/server/passwords';
 import { clientIp, decodeSignaturePng, fail, json, loadSettings, readJson, requireOwner, userAgentOf } from '@/lib/server/agreements/core';
-import { AgreementError, retryCompletion, countersignEnvelope, linkFor, recordPayment, resendEnvelope, revokeEnvelope, sendEnvelope } from '@/lib/server/agreements/service';
+import {
+  AgreementError,
+  retryCompletion,
+  countersignEnvelope,
+  linkFor,
+  recordPayment,
+  removeCopy,
+  resendCopies,
+  resendEnvelope,
+  revokeEnvelope,
+  sendEnvelope,
+} from '@/lib/server/agreements/service';
 import { toEnvelopeView } from '@/lib/agreements/envelope';
 
 type Ctx = { params: Promise<{ id: string; action: string }> };
@@ -14,7 +25,9 @@ export const maxDuration = 60;
 /**
  * Owner actions on one envelope (platform owner only):
  * POST /api/agreements/:id/send          freeze the PDF, issue the link, email it
- * POST /api/agreements/:id/resend        email the same link again
+ * POST /api/agreements/:id/resend        email the same link again (and the view-only email to each copy)
+ * POST /api/agreements/:id/resend-copies the view-only email again, to the copy recipients only
+ * POST /api/agreements/:id/remove-copy   { ccId }  remove a copy recipient; its view-only link stops working
  * POST /api/agreements/:id/link          the link, for "Copy link"
  * POST /api/agreements/:id/complete      retry completion after a failed final-PDF build (idempotent, no new signature)
  * POST /api/agreements/:id/revoke        the link stops working
@@ -38,6 +51,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         if (!rateLimit(`agr-resend:${id}`, 5, 60 * 60_000)) return fail(429, 'This document was sent again several times this hour. Wait before sending again.');
         const r = await resendEnvelope(id, meta);
         return json({ success: true, url: r.url, email: r.email });
+      }
+      case 'resend-copies': {
+        // Same budget as "Send again" (5 an hour per document).
+        if (!rateLimit(`agr-resend:${id}`, 5, 60 * 60_000)) return fail(429, 'This document was sent again several times this hour. Wait before sending again.');
+        const r = await resendCopies(id, meta);
+        return json({ success: true, copies: r.copies });
+      }
+      case 'remove-copy': {
+        const body = await readJson(req);
+        const ccId = typeof body?.ccId === 'string' ? body.ccId : '';
+        if (!/^[A-Za-z0-9_-]{6,24}$/.test(ccId)) return fail(400, 'Pick the copy recipient to remove.');
+        const e = await removeCopy(id, ccId, owner.email, meta);
+        return json({ success: true, envelope: toEnvelopeView(e) });
       }
       case 'link':
         return json({ success: true, url: await linkFor(id, meta.origin) });
