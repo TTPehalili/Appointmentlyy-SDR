@@ -18,7 +18,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   // Cookie-authenticated: refuse a browser request from another site.
   const site = req.headers.get('sec-fetch-site');
   const origin = req.headers.get('origin');
-  if ((site && site !== 'same-origin' && site !== 'none') || (origin && origin !== req.nextUrl.origin && origin !== getAppBaseUrl())) return fail(403, 'Request refused.');
+  // Behind Railway's proxy req.nextUrl.origin is the internal address, so also accept the host the browser actually
+  // used (the app is served on its old railway.app address as well as the custom domain).
+  const host = (req.headers.get('x-forwarded-host') || req.headers.get('host') || '').split(',')[0].trim().toLowerCase();
+  const o = (origin || '').toLowerCase();
+  const sameHost = !!host && (o === `https://${host}` || o === `http://${host}`);
+  if ((site && site !== 'same-origin' && site !== 'none') || (origin && !sameHost && origin !== req.nextUrl.origin && origin !== getAppBaseUrl())) return fail(403, 'Request refused.');
   const limited = limitPerUser('tickets-retriage', session, { maxRequests: 20, windowMs: 600_000 });
   if (limited) return limited;
   const id = normalizeTicketId((await context.params).id);
