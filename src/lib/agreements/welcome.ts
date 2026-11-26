@@ -104,6 +104,21 @@ Best regards,
 Emil Halili
 Founder, Appointmentlyy`;
 
+/**
+ * The default wording for a signed custom proposal (v2): the same message, but it says "proposal", not "Service
+ * Agreement". Used only when the owner has not saved their own welcome text (a saved text always wins).
+ */
+export const DEFAULT_WELCOME_BODY_PROPOSAL = DEFAULT_WELCOME_BODY.replace('Your Service Agreement is now fully signed', 'Your proposal is now fully signed').replace(
+  'Your signed agreement and certificate were sent in a separate email.',
+  'Your signed proposal and certificate were sent in a separate email.',
+);
+
+/** The body template for an envelope: the owner's saved text, else the default for its kind (contract or proposal). */
+export function welcomeBodyFor(templateId: string, savedBody: string): string {
+  if (savedBody.trim()) return savedBody;
+  return isWelcomeOptIn(templateId) ? DEFAULT_WELCOME_BODY_PROPOSAL : DEFAULT_WELCOME_BODY;
+}
+
 /** The fixed sentences behind the three step placeholders (each has a wording for both cases). */
 export const WELCOME_STEPS = {
   paymentUnpaid: 'Our team starts the build as soon as the first payment is received.',

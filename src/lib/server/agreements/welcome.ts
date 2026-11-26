@@ -20,7 +20,7 @@ import { nowIso } from '@/lib/server/tenantStore';
 import { activeCopies, paymentStatus, type AgreementSettings, type Envelope } from '@/lib/agreements/envelope';
 import { clientNameOf, consoleUrl, loadSettings } from '@/lib/server/agreements/core';
 import { ownerNoticeMail, sendAgreementMail, welcomeMail } from '@/lib/server/agreements/mail';
-import { WELCOME_SAMPLE, isWelcomeTemplate, renderWelcome, welcomeEnabled, welcomeStatus, type WelcomeMark, type WelcomeValues } from '@/lib/agreements/welcome';
+import { WELCOME_SAMPLE, isWelcomeTemplate, renderWelcome, welcomeBodyFor, welcomeEnabled, welcomeStatus, type WelcomeMark, type WelcomeValues } from '@/lib/agreements/welcome';
 
 export class WelcomeError extends Error {
   constructor(
@@ -94,7 +94,8 @@ export async function sendWelcome(id: string, o: { trigger: 'auto' | 'manual'; b
     const replyTo = settings.ownerEmail || settings.replyTo || settings.senderEmail;
     const results = await Promise.all(
       people.map(async (p) => {
-        const r = renderWelcome(settings.welcomeSubject, settings.welcomeBody, { ...ctx.values, firstName: p.name.split(' ')[0] || '' });
+        // Proposals get proposal wording by default; a saved custom text wins; contracts are unchanged.
+        const r = renderWelcome(settings.welcomeSubject, welcomeBodyFor(claimed.templateId, settings.welcomeBody), { ...ctx.values, firstName: p.name.split(' ')[0] || '' });
         const res = await sendAgreementMail(welcomeMail({ to: p.email, subject: r.subject, htmlParagraphs: r.htmlParagraphs, text: r.text, envelopeId: e.id, replyTo }), settings);
         return { to: p.email, res };
       }),
