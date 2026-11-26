@@ -37,6 +37,7 @@ import {
   docProblemV2,
   emptyPriceRow,
   emptySectionV2,
+  estimatePagesV2,
   formSpec,
   hasUatTerms,
   mark,
@@ -618,6 +619,7 @@ export function ProposalEditorV2({ doc, update, notes, onDismissNotes }: { doc: 
   const checks = openChecksV2(doc);
   const clearable = checks.filter((c) => c.kind === 'note').length;
   const problem = docProblemV2(doc);
+  const lengthPct = Math.round((estimatePagesV2(doc) / V2_LIMITS.maxPages) * 100);
   const L = V2_LIMITS.cover;
   const cover = doc.cover;
   const setCover = (patch: Partial<typeof cover>) => set((d) => ({ ...d, cover: { ...d.cover, ...patch } }));
@@ -638,19 +640,27 @@ export function ProposalEditorV2({ doc, update, notes, onDismissNotes }: { doc: 
   const json = serializeDocV2(doc);
   React.useEffect(() => {
     let alive = true;
+    const ctl = new AbortController();
     const t = window.setTimeout(async () => {
       setDrawing(true);
-      const r = await fetchPdf('/api/agreements/preview', { body: { templateId: CUSTOM_PROPOSAL_V2_ID, values: { [DOC_KEY]: json } } });
-      if (!alive) return;
-      setDrawing(false);
-      if (r instanceof ArrayBuffer) {
-        setPdf(r);
-        setPdfError(null);
-      } else setPdfError(r.error);
+      try {
+        const r = await fetchPdf('/api/agreements/preview', { body: { templateId: CUSTOM_PROPOSAL_V2_ID, values: { [DOC_KEY]: json } }, signal: ctl.signal });
+        if (!alive) return;
+        if (r instanceof ArrayBuffer) {
+          setPdf(r);
+          setPdfError(null);
+        } else setPdfError(r.error);
+      } catch {
+        /* aborted: a newer edit asked for its own preview */
+      } finally {
+        if (alive) setDrawing(false);
+      }
     }, 900);
     return () => {
       alive = false;
       window.clearTimeout(t);
+      // A newer edit replaces this preview: stop waiting for it (the server allows one render per owner at a time).
+      ctl.abort();
     };
   }, [json]);
 
@@ -708,6 +718,13 @@ export function ProposalEditorV2({ doc, update, notes, onDismissNotes }: { doc: 
             <SelectField id="doc-size" label="Page size" value={doc.settings.pageSize} onChange={(v) => set((d) => ({ ...d, settings: { ...d.settings, pageSize: v === 'a4' ? 'a4' : 'letter' } }))} options={[{ value: 'letter', label: 'US Letter' }, { value: 'a4', label: 'A4' }]} testId="doc-page-size" />
             <LimitedField id="doc-label" label="Header label (optional)" value={doc.settings.docLabel} max={V2_LIMITS.docLabel} onChange={(v) => set((d) => ({ ...d, settings: { ...d.settings, docLabel: v } }))} hint="Shown at the top right of every page. Empty: the title, shortened." />
           </div>
+          {lengthPct >= 85 && (
+            <p className={cn('rounded-md px-3 py-2 text-small', lengthPct > 100 ? 'bg-danger-bg text-danger-fg' : 'bg-warning-bg text-warning-fg')} data-testid="length-warning">
+              {lengthPct > 100
+                ? 'This proposal is over the length limit: the components past the limit are left out when it is saved. Shorten it or split it into two documents.'
+                : `This proposal is close to the length limit (${lengthPct}% used). Keep it focused, or split it into two documents.`}
+            </p>
+          )}
         </Card>
 
         <Card className="flex flex-col gap-3 p-4" data-testid="cover-editor" id="proposal-cover">

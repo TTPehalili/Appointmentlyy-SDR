@@ -1145,13 +1145,18 @@ async function renderOnce(doc: ProposalDocV2, layout: Layout, spacer: boolean): 
   return { bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), marks };
 }
 
+const MAX_TUNED_PAGES = 20;
+
 /** Render a v2 document (two passes; a third only if the second moved anything). Deterministic. */
 export async function renderProposalV2(doc: ProposalDocV2): Promise<Uint8Array> {
   await loadMetrics();
   const viewOnly = !doc.settings.signable;
   let layout = EMPTY_LAYOUT;
   let out = await renderOnce(doc, layout, viewOnly);
-  for (let pass = 0; pass < 2; pass++) {
+  // Render cost bound (PV2-M1): normalize already caps the length; anything that still comes out long gets no
+  // fine-tuning passes (layout stays valid, only the continued notes / first-element gaps are skipped).
+  const pages = Math.max(0, ...out.marks.values());
+  for (let pass = 0; pass < 2 && pages <= MAX_TUNED_PAGES; pass++) {
     const next = computeLayout(doc, out.marks, viewOnly);
     if (sameLayout(next, layout)) {
       layout = { ...layout, band: next.band };

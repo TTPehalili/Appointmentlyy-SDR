@@ -113,16 +113,23 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /** Fetch a PDF from an owner route as bytes for the viewer. */
-export async function fetchPdf(url: string, init?: { body?: unknown }): Promise<ArrayBuffer | { error: string }> {
-  const res = await fetch(url, {
-    method: init?.body ? 'POST' : 'GET',
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-    cache: 'no-store',
-  });
-  if (!res.ok) {
-    const d = (await res.json().catch(() => ({}))) as { error?: string };
+export async function fetchPdf(url: string, init?: { body?: unknown; signal?: AbortSignal }): Promise<ArrayBuffer | { error: string }> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: init?.body ? 'POST' : 'GET',
+      headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+      cache: 'no-store',
+      signal: init?.signal,
+    });
+    if (res.ok) return res.arrayBuffer();
+    const d = (await res.json().catch(() => ({}))) as { error?: string; busy?: boolean };
+    // One preview per owner at a time: wait for the one still being drawn, then ask again.
+    if (res.status === 429 && d.busy && attempt < 8 && !init?.signal?.aborted) {
+      await new Promise((r) => setTimeout(r, 700 + attempt * 300));
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      continue;
+    }
     return { error: d.error || 'Could not load the PDF.' };
   }
-  return res.arrayBuffer();
 }

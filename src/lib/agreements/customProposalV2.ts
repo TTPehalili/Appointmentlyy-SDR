@@ -300,7 +300,10 @@ export const DEFAULT_PROFILE: ProposalProfile = {
 // ------------------------------------------------------------------ limits (hard; the lower of the two specs)
 
 export const V2_LIMITS = {
-  docChars: 400_000,
+  /** Serialized document. Real proposals are about 25k; this bounds what is parsed at all. */
+  docChars: 150_000,
+  /** Estimated interior pages (estimatePagesV2): the render cost bound. Real proposals are about 10. */
+  maxPages: 30,
   sections: 30,
   blocks: 40,
   check: 300,
@@ -1098,6 +1101,9 @@ export function normalizeDocV2(raw: unknown): { doc: ProposalDocV2; problems: st
     fileName: cleanLine(ro.fileName, 180),
     pages: typeof ro.pages === 'number' && Number.isInteger(ro.pages) && ro.pages >= 0 && ro.pages <= 1000 ? ro.pages : 0,
   };
+  // Render cost bound (PV2-M1): past about maxPages interior pages the rest is left out, with a Check where it was cut.
+  const cut = capToPageBudget(sections);
+  if (cut) problems.push(`too long: cut at about ${V2_LIMITS.maxPages} pages`);
   // Unique ids (the editor keys on them).
   const used = new Set<string>();
   const uniq = (id: string, alt: string) => {
@@ -1115,6 +1121,91 @@ export function normalizeDocV2(raw: unknown): { doc: ProposalDocV2; problems: st
     });
   });
   return { doc: { v: 2, settings, cover, coverChecks, sections, acceptance, closing, uatCleared: raw.uatCleared === true, origin }, problems };
+}
+
+// ------------------------------------------------------------------ length budget (render cost)
+
+const PAGE_PT = 660;
+const LINE_PT = 15;
+/** Characters per line of full-width body text (516 pt at 10.5 pt Inter is about 95). */
+const FULL_LINE = 95;
+
+/** Strings of a value (no ids, enums or notes). */
+function stringsOf(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) stringsOf(x, out);
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) if (!['id', 'check', 'type', 'variant', 'space', 'icon', 'tone', 'kind', 'divider', 'size'].includes(k)) stringsOf(x, out);
+  return out;
+}
+
+/** Estimated height of one component, pt (a component that cannot split counts at most one page). */
+export function estimateComponentPt(c: Component): number {
+  /** Lines of some text at a column width (characters per line); every value starts a line. */
+  const linesOf = (v: unknown, cpl: number) => {
+    let n = 0;
+    for (const s of stringsOf(v)) {
+      if (!s) continue;
+      const parts = s.split('\n');
+      n += parts.reduce((a, p) => a + Math.ceil(Math.max(1, vlen(p)) / cpl), 0);
+    }
+    return n;
+  };
+  let pt: number;
+  if (c.type === 'card-grid') {
+    // Rows of cards side by side: a row is as tall as its tallest card, in a column-wide measure.
+    const cpl = Math.floor(FULL_LINE / c.columns) - 6;
+    pt = 0;
+    for (let i = 0; i < c.items.length; i += c.columns) pt += 34 + Math.max(0, ...c.items.slice(i, i + c.columns).map((it) => linesOf(it, cpl))) * LINE_PT;
+  } else if (c.type === 'detail-card') {
+    pt = 40 + linesOf([c.title, c.tag, c.text], FULL_LINE - 8) * LINE_PT + (c.subItems.length ? 30 + Math.max(0, ...c.subItems.map((s) => linesOf(s, 38))) * LINE_PT : 0);
+  } else if (c.type === 'data-table' || c.type === 'price-table') {
+    const cols = c.type === 'data-table' ? c.columns.length : c.headers.length;
+    const rows = c.type === 'data-table' ? c.rows.map((r) => [...r.cells, ...r.subs]) : c.rows.map((r) => [r.category, r.item, r.itemNote, r.rate, r.rateNote, r.terms]);
+    const cpl = Math.floor(FULL_LINE / cols) - 2;
+    pt = 30 + rows.reduce((a, r) => a + 16 + Math.max(1, ...r.map((x) => linesOf(x, cpl))) * LINE_PT, 0);
+  } else {
+    // Full-width text and the small fixed components (stats, roadmap, bands, callouts, process, checklist).
+    pt = 34 + linesOf(c, c.type === 'text' || c.type === 'letter' || c.type === 'section-header' ? FULL_LINE : 60) * LINE_PT;
+  }
+  const splits = c.type === 'text' || c.type === 'data-table' || c.type === 'price-table' || c.type === 'card-grid' || c.type === 'letter';
+  return splits ? pt : Math.min(pt, PAGE_PT);
+}
+
+/** Estimated interior pages of a document (the editor shows it; normalize enforces maxPages). */
+export function estimatePagesV2(doc: Pick<ProposalDocV2, 'sections'>): number {
+  let pt = 0;
+  doc.sections.forEach((s, i) => {
+    if (i > 0 && (s.newPage || s.kind !== 'content')) pt = Math.ceil(pt / PAGE_PT) * PAGE_PT;
+    pt += 60 + stringsOf([s.eyebrow, s.heading, s.lead]).reduce((a, x) => a + Math.ceil(Math.max(1, vlen(x)) / FULL_LINE) * 22, 0);
+    for (const c of s.blocks) {
+      if (c.newPage) pt = Math.ceil(pt / PAGE_PT) * PAGE_PT;
+      pt += estimateComponentPt(c);
+    }
+  });
+  return Math.max(1, Math.ceil(pt / PAGE_PT));
+}
+
+/** Drop what is past the page budget (in place). True when something was cut. */
+function capToPageBudget(sections: SectionV2[]): boolean {
+  const limit = V2_LIMITS.maxPages * PAGE_PT;
+  let pt = 0;
+  for (let si = 0; si < sections.length; si++) {
+    const s = sections[si];
+    if (si > 0 && (s.newPage || s.kind !== 'content')) pt = Math.ceil(pt / PAGE_PT) * PAGE_PT;
+    pt += 60;
+    for (let bi = 0; bi < s.blocks.length; bi++) {
+      const c = s.blocks[bi];
+      if (c.newPage) pt = Math.ceil(pt / PAGE_PT) * PAGE_PT;
+      pt += estimateComponentPt(c);
+      if (pt > limit) {
+        s.blocks = s.blocks.slice(0, Math.max(0, bi));
+        s.check = mark(s.check, `The proposal is over the length limit (about ${V2_LIMITS.maxPages} pages): the components after this point were left out. Shorten it or split it into two documents.`);
+        sections.splice(si + 1);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function serializeDocV2(doc: ProposalDocV2): string {

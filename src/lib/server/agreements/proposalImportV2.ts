@@ -183,7 +183,7 @@ export function validateChunkV2(raw: unknown, hadText: boolean): { ok: true; val
   }
   const acc = isObj(raw.acceptance) ? raw.acceptance : {};
   const { doc, problems } = normalizeDocV2({ v: 2, cover: coverIn, coverChecks, sections: raw.sections, acceptance: { title: acc.title, lead: acc.lead, check: acc.check } });
-  if (problems.some((p) => !/^cover missing$/.test(p))) return { ok: false, error: problems.slice(0, 3).join('; ') };
+  if (problems.some((p) => !/^cover missing$|^too long/.test(p))) return { ok: false, error: problems.slice(0, 3).join('; ') };
   // A total the app computes is never printed on the AI's say-so (PV2-L2): the owner may switch it on in the editor.
   for (const s of doc.sections) for (const b of s.blocks) if (b.type === 'price-table') b.showTotal = false;
   const r = raw.sections as Record<string, unknown>[];
