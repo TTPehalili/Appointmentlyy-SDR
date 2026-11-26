@@ -211,6 +211,16 @@ export interface AgreementSettings {
   /** Welcome email subject and body template; empty = the default wording (lib/agreements/welcome). */
   welcomeSubject: string;
   welcomeBody: string;
+  /**
+   * Custom proposals: the owner's sign-off, inserted by the app (cover "Prepared by", letter sign-off, owner
+   * signature card, closing band), never written by the AI. Proof stats (0-3 value + label pairs) feed the
+   * "Start blank" proof strip when there are exactly 3.
+   */
+  proposalSenderName: string;
+  proposalSenderTitle: string;
+  proposalCredential: string;
+  proposalUrl: string;
+  proposalProofStats: { value: string; label: string }[];
 }
 
 /** Owner decision 2026-11-16: emails go out as Emil Halili <emil@appointmentlyy.com>. Editable in settings. */
@@ -236,6 +246,11 @@ export const DEFAULT_AGREEMENT_SETTINGS: AgreementSettings = {
   kickoffBookingLink: '',
   welcomeSubject: '',
   welcomeBody: '',
+  proposalSenderName: 'Emil L. Halili',
+  proposalSenderTitle: 'Founder & CEO, Appointmentlyy',
+  proposalCredential: '',
+  proposalUrl: 'www.appointmentlyy.com',
+  proposalProofStats: [],
 };
 
 export const AGREEMENT_LIMITS = {

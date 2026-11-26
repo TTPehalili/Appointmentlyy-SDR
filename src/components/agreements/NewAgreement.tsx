@@ -17,6 +17,9 @@ import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, PAYMENT_LIMITS, hasBank, type BankKey 
 import { OwnerGate, copyText, fetchPdf, fromLocalInput, toLocalInput, type ListResponse, type TemplateSummary } from '@/components/agreements/ownerShared';
 import { ProposalEditor, ProposalImport, valuesOfDoc } from '@/components/agreements/ProposalEditor';
 import { CUSTOM_PROPOSAL_ID, docOfValues, docProblem, emptyDoc, serializeDoc, type ProposalDoc } from '@/lib/agreements/customProposal';
+import { CUSTOM_PROPOSAL_V2_ID, docOfValuesV2, docProblemV2, emptyDocV2, profileOf, serializeDocV2, upgradeV1, type ProposalDocV2 } from '@/lib/agreements/customProposalV2';
+import { ProposalEditorV2, valuesOfDocV2 } from '@/components/agreements/ProposalEditorV2';
+import { Checkbox } from '@/components/ui';
 
 const STEPS = ['Template', 'Details', 'Preview', 'Send'];
 
@@ -222,6 +225,10 @@ function Wizard() {
   const [draft, setDraft] = React.useState<EnvelopeView | null>(null);
   // Custom proposal: the structured document, the import step, notes from the import, and the last saved copy.
   const [doc, setDoc] = React.useState<ProposalDoc | null>(null);
+  // Custom proposal v2 (every new proposal): the document, and the per-send welcome-email box (default off).
+  const [doc2, setDoc2] = React.useState<ProposalDocV2 | null>(null);
+  const [welcome2, setWelcome2] = React.useState(false);
+  const [upgrading, setUpgrading] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
   const [notes, setNotes] = React.useState<string[]>([]);
   const [savedJson, setSavedJson] = React.useState<string | null>(null);
@@ -259,6 +266,13 @@ function Wizard() {
             setSavedJson(serializeDoc(d));
             setImporting(false);
           }
+          if (e.templateId === CUSTOM_PROPOSAL_V2_ID) {
+            const d = docOfValuesV2(e.fieldValues);
+            setDoc2(d);
+            setSavedJson(serializeDocV2(d));
+            setWelcome2(e.templateMeta?.welcome === true);
+            setImporting(false);
+          }
           loadedDraft.current = e.id;
           setStep(1);
         }
@@ -281,13 +295,18 @@ function Wizard() {
   }, [draftId, fromId]);
 
   const t = list?.templates.find((x) => x.id === templateId) ?? null;
-  const isCustom = templateId === CUSTOM_PROPOSAL_ID;
-  const customTpl = list?.templates.find((x) => x.id === CUSTOM_PROPOSAL_ID) ?? null;
+  const isV1 = templateId === CUSTOM_PROPOSAL_ID;
+  const isV2 = templateId === CUSTOM_PROPOSAL_V2_ID;
+  const isCustom = isV1 || isV2;
+  const customTpl = list?.templates.find((x) => x.id === CUSTOM_PROPOSAL_V2_ID) ?? null;
+  const profile = React.useMemo(() => profileOf(list?.settings), [list]);
+  const anyDoc = isV2 ? doc2 : isV1 ? doc : null;
   // The values sent to the server: for a custom proposal, the document (one JSON value) and its client name.
-  const effValues = React.useMemo(() => (isCustom && doc ? valuesOfDoc(doc) : values), [isCustom, doc, values]);
-  const docJson = isCustom && doc ? serializeDoc(doc) : null;
+  const effValues = React.useMemo(() => (isV2 && doc2 ? valuesOfDocV2(doc2) : isV1 && doc ? valuesOfDoc(doc) : values), [isV1, isV2, doc, doc2, values]);
+  const docJson = isV2 && doc2 ? serializeDocV2(doc2) : isV1 && doc ? serializeDoc(doc) : null;
   const dirty = docJson !== null && docJson !== savedJson;
   const updateDoc = React.useCallback((f: (d: ProposalDoc) => ProposalDoc) => setDoc((d) => (d ? f(d) : d)), []);
+  const updateDoc2 = React.useCallback((f: (d: ProposalDocV2) => ProposalDocV2) => setDoc2((d) => (d ? f(d) : d)), []);
 
   // Unsaved edits: warn before the tab closes or reloads, and before an in-app link leaves the page.
   // (A page left in the app stays mounted in a hidden <Activity>, so these are removed while hidden.)
@@ -320,13 +339,16 @@ function Wizard() {
     setTemplateId(customTpl.id);
     setValues({});
     setNotes([]);
+    setDoc(null);
+    setWelcome2(false);
     if (how === 'blank') {
-      const d = emptyDoc();
-      setDoc(d);
-      setSavedJson(serializeDoc(d));
+      // "Start blank": the copy system's standard outline (§5), with your sign-off from settings.
+      const d = emptyDocV2(profile);
+      setDoc2(d);
+      setSavedJson(serializeDocV2(d));
       setImporting(false);
     } else {
-      setDoc(null);
+      setDoc2(null);
       setSavedJson(null);
       setImporting(true);
     }
@@ -384,8 +406,8 @@ function Wizard() {
     // Empty rows are left out; the server checks the rest again.
     const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
     let r: Awaited<ReturnType<typeof apiJson<R>>>;
-    // Contracts only: the welcome email switch (the server ignores it for every other template).
-    const wel = isWelcomeTemplate(t.id) ? { welcomeEmail: welcome } : {};
+    // Contracts: the welcome email switch. Signable proposals: the per-send box (off by default). Others: nothing.
+    const wel = isV2 ? { welcomeEmail: Boolean(doc2?.settings.signable && welcome2) } : isWelcomeTemplate(t.id) ? { welcomeEmail: welcome } : {};
     if (draft) {
       const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values: effValues, recipient, cc, access: access(), ...wel } });
       if (!u.success || !send) r = u;
@@ -406,14 +428,15 @@ function Wizard() {
 
   /** Custom proposal: save the document as a draft and stay in the editor (nothing goes to the client). */
   const saveDoc = async () => {
-    if (!t || !doc) return;
+    if (!t || !anyDoc || !docJson) return;
     setSaving(true);
     setError(null);
-    const json = serializeDoc(doc);
+    const json = docJson;
+    const vals = effValues;
     const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
     const r = draft
-      ? await apiJson<{ envelope: EnvelopeView }>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values: valuesOfDoc(doc), recipient, cc, access: access() } })
-      : await apiJson<{ envelope: EnvelopeView }>('/api/agreements', { body: { templateId: t.id, values: valuesOfDoc(doc), recipient, ...(cc.length ? { cc } : {}), access: access(), send: false } });
+      ? await apiJson<{ envelope: EnvelopeView }>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values: vals, recipient, cc, access: access() } })
+      : await apiJson<{ envelope: EnvelopeView }>('/api/agreements', { body: { templateId: t.id, values: vals, recipient, ...(cc.length ? { cc } : {}), access: access(), send: false } });
     setSaving(false);
     if (!r.success) return setError(r.error || 'Could not save the draft.');
     setSavedJson(json);
@@ -423,6 +446,34 @@ function Wizard() {
       window.history.replaceState(null, '', `/platform/agreements/new?draft=${r.envelope.id}`);
     }
     toast({ message: 'Draft saved. Nothing has been sent.' });
+  };
+
+  /**
+   * "Upgrade to new design" (v1 drafts, one way): the document is rebuilt as v2 in a NEW draft, then the v1 draft is
+   * deleted. Nothing is sent. Already-sent v1 documents are never touched.
+   */
+  const upgrade = async () => {
+    if (!doc || !draft) return;
+    setUpgrading(true);
+    setError(null);
+    const d2 = upgradeV1(doc, profile);
+    const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
+    const r = await apiJson<{ envelope: EnvelopeView }>('/api/agreements', { body: { templateId: CUSTOM_PROPOSAL_V2_ID, values: valuesOfDocV2(d2), recipient, ...(cc.length ? { cc } : {}), access: access(), send: false } });
+    if (!r.success) {
+      setUpgrading(false);
+      return setError(r.error || 'Could not upgrade the draft.');
+    }
+    await apiJson(`/api/agreements/${draft.id}`, { method: 'DELETE' });
+    setUpgrading(false);
+    setDoc(null);
+    setDoc2(d2);
+    setTemplateId(CUSTOM_PROPOSAL_V2_ID);
+    setSavedJson(serializeDocV2(d2));
+    setDraft(r.envelope);
+    loadedDraft.current = r.envelope.id;
+    window.history.replaceState(null, '', `/platform/agreements/new?draft=${r.envelope.id}`);
+    setNotes(['Upgraded to the new design. Review every section, then confirm the acceptance line before sending.']);
+    toast({ message: 'Upgraded to the new design. The old draft was replaced.' });
   };
 
   if (error && !list) return <div className="px-4 py-6 md:px-8"><InlineError message={error} /></div>;
@@ -488,8 +539,8 @@ function Wizard() {
     );
   }
 
-  const canNext = step === 0 ? !!t && !isCustom : step === 1 ? (isCustom ? Boolean(doc) && !importing : missing.length === 0) : true;
-  const customProblem = isCustom && doc ? docProblem(doc) : null;
+  const canNext = step === 0 ? !!t && !isCustom : step === 1 ? (isCustom ? Boolean(anyDoc) && !importing : missing.length === 0) : true;
+  const customProblem = isV2 && doc2 ? docProblemV2(doc2) : isV1 && doc ? docProblem(doc) : null;
   const ccAvailable = list.copies?.available !== false;
   const ccBad = copies.some((_, i) => copyProblem(copies, i, recipient.email)) || (!ccAvailable && copies.some((c) => c.email.trim()));
   const sendable = recipient.name.trim() && /\S+@\S+\.\S+/.test(recipient.email) && !!fromLocalInput(expiresAt) && !ccBad && !customProblem;
@@ -518,7 +569,7 @@ function Wizard() {
               <p className="flex items-center gap-2 text-body-strong text-fg">
                 <FilePlus2 className="size-4" aria-hidden /> Custom proposal
               </p>
-              <p className="text-small text-fg-secondary">Your own proposal in Appointmentlyy branding: from your PDF (AI copies the text and tables) or a blank page. The client views it, with tracking.</p>
+              <p className="text-small text-fg-secondary">Your proposal in the Appointmentlyy design: from your PDF (AI maps it into the design and checks every fact against your file) or the standard outline. The client signs it, then you countersign.</p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
               <Button variant="primary" icon={<FileUp />} onClick={() => startCustom('pdf')} data-testid="custom-from-pdf">
@@ -533,7 +584,7 @@ function Wizard() {
         {step === 0 && (
           <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Template">
             {list.templates.length === 0 && <p className="text-body text-fg-secondary">No templates are installed on this server yet.</p>}
-            {list.templates.filter((tpl) => tpl.id !== CUSTOM_PROPOSAL_ID).map((tpl) => {
+            {list.templates.filter((tpl) => tpl.id !== CUSTOM_PROPOSAL_ID && tpl.id !== CUSTOM_PROPOSAL_V2_ID).map((tpl) => {
               const selected = tpl.id === templateId;
               return (
                 <button
@@ -564,10 +615,12 @@ function Wizard() {
           </div>
         )}
 
-        {step === 1 && t && isCustom && importing && !doc && (
+        {step === 1 && t && isCustom && importing && !anyDoc && (
           <ProposalImport
+            blank={() => emptyDocV2(profile)}
             onDone={(d, n) => {
-              setDoc(d);
+              if ((d as { v?: number }).v === 2) setDoc2(d as ProposalDocV2);
+              else setDoc2(upgradeV1(d as ProposalDoc, profile));
               setNotes(n);
               setImporting(false);
             }}
@@ -577,7 +630,20 @@ function Wizard() {
             }}
           />
         )}
-        {step === 1 && t && isCustom && doc && <ProposalEditor doc={doc} update={updateDoc} notes={notes} onDismissNotes={() => setNotes([])} />}
+        {step === 1 && t && isV1 && doc && (
+          <div className="flex flex-col gap-4">
+            {draft && (
+              <div className="flex flex-col gap-3 rounded-lg border border-line bg-subtle p-4 md:flex-row md:items-center md:justify-between" data-testid="upgrade-card">
+                <p className="text-small text-fg-secondary">This draft uses the old proposal design. Upgrade it to the new design to make it signable, with the new layout. One way: the old draft is replaced.</p>
+                <Button variant="secondary" onClick={upgrade} loading={upgrading} disabled={upgrading || dirty} data-testid="upgrade-v2">
+                  Upgrade to new design
+                </Button>
+              </div>
+            )}
+            <ProposalEditor doc={doc} update={updateDoc} notes={notes} onDismissNotes={() => setNotes([])} />
+          </div>
+        )}
+        {step === 1 && t && isV2 && doc2 && <ProposalEditorV2 doc={doc2} update={updateDoc2} notes={notes} onDismissNotes={() => setNotes([])} />}
 
         {step === 1 && t && !isCustom && (
           <div className="flex flex-col gap-6">
@@ -639,8 +705,46 @@ function Wizard() {
                 Not ready to send: {customProblem}
               </p>
             )}
+            {isV2 && doc2 && (
+              <section className="flex flex-col gap-3" data-testid="proposal-send-mode" aria-labelledby="send-mode-heading">
+                <h2 id="send-mode-heading" className="text-h3 text-fg">
+                  How the client responds
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="How the client responds">
+                  {([
+                    [true, 'Client signs', 'One-time code by email, then they draw or type a signature. You countersign; the final PDF carries the signatures, the Execution page and the Certificate.'],
+                    [false, 'View only', 'No signature: you see views, time, pages and re-reads of pricing and terms. No Acceptance page.'],
+                  ] as const).map(([signable, label, help]) => {
+                    const on = doc2.settings.signable === signable;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        data-testid={signable ? 'mode-signable' : 'mode-view'}
+                        onClick={() => setDoc2((d) => (d ? { ...d, settings: { ...d.settings, signable } } : d))}
+                        className={cn('focus-ring flex flex-col gap-1 rounded-lg border p-3 text-left', on ? 'border-selected bg-selected-soft text-selected-soft-fg ring-1 ring-selected' : 'border-line hover:bg-subtle')}
+                      >
+                        <span className="flex items-center gap-2 text-body-strong">
+                          {label}
+                          {on && <Check className="ml-auto size-4" aria-hidden />}
+                        </span>
+                        <span className={cn('text-small', on ? 'opacity-90' : 'text-fg-secondary')}>{help}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {doc2.settings.signable && (
+                  <div className="rounded-md border border-line px-3 py-3" data-testid="welcome-checkbox-section">
+                    <Checkbox checked={welcome2} onChange={(e) => setWelcome2(e.target.checked)} label="Send the welcome email when fully signed" data-testid="welcome-checkbox" />
+                    <p className="mt-1 pl-6 text-small text-fg-secondary">Off by default for proposals. Edit the wording in Agreements settings.</p>
+                  </div>
+                )}
+              </section>
+            )}
             <CopyList rows={copies} onChange={setCopies} signerEmail={recipient.email} available={ccAvailable} problem={list.copies?.problem ?? null} otpView={otpView} />
-            {t && isWelcomeTemplate(t.id) && (
+            {t && isWelcomeTemplate(t.id) && !isV2 && (
               <section className="flex flex-col gap-2" data-testid="welcome-switch-section" aria-labelledby="welcome-heading">
                 <div className="flex items-start justify-between gap-4 rounded-md border border-line px-3 py-3">
                   <div className="min-w-0">
@@ -700,12 +804,12 @@ function Wizard() {
             </>
           ) : (
             <>
-              {isCustom && step >= 1 && doc && (
+              {isCustom && step >= 1 && anyDoc && (
                 <Button variant="secondary" icon={<Save />} onClick={saveDoc} loading={saving} disabled={saving || (!dirty && Boolean(draft))} data-testid="save-doc">
                   Save draft
                 </Button>
               )}
-              {!(isCustom && step === 1 && importing && !doc) && (
+              {!(isCustom && step === 1 && importing && !anyDoc) && (
                 <Button variant="primary" onClick={() => setStep((s) => s + 1)} disabled={!canNext} data-testid="wizard-next">
                   {step === 2 ? 'Looks good' : 'Next'}
                 </Button>

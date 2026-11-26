@@ -112,12 +112,23 @@ export function validateSettings(raw: Record<string, unknown>): { ok: true; valu
     // The default wording is stored as '' so later improvements to it reach owners who never changed it.
     welcomeSubject: normTemplate(raw.welcomeSubject, DEFAULT_WELCOME_SUBJECT),
     welcomeBody: normTemplate(raw.welcomeBody, DEFAULT_WELCOME_BODY),
+    // Custom proposal sign-off (the AI never writes these). Empty name / title fall back to the defaults.
+    proposalSenderName: oneLine(raw.proposalSenderName, 40) || DEFAULT_AGREEMENT_SETTINGS.proposalSenderName,
+    proposalSenderTitle: oneLine(raw.proposalSenderTitle, 70) || DEFAULT_AGREEMENT_SETTINGS.proposalSenderTitle,
+    proposalCredential: oneLine(raw.proposalCredential, 40),
+    proposalUrl: oneLine(raw.proposalUrl, 40),
+    proposalProofStats: (Array.isArray(raw.proposalProofStats) ? raw.proposalProofStats : [])
+      .slice(0, 3)
+      .map((x) => (x && typeof x === 'object' ? { value: oneLine((x as Record<string, unknown>).value, 10), label: oneLine((x as Record<string, unknown>).label, 36) } : null))
+      .filter((x): x is { value: string; label: string } => Boolean(x && (x.value || x.label))),
   };
   if (value.kickoffBookingLink && !safeBookingLink(value.kickoffBookingLink)) return { ok: false, error: 'The kickoff booking link must be a full https:// address (a Google Calendar booking page or Calendly).' };
   const subjectProblem = welcomeTemplateProblem('subject', value.welcomeSubject);
   if (subjectProblem) return { ok: false, error: subjectProblem };
   const bodyProblem = welcomeTemplateProblem('body', value.welcomeBody);
   if (bodyProblem) return { ok: false, error: bodyProblem };
+  if (value.proposalUrl && /[<>"s]/.test(value.proposalUrl)) return { ok: false, error: 'The proposal website must be a plain address such as www.appointmentlyy.com.' };
+  if (value.proposalProofStats.some((x) => !x.value || !x.label)) return { ok: false, error: 'Each proof stat needs a value and a label.' };
   if (value.paymentLink && !safePaymentLink(value.paymentLink)) return { ok: false, error: 'The payment link must be a full https:// address.' };
   // Bank transfer + PayPal: checked on the raw input so over-long values are refused, not cut.
   const payProblem = paymentOptionsProblem(raw);

@@ -37,6 +37,8 @@ import {
   type ProposalDoc,
   type Section,
 } from '@/lib/agreements/customProposal';
+import { openChecksV2, upgradeV1, type ProposalDocV2, type ProposalProfile } from '@/lib/agreements/customProposalV2';
+import { IMPORT_SCHEMA_V2, IMPORT_SYSTEM_PROMPT_V2, checkChunkV2, mergeV2, sourceOfText, validateChunkV2, type ChunkDocV2 } from '@/lib/server/agreements/proposalImportV2';
 
 export const IMPORT_TIMEOUT_MS = 150_000;
 /** Pages and characters per model call (long proposals are read in parts, two at a time). */
@@ -49,8 +51,8 @@ const SCANNED_BELOW = 25;
 export type ImportFailure = 'not_pdf' | 'encrypted' | 'pdf_unsafe' | 'pdf_busy' | 'too_many_pages' | 'no_text' | 'ai_off' | 'ai_failed' | 'ai_invalid';
 
 export type ImportResult =
-  | { ok: true; doc: ProposalDoc; provider: AiProvider; pages: number; scannedPages: number[]; vision: boolean; notes: string[]; checks: number }
-  | { ok: false; code: ImportFailure; message: string; pages: number; scannedPages: number[]; fallback: ProposalDoc | null };
+  | { ok: true; doc: ProposalDoc | ProposalDocV2; provider: AiProvider; pages: number; scannedPages: number[]; vision: boolean; notes: string[]; checks: number }
+  | { ok: false; code: ImportFailure; message: string; pages: number; scannedPages: number[]; fallback: ProposalDoc | ProposalDocV2 | null };
 
 export type Progress = (p: { stage: 'reading' | 'ai' | 'checking'; message: string; done?: number; total?: number }) => void;
 
@@ -191,7 +193,7 @@ export function buildImportPrompt(fileName: string, pages: PdfPage[], pageCount:
 
 // ------------------------------------------------------------------ model call
 
-type Ask = { system: string; user: string; pdf?: Uint8Array };
+type Ask = { system: string; user: string; pdf?: Uint8Array; schema?: unknown };
 
 /** One JSON-only call: Claude first when its key is set, then Gemini. null = no model answered; 'invalid' = not JSON. */
 export async function askImportModel(input: Ask): Promise<Record<string, unknown> | 'invalid' | null> {
@@ -201,7 +203,7 @@ export async function askImportModel(input: Ask): Promise<Record<string, unknown
       system: input.system,
       user: input.user,
       json: true,
-      schema: IMPORT_SCHEMA,
+      schema: input.schema ?? IMPORT_SCHEMA,
       maxOutputTokens: 12_000,
       timeoutMs: IMPORT_TIMEOUT_MS,
       ...(data ? { attachments: [{ mimeType: 'application/pdf' as const, data }] } : {}),
@@ -212,7 +214,7 @@ export async function askImportModel(input: Ask): Promise<Record<string, unknown
   return generateJson({
     system: input.system,
     contents: [{ role: 'user', parts: [...(data ? [{ inlineData: { mimeType: 'application/pdf', data } }] : []), { text: input.user }] }],
-    schema: IMPORT_SCHEMA,
+    schema: input.schema ?? IMPORT_SCHEMA,
     maxOutputTokens: 12_000,
     timeoutMs: IMPORT_TIMEOUT_MS,
     tag: 'proposal-import',
@@ -515,7 +517,12 @@ const AI_INVALID = 'The AI’s answer did not match the proposal format, even af
 const FALLBACK_HINT = ' You can import the readable text as plain sections instead, or start from an empty document.';
 const EMPTY_HINT = ' You can start from an empty document instead.';
 
-export async function importProposalPdf(bytes: Uint8Array, fileName: string, progress: Progress = () => {}): Promise<ImportResult> {
+/**
+ * Read an uploaded proposal. `opts.v2` (the owner's sign-off from settings): map it into a v2 document with the
+ * v2 prompt and checks (COPY_SYSTEM §4); without it, the v1 section document (kept for v1 tooling).
+ */
+export async function importProposalPdf(bytes: Uint8Array, fileName: string, progress: Progress = () => {}, opts: { v2?: ProposalProfile } = {}): Promise<ImportResult> {
+  const v2 = opts.v2 ?? null;
   progress({ stage: 'reading', message: 'Reading the PDF' });
   let extracted: Awaited<ReturnType<typeof extractPdfText>>;
   try {
@@ -537,7 +544,14 @@ export async function importProposalPdf(bytes: Uint8Array, fileName: string, pro
   progress({ stage: 'reading', message: `Read ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}${scanned.length ? `; ${pageList(scanned)} ${scanned.length === 1 ? 'has' : 'have'} no text layer (scanned)` : ''}` });
 
   const provider = aiProvider();
-  const plain = () => docFromPlainText(readable, fileName, pageCount);
+  const plainV1 = () => docFromPlainText(readable, fileName, pageCount);
+  const plain = (): ProposalDoc | ProposalDocV2 | null => {
+    const d = plainV1();
+    if (!d || !v2) return d;
+    // No AI: the plain text in the new design (the owner reviews every part, and writes the acceptance line).
+    const up = upgradeV1(d, v2);
+    return { ...up, settings: { ...up.settings, pageSize: 'letter' }, origin: { kind: 'text', fileName, pages: pageCount } };
+  };
   if (provider === 'off') {
     const fb = plain();
     const scanNote = scanned.length ? ` ${pageList(scanned).replace(/^p/, 'P')} ${scanned.length === 1 ? 'is' : 'are'} scanned (no text layer), so ${scanned.length === 1 ? 'it' : 'they'} cannot be read without AI.` : '';
@@ -548,7 +562,7 @@ export async function importProposalPdf(bytes: Uint8Array, fileName: string, pro
   const parts = chunksOf(pages);
   let done = 0;
   progress({ stage: 'ai', message: `Structuring with AI (${parts.length} ${parts.length === 1 ? 'part' : 'parts'})`, done: 0, total: parts.length });
-  type Outcome = { ok: true; value: ChunkDoc } | { ok: false; why: 'failed' | 'invalid' };
+  type Outcome = { ok: true; value: ChunkDoc | ChunkDocV2 } | { ok: false; why: 'failed' | 'invalid' };
   const outcomes = await pool(parts, CONCURRENCY, async (part): Promise<Outcome> => {
     const nums = part.map((p) => p.page);
     const scanHere = nums.filter((n) => scanned.includes(n));
@@ -556,11 +570,13 @@ export async function importProposalPdf(bytes: Uint8Array, fileName: string, pro
     const hadText = part.some((p) => !isScanned(p)) || Boolean(pdf);
     let retryNote: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const reply = await askImportModel({ system: IMPORT_SYSTEM_PROMPT, user: buildImportPrompt(fileName, part, pageCount, scanHere, Boolean(pdf), retryNote), ...(pdf ? { pdf } : {}) });
+      const reply = await askImportModel({ system: v2 ? IMPORT_SYSTEM_PROMPT_V2 : IMPORT_SYSTEM_PROMPT, user: buildImportPrompt(fileName, part, pageCount, scanHere, Boolean(pdf), retryNote), ...(pdf ? { pdf } : {}), ...(v2 ? { schema: IMPORT_SCHEMA_V2 } : {}) });
       if (reply === null) return { ok: false, why: 'failed' };
-      const v = reply === 'invalid' ? ({ ok: false, error: 'it was not valid JSON' } as const) : validateChunk(reply, hadText);
+      const v = reply === 'invalid' ? ({ ok: false, error: 'it was not valid JSON' } as const) : v2 ? validateChunkV2(reply, hadText) : validateChunk(reply, hadText);
       if (v.ok) {
-        checkChunk(v.value, sourceOf(part.filter((p) => !isScanned(p))), scanned, nums);
+        const readablePart = part.filter((p) => !isScanned(p));
+        if (v2) checkChunkV2(v.value as ChunkDocV2, sourceOfText(readablePart.map((p) => p.text).join('\n')), scanned, nums);
+        else checkChunk(v.value as ChunkDoc, sourceOf(readablePart), scanned, nums);
         done++;
         progress({ stage: 'ai', message: `Structured pages ${nums[0]}–${nums[nums.length - 1]}`, done, total: parts.length });
         return v;
@@ -577,6 +593,18 @@ export async function importProposalPdf(bytes: Uint8Array, fileName: string, pro
     return { ok: false, code: bad.why === 'failed' ? 'ai_failed' : 'ai_invalid', message: `${base}${fb ? FALLBACK_HINT : EMPTY_HINT}`, pages: pageCount, scannedPages: scanned, fallback: fb };
   }
   progress({ stage: 'checking', message: 'Checking prices, names and wording against your PDF' });
+  if (v2) {
+    const chunks = outcomes.map((o) => (o as { ok: true; value: ChunkDocV2 }).value);
+    const doc = mergeV2(chunks, fileName, pageCount, v2);
+    const notes: string[] = [];
+    if (scanned.length) notes.push(`${pageList(scanned).replace(/^p/, 'P')} had no text layer (scanned) and ${scanned.length === 1 ? 'was' : 'were'} read with the AI’s PDF reader: check ${scanned.length === 1 ? 'it' : 'them'} against your file.`);
+    const skipped = [...new Set(chunks.flatMap((c) => c.skipped))].slice(0, 8);
+    notes.push(`Only text and tables are carried over. Images and charts are not${skipped.length ? ` (left out: ${skipped.join('; ')})` : ''}.`);
+    if (extracted.truncated) notes.push('The PDF has more text than one import reads: check the end of the document.');
+    notes.push('Signing is binding: confirm the acceptance line yourself before sending.');
+    const checks = openChecksV2(doc).length;
+    return { ok: true, doc, provider, pages: pageCount, scannedPages: scanned, vision: scanned.length > 0, notes, checks };
+  }
   const chunks = outcomes.map((o) => (o as { ok: true; value: ChunkDoc }).value);
   const doc = merge(chunks, fileName, pageCount);
   checkCover(doc, sourceOf(readable), readable.length === 0);

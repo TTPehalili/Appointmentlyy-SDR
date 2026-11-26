@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
-import { fail, PRIVATE_HEADERS, requireOwner } from '@/lib/server/agreements/core';
+import { fail, loadSettings, PRIVATE_HEADERS, requireOwner } from '@/lib/server/agreements/core';
+import { profileOf } from '@/lib/agreements/customProposalV2';
 import { importProposalPdf } from '@/lib/server/agreements/proposalImport';
 import { PROPOSAL_LIMITS, cleanLine } from '@/lib/agreements/customProposal';
 
@@ -79,7 +80,9 @@ export async function POST(req: NextRequest) {
         }
       };
       try {
-        const result = await importProposalPdf(bytes, name, (p) => send({ type: 'progress', ...p }));
+        // New proposals are v2; the owner's sign-off comes from settings (never from the AI).
+        const profile = profileOf((await loadSettings()).settings);
+        const result = await importProposalPdf(bytes, name, (p) => send({ type: 'progress', ...p }), { v2: profile });
         send({ type: 'result', ...result });
       } catch (err) {
         console.error('[agreements/proposal-import]', err);

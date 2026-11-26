@@ -13,6 +13,63 @@ import { DEFAULT_WELCOME_BODY, DEFAULT_WELCOME_SUBJECT, WELCOME_LIMITS, WELCOME_
 type Form = Omit<AgreementSettings, 'hasSavedSignature'>;
 
 /**
+ * Custom proposals: the owner's sign-off. The app prints it on the cover ("Prepared by"), the letter sign-off,
+ * the Appointmentlyy signature card and the closing band. The AI never writes it.
+ */
+function ProposalSignoffSection({ form, setForm }: { form: Form; setForm: React.Dispatch<React.SetStateAction<Form | null>> }) {
+  const put = (k: 'proposalSenderName' | 'proposalSenderTitle' | 'proposalCredential' | 'proposalUrl') => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => (f ? { ...f, [k]: e.target.value } : f));
+  const stats = form.proposalProofStats ?? [];
+  const setStat = (i: number, k: 'value' | 'label', v: string) => setForm((f) => (f ? { ...f, proposalProofStats: (f.proposalProofStats ?? []).map((s, j) => (j === i ? { ...s, [k]: v } : s)) } : f));
+  return (
+    <section className="flex flex-col gap-4" aria-labelledby="agr-proposal-heading" data-testid="proposal-signoff-settings">
+      <div>
+        <p id="agr-proposal-heading" className="text-body-strong text-fg">
+          Proposal sign-off
+        </p>
+        <p className="text-small text-fg-tertiary">Printed on new custom proposals: the cover, the letter sign-off, your signature card and the closing band. The AI never writes these.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Name" htmlFor="agr-prop-name">
+          <Input id="agr-prop-name" value={form.proposalSenderName} onChange={put('proposalSenderName')} maxLength={40} data-testid="prop-sender-name" />
+        </Field>
+        <Field label="Title line" htmlFor="agr-prop-title">
+          <Input id="agr-prop-title" value={form.proposalSenderTitle} onChange={put('proposalSenderTitle')} maxLength={70} data-testid="prop-sender-title" />
+        </Field>
+        <Field label="Credential (optional)" htmlFor="agr-prop-cred" hint="E.g. Lean Six Sigma Green Belt.">
+          <Input id="agr-prop-cred" value={form.proposalCredential} onChange={put('proposalCredential')} maxLength={40} data-testid="prop-credential" />
+        </Field>
+        <Field label="Website (optional)" htmlFor="agr-prop-url" hint="Printed as plain text, never a link.">
+          <Input id="agr-prop-url" value={form.proposalUrl} onChange={put('proposalUrl')} maxLength={40} />
+        </Field>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-small text-fg-secondary">Proof stats (optional): three figures about you and the team, such as “17 years · In BPO leadership”. Only true numbers you can defend.</p>
+        {stats.map((s, i) => (
+          <div key={i} className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_auto] items-end gap-2" data-testid="prop-proof-row">
+            <Field label={`Value ${i + 1}`} htmlFor={`agr-proof-v-${i}`}>
+              <Input id={`agr-proof-v-${i}`} value={s.value} onChange={(e) => setStat(i, 'value', e.target.value)} maxLength={10} />
+            </Field>
+            <Field label={`Label ${i + 1}`} htmlFor={`agr-proof-l-${i}`}>
+              <Input id={`agr-proof-l-${i}`} value={s.label} onChange={(e) => setStat(i, 'label', e.target.value)} maxLength={36} />
+            </Field>
+            <Button variant="ghost" size="sm" onClick={() => setForm((f) => (f ? { ...f, proposalProofStats: (f.proposalProofStats ?? []).filter((_, j) => j !== i) } : f))} aria-label={`Remove proof stat ${i + 1}`}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        {stats.length < 3 && (
+          <div>
+            <Button variant="secondary" size="sm" onClick={() => setForm((f) => (f ? { ...f, proposalProofStats: [...(f.proposalProofStats ?? []), { value: '', label: '' }] } : f))} data-testid="prop-proof-add">
+              Add a proof stat
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
  * Welcome email (contracts, sent once when fully signed): the kickoff booking link, the subject and body template
  * with placeholders, "Reset to default", and "Send a test to me" (sample values, to the saved notification address).
  */
@@ -109,7 +166,7 @@ export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: bool
       const { hasSavedSignature: _h, ...rest } = r.settings;
       void _h;
       // The welcome email template is edited as text: an empty stored value is the default wording.
-      setForm({ ...rest, kickoffBookingLink: rest.kickoffBookingLink ?? '', welcomeSubject: rest.welcomeSubject || DEFAULT_WELCOME_SUBJECT, welcomeBody: rest.welcomeBody || DEFAULT_WELCOME_BODY });
+      setForm({ ...rest, proposalProofStats: rest.proposalProofStats ?? [], kickoffBookingLink: rest.kickoffBookingLink ?? '', welcomeSubject: rest.welcomeSubject || DEFAULT_WELCOME_SUBJECT, welcomeBody: rest.welcomeBody || DEFAULT_WELCOME_BODY });
       setSaved(r.savedSignature);
       setNewSig(null);
       setDrawing(false);
@@ -202,6 +259,7 @@ export function AgreementSettingsDialog({ open, onClose, onSaved }: { open: bool
             </Field>
           </section>
           <WelcomeSection form={form} setForm={setForm} />
+          <ProposalSignoffSection form={form} setForm={setForm} />
           <section className="flex flex-col gap-2">
             <p className="text-body-strong text-fg">Saved countersignature</p>
             {saved && !clearSig && !drawing && (

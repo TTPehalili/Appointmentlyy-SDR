@@ -62,6 +62,7 @@ import {
   type ProposalDoc,
   type Section,
 } from '@/lib/agreements/customProposal';
+import { normalizeDocV2, type ProposalDocV2 } from '@/lib/agreements/customProposalV2';
 
 export { CUSTOM_PROPOSAL_ID, DOC_KEY };
 
@@ -70,8 +71,11 @@ export const valuesOfDoc = (doc: ProposalDoc): Record<string, string> => ({ [DOC
 
 // ------------------------------------------------------------------ import
 
-type ImportOk = { ok: true; doc: ProposalDoc; pages: number; scannedPages: number[]; vision: boolean; notes: string[]; checks: number };
-type ImportFail = { ok: false; code: string; message: string; pages: number; scannedPages: number[]; fallback: ProposalDoc | null };
+type AnyDoc = ProposalDoc | ProposalDocV2;
+type ImportOk = { ok: true; doc: AnyDoc; pages: number; scannedPages: number[]; vision: boolean; notes: string[]; checks: number };
+type ImportFail = { ok: false; code: string; message: string; pages: number; scannedPages: number[]; fallback: AnyDoc | null };
+/** v2 documents (v: 2) through the v2 rebuild, v1 through the v1 one. */
+const renorm = (d: unknown): AnyDoc => ((d as { v?: unknown })?.v === 2 ? normalizeDocV2(d).doc : normalizeDoc(d).doc);
 type Progress = { stage: string; message: string; done?: number; total?: number };
 
 const MB = PROPOSAL_LIMITS.uploadBytes / 1024 / 1024;
@@ -112,13 +116,13 @@ async function runImport(file: File, onProgress: (p: Progress) => void, signal: 
     if (done) break;
   }
   if (!result) return { ok: false, code: 'ai_failed', message: 'The import stopped before it finished. Try again, or start from an empty document.', pages: 0, scannedPages: [], fallback: null };
-  if (result.ok) result = { ...result, doc: normalizeDoc(result.doc).doc };
-  else if (result.fallback) result = { ...result, fallback: normalizeDoc(result.fallback).doc };
+  if (result.ok) result = { ...result, doc: renorm(result.doc) };
+  else if (result.fallback) result = { ...result, fallback: renorm(result.fallback) };
   return result;
 }
 
 /** Step "From my PDF": pick a file, watch the progress, then hand the document to the editor. */
-export function ProposalImport({ onDone, onCancel }: { onDone: (doc: ProposalDoc, notes: string[]) => void; onCancel: () => void }) {
+export function ProposalImport({ onDone, onCancel, blank }: { onDone: (doc: AnyDoc, notes: string[]) => void; onCancel: () => void; blank?: () => AnyDoc }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [steps, setSteps] = React.useState<Progress[]>([]);
@@ -222,7 +226,7 @@ export function ProposalImport({ onDone, onCancel }: { onDone: (doc: ProposalDoc
                 Use the plain text
               </Button>
             )}
-            <Button variant="secondary" onClick={() => onDone(emptyDoc(), [])} data-testid="import-blank">
+            <Button variant="secondary" onClick={() => onDone(blank ? blank() : emptyDoc(), [])} data-testid="import-blank">
               Start from an empty document
             </Button>
           </div>
