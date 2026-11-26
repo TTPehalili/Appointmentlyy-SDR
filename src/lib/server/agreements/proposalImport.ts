@@ -22,7 +22,7 @@ import { PDFDocument } from 'pdf-lib';
 import { askClaudeDirect } from '@/lib/server/anthropicBridge';
 import { generateJson } from '@/lib/server/leadData/aiFilters';
 import { aiProvider, type AiProvider } from '@/lib/server/clientProjects/ai';
-import { extractPdfText, type PdfPage } from '@/lib/server/clientProjects/pdfText';
+import { PdfUnsafeError, extractPdfText, type PdfPage } from '@/lib/server/clientProjects/pdfText';
 import {
   COVER_KEYS,
   PROPOSAL_LIMITS,
@@ -45,7 +45,7 @@ const CONCURRENCY = 2;
 /** A page with fewer non-space characters than this has no usable text layer (scanned). */
 const SCANNED_BELOW = 25;
 
-export type ImportFailure = 'not_pdf' | 'encrypted' | 'too_many_pages' | 'no_text' | 'ai_off' | 'ai_failed' | 'ai_invalid';
+export type ImportFailure = 'not_pdf' | 'encrypted' | 'pdf_unsafe' | 'pdf_busy' | 'too_many_pages' | 'no_text' | 'ai_off' | 'ai_failed' | 'ai_invalid';
 
 export type ImportResult =
   | { ok: true; doc: ProposalDoc; provider: AiProvider; pages: number; scannedPages: number[]; vision: boolean; notes: string[]; checks: number }
@@ -76,6 +76,10 @@ function numbersIn(s: string): Set<string> {
   }
   return out;
 }
+
+/** Links, domains, email addresses and phone numbers: always for the owner to confirm (a swapped payment link is fraud). */
+const CONTACT_RE = /\b[a-z][a-z0-9+.-]{1,15}:\/\/\S+|\bwww\.\S+|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b|\+?\d[\d ().-]{9,}\d/i;
+const CONTACT_NOTE = 'Contains a link, email address or phone number: confirm it is yours.';
 
 const INJECTION_RE =
   /\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(instructions?|prompts?|rules|above|previous|prior)\b|\bsystem prompt\b|\b(you are|act as) (an? |the )?(ai|assistant|language model|chatbot)\b|\bas an ai\b|\b(email|e-mail|send|forward) (this|it|the (document|proposal|file))\b[^.\n]{0,40}\bto\b/i;
@@ -318,10 +322,12 @@ export function checkChunk(c: ChunkDoc, src: Source, scanned: number[], chunkPag
     for (const b of s.blocks) {
       const t = blockText(b);
       if (INJECTION_RE.test(t)) b.check = mark(b.check, 'Looks like an instruction to an AI: remove it if it is not meant for the client.');
+      if (CONTACT_RE.test(t)) b.check = mark(b.check, CONTACT_NOTE);
       if (!fromScan && coverage(t, src) < 0.8) b.check = mark(b.check, 'Wording differs from your PDF: compare it with the original.');
     }
     for (const r of s.rows) {
       if (INJECTION_RE.test(`${r.item} ${r.description}`)) r.check = mark(r.check, 'Looks like an instruction to an AI.');
+      if (CONTACT_RE.test(`${r.item} ${r.description} ${r.unitPrice}`)) r.check = mark(r.check, CONTACT_NOTE);
       if (fromScan) {
         r.check = mark(r.check, 'Read from a scanned page: check the price.');
         continue;
@@ -349,6 +355,7 @@ function checkCover(doc: ProposalDoc, src: Source, coverFromScan: boolean): void
     const ok = k === 'title' || k === 'subtitle' ? coverage(v, src) >= 0.75 : src.flat.includes(flat(v));
     if (!ok) doc.coverChecks[k] = mark(doc.coverChecks[k], 'Not found in your PDF.');
     if (INJECTION_RE.test(v)) doc.coverChecks[k] = mark(doc.coverChecks[k], 'Looks like an instruction to an AI.');
+    if (CONTACT_RE.test(v)) doc.coverChecks[k] = mark(doc.coverChecks[k], CONTACT_NOTE);
   }
 }
 
@@ -520,6 +527,8 @@ export async function importProposalPdf(bytes: Uint8Array, fileName: string, pro
   try {
     extracted = await extractPdfText(bytes, PROPOSAL_LIMITS.uploadPages, PROPOSAL_LIMITS.aiChars);
   } catch (err) {
+    // Stopped in its worker (time or memory: e.g. a decompression bomb), or too many parses at once.
+    if (err instanceof PdfUnsafeError) return { ok: false, code: err.code, message: `${err.message}${err.code === 'pdf_unsafe' ? ' You can also start from an empty document.' : ''}`, pages: 0, scannedPages: [], fallback: null };
     const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
     if (/password/i.test(name)) return { ok: false, code: 'encrypted', message: 'This PDF is password-protected. Remove the password and upload it again.', pages: 0, scannedPages: [], fallback: null };
     return { ok: false, code: 'not_pdf', message: 'This file could not be read as a PDF.', pages: 0, scannedPages: [], fallback: null };

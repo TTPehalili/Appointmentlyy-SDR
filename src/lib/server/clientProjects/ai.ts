@@ -18,7 +18,7 @@ import { generateJson } from '@/lib/server/leadData/aiFilters';
 import { askClaudeDirect } from '@/lib/server/anthropicBridge';
 import { isLocalTestServer } from '@/lib/server/agreements/mail';
 import { getClientProjectStore } from '@/lib/server/clientProjectStore';
-import { extractPdfText } from '@/lib/server/clientProjects/pdfText';
+import { PdfUnsafeError, extractPdfText } from '@/lib/server/clientProjects/pdfText';
 import { deliverableRef, line, personName, text } from '@/lib/server/clientProjects/core';
 import { buildClientUpdate, buildDeliveryReport } from '@/lib/server/clientProjects/statusText';
 import { SOP_TEMPLATE, sopCard } from '@/lib/clientProjects/sopTemplate';
@@ -506,6 +506,10 @@ async function executeRun(run: AiRun): Promise<void> {
     await failRun(`The AI draft could not be used (${lastError}). The project still works from the SOP template; upload the document again to retry.`);
   } catch (err) {
     console.error('[client-projects ai run]', err instanceof Error ? err.message : err);
+    if (err instanceof PdfUnsafeError) {
+      await failRun(`${err.message} The project still works from the SOP template.`).catch(() => undefined);
+      return;
+    }
     await failRun('The AI draft failed. The project still works from the SOP template; upload the document again to retry.').catch(() => undefined);
   }
 }

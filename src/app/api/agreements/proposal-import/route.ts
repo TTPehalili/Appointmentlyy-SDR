@@ -8,6 +8,8 @@ import { PROPOSAL_LIMITS, cleanLine } from '@/lib/agreements/customProposal';
 export const maxDuration = 600;
 
 const MB = Math.floor(PROPOSAL_LIMITS.uploadBytes / 1024 / 1024);
+/** Next's default experimental.proxyClientMaxBodySize (node_modules/next/dist/docs/.../proxyClientMaxBodySize.md). */
+const PROXY_BODY_CAP = 10 * 1024 * 1024;
 
 /** The request body, or null as soon as it exceeds `max` bytes (the rest is not read). */
 async function readCapped(req: NextRequest, max: number): Promise<Uint8Array | null> {
@@ -50,6 +52,9 @@ export async function POST(req: NextRequest) {
   if (declared > PROPOSAL_LIMITS.uploadBytes) return fail(413, `The file is larger than ${MB} MB.`);
   const bytes = await readCapped(req, PROPOSAL_LIMITS.uploadBytes);
   if (!bytes) return fail(413, `The file is larger than ${MB} MB.`);
+  // Behind src/proxy.ts, Next buffers at most proxyClientMaxBodySize (10 MB) and silently cuts the rest: a body of
+  // exactly that size with no declared length is a cut-off file, not a PDF to read.
+  if (!declared && bytes.length >= PROXY_BODY_CAP) return fail(413, `The file is larger than ${MB} MB.`);
   // A PDF by its magic bytes, whatever the file name or declared type says.
   if (bytes.length < 100 || Buffer.from(bytes.subarray(0, 5)).toString('latin1') !== '%PDF-') return fail(415, 'This file is not a PDF.');
   // Counted only for real PDFs (each import is up to a few AI calls on the platform key).
