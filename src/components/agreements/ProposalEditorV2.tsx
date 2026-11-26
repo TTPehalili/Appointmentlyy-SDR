@@ -708,7 +708,7 @@ export function ProposalEditorV2({ doc, update, notes, onDismissNotes }: { doc: 
               ))}
               {checks.length > 10 && <li>and {checks.length - 10} more below.</li>}
             </ul>
-            {checks.some((c) => c.kind !== 'note') && <p className="text-caption text-fg-tertiary">The acceptance line and UAT terms are confirmed one by one; [placeholders] clear when you fill them in.</p>}
+            {checks.some((c) => c.kind !== 'note') && <p className="text-caption text-fg-tertiary">The acceptance line is confirmed on its own; the UAT check clears when you add UAT sign-off terms; [placeholders] clear when you fill them in.</p>}
           </Card>
         )}
 
@@ -830,8 +830,9 @@ export function ProposalEditorV2({ doc, update, notes, onDismissNotes }: { doc: 
               </Button>
             </div>
           )}
-          {doc.settings.signable && !doc.uatCleared && !hasUatTerms(doc) && (
-            <CheckNote note={UAT_CHECK} onClear={() => set((d) => ({ ...d, uatCleared: true }))} clearLabel="Reviewed: send without them" testId="uat-check" />
+          {doc.settings.signable && !hasUatTerms(doc) && (
+            // No override: the check clears only when UAT sign-off terms are in the terms, pricing, gates or acceptance line.
+            <CheckNote note={UAT_CHECK} testId="uat-check" />
           )}
         </Card>
 

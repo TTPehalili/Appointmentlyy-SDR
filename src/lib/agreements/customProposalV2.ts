@@ -275,8 +275,6 @@ export interface ProposalDocV2 {
   sections: SectionV2[];
   acceptance: { eyebrow: string; title: string; lead: string; check?: string; confirmedLine: string };
   closing: { label: string; headline: string };
-  /** The owner reviewed the "no UAT sign-off terms" check and cleared it. */
-  uatCleared: boolean;
   origin: { kind: 'blank' | 'pdf' | 'text' | 'upgrade'; fileName: string; pages: number };
 }
 
@@ -320,7 +318,7 @@ export const DEFAULT_CLOSING_LABEL = 'Questions before you sign?';
 export const ESIGN_NOTE =
   'Signed electronically through Appointmentlyy Agreements. Names, titles, signatures and times are recorded on the Execution page and the Certificate of Completion that follow this page.';
 export const ACCEPTANCE_CHECK = 'Signing is binding: confirm this line says only what signing commits the client to.';
-export const UAT_CHECK = 'No UAT sign-off terms found. Add them before sending.';
+export const UAT_CHECK = 'No UAT sign-off terms found. Add them before sending: a proposal without UAT sign-off cannot be sent.';
 
 /** Visible length: the inline markers do not count. */
 export function vlen(s: string): number {
@@ -1120,7 +1118,8 @@ export function normalizeDocV2(raw: unknown): { doc: ProposalDocV2; problems: st
       if (b.type === 'price-table') b.rows.forEach((r, ri) => (r.id = uniq(r.id, `${b.id}r${ri + 1}`)));
     });
   });
-  return { doc: { v: 2, settings, cover, coverChecks, sections, acceptance, closing, uatCleared: raw.uatCleared === true, origin }, problems };
+  // No UAT override (owner decision): a stored or posted "uatCleared" is ignored; only UAT terms clear the check.
+  return { doc: { v: 2, settings, cover, coverChecks, sections, acceptance, closing, origin }, problems };
 }
 
 // ------------------------------------------------------------------ length budget (render cost)
@@ -1257,7 +1256,6 @@ export function emptyDocV2(profile: ProposalProfile = DEFAULT_PROFILE, opts: { b
     sections: [],
     acceptance: { eyebrow: 'Acceptance', title: 'Let’s build it', lead: opts.blank ? '' : 'Signing below approves [the plan or package] and releases [the first payment, exactly as in the terms].', confirmedLine: '' },
     closing: { label: DEFAULT_CLOSING_LABEL, headline: BRAND_PROMISE },
-    uatCleared: false,
     origin: { kind: 'blank', fileName: '', pages: 0 },
   };
   if (opts.blank) {
@@ -1449,7 +1447,7 @@ export function openChecksV2(doc: ProposalDocV2): OpenCheckV2[] {
     if (doc.acceptance.check) out.push({ where: 'Acceptance', note: doc.acceptance.check, kind: 'note', ref: 'acceptance' });
     if (PLACEHOLDER_RE.test(`${doc.acceptance.title} ${doc.acceptance.lead}`)) out.push({ where: 'Acceptance', note: 'Fill in the [placeholders].', kind: 'placeholder', ref: 'acceptance' });
     if (acceptancePending(doc)) out.push({ where: 'Acceptance line', note: ACCEPTANCE_CHECK, kind: 'acceptance', ref: 'acceptance' });
-    if (!doc.uatCleared && !hasUatTerms(doc)) out.push({ where: 'Terms', note: UAT_CHECK, kind: 'uat', ref: 'uat' });
+    if (!hasUatTerms(doc)) out.push({ where: 'Terms', note: UAT_CHECK, kind: 'uat', ref: 'uat' });
   }
   return out;
 }
