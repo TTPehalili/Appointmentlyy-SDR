@@ -39,6 +39,7 @@ import {
   emptySectionV2,
   formSpec,
   hasUatTerms,
+  mark,
   newComponent,
   newId,
   openChecksV2,
@@ -76,6 +77,7 @@ const COMPONENT_HELP: Record<ComponentType, string> = {
 };
 
 const SPACE_LABEL: Record<Space, string> = { tight: 'Compact', normal: 'Normal', loose: 'Loose' };
+const TOTAL_CHECK = 'The total row is added up by the app: confirm it matches your pricing.';
 
 const move = <T,>(list: T[], i: number, d: number): T[] => {
   const j = i + d;
@@ -460,7 +462,17 @@ function ComponentControls({ c, set, idp, first }: { c: Component; set: Patch<Co
       {c.type === 'section-header' && c.variant === 'sub' && (
         <SelectField id={`${idp}-div`} label="Rule above" value={c.divider} onChange={(v) => setKey('divider', v)} options={[{ value: 'none', label: 'None' }, { value: 'thin', label: 'Thin rule' }, { value: 'strong', label: 'Strong rule' }]} testId="ctl-divider" />
       )}
-      {c.type === 'price-table' && <SwitchRow label="Show a total row" checked={c.showTotal} onChange={(v) => setKey('showTotal', v)} />}
+      {c.type === 'price-table' && (
+        <SwitchRow
+          label="Show a total row"
+          checked={c.showTotal}
+          testId="ctl-total"
+          onChange={(v) =>
+            // The app adds up the rates: switching the total on asks the owner to confirm it against the pricing.
+            set((x) => ({ ...x, showTotal: v, ...(v ? { check: mark(x.check, TOTAL_CHECK) } : {}) }) as Component)
+          }
+        />
+      )}
       <SelectField id={`${idp}-space`} label="Space above" value={c.space} onChange={(v) => setKey('space', v as Space)} options={(['tight', 'normal', 'loose'] as Space[]).map((s) => ({ value: s, label: SPACE_LABEL[s] }))} testId="ctl-space" />
       <SwitchRow label="Start on a new page" checked={c.newPage} onChange={(v) => setKey('newPage', v)} disabled={first} testId="ctl-newpage" />
     </div>
