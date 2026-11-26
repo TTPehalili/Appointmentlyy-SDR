@@ -203,6 +203,8 @@ export interface SourceV2 {
   flat: string;
   words: Set<string>;
   numbers: Set<string>;
+  /** Words the PDF capitalises mid-sentence (proper nouns): not "Title Case" when a heading keeps them. */
+  proper?: Set<string>;
 }
 
 export function words(s: string): string[] {
@@ -229,7 +231,12 @@ export function numbersIn(s: string): Set<string> {
   return out;
 }
 export function sourceOfText(text: string): SourceV2 {
-  return { flat: flat(text), words: new Set(words(text)), numbers: numbersIn(text) };
+  const proper = new Set<string>();
+  for (const line of text.split('\n')) {
+    const re = /(^|[.!?:]\s+|\s)([A-Z][A-Za-z0-9’'&-]*)/g;
+    for (let m = re.exec(line); m; m = re.exec(line)) if (m.index > 0 && !/[.!?:]\s+$/.test(m[1])) proper.add(m[2].toLowerCase().replace(/[’']s$/, ''));
+  }
+  return { flat: flat(text), words: new Set(words(text)), numbers: numbersIn(text), proper };
 }
 
 export const CONTACT_RE_G = /\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s)]+|\bwww\.[^\s)]+|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|co|ai|ph|nz|au|uk|us|app|dev|biz|info)\b|\+?\d[\d ().-]{9,}\d/gi;
@@ -282,8 +289,8 @@ export function unsupported(text: string, src: SourceV2): string[] {
 }
 
 const EM_RE = /\s*—\s*/g;
-const TITLE_CASE = (s: string) => {
-  const ws = s.replace(/\*\*|\*/g, '').split(/\s+/).slice(1).filter((w) => /^[A-Za-z]{4,}$/.test(w));
+const TITLE_CASE = (s: string, proper?: Set<string>) => {
+  const ws = s.replace(/\*\*|\*/g, '').split(/\s+/).slice(1).filter((w) => /^[A-Za-z]{4,}$/.test(w) && !proper?.has(w.toLowerCase()));
   const caps = ws.filter((w) => /^[A-Z][a-z]/.test(w));
   return caps.length >= 2 && caps.length >= ws.length * 0.6;
 };
@@ -358,10 +365,13 @@ function checkValue(get: () => string, set: (v: string) => void, role: Role, lab
     const b = BANNED_RE.exec(v);
     if (b) notes.push(`${label}: “${b[1]}” is on the banned word list.`);
   }
-  if (role === 'heading' && TITLE_CASE(v)) notes.push(`${label}: Title Case. Use sentence case (proper nouns keep their capitals).`);
+  if (role === 'heading' && TITLE_CASE(v, k.src.proper)) notes.push(`${label}: Title Case. Use sentence case (proper nouns keep their capitals).`);
   if (k.fromScan) return notes;
   // Facts.
   if (role === 'fixed' || role === 'name') {
+    // "× 3": a quantity note made from the quantity printed in the PDF.
+    const qty = /^×\s?(\d+)$/.exec(v.trim());
+    if (qty && k.src.numbers.has(qty[1])) return notes;
     if (!k.src.flat.includes(flat(v))) notes.push(`${label}: not found word for word in your PDF. Fixed text (prices, dates, terms, names) must match it exactly.`);
   } else {
     const miss = unsupported(v, k.src);
