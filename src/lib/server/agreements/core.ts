@@ -127,7 +127,7 @@ export function validateSettings(raw: Record<string, unknown>): { ok: true; valu
   if (subjectProblem) return { ok: false, error: subjectProblem };
   const bodyProblem = welcomeTemplateProblem('body', value.welcomeBody);
   if (bodyProblem) return { ok: false, error: bodyProblem };
-  if (value.proposalUrl && /[<>"s]/.test(value.proposalUrl)) return { ok: false, error: 'The proposal website must be a plain address such as www.appointmentlyy.com.' };
+  if (value.proposalUrl && /[<>"\s]/.test(value.proposalUrl)) return { ok: false, error: 'The proposal website must be a plain address such as www.appointmentlyy.com.' };
   if (value.proposalProofStats.some((x) => !x.value || !x.label)) return { ok: false, error: 'Each proof stat needs a value and a label.' };
   if (value.paymentLink && !safePaymentLink(value.paymentLink)) return { ok: false, error: 'The payment link must be a full https:// address.' };
   // Bank transfer + PayPal: checked on the raw input so over-long values are refused, not cut.
