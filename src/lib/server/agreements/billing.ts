@@ -17,6 +17,11 @@ import { PAYMENT_DEFAULT_KEYS } from '@/lib/agreements/paymentOptions';
 const byName = (fields: TemplateField[], re: RegExp) => fields.find((f) => re.test(f.key) || re.test(f.label));
 
 export const numberField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /(statement|soa|invoice|billing).?(no|num|number)\b|^statementNo$|^number$/i);
+/**
+ * A billing statement: a 'view' template with a statement-number field. Other 'view' templates (the custom
+ * proposal) are tracked reading only: no number, no total, no payments.
+ */
+export const isStatementTemplate = (t: Pick<AgreementTemplate, 'action' | 'fields'>) => t.action === 'view' && Boolean(numberField(t));
 export const dueField = (t: Pick<AgreementTemplate, 'fields'>) => byName(t.fields, /due.?date|^due$/i);
 /** Fields that are not payment options (bank transfer, PayPal, Wise link, QR): their names say "bank", "currency", "Wise". */
 const OPTION_KEYS = new Set<string>(PAYMENT_DEFAULT_KEYS.filter((k) => k !== 'paymentInstructions'));

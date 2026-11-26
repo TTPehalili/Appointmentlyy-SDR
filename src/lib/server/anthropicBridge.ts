@@ -196,13 +196,22 @@ export function installAnthropicBridge(): void {
  * ANTHROPIC_API_KEY is set; AI_PROVIDER does not have to be "anthropic". Resolves to the reply text
  * (JSON when `json` is set), or null when Claude is not configured or could not answer.
  */
-export async function askClaudeDirect(input: { system: string; user: string; json?: boolean; schema?: unknown; maxOutputTokens?: number; timeoutMs: number }): Promise<{ text: string; model: string } | null> {
+export async function askClaudeDirect(input: {
+  system: string;
+  user: string;
+  json?: boolean;
+  schema?: unknown;
+  maxOutputTokens?: number;
+  timeoutMs: number;
+  /** Optional files sent before the text (base64): a PDF becomes a Claude document block, an image an image block. */
+  attachments?: { mimeType: 'application/pdf' | 'image/png' | 'image/jpeg'; data: string }[];
+}): Promise<{ text: string; model: string } | null> {
   const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) return null;
   const client = new Anthropic({ apiKey, maxRetries: 0, timeout: input.timeoutMs });
   const request: GeminiRequest = {
     systemInstruction: { parts: [{ text: input.system }] },
-    contents: [{ role: 'user', parts: [{ text: input.user }] }],
+    contents: [{ role: 'user', parts: [...(input.attachments ?? []).map((a) => ({ inlineData: { mimeType: a.mimeType, data: a.data } })), { text: input.user }] }],
     generationConfig: { maxOutputTokens: input.maxOutputTokens, ...(input.json ? { responseMimeType: 'application/json', responseSchema: input.schema } : {}) },
   };
   const reply = await askClaude(client, JSON.stringify(request));

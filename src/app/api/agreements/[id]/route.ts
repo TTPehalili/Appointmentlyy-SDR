@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     copies: copyStatuses(view.cc, events),
     copiesAvailable: await store.ccSupported(),
     template: t ? templateSummary(t) : null,
-    views: viewRows(events, e.visitStats ?? {}, e.templateId),
+    views: viewRows(events, e.visitStats ?? {}, e.templateId, e.templateMeta?.watchedPages),
     needsCompletion: needsCompletion(e),
     // Contracts: the welcome email's state ("sent … to N people", "will send when fully signed", "Send now").
     welcome: welcomeStatus(e),

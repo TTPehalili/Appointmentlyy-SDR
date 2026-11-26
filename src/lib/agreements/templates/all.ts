@@ -8,4 +8,5 @@ import './serviceAgreement';
 import './uatCertificate';
 import './deliveryReport';
 import './billingStatement';
+import './customProposal';
 export * from './index';

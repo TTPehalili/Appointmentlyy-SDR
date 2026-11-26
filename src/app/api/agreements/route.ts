@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { rateLimit } from '@/lib/authToken';
 import { getAgreementStore, AgreementStorageError, CC_UNAVAILABLE_MESSAGE, isEnvelopeId } from '@/lib/server/agreementStore';
-import { paymentField, statementDateField } from '@/lib/server/agreements/billing';
+import { isStatementTemplate, paymentField, statementDateField } from '@/lib/server/agreements/billing';
 import {
   allTemplates,
   cleanFieldValues,
@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
   const copies = validateCopies(body.cc, recipient.email);
   if (!copies.ok) return fail(400, copies.error);
   let sourceEnvelopeId: string | null = null;
-  if (t.action === 'view') {
+  const statement = isStatementTemplate(t);
+  if (statement) {
     // Billing statements: today's date and the owner's saved payment note fill empty fields.
     const sdf = statementDateField(t);
     if (sdf && !(values[sdf.key] ?? '').trim()) values[sdf.key] = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
       templateMeta: metaOf(t, values, body.welcomeEmail !== false),
       createdBy: owner.email,
     });
-    if (t.action === 'view') rec.billing = { number: '', currency: 'USD', total: 0, dueDate: null, payments: [], sourceEnvelopeId };
+    if (statement) rec.billing = { number: '', currency: 'USD', total: 0, dueDate: null, payments: [], sourceEnvelopeId };
     const store = getAgreementStore();
     const created = await store.createEnvelope(rec);
     await store.addEvent({ envelopeId: created.id, type: 'created', ip: clientIp(req), userAgent: userAgentOf(req), data: { by: owner.email, templateId: t.id, ...(cc.length ? { copies: cc.length } : {}) } });

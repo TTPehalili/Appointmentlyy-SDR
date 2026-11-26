@@ -34,6 +34,8 @@ export interface Doc {
   paypalFeeNote?: string | null;
   bank?: { key: string; label: string; value: string }[];
   payNote?: string | null;
+  /** 'view' documents: true for a billing statement, false for a view-only proposal (no payment panel). */
+  statement?: boolean;
 }
 
 /** Payment links are checked on the server; never render anything but https:// (no javascript:, data:). */
@@ -142,7 +144,8 @@ export function ViewPayPanel({ base, visit, doc, contact, onPay }: { base: strin
         </figure>
       )}
       {doc.payNote && <p className="whitespace-pre-line break-words text-small text-fg-secondary" data-testid="pay-note">{doc.payNote}</p>}
-      <p className="text-body text-fg-secondary">Questions about this statement? Reply to the email from {contact}.</p>
+      {doc.statement === false && <p className="text-body text-fg-secondary" data-testid="view-only-note">This document is for you to read. There is nothing to sign.</p>}
+      <p className="text-body text-fg-secondary">Questions about this {doc.statement === false ? 'proposal' : 'statement'}? Reply to the email from {contact}.</p>
       <a
         href={`${base}/download?visit=${encodeURIComponent(visit ?? '')}`}
         target="_blank"

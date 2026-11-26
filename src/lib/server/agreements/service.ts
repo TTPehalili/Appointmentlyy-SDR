@@ -34,11 +34,14 @@ import {
   unsealToken,
   fieldProblems,
   fileNameFor,
+  type TemplateHooks,
 } from '@/lib/server/agreements/core';
+import type { AgreementTemplate } from '@/lib/agreements/templates/types';
+import { pdfOutlinePages } from '@/lib/server/clientProjects/pdfText';
 import { ccMail, completedMail, inviteMail, otpMail, ownerNoticeMail, sendAgreementMail } from '@/lib/server/agreements/mail';
 import { buildFinalPdf, pdfPageCount } from '@/lib/server/agreements/finalPdf';
 import { EMAIL_RE } from '@/lib/roles';
-import { billingFor, nextStatementNumber, numberField, stampPaid } from '@/lib/server/agreements/billing';
+import { billingFor, isStatementTemplate, nextStatementNumber, numberField, stampPaid } from '@/lib/server/agreements/billing';
 import { balanceOf, fmtMoney, type BillingInfo } from '@/lib/agreements/envelope';
 import { welcomeEnabled } from '@/lib/agreements/welcome';
 import { scheduleWelcome } from '@/lib/server/agreements/welcome';
@@ -133,6 +136,31 @@ export async function renderOriginal(e: Envelope): Promise<Uint8Array> {
 }
 
 /**
+ * Page number -> label ('pricing', 'terms') for templates with `watchLabels`: each labelled section's
+ * PDF bookmark gives its first page; it runs to the page before the next bookmark (such sections, and
+ * the section after them, start on a new page). Null when the template has none or the PDF has no outline.
+ */
+export async function watchedPagesOf(t: AgreementTemplate, values: Record<string, string>, pdf: Uint8Array): Promise<Record<string, string> | null> {
+  const labelsOf = (t as TemplateHooks).watchLabels;
+  if (typeof labelsOf !== 'function') return null;
+  const labels = labelsOf(values);
+  if (!labels.some(Boolean)) return null;
+  const outline = await pdfOutlinePages(pdf).catch(() => null);
+  if (!outline || outline.entries.length < labels.length) return null;
+  const offset = outline.entries.length - labels.length; // the cover's bookmark comes first
+  const out: Record<string, string> = {};
+  labels.forEach((label, i) => {
+    if (!label) return;
+    const k = i + offset;
+    const start = outline.entries[k].page;
+    const next = outline.entries[k + 1]?.page;
+    const end = Math.max(start, next ? next - 1 : outline.pageCount);
+    for (let p = start; p <= end && p <= outline.pageCount; p++) out[String(p)] = label;
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+/**
  * Freeze and send a draft: render the PDF, store it with its SHA-256, issue a 256-bit link token
  * (only its hash and a sealed copy are stored) and email the link. Email failure leaves it sent:
  * the owner can copy the link.
@@ -156,7 +184,7 @@ export async function sendEnvelope(
   // Billing statements get the next sequential number, written into the document itself.
   let values = e.fieldValues;
   let billing: BillingInfo | null = null;
-  if (t.action === 'view') {
+  if (isStatementTemplate(t)) {
     const nf = numberField(t);
     const number = await nextStatementNumber();
     if (nf) values = { ...values, [nf.key]: number };
@@ -181,6 +209,8 @@ export async function sendEnvelope(
 
   const pdf = await t.render(values);
   const pageCount = await pdfPageCount(pdf);
+  // Templates whose pages move with the content (custom proposals): find the pricing and terms pages in the PDF as sent.
+  const watchedPages = await watchedPagesOf(t, values, pdf);
   const { sha256 } = await store().putFile(e.id, 'original', 'application/pdf', pdf);
   const tok = newSigningToken(e.id);
   const sentAt = nowIso();
@@ -190,7 +220,7 @@ export async function sendEnvelope(
       status: 'sent',
       title: t.title(values).slice(0, AGREEMENT_LIMITS.titleMax) || e.title,
       // The owner's welcome-email switch, set on the draft, is kept when the setup is frozen.
-      templateMeta: metaOf(t, values, e.templateMeta?.welcome !== false),
+      templateMeta: { ...metaOf(t, values, e.templateMeta?.welcome !== false), ...(watchedPages ? { watchedPages } : {}) },
       fieldValues: values,
       ...(billing ? { billing } : {}),
       originalSha256: sha256,

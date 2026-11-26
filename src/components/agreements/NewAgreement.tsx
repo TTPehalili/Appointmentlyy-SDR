@@ -4,7 +4,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, Copy, FileText, Plus, Send, X } from 'lucide-react';
+import { ArrowLeft, Check, Copy, FilePlus2, FileText, FileUp, Plus, Save, Send, X } from 'lucide-react';
 import { Button, Card, Field, InlineError, Input, Select, Skeleton, Stepper, Switch, Textarea, useToast } from '@/components/ui';
 import { apiJson } from '@/lib/authClient';
 import { cn } from '@/lib/cn';
@@ -15,6 +15,8 @@ import { PdfViewer } from '@/components/agreements/PdfViewer';
 import { BankFieldInput, PaymentLinkInput, PaymentQrInput, PaypalLinkInput } from '@/components/agreements/PaymentInputs';
 import { BANK_KEYS, PAYMENT_DEFAULT_KEYS, PAYMENT_LIMITS, hasBank, type BankKey } from '@/lib/agreements/paymentOptions';
 import { OwnerGate, copyText, fetchPdf, fromLocalInput, toLocalInput, type ListResponse, type TemplateSummary } from '@/components/agreements/ownerShared';
+import { ProposalEditor, ProposalImport, valuesOfDoc } from '@/components/agreements/ProposalEditor';
+import { CUSTOM_PROPOSAL_ID, docOfValues, docProblem, emptyDoc, serializeDoc, type ProposalDoc } from '@/lib/agreements/customProposal';
 
 const STEPS = ['Template', 'Details', 'Preview', 'Send'];
 
@@ -218,8 +220,17 @@ function Wizard() {
   const [done, setDone] = React.useState<{ id: string; url?: string; email?: SendEmail; sendError?: string } | null>(null);
   const [source, setSource] = React.useState<EnvelopeView | null>(null);
   const [draft, setDraft] = React.useState<EnvelopeView | null>(null);
+  // Custom proposal: the structured document, the import step, notes from the import, and the last saved copy.
+  const [doc, setDoc] = React.useState<ProposalDoc | null>(null);
+  const [importing, setImporting] = React.useState(false);
+  const [notes, setNotes] = React.useState<string[]>([]);
+  const [savedJson, setSavedJson] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const loadedDraft = React.useRef<string | null>(null);
 
   React.useEffect(() => {
+    // The editor's own "Save draft" puts ?draft=<id> in the address: nothing to reload then.
+    if (draftId && loadedDraft.current === draftId) return;
     let alive = true;
     (async () => {
       const r = await apiJson<ListResponse>('/api/agreements');
@@ -242,6 +253,13 @@ function Wizard() {
           setOpenUntil(toLocalInput(e.access.openUntil));
           setOtpView(e.access.requireOtpToView);
           setDownloadDays(String(e.access.downloadDays));
+          if (e.templateId === CUSTOM_PROPOSAL_ID) {
+            const d = docOfValues(e.fieldValues);
+            setDoc(d);
+            setSavedJson(serializeDoc(d));
+            setImporting(false);
+          }
+          loadedDraft.current = e.id;
           setStep(1);
         }
       } else if (fromId) {
@@ -263,6 +281,57 @@ function Wizard() {
   }, [draftId, fromId]);
 
   const t = list?.templates.find((x) => x.id === templateId) ?? null;
+  const isCustom = templateId === CUSTOM_PROPOSAL_ID;
+  const customTpl = list?.templates.find((x) => x.id === CUSTOM_PROPOSAL_ID) ?? null;
+  // The values sent to the server: for a custom proposal, the document (one JSON value) and its client name.
+  const effValues = React.useMemo(() => (isCustom && doc ? valuesOfDoc(doc) : values), [isCustom, doc, values]);
+  const docJson = isCustom && doc ? serializeDoc(doc) : null;
+  const dirty = docJson !== null && docJson !== savedJson;
+  const updateDoc = React.useCallback((f: (d: ProposalDoc) => ProposalDoc) => setDoc((d) => (d ? f(d) : d)), []);
+
+  // Unsaved edits: warn before the tab closes or reloads, and before an in-app link leaves the page.
+  // (A page left in the app stays mounted in a hidden <Activity>, so these are removed while hidden.)
+  React.useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault();
+      ev.returnValue = '';
+    };
+    const onClick = (ev: MouseEvent) => {
+      const a = (ev.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target === '_blank' || ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || (url.pathname === window.location.pathname && url.search === window.location.search)) return;
+      if (!window.confirm('You have unsaved changes to this proposal. Leave without saving them?')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [dirty]);
+
+  const startCustom = (how: 'pdf' | 'blank') => {
+    if (!customTpl) return;
+    setTemplateId(customTpl.id);
+    setValues({});
+    setNotes([]);
+    if (how === 'blank') {
+      const d = emptyDoc();
+      setDoc(d);
+      setSavedJson(serializeDoc(d));
+      setImporting(false);
+    } else {
+      setDoc(null);
+      setSavedJson(null);
+      setImporting(true);
+    }
+    setStep(1);
+  };
   const defaultsOf = (tpl: TemplateSummary) => Object.fromEntries(tpl.fields.map((f) => [f.key, f.default ?? '']));
 
   const pick = (tpl: TemplateSummary) => {
@@ -288,7 +357,7 @@ function Wizard() {
     (async () => {
       setPdf(null);
       setPdfError(null);
-      const r = await fetchPdf('/api/agreements/preview', { body: { templateId: t.id, values } });
+      const r = await fetchPdf('/api/agreements/preview', { body: { templateId: t.id, values: effValues } });
       if (!alive) return;
       if (r instanceof ArrayBuffer) setPdf(r);
       else setPdfError(r.error);
@@ -296,7 +365,7 @@ function Wizard() {
     return () => {
       alive = false;
     };
-  }, [step, t, values]);
+  }, [step, t, effValues]);
 
   const access = () => ({
     expiresAt: fromLocalInput(expiresAt),
@@ -318,20 +387,42 @@ function Wizard() {
     // Contracts only: the welcome email switch (the server ignores it for every other template).
     const wel = isWelcomeTemplate(t.id) ? { welcomeEmail: welcome } : {};
     if (draft) {
-      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values, recipient, cc, access: access(), ...wel } });
+      const u = await apiJson<R>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values: effValues, recipient, cc, access: access(), ...wel } });
       if (!u.success || !send) r = u;
       else r = await apiJson<R>(`/api/agreements/${draft.id}/send`, { method: 'POST' });
     } else {
-      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values, recipient, ...(cc.length ? { cc } : {}), access: access(), send, sourceEnvelopeId: source?.id ?? null, ...wel } });
+      r = await apiJson<R>('/api/agreements', { body: { templateId: t.id, values: effValues, recipient, ...(cc.length ? { cc } : {}), access: access(), send, sourceEnvelopeId: source?.id ?? null, ...wel } });
     }
     setBusy(null);
     if (!r.success) return setError(r.error || 'Could not save.');
+    if (docJson !== null) setSavedJson(docJson);
     if (!send) {
       toast({ message: 'Draft saved' });
       router.push(`/platform/agreements/${r.envelope?.id ?? draft?.id}`);
       return;
     }
     setDone({ id: r.envelope?.id ?? draft!.id, url: r.url, email: r.email, sendError: r.sendError });
+  };
+
+  /** Custom proposal: save the document as a draft and stay in the editor (nothing goes to the client). */
+  const saveDoc = async () => {
+    if (!t || !doc) return;
+    setSaving(true);
+    setError(null);
+    const json = serializeDoc(doc);
+    const cc = copies.filter((c) => c.name.trim() || c.email.trim()).map((c) => ({ name: c.name.trim(), email: c.email.trim() }));
+    const r = draft
+      ? await apiJson<{ envelope: EnvelopeView }>(`/api/agreements/${draft.id}`, { method: 'PATCH', body: { values: valuesOfDoc(doc), recipient, cc, access: access() } })
+      : await apiJson<{ envelope: EnvelopeView }>('/api/agreements', { body: { templateId: t.id, values: valuesOfDoc(doc), recipient, ...(cc.length ? { cc } : {}), access: access(), send: false } });
+    setSaving(false);
+    if (!r.success) return setError(r.error || 'Could not save the draft.');
+    setSavedJson(json);
+    if (!draft) {
+      setDraft(r.envelope);
+      loadedDraft.current = r.envelope.id;
+      window.history.replaceState(null, '', `/platform/agreements/new?draft=${r.envelope.id}`);
+    }
+    toast({ message: 'Draft saved. Nothing has been sent.' });
   };
 
   if (error && !list) return <div className="px-4 py-6 md:px-8"><InlineError message={error} /></div>;
@@ -397,28 +488,52 @@ function Wizard() {
     );
   }
 
-  const canNext = step === 0 ? !!t : step === 1 ? missing.length === 0 : true;
+  const canNext = step === 0 ? !!t && !isCustom : step === 1 ? (isCustom ? Boolean(doc) && !importing : missing.length === 0) : true;
+  const customProblem = isCustom && doc ? docProblem(doc) : null;
   const ccAvailable = list.copies?.available !== false;
   const ccBad = copies.some((_, i) => copyProblem(copies, i, recipient.email)) || (!ccAvailable && copies.some((c) => c.email.trim()));
-  const sendable = recipient.name.trim() && /\S+@\S+\.\S+/.test(recipient.email) && !!fromLocalInput(expiresAt) && !ccBad;
+  const sendable = recipient.name.trim() && /\S+@\S+\.\S+/.test(recipient.email) && !!fromLocalInput(expiresAt) && !ccBad && !customProblem;
 
   return (
-    <div className={cn('mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-8', step === 2 ? 'max-w-[1100px]' : 'max-w-[880px]')}>
+    <div className={cn('mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-8', isCustom && step === 1 && !importing ? 'max-w-[1440px]' : step === 2 ? 'max-w-[1100px]' : 'max-w-[880px]')}>
       <div>
         <Link href="/platform/agreements" className="focus-ring mb-3 inline-flex items-center gap-1.5 rounded-sm text-small text-fg-secondary hover:text-fg">
           <ArrowLeft className="size-4" aria-hidden /> All agreements
         </Link>
-        <h1 className="text-h1 text-fg">{draft ? 'Edit draft' : source ? 'New billing statement' : 'New document'}</h1>
+        <h1 className="text-h1 text-fg">{draft ? 'Edit draft' : source ? 'New billing statement' : isCustom && step > 0 ? 'New custom proposal' : 'New document'}</h1>
+        {isCustom && step > 0 && dirty && (
+          <p className="mt-1 text-small text-warning-fg" data-testid="unsaved">
+            Unsaved changes
+          </p>
+        )}
         {source && <p className="mt-1 text-body text-fg-secondary">From “{source.title}”.</p>}
       </div>
       <Stepper steps={STEPS} current={step} className="flex-wrap" />
       {error && <InlineError message={error} />}
 
       <div className="rounded-lg border border-line bg-surface p-4 shadow-xs md:p-6">
+        {step === 0 && customTpl && !draft && (
+          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-line bg-subtle p-4 md:flex-row md:items-center md:justify-between" data-testid="custom-proposal-card">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-body-strong text-fg">
+                <FilePlus2 className="size-4" aria-hidden /> Custom proposal
+              </p>
+              <p className="text-small text-fg-secondary">Your own proposal in Appointmentlyy branding: from your PDF (AI copies the text and tables) or a blank page. The client views it, with tracking.</p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button variant="primary" icon={<FileUp />} onClick={() => startCustom('pdf')} data-testid="custom-from-pdf">
+                From my PDF
+              </Button>
+              <Button variant="secondary" onClick={() => startCustom('blank')} data-testid="custom-blank">
+                Start blank
+              </Button>
+            </div>
+          </div>
+        )}
         {step === 0 && (
           <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Template">
             {list.templates.length === 0 && <p className="text-body text-fg-secondary">No templates are installed on this server yet.</p>}
-            {list.templates.map((tpl) => {
+            {list.templates.filter((tpl) => tpl.id !== CUSTOM_PROPOSAL_ID).map((tpl) => {
               const selected = tpl.id === templateId;
               return (
                 <button
@@ -449,7 +564,22 @@ function Wizard() {
           </div>
         )}
 
-        {step === 1 && t && (
+        {step === 1 && t && isCustom && importing && !doc && (
+          <ProposalImport
+            onDone={(d, n) => {
+              setDoc(d);
+              setNotes(n);
+              setImporting(false);
+            }}
+            onCancel={() => {
+              setImporting(false);
+              setStep(0);
+            }}
+          />
+        )}
+        {step === 1 && t && isCustom && doc && <ProposalEditor doc={doc} update={updateDoc} notes={notes} onDismissNotes={() => setNotes([])} />}
+
+        {step === 1 && t && !isCustom && (
           <div className="flex flex-col gap-6">
             {source && (
               <Field label="What is this statement for?" htmlFor="bill-amount">
@@ -504,6 +634,11 @@ function Wizard() {
                 </Field>
               </div>
             </section>
+            {customProblem && (
+              <p className="rounded-md bg-warning-bg px-3 py-2 text-small text-warning-fg" data-testid="send-blocked">
+                Not ready to send: {customProblem}
+              </p>
+            )}
             <CopyList rows={copies} onChange={setCopies} signerEmail={recipient.email} available={ccAvailable} problem={list.copies?.problem ?? null} otpView={otpView} />
             {t && isWelcomeTemplate(t.id) && (
               <section className="flex flex-col gap-2" data-testid="welcome-switch-section" aria-labelledby="welcome-heading">
@@ -564,9 +699,18 @@ function Wizard() {
               </Button>
             </>
           ) : (
-            <Button variant="primary" onClick={() => setStep((s) => s + 1)} disabled={!canNext} data-testid="wizard-next">
-              {step === 2 ? 'Looks good' : 'Next'}
-            </Button>
+            <>
+              {isCustom && step >= 1 && doc && (
+                <Button variant="secondary" icon={<Save />} onClick={saveDoc} loading={saving} disabled={saving || (!dirty && Boolean(draft))} data-testid="save-doc">
+                  Save draft
+                </Button>
+              )}
+              {!(isCustom && step === 1 && importing && !doc) && (
+                <Button variant="primary" onClick={() => setStep((s) => s + 1)} disabled={!canNext} data-testid="wizard-next">
+                  {step === 2 ? 'Looks good' : 'Next'}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>

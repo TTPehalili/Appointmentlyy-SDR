@@ -27,7 +27,7 @@ type State =
 /** "View only: Casey Client signs this document." */
 function bannerText(doc: CopyDoc): string {
   const who = doc.signerName || 'The recipient';
-  if (doc.action === 'view') return `View only: a copy of the statement sent to ${who}.`;
+  if (doc.action === 'view') return `View only: a copy of the ${doc.statement === false ? 'document' : 'statement'} sent to ${who}.`;
   if (doc.action === 'acknowledge') return `View only: ${who} confirms this document.`;
   return `View only: ${who} signs this document.`;
 }

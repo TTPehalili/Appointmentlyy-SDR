@@ -9,6 +9,12 @@ import { Skeleton } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
 type PdfJs = typeof import('pdfjs-dist');
+/**
+ * The last document teardown. pdf.js shares one worker (workerPort) between documents; starting a new document
+ * while the previous one is still being destroyed fails with "the worker is being destroyed", so a new load
+ * waits for it (the preview of a draft that is being edited replaces its document often).
+ */
+let lastDestroy: Promise<unknown> = Promise.resolve();
 let pdfjsPromise: Promise<PdfJs> | null = null;
 
 function loadPdfJs(): Promise<PdfJs> {
@@ -45,6 +51,8 @@ export function PdfViewer({
   const [count, setCount] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
   const [width, setWidth] = React.useState(0);
+  // Bumped on every loaded document, so a new document with the same page count is drawn again.
+  const [loaded, setLoaded] = React.useState(0);
   const docRef = React.useRef<import('pdfjs-dist').PDFDocumentProxy | null>(null);
   const canvases = React.useRef<(HTMLCanvasElement | null)[]>([]);
   const onPagesRef = React.useRef(onPages);
@@ -77,21 +85,27 @@ export function PdfViewer({
     (async () => {
       try {
         const pdfjs = await loadPdfJs();
+        await lastDestroy;
+        if (cancelled) return;
         const loading = pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) });
         task = loading;
         const doc = await loading.promise;
         if (cancelled) return;
         docRef.current = doc;
         setCount(doc.numPages);
+        setLoaded((n) => n + 1);
         onPagesRef.current?.(doc.numPages);
-      } catch {
-        if (!cancelled) setError('The document could not be shown. Reload the page to try again.');
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[PdfViewer] could not load the document', err instanceof Error ? err.message : err);
+          setError('The document could not be shown. Reload the page to try again.');
+        }
       }
     })();
     return () => {
       cancelled = true;
       docRef.current = null;
-      if (task) void task.destroy();
+      if (task) lastDestroy = task.destroy().catch(() => undefined);
     };
   }, [data]);
 
@@ -103,7 +117,9 @@ export function PdfViewer({
     const tasks: { cancel(): void }[] = [];
     (async () => {
       for (let i = 1; i <= count && !cancelled; i++) {
-        const page = await doc.getPage(i);
+        // The document can be replaced (and destroyed) while pages are still being drawn.
+        const page = await doc.getPage(i).catch(() => null);
+        if (!page || cancelled) return;
         const base = page.getViewport({ scale: 1 });
         const cssW = Math.max(240, width);
         const scale = cssW / base.width;
@@ -132,7 +148,7 @@ export function PdfViewer({
       cancelled = true;
       tasks.forEach((t) => t.cancel());
     };
-  }, [count, width]);
+  }, [count, width, loaded]);
 
   // Track pages in view.
   React.useEffect(() => {

@@ -1,3 +1,4 @@
+import { isStatementEnvelope } from '@/lib/agreements/envelope';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkVisit, clientNameOf, evaluateAccess, json, loadSettings, maskEmail, opensExhausted } from '@/lib/server/agreements/core';
 import { loadByToken } from '@/lib/server/agreements/publicApi';
@@ -55,6 +56,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
             expiresAt: e.access.expiresAt,
             ...(meta?.action === 'view'
               ? {
+                  // false for a custom proposal (view only, no payment panel).
+                  statement: isStatementEnvelope(e),
                   payLink: safePaymentLink(e.fieldValues.paymentLink) ?? null,
                   hasQr: Boolean(qrBytes(e.fieldValues.paymentQr)),
                   paypalLink: safePaypalLink(e.fieldValues.paypalLink) ?? null,

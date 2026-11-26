@@ -376,6 +376,9 @@ export function validateAccess(raw: unknown, base?: AccessRules): { ok: true; va
 /** Owner field values: only the template's keys, strings, size-limited. Required/format checks at send. */
 export function cleanFieldValues(t: AgreementTemplate, raw: unknown): Record<string, string> {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  // Templates with a structured value (the custom proposal's document) rebuild their own values.
+  const own = (t as TemplateHooks).cleanValues;
+  if (typeof own === 'function') return own(r);
   const out: Record<string, string> = {};
   for (const f of t.fields) {
     const v = r[f.key];
@@ -394,7 +397,19 @@ export function cleanFieldValues(t: AgreementTemplate, raw: unknown): Record<str
 
 const SINGLE_LINE_PAY_KEYS = new Set<string>([...BANK_KEYS, 'paypalLink', 'paypalFeeNote']);
 
+/** Optional template hooks (custom proposal): own value cleaning, own send checks, watched-page labels. */
+export type TemplateHooks = AgreementTemplate & {
+  cleanValues?: (raw: Record<string, unknown>) => Record<string, string>;
+  valueProblems?: (values: Record<string, string>) => string | null;
+  watchLabels?: (values: Record<string, string>) => (string | null)[];
+};
+
 export function fieldProblems(t: AgreementTemplate, values: Record<string, string>): string | null {
+  const own = (t as TemplateHooks).valueProblems;
+  if (typeof own === 'function') {
+    const p = own(values);
+    if (p) return p;
+  }
   for (const f of t.fields) {
     const v = (values[f.key] ?? '').trim();
     if (f.required && !v) return `Fill in “${f.label}”.`;

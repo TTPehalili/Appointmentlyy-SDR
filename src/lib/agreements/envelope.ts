@@ -82,6 +82,11 @@ export interface TemplateMeta {
   signerForm: SignerFormField[];
   /** Contract templates only: send the welcome email when fully signed (owner switch at send; missing = on). */
   welcome?: boolean;
+  /**
+   * Pages worth flagging on a re-read, found in the PDF as sent (page number -> 'pricing' / 'terms').
+   * Set at send for templates whose pages move with the content (custom proposals); fixed templates use WATCHED_PAGES.
+   */
+  watchedPages?: Record<string, string>;
 }
 
 export interface Envelope {
@@ -392,6 +397,14 @@ export interface BillingInfo {
   sourceEnvelopeId: string | null;
 }
 
+/**
+ * Billing statements are 'view' documents with billing facts (number, total, payments). Other 'view'
+ * documents (custom proposals) are tracked reading only: no number, no payment status, no pay panel.
+ */
+export function isStatementEnvelope(e: { templateMeta: TemplateMeta | null; billing: BillingInfo | null }): boolean {
+  return e.templateMeta?.action === 'view' && Boolean(e.billing);
+}
+
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid' | 'overdue';
 
 export const PAYMENT_LABEL: Record<PaymentStatus, string> = { unpaid: 'Unpaid', partial: 'Part paid', paid: 'Paid', overdue: 'Overdue' };
@@ -464,8 +477,8 @@ export function pageRanges(pages: number[]): string {
  * One row per real view ("opened" events come from POST /viewed: page 1 rendered in a visible tab),
  * oldest first, with that visit's visible time and pages, and re-reads of watched pages flagged.
  */
-export function viewRows(events: AgreementEvent[], stats: Record<string, VisitStat>, templateId: string): ViewRow[] {
-  const watched = WATCHED_PAGES[templateId] ?? {};
+export function viewRows(events: AgreementEvent[], stats: Record<string, VisitStat>, templateId: string, sentWatched?: Record<string, string> | null): ViewRow[] {
+  const watched: Record<string | number, string> = WATCHED_PAGES[templateId] ?? sentWatched ?? {};
   const seenBefore = new Set<number>();
   const rows: ViewRow[] = [];
   for (const ev of events.filter((x) => x.type === 'opened').sort((a, b) => a.at.localeCompare(b.at))) {
@@ -474,7 +487,9 @@ export function viewRows(events: AgreementEvent[], stats: Record<string, VisitSt
     const flags: string[] = [];
     for (const [page, name] of Object.entries(watched)) {
       const n = Number(page);
-      if (st.pages.includes(n) && seenBefore.has(n)) flags.push(`Viewed ${name} again`);
+      const flag = `Viewed ${name} again`;
+      // A section can span several watched pages: one flag per section.
+      if (st.pages.includes(n) && seenBefore.has(n) && !flags.includes(flag)) flags.push(flag);
     }
     st.pages.forEach((n) => seenBefore.add(n));
     rows.push({ at: ev.at, device: describeDevice(ev.userAgent), ip: ev.ip, seconds: st.seconds, pages: [...st.pages].sort((a, b) => a - b), flags });

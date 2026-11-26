@@ -29,6 +29,7 @@ import {
   fmtDuration,
   fmtManila,
   fmtMoney,
+  isStatementEnvelope,
   paymentStatus,
   type EnvelopeStatus,
   type EnvelopeView,
@@ -36,7 +37,8 @@ import {
 import { OwnerGate, StatusChip, copyText, type ListResponse } from '@/components/agreements/ownerShared';
 import { AgreementSettingsDialog } from '@/components/agreements/AgreementSettingsDialog';
 
-const isInvoice = (e: EnvelopeView) => e.templateMeta?.action === 'view';
+// Billing statements only: a view-only custom proposal is not an invoice.
+const isInvoice = (e: EnvelopeView) => isStatementEnvelope(e);
 const FILTERS: { value: string; label: string; match: (s: EnvelopeStatus, e: EnvelopeView) => boolean }[] = [
   { value: 'all', label: 'All', match: () => true },
   { value: 'invoices', label: 'Invoices', match: (_s, e) => isInvoice(e) },

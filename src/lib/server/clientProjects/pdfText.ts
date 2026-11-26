@@ -96,3 +96,26 @@ export async function extractPdfText(bytes: Uint8Array, maxPages: number = CP_LI
     await close();
   }
 }
+
+/**
+ * The PDF's top-level bookmarks (outline) in order, each with the page it points to, and the page count.
+ * Used for our own rendered proposals (to find the pricing and terms pages), never for uploads.
+ */
+export async function pdfOutlinePages(bytes: Uint8Array): Promise<{ entries: { title: string; page: number }[]; pageCount: number }> {
+  const { doc, close } = await openPdf(bytes);
+  try {
+    const outline = (await withTimeout(doc.getOutline(), 10_000)) ?? [];
+    const entries: { title: string; page: number }[] = [];
+    for (const o of outline.slice(0, 500)) {
+      let dest: unknown = o.dest;
+      if (typeof dest === 'string') dest = await withTimeout(doc.getDestination(dest), 5_000);
+      const ref = Array.isArray(dest) ? dest[0] : null;
+      if (!ref || typeof ref !== 'object') continue;
+      const idx = await withTimeout(doc.getPageIndex(ref as Parameters<typeof doc.getPageIndex>[0]), 5_000);
+      entries.push({ title: String(o.title ?? ''), page: idx + 1 });
+    }
+    return { entries, pageCount: doc.numPages };
+  } finally {
+    await close();
+  }
+}

@@ -670,7 +670,8 @@ export function keywordParse(prompt: string): AiParsedFilters {
 
 export interface GenerateJsonInput {
   system: string;
-  contents: { role: 'user' | 'model'; parts: { text: string }[] }[];
+  /** Text parts; inlineData parts carry a file (e.g. a PDF) for models that read files. */
+  contents: { role: 'user' | 'model'; parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] }[];
   schema: unknown;
   maxOutputTokens?: number;
   timeoutMs?: number;
