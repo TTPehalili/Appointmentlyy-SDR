@@ -21,5 +21,12 @@ export async function register() {
     } catch (err) {
       console.error('[instrumentation] delivery worker did not start', err);
     }
+    // Support step 2: SLA updates, stuck AI triage and release-linked resolution replies (off with RUN_SUPPORT_WORKER=0).
+    try {
+      const { startSupportWorker } = await import('./lib/server/supportAutomation');
+      startSupportWorker();
+    } catch (err) {
+      console.error('[instrumentation] support worker did not start', err);
+    }
   }
 }

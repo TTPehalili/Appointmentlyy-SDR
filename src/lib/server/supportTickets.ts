@@ -24,6 +24,100 @@ import type {
   TroubleTicket,
 } from '@/lib/ticketTypes';
 import type { SupportContext } from '@/lib/supportReport';
+import type { FixState, Severity, TicketAutomation, TicketTriage, TriageState } from '@/lib/supportAutomation';
+
+// ------------------------------------------------------------------ support step 2: automation fields
+
+/** The automation columns of a ticket (supabase/migrations/20261201000000_support_automation.sql). */
+export interface AutoFields {
+  triageState: TriageState;
+  triage: TicketTriage | null;
+  triageClaimedAt: string | null;
+  triageAttempts: number;
+  severity: Severity | null;
+  slaDueAt: string | null;
+  slaBreachAt: string | null;
+  workingEmailAt: string | null;
+  autoAnswerAt: string | null;
+  fixState: FixState;
+  fixSha: string | null;
+  fixReply: string;
+  fixMarkedBy: string;
+  fixMarkedAt: string | null;
+  fixClaimedAt: string | null;
+  fixSentAt: string | null;
+}
+export const NO_AUTOMATION: AutoFields = {
+  triageState: 'none',
+  triage: null,
+  triageClaimedAt: null,
+  triageAttempts: 0,
+  severity: null,
+  slaDueAt: null,
+  slaBreachAt: null,
+  workingEmailAt: null,
+  autoAnswerAt: null,
+  fixState: 'none',
+  fixSha: null,
+  fixReply: '',
+  fixMarkedBy: '',
+  fixMarkedAt: null,
+  fixClaimedAt: null,
+  fixSentAt: null,
+};
+export type AutomationPatch = Partial<AutoFields> & { status?: TicketStatus; priority?: TicketPriority };
+/** Every condition must hold for the update to happen (checked in the same statement as the write). */
+export interface AutomationCond {
+  triageState?: TriageState;
+  triageAttempts?: number;
+  /** triage_claimed_at is before this time (a stale claim). */
+  triageClaimedBefore?: string;
+  isNull?: ('slaBreachAt' | 'workingEmailAt' | 'autoAnswerAt')[];
+  fixState?: FixState;
+  fixSha?: string | null;
+  statusIn?: TicketStatus[];
+  slaDueBefore?: string;
+}
+/** fix_ready: linked to a release. sla_due: past its SLA, unresolved, no update sent. triage_stuck: AI never finished. */
+export type AutomationListKind = 'fix_ready' | 'sla_due' | 'triage_stuck';
+
+export interface SupportSettings {
+  aiTriage: boolean;
+  autoEmails: boolean;
+  /** Support AI calls per UTC day; null = the server default (SUPPORT_AI_DAILY_CAP or 150). */
+  aiDailyCap: number | null;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+export const DEFAULT_SETTINGS: SupportSettings = { aiTriage: true, autoEmails: true, aiDailyCap: null, updatedBy: '', updatedAt: null };
+
+export function automationView(a: AutoFields): TicketAutomation {
+  return {
+    triageState: a.triageState,
+    triageAttempts: a.triageAttempts,
+    triageClaimedAt: a.triageClaimedAt,
+    triage: a.triage,
+    severity: a.severity,
+    slaDueAt: a.slaDueAt,
+    slaBreachAt: a.slaBreachAt,
+    workingEmailAt: a.workingEmailAt,
+    autoAnswerAt: a.autoAnswerAt,
+    fix: { state: a.fixState, sha: a.fixSha, reply: a.fixReply, markedBy: a.fixMarkedBy, markedAt: a.fixMarkedAt, claimedAt: a.fixClaimedAt, sentAt: a.fixSentAt },
+  };
+}
+
+/** The file backend's check of an AutomationCond against a ticket's current values. */
+function condHolds(a: AutoFields, status: TicketStatus, c: AutomationCond): boolean {
+  if (c.triageState !== undefined && a.triageState !== c.triageState) return false;
+  if (c.triageAttempts !== undefined && a.triageAttempts !== c.triageAttempts) return false;
+  if (c.triageClaimedBefore !== undefined && !(a.triageClaimedAt && a.triageClaimedAt < c.triageClaimedBefore)) return false;
+  for (const k of c.isNull ?? []) if (a[k] !== null) return false;
+  if (c.fixState !== undefined && a.fixState !== c.fixState) return false;
+  if (c.fixSha !== undefined && a.fixSha !== c.fixSha) return false;
+  if (c.statusIn && !c.statusIn.includes(status)) return false;
+  if (c.slaDueBefore !== undefined && !(a.slaDueAt && a.slaDueAt < c.slaDueBefore)) return false;
+  return true;
+}
 
 export interface NewTicketInput {
   tenantCode: string;
@@ -150,6 +244,21 @@ export interface SupportTicketStore {
    * added it, so racing callers and other servers cannot both act on it.
    */
   claimWorkspaceNote(tenantCode: string, ticketId: string, note: NewMessageInput & { id: string }, prefix: string, sinceIso: string): Promise<boolean>;
+
+  // ---- support step 2 (automation). Each write is ONE conditional update: it happens only if `cond` still holds,
+  // so two servers (or a restart) racing for the same step cannot both win. null = the condition failed / not found.
+  automate(id: string, patch: AutomationPatch, cond: AutomationCond, notes: NewMessageInput[]): Promise<TroubleTicket | null>;
+  /** Tickets an automation step may need to look at (bounded). */
+  listForAutomation(kind: AutomationListKind, nowIso: string, limit: number): Promise<TroubleTicket[]>;
+  getSettings(): Promise<SupportSettings>;
+  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string): Promise<SupportSettings>;
+  /**
+   * Durable daily cap on support AI calls: records the call, then counts today's calls (this one included). If that
+   * passes `cap` the record is taken back and the call must not happen. Racing callers may all be refused near the
+   * cap, but together they can never pass it.
+   */
+  reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string): Promise<{ ok: boolean; used: number }>;
+  aiCallsSince(sinceIso: string): Promise<number>;
 }
 
 // ------------------------------------------------------------------ ids
@@ -180,23 +289,76 @@ const nowIso = () => new Date().toISOString();
 
 // ------------------------------------------------------------------ file backend (local tests only)
 
-interface FileTicket extends Omit<TroubleTicket, 'messages' | 'attachments' | 'attachmentCount'> {
+interface FileTicket extends Omit<TroubleTicket, 'messages' | 'attachments' | 'attachmentCount' | 'automation' | 'support'> {
   filedByEmail: string | null;
+  /** Support step 2 columns (absent on tickets filed before it: treated as NO_AUTOMATION). */
+  auto?: AutoFields;
 }
 interface FileData {
   tickets: FileTicket[];
   messages: TicketMessage[];
   attachments: Omit<StoredAttachment, 'data'>[];
 }
+interface FileExtra {
+  settings: SupportSettings;
+  aiCalls: { id: string; kind: string; ticketId: string | null; createdAt: string }[];
+}
+
+const LOCK_STALE_MS = 15_000;
+const LOCK_WAIT_MS = 10_000;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 class FileSupportTicketStore implements SupportTicketStore {
   readonly backend = 'file' as const;
   private file: string;
   private blobFile: string;
+  private extraFile: string;
+  private lockDir: string;
   private queue: Promise<unknown> = Promise.resolve();
   constructor(dir: string) {
     this.file = path.join(dir, 'support_tickets.json');
     this.blobFile = path.join(dir, 'support_ticket_attachments.json');
+    this.extraFile = path.join(dir, 'support_automation.json');
+    this.lockDir = path.join(dir, 'support_tickets.lock');
+  }
+  /**
+   * Every write runs one at a time in this process (the queue) AND across processes sharing the folder (a lock
+   * directory: mkdir is atomic), so two local servers on one data folder behave like two instances on one database.
+   */
+  private serial<T>(fn: () => T): Promise<T> {
+    const run = this.queue.then(async () => {
+      await this.lock();
+      try {
+        return fn();
+      } finally {
+        fs.rmSync(this.lockDir, { recursive: true, force: true });
+      }
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+  private async lock() {
+    fs.mkdirSync(path.dirname(this.lockDir), { recursive: true });
+    const end = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try {
+        fs.mkdirSync(this.lockDir);
+        return;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        try {
+          if (Date.now() - fs.statSync(this.lockDir).mtimeMs > LOCK_STALE_MS) fs.rmSync(this.lockDir, { recursive: true, force: true });
+        } catch {
+          /* gone already */
+        }
+        if (Date.now() > end) throw new Error('[supportTickets] file store is locked');
+        await pause(10 + Math.floor(Math.random() * 20));
+      }
+    }
+  }
+  private readExtra(): FileExtra {
+    const x = this.readJson<Partial<FileExtra>>(this.extraFile, {});
+    return { settings: { ...DEFAULT_SETTINGS, ...(x.settings ?? {}) }, aiCalls: x.aiCalls ?? [] };
   }
   private readJson<T>(file: string, empty: T): T {
     try {
@@ -217,14 +379,12 @@ class FileSupportTicketStore implements SupportTicketStore {
     return { tickets: d.tickets ?? [], messages: d.messages ?? [], attachments: d.attachments ?? [] };
   }
   private mutate<T>(fn: (d: FileData) => T, changed: (out: T) => boolean = () => true): Promise<T> {
-    const run = this.queue.then(() => {
+    return this.serial(() => {
       const d = this.read();
       const out = fn(d);
       if (changed(out)) this.writeJson(this.file, d);
       return out;
     });
-    this.queue = run.catch(() => undefined);
-    return run;
   }
   private assemble(d: FileData, t: FileTicket): TroubleTicket {
     const messages = d.messages.filter((m) => m.ticketId === t.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -232,7 +392,72 @@ class FileSupportTicketStore implements SupportTicketStore {
       .filter((a) => a.ticketId === t.id)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((a) => ({ id: a.id, mime: a.mime, size: a.size, width: a.width, height: a.height, createdAt: a.createdAt }));
-    return { ...t, messages, attachments, attachmentCount: attachments.length };
+    const { auto, ...rest } = t;
+    return { ...rest, messages, attachments, attachmentCount: attachments.length, automation: automationView({ ...NO_AUTOMATION, ...(auto ?? {}) }) };
+  }
+  automate(id: string, patch: AutomationPatch, cond: AutomationCond, notes: NewMessageInput[]) {
+    return this.mutate(
+      (d) => {
+        const t = d.tickets.find((x) => x.id === id);
+        if (!t) return null;
+        const a: AutoFields = { ...NO_AUTOMATION, ...(t.auto ?? {}) };
+        if (!condHolds(a, t.status, cond)) return null;
+        const at = nowIso();
+        const { status, priority, ...fields } = patch;
+        t.auto = { ...a, ...fields };
+        if (status) {
+          t.resolvedAt = status === 'resolved' ? t.resolvedAt || at : undefined;
+          t.status = status;
+        }
+        if (priority) t.priority = priority;
+        t.updatedAt = at;
+        // Notes keep their order (a few ms apart), so the timeline reads top to bottom as it happened.
+        notes.forEach((n, i) => d.messages.push({ ...n, id: n.id || crypto.randomUUID(), ticketId: id, createdAt: new Date(Date.parse(at) + i).toISOString() }));
+        return this.assemble(d, t);
+      },
+      (out) => out !== null,
+    );
+  }
+  async listForAutomation(kind: AutomationListKind, now: string, limit: number) {
+    const d = this.read();
+    const dayAgo = new Date(Date.parse(now) - DAY_MS).toISOString();
+    return d.tickets
+      .filter((t) => {
+        const a: AutoFields = { ...NO_AUTOMATION, ...(t.auto ?? {}) };
+        if (kind === 'fix_ready') return a.fixState === 'fix_ready';
+        if (kind === 'sla_due') return (t.status === 'open' || t.status === 'in_progress') && a.slaBreachAt === null && !!a.slaDueAt && a.slaDueAt < now;
+        return (a.triageState === 'pending' || a.triageState === 'running') && t.createdAt > dayAgo;
+      })
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, limit)
+      .map((t) => this.assemble(d, t));
+  }
+  async getSettings() {
+    return this.readExtra().settings;
+  }
+  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string) {
+    return this.serial(() => {
+      const x = this.readExtra();
+      x.settings = { ...x.settings, ...patch, updatedBy: by, updatedAt: nowIso() };
+      this.writeJson(this.extraFile, x);
+      return x.settings;
+    });
+  }
+  reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string) {
+    return this.serial(() => {
+      const x = this.readExtra();
+      // Keep two days of records (enough for "today"); older ones are only history.
+      const keepFrom = new Date(Date.parse(dayStartIso) - DAY_MS).toISOString();
+      x.aiCalls = x.aiCalls.filter((c) => c.createdAt >= keepFrom);
+      const used = x.aiCalls.filter((c) => c.createdAt >= dayStartIso).length;
+      if (used + 1 > cap) return { ok: false, used };
+      x.aiCalls.push({ id: crypto.randomUUID(), kind, ticketId, createdAt: nowIso() });
+      this.writeJson(this.extraFile, x);
+      return { ok: true, used: used + 1 };
+    });
+  }
+  async aiCallsSince(sinceIso: string) {
+    return this.readExtra().aiCalls.filter((c) => c.createdAt >= sinceIso).length;
   }
   create(input: NewTicketInput, first: NewMessageInput) {
     return this.mutate((d) => {
@@ -243,7 +468,8 @@ class FileSupportTicketStore implements SupportTicketStore {
       }
       if (!id) throw new Error('[supportTickets] could not allocate a ticket id');
       const at = nowIso();
-      const t: FileTicket = { id, ...input, requesterEmail: lower(input.requesterEmail), status: 'open', createdAt: at, updatedAt: at };
+      // New tickets wait for the AI (support step 2); the Supabase column default does the same.
+      const t: FileTicket = { id, ...input, requesterEmail: lower(input.requesterEmail), status: 'open', createdAt: at, updatedAt: at, auto: { ...NO_AUTOMATION, triageState: 'pending' } };
       d.tickets.push(t);
       d.messages.push({ ...first, id: first.id || crypto.randomUUID(), ticketId: id, createdAt: at });
       return this.assemble(d, t);
@@ -309,8 +535,8 @@ class FileSupportTicketStore implements SupportTicketStore {
     return u;
   }
   addAttachment(ticketId: string, att: NewAttachmentInput, quota: AttachmentQuota) {
-    // One queue for every write: the checks and the insert cannot interleave with another upload in this process.
-    const run = this.queue.then((): AddAttachmentResult => {
+    // One queue for every write: the checks and the insert cannot interleave with another upload.
+    return this.serial((): AddAttachmentResult => {
       const d = this.read();
       const t = d.tickets.find((x) => x.id === ticketId);
       if (!t) return { ok: false, reason: 'not_found' };
@@ -332,8 +558,6 @@ class FileSupportTicketStore implements SupportTicketStore {
         usage: { workspaceShots: before.workspaceShots + 1, workspaceBytes: before.workspaceBytes + row.size, userShotsToday: before.userShotsToday + 1 },
       };
     });
-    this.queue = run.catch(() => undefined);
-    return run;
   }
   pruneScreenshots(beforeIso: string, limit: number, note: (ticketId: string) => NewMessageInput & { id: string }) {
     const cutoff = Date.parse(beforeIso);
@@ -384,6 +608,8 @@ type Row = Record<string, unknown>;
 const T_TICKETS = 'support_tickets';
 const T_MESSAGES = 'support_ticket_messages';
 const T_ATTACH = 'support_ticket_attachments';
+const T_SETTINGS = 'support_settings';
+const T_AI_CALLS = 'support_ai_calls';
 const MISSING_TABLE = new Set(['42P01', 'PGRST205', 'PGRST204', 'PGRST200', '42703']);
 const MSG_COLS = 'id, ticket_id, sender_name, sender_email, sender_role, is_internal_note, content, created_at';
 const ATT_COLS = 'id, ticket_id, mime, size, width, height, created_at';
@@ -439,7 +665,56 @@ const ticketFromRow = (r: Row): TroubleTicket => {
     messages,
     attachments,
     attachmentCount: attachments.length,
+    automation: automationView(autoFromRow(r)),
   };
+};
+/** Timestamps from Postgres ("...+00:00") as ISO strings, so they compare and display like the file backend's. */
+const isoOrNull = (v: unknown): string | null => {
+  if (!v) return null;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+};
+const TRIAGE_STATES: TriageState[] = ['none', 'pending', 'running', 'done', 'failed', 'skipped'];
+const FIX_STATES: FixState[] = ['none', 'fix_ready', 'sending', 'sent'];
+/** The step-2 columns; absent (migration not run yet) reads as NO_AUTOMATION. */
+function autoFromRow(r: Row): AutoFields {
+  const triage = r.triage && typeof r.triage === 'object' && Object.keys(r.triage as object).length ? (r.triage as TicketTriage) : null;
+  return {
+    triageState: TRIAGE_STATES.includes(r.triage_state as TriageState) ? (r.triage_state as TriageState) : 'none',
+    triage,
+    triageClaimedAt: isoOrNull(r.triage_claimed_at),
+    triageAttempts: Number(r.triage_attempts ?? 0) || 0,
+    severity: ['critical', 'high', 'normal'].includes(String(r.severity)) ? (r.severity as Severity) : null,
+    slaDueAt: isoOrNull(r.sla_due_at),
+    slaBreachAt: isoOrNull(r.sla_breach_at),
+    workingEmailAt: isoOrNull(r.working_email_at),
+    autoAnswerAt: isoOrNull(r.auto_answer_at),
+    fixState: FIX_STATES.includes(r.fix_state as FixState) ? (r.fix_state as FixState) : 'none',
+    fixSha: r.fix_release_sha ? String(r.fix_release_sha) : null,
+    fixReply: String(r.fix_reply ?? ''),
+    fixMarkedBy: String(r.fix_marked_by ?? ''),
+    fixMarkedAt: isoOrNull(r.fix_marked_at),
+    fixClaimedAt: isoOrNull(r.fix_claimed_at),
+    fixSentAt: isoOrNull(r.fix_sent_at),
+  };
+}
+const AUTO_COLUMN: Record<keyof AutoFields, string> = {
+  triageState: 'triage_state',
+  triage: 'triage',
+  triageClaimedAt: 'triage_claimed_at',
+  triageAttempts: 'triage_attempts',
+  severity: 'severity',
+  slaDueAt: 'sla_due_at',
+  slaBreachAt: 'sla_breach_at',
+  workingEmailAt: 'working_email_at',
+  autoAnswerAt: 'auto_answer_at',
+  fixState: 'fix_state',
+  fixSha: 'fix_release_sha',
+  fixReply: 'fix_reply',
+  fixMarkedBy: 'fix_marked_by',
+  fixMarkedAt: 'fix_marked_at',
+  fixClaimedAt: 'fix_claimed_at',
+  fixSentAt: 'fix_sent_at',
 };
 const msgRow = (ticketId: string, m: NewMessageInput) => ({
   ...(m.id ? { id: m.id } : {}),
@@ -644,6 +919,80 @@ class SupabaseSupportTicketStore implements SupportTicketStore {
     if (ins.error?.code === '23505') return false; // another request or server added it first
     this.check(ins);
     return true;
+  }
+  async automate(id: string, patch: AutomationPatch, cond: AutomationCond, notes: NewMessageInput[]) {
+    const at = nowIso();
+    const set: Row = { updated_at: at };
+    const { status, priority, ...fields } = patch;
+    for (const [k, v] of Object.entries(fields) as [keyof AutoFields, unknown][]) set[AUTO_COLUMN[k]] = k === 'triage' ? (v ?? {}) : v;
+    if (status) {
+      set.status = status;
+      set.resolved_at = status === 'resolved' ? at : null;
+    }
+    if (priority) set.priority = priority;
+    // ONE update statement whose WHERE carries every condition: only one caller (on any server) can win a claim.
+    let q = this.db.from(T_TICKETS).update(set).eq('id', id);
+    if (cond.triageState !== undefined) q = q.eq('triage_state', cond.triageState);
+    if (cond.triageAttempts !== undefined) q = q.eq('triage_attempts', cond.triageAttempts);
+    if (cond.triageClaimedBefore !== undefined) q = q.lt('triage_claimed_at', cond.triageClaimedBefore);
+    for (const k of cond.isNull ?? []) q = q.is(AUTO_COLUMN[k], null);
+    if (cond.fixState !== undefined) q = q.eq('fix_state', cond.fixState);
+    if (cond.fixSha !== undefined) q = cond.fixSha === null ? q.is('fix_release_sha', null) : q.eq('fix_release_sha', cond.fixSha);
+    if (cond.statusIn) q = q.in('status', cond.statusIn);
+    if (cond.slaDueBefore !== undefined) q = q.lt('sla_due_at', cond.slaDueBefore);
+    const rows = this.check(await q.select('id')) as Row[];
+    if (!rows.length) return null;
+    if (notes.length) {
+      const res = await this.db.from(T_MESSAGES).insert(notes.map((n, i) => ({ ...msgRow(id, n), created_at: new Date(Date.parse(at) + i).toISOString() })));
+      // The state change already happened; a lost timeline note is logged, never retried (it could double the step).
+      if (res.error) console.warn('[supportTickets] automation note not saved:', res.error.message);
+    }
+    return this.get(id);
+  }
+  async listForAutomation(kind: AutomationListKind, now: string, limit: number) {
+    let q = this.db.from(T_TICKETS).select(FULL_SELECT);
+    if (kind === 'fix_ready') q = q.eq('fix_state', 'fix_ready');
+    else if (kind === 'sla_due') q = q.in('status', ['open', 'in_progress']).is('sla_breach_at', null).lt('sla_due_at', now);
+    else q = q.in('triage_state', ['pending', 'running']).gt('created_at', new Date(Date.parse(now) - DAY_MS).toISOString());
+    const rows = this.check(await q.order('created_at', { ascending: true }).limit(limit)) as Row[];
+    return rows.map(ticketFromRow);
+  }
+  async getSettings(): Promise<SupportSettings> {
+    const r = this.check(await this.db.from(T_SETTINGS).select('*').eq('id', 1).maybeSingle()) as Row | null;
+    if (!r) return { ...DEFAULT_SETTINGS };
+    const cap = r.ai_daily_cap === null || r.ai_daily_cap === undefined ? null : Number(r.ai_daily_cap);
+    return {
+      aiTriage: r.ai_triage !== false,
+      autoEmails: r.auto_emails !== false,
+      aiDailyCap: cap !== null && Number.isInteger(cap) && cap >= 0 ? cap : null,
+      updatedBy: String(r.updated_by ?? ''),
+      updatedAt: isoOrNull(r.updated_at),
+    };
+  }
+  async saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string) {
+    const cur = await this.getSettings();
+    const next = { ...cur, ...patch };
+    this.check(
+      await this.db
+        .from(T_SETTINGS)
+        .upsert({ id: 1, ai_triage: next.aiTriage, auto_emails: next.autoEmails, ai_daily_cap: next.aiDailyCap, updated_by: by.slice(0, 254), updated_at: nowIso() }, { onConflict: 'id' }),
+    );
+    return this.getSettings();
+  }
+  async reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string) {
+    if (cap <= 0) return { ok: false, used: await this.aiCallsSince(dayStartIso) };
+    const r = this.check(await this.db.from(T_AI_CALLS).insert({ kind: kind.slice(0, 40), ticket_id: ticketId }).select('id').single()) as Row;
+    const used = await this.aiCallsSince(dayStartIso);
+    if (used > cap) {
+      await this.db.from(T_AI_CALLS).delete().eq('id', String(r.id));
+      return { ok: false, used: used - 1 };
+    }
+    return { ok: true, used };
+  }
+  async aiCallsSince(sinceIso: string) {
+    const { count, error } = await this.db.from(T_AI_CALLS).select('id', { count: 'exact', head: true }).gte('created_at', sinceIso);
+    if (error) this.check({ data: null, error });
+    return count ?? 0;
   }
   async getAttachment(ticketId: string, attachmentId: string) {
     const r = this.check(await this.db.from(T_ATTACH).select('*').eq('ticket_id', ticketId).eq('id', attachmentId).maybeSingle()) as Row | null;

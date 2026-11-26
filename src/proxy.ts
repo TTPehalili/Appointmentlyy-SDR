@@ -36,6 +36,9 @@ function isPublicApi(pathname: string, method: string): boolean {
   if (pathname.startsWith('/api/sign/')) return true;
   // Client Projects shared board: the board link token is the credential (checked and rate-limited there).
   if (pathname.startsWith('/api/board/')) return true;
+  // Support release linking for the publish script: the route itself requires a staff session or the
+  // SUPPORT_RELEASE_TOKEN bearer token (checked, constant-time, and rate-limited there).
+  if (pathname === '/api/tickets/releases') return true;
   // Resend delivers inbound mail here.
   if (pathname === '/api/email/inbound' && method === 'POST') return true;
   return false;

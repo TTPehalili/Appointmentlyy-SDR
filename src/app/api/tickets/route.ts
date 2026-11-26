@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, after } from 'next/server';
 import { getServerSession } from '@/lib/server/session';
 import { limitPerUser } from '@/lib/server/userRateLimit';
 import { getSupportTicketStore, type NewTicketInput } from '@/lib/server/supportTickets';
@@ -6,6 +6,7 @@ import { canViewTicket, ticketScopeFor, ticketViewFor } from '@/lib/server/ticke
 import { cleanText, fail, ok, readJsonObject, sendLater, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
 import { sendAdminTicketAlert, sendCustomerTicketConfirmation } from '@/lib/ticketEmailer';
 import { scheduleScreenshotRetention } from '@/lib/server/supportShotQuota';
+import { kickChecks, runTriage } from '@/lib/server/supportAutomation';
 import {
   SUPPORT_AREAS,
   SUPPORT_LIMITS,
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
   const limited = limitPerUser('tickets-read', session, { maxRequests: 120 });
   if (limited) return limited;
   scheduleScreenshotRetention(); // at most hourly, after the response (supportShotQuota.ts)
+  // Support step 2: the staff queue also nudges the SLA / release checks (at most once a minute; the worker runs them anyway).
+  if (session.isPlatformAdmin) after(() => kickChecks());
   const viewer = viewerOf(session);
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || '';
@@ -151,6 +154,8 @@ export async function POST(req: NextRequest) {
     // Email never decides whether the report was filed.
     sendLater('confirmation', () => sendCustomerTicketConfirmation(ticket));
     sendLater('alert', () => sendAdminTicketAlert(ticket, { screenshots }));
+    // Support step 2: straight to the AI, after the response; it never blocks or fails the report (supportAutomation.ts).
+    after(() => runTriage(ticket.id));
     return ok({ ticket: ticketViewFor(ticket, viewerOf(session)), uploadUrl: `/api/tickets/${ticket.id}/attachments` }, 201);
   } catch (err) {
     return storageFail(err, 'create');

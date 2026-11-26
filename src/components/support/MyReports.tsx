@@ -231,7 +231,7 @@ function ReportRow({ ticket: t, open, onToggle, onUpdate }: { ticket: TroubleTic
               onChange={(e) => setReply(e.target.value)}
               maxLength={SUPPORT_LIMITS.reply}
               rows={3}
-              placeholder="Add more detail, or answer a question from support."
+              placeholder={t.status === 'resolved' || t.status === 'closed' ? 'Still not working, or not what you asked? Reply here and we will reopen it.' : 'Add more detail, or answer a question from support.'}
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-small" aria-live="polite">

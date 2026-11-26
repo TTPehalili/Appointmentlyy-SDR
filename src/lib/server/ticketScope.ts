@@ -1,6 +1,7 @@
 import type { TroubleTicket } from '@/lib/ticketTypes';
 import { ROLE_RANK, type Role } from '@/lib/roles';
 import type { TicketScope } from '@/lib/server/supportTickets';
+import type { TicketSupportSummary } from '@/lib/supportAutomation';
 
 /**
  * Who sees which support tickets (server-enforced; every ticket route goes through these):
@@ -44,14 +45,32 @@ export function canSeeReporterFiles(t: TroubleTicket, v: TicketViewer): boolean 
 
 /** What this viewer may receive of a ticket they can view. */
 export function ticketViewFor(t: TroubleTicket, v: TicketViewer): TroubleTicket {
-  if (v.isPlatformAdmin) return t;
+  if (v.isPlatformAdmin) return { ...t, support: supportSummaryOf(t) };
   const files = canSeeReporterFiles(t, v);
+  // The staff-only automation block (AI triage, engineering brief, drafts, release state) never leaves for a workspace.
+  const { automation: _staffOnly, ...rest } = t;
+  void _staffOnly;
   return {
-    ...t,
+    ...rest,
     filedByEmail: undefined,
     context: files ? t.context : undefined,
     attachments: files ? t.attachments : undefined,
     attachmentCount: t.attachmentCount ?? t.attachments?.length ?? 0,
     messages: t.messages.filter((m) => !m.isInternalNote),
+    support: supportSummaryOf(t),
+  };
+}
+
+/**
+ * The client-safe part of the support automation: the kind of request, its severity and the target time. Never the
+ * engineering brief, AI drafts, confidence, duplicate links (they may name another workspace's ticket) or release
+ * state.
+ */
+export function supportSummaryOf(t: TroubleTicket): TicketSupportSummary {
+  const a = t.automation;
+  return {
+    type: a?.triageState === 'done' && a.triage?.ai ? a.triage.ai.type : null,
+    severity: a?.severity ?? null,
+    slaDueAt: a?.slaDueAt ?? null,
   };
 }

@@ -780,3 +780,133 @@ ${textFooter}
     return { success: false, error: errorMsg };
   }
 }
+
+// ------------------------------------------------------------------ support step 2: automatic customer updates
+
+export type MailResult = { success: boolean; messageId?: string; error?: string; status?: number };
+
+/**
+ * One plain customer email about their ticket (support step 2): the heading, a few short paragraphs, an optional
+ * quoted block (an answer or the resolution reply) and the My reports link. Everything is escaped; nothing internal
+ * (engineering brief, AI confidence, other tickets) is ever passed in. Replies go to the inbound address / support@.
+ * `status` is set when Resend answered with an error (a definite "not sent"); absent on a network failure.
+ */
+async function sendCustomerTicketEmail(
+  ticket: TroubleTicket,
+  m: { subject: string; label: string; heading: string; before: string[]; quote?: string; after: string[] },
+): Promise<MailResult> {
+  const apiKey = getResendApiKey();
+  if (!apiKey) return { success: false, error: 'Resend API key not configured' };
+  const to = String(ticket.requesterEmail || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(to)) return { success: false, error: 'no valid reporter email' };
+  const name = oneLine(ticket.requesterName || '', 120) || 'there';
+  const link = myReportsLink(ticket.id);
+  const subject = oneLine(m.subject, 200);
+  const textBody = [
+    `Hi ${name},`,
+    '',
+    ...m.before.flatMap((p) => [p, '']),
+    ...(m.quote ? [m.quote, ''] : []),
+    ...m.after.flatMap((p) => [p, '']),
+    `Your report and the full conversation: ${link}`,
+    '',
+    'Appointmentlyy Support',
+    'support@appointmentlyy.com',
+  ].join('\n');
+  const para = (p: string) => `<p style="font-size: 14px; line-height: 1.6; color: #3f3f46; margin: 0 0 14px 0;">${escapeHtml(p)}</p>`;
+  const htmlBody = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #18181b;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 32px 16px;"><tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e4e4e7;">
+      <tr><td style="background-color: #18181b; padding: 20px 28px; border-bottom: 3px solid #ED1C24;">
+        <span style="display: inline-block; background-color: #ED1C24; color: #ffffff; font-weight: 800; font-size: 13px; padding: 4px 8px; border-radius: 6px;">APPOINTMENTLYY</span>
+        <span style="color: #a1a1aa; font-size: 13px; font-weight: 600; margin-left: 8px;">${escapeHtml(m.label)}</span>
+        <span style="float: right; font-family: monospace; font-size: 12px; color: #f4f4f5; background-color: #27272a; padding: 4px 8px; border-radius: 4px;">${escapeHtml(ticket.id)}</span>
+      </td></tr>
+      <tr><td style="padding: 28px;">
+        <div style="font-size: 18px; font-weight: 700; color: #18181b; margin-bottom: 12px;">${escapeHtml(m.heading)}</div>
+        ${para(`Hi ${name},`)}
+        ${m.before.map(para).join('\n        ')}
+        ${m.quote ? `<div style="background-color: #f8fafc; border-left: 4px solid #ED1C24; padding: 16px; border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.6; color: #0f172a; margin: 0 0 18px 0;">${escapeHtml(m.quote).replace(/\n/g, '<br/>')}</div>` : ''}
+        ${m.after.map(para).join('\n        ')}
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 8px;"><tr><td align="center">
+          <a href="${escapeHtml(link)}" style="display: inline-block; background-color: #18181b; color: #ffffff; text-decoration: none; padding: 10px 24px; font-size: 13px; font-weight: 600; border-radius: 6px;">Open my report &rarr;</a>
+        </td></tr></table>
+      </td></tr>
+      <tr><td style="background-color: #fafafa; padding: 16px 28px; border-top: 1px solid #e4e4e7; text-align: center; font-size: 11px; color: #a1a1aa;">
+        Appointmentlyy Support &bull; support@appointmentlyy.com &bull; Reply to this email or in My reports to reach a person.
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: getResendFromEmail(), to: [to], subject, text: textBody, html: htmlBody, reply_to: [getResendInboundEmail(), supportAlertEmail()].filter(Boolean) }),
+    });
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { id?: string };
+      return { success: true, messageId: data.id };
+    }
+    return { success: false, error: (await res.text()).slice(0, 300), status: res.status };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** A how-to question answered from the Help center (sent only when the answer cites Help articles). */
+export function sendCustomerAutoAnswer(ticket: TroubleTicket, answer: string, articleTitles: string[]): Promise<MailResult> {
+  return sendCustomerTicketEmail(ticket, {
+    subject: `Re: [${ticket.id}] ${ticket.subject} - Answered`,
+    label: 'SUPPORT ANSWER',
+    heading: 'Here is how to do that',
+    before: ['Thanks for your question. This answer was put together automatically from our Help center:'],
+    quote: answer,
+    after: [
+      ...(articleTitles.length ? [`From the Help center: ${articleTitles.join('; ')}.`] : []),
+      'We have marked your report as resolved. If this does not answer your question, just reply and a person from our team will pick it up.',
+    ],
+  });
+}
+
+/** A bug was triaged: we are working on it, with the target time from the SLA. */
+export function sendCustomerWorkingOnIt(ticket: TroubleTicket, slaWords: string, dueWords: string): Promise<MailResult> {
+  return sendCustomerTicketEmail(ticket, {
+    subject: `Re: [${ticket.id}] ${ticket.subject} - We're working on it`,
+    label: 'TICKET UPDATE',
+    heading: "We're working on it",
+    before: [
+      'We have looked at your report and confirmed it is a problem on our side. Our engineers are working on a fix now.',
+      `Our target is to have this fixed within ${slaWords}${dueWords ? ` (by ${dueWords})` : ''}.`,
+    ],
+    after: ['We will email you again as soon as the fix is live. If you notice anything else, reply to this email or in My reports.'],
+  });
+}
+
+/** The SLA passed without a resolution: a one-time "needs more time" update. */
+export function sendCustomerNeedsMoreTime(ticket: TroubleTicket): Promise<MailResult> {
+  return sendCustomerTicketEmail(ticket, {
+    subject: `Re: [${ticket.id}] ${ticket.subject} - Update: we need a little more time`,
+    label: 'TICKET UPDATE',
+    heading: 'We need a little more time',
+    before: ['We are sorry: sorting this out is taking longer than the time we aimed for. It is still being worked on and it has not been forgotten.'],
+    after: ['We will email you as soon as there is news. If it is blocking your work, reply to this email and tell us; we will look at a workaround with you.'],
+  });
+}
+
+/** The fix is live: the resolution reply (written or approved by the owner), with "please refresh". */
+export function sendCustomerResolution(ticket: TroubleTicket, reply: string): Promise<MailResult> {
+  return sendCustomerTicketEmail(ticket, {
+    subject: `Re: [${ticket.id}] ${ticket.subject} - Fixed`,
+    label: 'FIXED',
+    heading: 'Fixed: please refresh the page',
+    before: [],
+    quote: reply,
+    after: [
+      'Please refresh the page to load the new version: press Ctrl+F5 on Windows, Cmd+Shift+R on a Mac, or close and reopen the app on your phone.',
+      'We have marked your report as resolved. If it still does not work for you, just reply and we will reopen it.',
+    ],
+  });
+}

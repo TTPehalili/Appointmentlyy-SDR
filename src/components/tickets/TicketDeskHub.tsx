@@ -40,6 +40,7 @@ import { areaLabel, urgencyLabel } from '@/lib/supportReport';
 import { Badge, Button, EmptyState, IconButton, PageHeader } from '@/components/ui';
 import QuotaTopUpModal from '@/components/icp/QuotaTopUpModal';
 import { creditTenantRecords, normalizeTenantKey, WISE_PAYMENT_LINK, WISE_QR_PATH } from '@/lib/icpQuotaStore';
+import { AutomationBar, FixPanel, SlaBadge, SupportSummaryLine, TriageChips, TriagePanel, TypeBadge } from '@/components/tickets/SupportAutomation';
 
 /**
  * perspective: when set, the desk is locked to that view and the switcher is hidden.
@@ -78,6 +79,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
   const [replyError, setReplyError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // Bumped on every ticket reload, so the automation bar (staff) refreshes its counts with the queue.
+  const [autoVersion, setAutoVersion] = useState(0);
 
   // Fetch Tickets from API
   const fetchTickets = async (isManual = false) => {
@@ -88,6 +91,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
         const data = await res.json();
         if (Array.isArray(data.tickets)) {
           setTickets(data.tickets);
+          setAutoVersion((v) => v + 1);
           if (!selectedTicketId && data.tickets.length > 0) {
             setSelectedTicketId(data.tickets[0].id);
           }
@@ -427,6 +431,9 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
         </div>
       </div>
 
+      {/* Support step 2: AI, automatic emails, live commit, Fix ready (staff only) */}
+      {viewPerspective === 'admin' && isAdmin && <AutomationBar onChanged={() => fetchTickets(true)} version={autoVersion} />}
+
       {/* 3. Filter & Search Toolbar */}
       <div className="px-4 py-2.5 border-b border-line flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 flex-1 max-w-md">
@@ -508,7 +515,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
             ) : (
               filteredTickets.map((t) => {
                 const isSelected = selectedTicket?.id === t.id;
-                const lastMessage = t.messages[t.messages.length - 1];
+                // The snippet is the last real message, not an automation note.
+                const lastMessage = [...t.messages].reverse().find((m) => !(m.senderRole === 'system' && m.isInternalNote));
                 return (
                   <button
                     key={t.id}
@@ -533,6 +541,13 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                     <div className="text-body-strong text-fg line-clamp-1">
                       {t.subject}
                     </div>
+                    {viewPerspective === 'admin' && (t.automation?.triage?.ai || t.automation?.slaDueAt) && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <TypeBadge ticket={t} />
+                        <SlaBadge ticket={t} />
+                        {t.automation?.fix.state === 'fix_ready' && <Badge tone="brand">Fix ready</Badge>}
+                      </div>
+                    )}
 
                     {/* Snippet */}
                     <div className="text-small text-fg-secondary line-clamp-2">
@@ -619,6 +634,8 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                       </>
                     )}
                   </div>
+                  {viewPerspective === 'tenant' && <SupportSummaryLine ticket={selectedTicket} />}
+                  {viewPerspective === 'admin' && isAdmin && <TriageChips ticket={selectedTicket} />}
                 </div>
 
                 {/* Status & Priority Controller Dropdowns */}
@@ -751,15 +768,47 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                 {/* What the browser captured, screenshots and "Copy for Claude" (staff desk) */}
                 {viewPerspective === 'admin' && <TicketContextPanel key={selectedTicket.id} ticket={selectedTicket} showCopy />}
 
+                {/* Support step 2: AI triage (brief, drafts, duplicate) and Fix ready / resolution reply (staff only) */}
+                {viewPerspective === 'admin' && isAdmin && (
+                  <>
+                    <TriagePanel
+                      ticket={selectedTicket}
+                      onUseDraft={(text) => {
+                        setReplyContent(text);
+                        setIsInternalNote(false);
+                      }}
+                      onOpenTicket={(id) => setSelectedTicketId(id)}
+                    />
+                    <FixPanel
+                      key={selectedTicket.id}
+                      ticket={selectedTicket}
+                      onTicket={(nt) => {
+                        setTickets((prev) => prev.map((t) => (t.id === nt.id ? nt : t)));
+                        setAutoVersion((v) => v + 1);
+                      }}
+                    />
+                  </>
+                )}
+
                 {/* Messages Timeline */}
                 {selectedTicket.messages.map((msg, index) => {
                   // Skip index 0 if it mirrors the initial description
                   if (index === 0 && msg.content === selectedTicket.description) return null;
 
+                  if (msg.senderRole === 'system' && msg.isInternalNote) {
+                    // Automation timeline (staff only): what was sent and when, what the AI did.
+                    return (
+                      <div key={msg.id} className="flex items-start gap-2 rounded-md border border-line bg-subtle px-3 py-2 text-caption text-fg-secondary" data-testid="auto-note">
+                        <Lock className="mt-0.5 h-3 w-3 shrink-0 text-fg-tertiary" aria-hidden />
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{msg.content}</span>
+                        <span className="shrink-0 tabular-nums text-fg-tertiary">{formatTimeAgo(msg.createdAt)}</span>
+                      </div>
+                    );
+                  }
                   if (msg.senderRole === 'system') {
                     return (
                       <div key={msg.id} className="py-1 flex items-center justify-center">
-                        <span className="px-3 py-1 rounded-full text-caption bg-subtle text-fg-tertiary border border-line">
+                        <span className="max-w-full break-words text-center px-3 py-1 rounded-full text-caption bg-subtle text-fg-tertiary border border-line">
                           {msg.content} &bull; {formatTimeAgo(msg.createdAt)}
                         </span>
                       </div>

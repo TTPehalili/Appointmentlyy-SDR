@@ -4,6 +4,7 @@
  * Shared across client components and server API routes. Storage: src/lib/server/supportTickets.ts.
  */
 import type { SupportContext, TicketUrgency } from '@/lib/supportReport';
+import type { TicketAutomation, TicketSupportSummary } from '@/lib/supportAutomation';
 
 export type { TicketUrgency };
 
@@ -74,6 +75,10 @@ export interface TroubleTicket {
   updatedAt: string;
   resolvedAt?: string;
   messages: TicketMessage[];
+  /** Support step 2: AI triage, SLA and release state (Appointmentlyy staff only; see ticketScope.ts). */
+  automation?: TicketAutomation;
+  /** The client-safe part of the automation (type, severity, target time): what a workspace may see. */
+  support?: TicketSupportSummary;
 }
 
 export const TICKET_STATUSES: TicketStatus[] = ['open', 'in_progress', 'waiting_on_customer', 'resolved', 'closed'];

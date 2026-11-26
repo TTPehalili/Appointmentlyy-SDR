@@ -7,6 +7,7 @@ import { canViewTicket, ticketViewFor } from '@/lib/server/ticketScope';
 import { cleanText, fail, ok, readJsonObject, sendLater, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
 import { sendAdminTicketAlert, sendCustomerReplyNotification } from '@/lib/ticketEmailer';
 import { SUPPORT_LIMITS } from '@/lib/supportReport';
+import { reopenOnReply } from '@/lib/server/supportAutomation';
 import type { TicketStatus } from '@/lib/ticketTypes';
 
 /**
@@ -42,8 +43,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     // someone else's, e.g. a staff internal note saved a moment later, and must never go to the customer.)
     const msgId = crypto.randomUUID();
     const msg = { id: msgId, senderName: session.name.slice(0, 200), senderEmail: session.email, senderRole, isInternalNote, content };
-    const t = await store.addMessage(id, msg, status);
+    let t = await store.addMessage(id, msg, status);
     if (!t) return fail(404, 'Ticket not found');
+    // Support step 2: the reporter (or their workspace) answering a Resolved / Closed ticket reopens it for a person,
+    // e.g. after an automatic how-to answer that did not help. Conditional, so a racing staff change wins.
+    if (senderRole === 'customer' && (cur.status === 'resolved' || cur.status === 'closed')) t = (await reopenOnReply(t, session.name || session.email)) ?? t;
     const saved = t.messages.find((m) => m.id === msgId);
     if (!saved) return storageFail(new Error('saved reply not found on re-read'), 'reply');
     if (senderRole === 'admin' && !isInternalNote) sendLater('reply notification', () => sendCustomerReplyNotification(t, saved));

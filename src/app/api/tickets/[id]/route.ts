@@ -4,6 +4,7 @@ import { limitPerUser } from '@/lib/server/userRateLimit';
 import { getSupportTicketStore, normalizeTicketId, type TicketPatch } from '@/lib/server/supportTickets';
 import { canViewTicket, ticketViewFor } from '@/lib/server/ticketScope';
 import { cleanText, fail, ok, readJsonObject, storageFail, viewerOf } from '@/lib/server/supportTicketsHttp';
+import { followPriority } from '@/lib/server/supportAutomation';
 import { STATUS_LABEL, TICKET_PRIORITIES, TICKET_STATUSES, type TicketPriority, type TicketStatus } from '@/lib/ticketTypes';
 
 /**
@@ -63,6 +64,11 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       notes.length ? { senderName: 'System', senderEmail: 'system@appointmentlyy.com', senderRole: 'system', isInternalNote: false, content: notes.join('. ').slice(0, 4000) } : null,
     );
     if (!t) return fail(404, 'Ticket not found');
+    // Support step 2: a new priority moves the severity and the SLA target with it.
+    if (patch.priority && patch.priority !== cur.priority) {
+      await followPriority(t, session.name);
+      return ok({ ticket: (await store.get(id)) ?? t });
+    }
     return ok({ ticket: t });
   } catch (err) {
     return storageFail(err, 'update');
