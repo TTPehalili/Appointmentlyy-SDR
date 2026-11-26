@@ -172,8 +172,11 @@ export function validateChunkV2(raw: unknown, hadText: boolean): { ok: true; val
     if (s.kind !== undefined && s.kind !== 'content' && s.kind !== 'pricing' && s.kind !== 'terms') return { ok: false, error: `sections[${i}].kind must be content, pricing or terms` };
     if (s.blocks !== undefined && !Array.isArray(s.blocks)) return { ok: false, error: `sections[${i}].blocks must be an array` };
   }
-  const coverIn = isObj(raw.cover) ? { ...raw.cover } : {};
+  const coverIn: Record<string, unknown> = isObj(raw.cover) ? { ...raw.cover } : {};
   delete coverIn.preparedBy; // never from the AI
+  // v1-style cover keys (subtitle, contactName, contactTitle) are understood too.
+  if (coverIn.lead === undefined && typeof coverIn.subtitle === 'string') coverIn.lead = coverIn.subtitle;
+  if (!isObj(coverIn.preparedFor) && (typeof coverIn.contactName === 'string' || typeof coverIn.contactTitle === 'string')) coverIn.preparedFor = { name: coverIn.contactName ?? '', title: coverIn.contactTitle ?? '', url: '' };
   const coverChecks: Record<string, string> = {};
   for (const c of (Array.isArray(raw.cover_checks) ? raw.cover_checks : []).slice(0, 20)) {
     if (isObj(c) && typeof c.field === 'string' && (COVER_FIELDS as string[]).includes(c.field)) coverChecks[c.field] = cleanLine(c.note, V2_LIMITS.check) || 'Check this value.';
@@ -205,6 +208,23 @@ export interface SourceV2 {
   numbers: Set<string>;
   /** Words the PDF capitalises mid-sentence (proper nouns): not "Title Case" when a heading keeps them. */
   proper?: Set<string>;
+  /** Each line's words and numbers (a price must sit next to its item). */
+  lines?: { words: Set<string>; numbers: Set<string> }[];
+}
+
+/** Numbers written on the lines that carry this item (and the next line), or null when no line carries it. */
+function numbersNear(item: string, src: SourceV2): Set<string> | null {
+  const w = words(item);
+  if (!w.length || !src.lines) return null;
+  const out = new Set<string>();
+  let found = false;
+  src.lines.forEach((l, i) => {
+    if (w.filter((x) => l.words.has(x)).length / w.length < 0.6) return;
+    found = true;
+    for (const n of l.numbers) out.add(n);
+    for (const n of src.lines![i + 1]?.numbers ?? []) out.add(n);
+  });
+  return found ? out : null;
 }
 
 export function words(s: string): string[] {
@@ -236,7 +256,8 @@ export function sourceOfText(text: string): SourceV2 {
     const re = /(^|[.!?:]\s+|\s)([A-Z][A-Za-z0-9’'&-]*)/g;
     for (let m = re.exec(line); m; m = re.exec(line)) if (m.index > 0 && !/[.!?:]\s+$/.test(m[1])) proper.add(m[2].toLowerCase().replace(/[’']s$/, ''));
   }
-  return { flat: flat(text), words: new Set(words(text)), numbers: numbersIn(text), proper };
+  const lines = text.split('\n').map((l) => ({ words: new Set(words(l)), numbers: numbersIn(l) }));
+  return { flat: flat(text), words: new Set(words(text)), numbers: numbersIn(text), proper, lines };
 }
 
 export const CONTACT_RE_G = /\b[a-z][a-z0-9+.-]{1,15}:\/\/[^\s)]+|\bwww\.[^\s)]+|[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}|\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|co|ai|ph|nz|au|uk|us|app|dev|biz|info)\b|\+?\d[\d ().-]{9,}\d/gi;
@@ -401,7 +422,18 @@ export function checkChunkV2(c: ChunkDocV2, src: SourceV2, scanned: number[], ch
         }
       }
       // Prices only ever come from the owner: every price row is checked by a person.
-      if (comp.type === 'price-table') for (const r of comp.rows) if (r.rate.trim()) r.check = mark(r.check, 'Price from your PDF: confirm the amount and the terms.');
+      if (comp.type === 'price-table') {
+        for (const r of comp.rows) {
+          if (!r.rate.trim()) continue;
+          // The amount must be written next to its item in the PDF (a "0" elsewhere in the text does not count).
+          if (!fromScan) {
+            const near = numbersNear(r.item, src) ?? src.numbers;
+            const miss = [...numbersIn(r.rate)].filter((n) => !near.has(n));
+            if (miss.length) r.check = mark(r.check, `Price ${r.rate} not found in your PDF${miss.every((n) => src.numbers.has(n)) ? ' next to this item' : ''}.`);
+          }
+          r.check = mark(r.check, 'Price from your PDF: confirm the amount and the terms.');
+        }
+      }
       if (comp.type === 'letter') comp.check = mark(comp.check, 'Speaks for you personally: read it in your own voice.');
     }
   });

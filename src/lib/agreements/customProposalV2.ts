@@ -1041,7 +1041,20 @@ export function normalizeDocV2(raw: unknown): { doc: ProposalDocV2; problems: st
     }
     const notes = new Notes();
     const kind: SectionKind = r.kind === 'pricing' ? 'pricing' : r.kind === 'terms' ? 'terms' : 'content';
-    const rawBlocks = arr(r.blocks);
+    const rawBlocks = [...arr(r.blocks)];
+    // A v1-shaped price list (section rows: item, qty, unit price) is kept as a price table: prices are never dropped.
+    const legacyRows = arr(r.rows).filter(isObj);
+    if (legacyRows.length) {
+      rawBlocks.push({
+        type: 'price-table',
+        variant: '3col',
+        rows: legacyRows.map((x) => {
+          const qty = cleanLine(x.qty, 20);
+          const cur = cleanLine(x.currency, 8);
+          return { item: x.item, rate: `${cur ? `${cur} ` : ''}${cleanLine(x.unitPrice, 40)}`, rateNote: qty && qty !== '1' ? `× ${qty}` : '', terms: x.description, ...(typeof x.check === 'string' ? { check: x.check } : {}) };
+        }),
+      });
+    }
     if (rawBlocks.length > V2_LIMITS.blocks) notes.add(`Only the first ${V2_LIMITS.blocks} components of this section are kept.`);
     const blocks = rawBlocks
       .slice(0, V2_LIMITS.blocks)
