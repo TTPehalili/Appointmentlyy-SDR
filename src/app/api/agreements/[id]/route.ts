@@ -8,6 +8,7 @@ import {
   findTemplate,
   json,
   metaOf,
+  welcomeChoice,
   newCcId,
   readJson,
   requireOwner,
@@ -96,7 +97,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         {
           fieldValues: values,
           title: (t.title(values) || t.name).slice(0, AGREEMENT_LIMITS.titleMax),
-          templateMeta: metaOf(t, values, 'welcomeEmail' in body ? body.welcomeEmail !== false : e.templateMeta?.welcome !== false),
+          templateMeta: metaOf(t, values, welcomeChoice(body, e.templateMeta?.welcome)),
           recipient,
           ...ccPatch,
           access: access.value,

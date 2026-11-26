@@ -11,7 +11,14 @@
  */
 export const WELCOME_TEMPLATE_IDS: readonly string[] = ['proposal-growth-v1', 'proposal-growth-v2', 'service-agreement-v1', 'dev-simple-v1', 'dev-contract-v1'];
 
-export const isWelcomeTemplate = (templateId: string): boolean => WELCOME_TEMPLATE_IDS.includes(templateId);
+/**
+ * Signable custom proposals (v2): the welcome email is OPT-IN per send (a checkbox, default off). A view-only
+ * proposal never sends one (it has no signature).
+ */
+export const WELCOME_OPT_IN_IDS: readonly string[] = ['custom-proposal-v2'];
+
+export const isWelcomeTemplate = (templateId: string): boolean => WELCOME_TEMPLATE_IDS.includes(templateId) || WELCOME_OPT_IN_IDS.includes(templateId);
+export const isWelcomeOptIn = (templateId: string): boolean => WELCOME_OPT_IN_IDS.includes(templateId);
 
 /** The once-only marker, stored in the envelope's existing `notified` jsonb (no migration). */
 export interface WelcomeMark {
@@ -42,6 +49,7 @@ type EnvelopeLike = {
 
 /** The per-envelope switch: on by default for contract templates (also for contracts sent before this feature). */
 export function welcomeEnabled(e: Pick<EnvelopeLike, 'templateId' | 'templateMeta'>): boolean {
+  if (isWelcomeOptIn(e.templateId)) return e.templateMeta?.action === 'sign' && e.templateMeta?.welcome === true;
   return isWelcomeTemplate(e.templateId) && (e.templateMeta?.action ?? 'sign') === 'sign' && e.templateMeta?.welcome !== false;
 }
 
@@ -61,7 +69,7 @@ export interface WelcomeStatus {
 }
 
 export function welcomeStatus(e: EnvelopeLike, now = Date.now()): WelcomeStatus {
-  const applies = isWelcomeTemplate(e.templateId) && (e.templateMeta?.action ?? 'sign') === 'sign';
+  const applies = isWelcomeTemplate(e.templateId) && (e.templateMeta?.action ?? (isWelcomeOptIn(e.templateId) ? 'view' : 'sign')) === 'sign';
   const m = e.notified?.welcome;
   const base = { applies, sentAt: m?.sentAt ?? null, recipients: m?.recipients ?? 0, failed: m?.failed ?? 0, checklist: m?.checklist ?? null, error: m?.error ?? null };
   if (!applies) return { ...base, state: 'off', canSendNow: false };

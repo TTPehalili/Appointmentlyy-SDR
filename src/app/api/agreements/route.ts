@@ -12,6 +12,7 @@ import {
   json,
   loadSettings,
   metaOf,
+  welcomeChoice,
   newCcId,
   pastExpiry,
   readJson,
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
       cc,
       access: access.value,
       // Contracts: "Send welcome email when fully signed" (default on); ignored for every other template.
-      templateMeta: metaOf(t, values, body.welcomeEmail !== false),
+      templateMeta: metaOf(t, values, welcomeChoice(body)),
       createdBy: owner.email,
     });
     if (statement) rec.billing = { number: '', currency: 'USD', total: 0, dueDate: null, payments: [], sourceEnvelopeId };

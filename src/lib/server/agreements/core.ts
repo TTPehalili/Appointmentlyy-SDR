@@ -14,7 +14,7 @@ import { seal, open } from '@/lib/server/secretBox';
 import { getAppBaseUrl } from '@/lib/authToken';
 import { isPaymentLinkKey, isPaymentQrKey, safePaymentLink, safeQrDataUrl } from '@/lib/server/agreements/payment';
 import { BANK_KEYS, PAYMENT_LIMITS, cleanBank, hasBank, oneLine, paymentOptionsProblem } from '@/lib/agreements/paymentOptions';
-import { DEFAULT_WELCOME_BODY, DEFAULT_WELCOME_SUBJECT, isWelcomeTemplate, safeBookingLink, welcomeTemplateProblem } from '@/lib/agreements/welcome';
+import { DEFAULT_WELCOME_BODY, DEFAULT_WELCOME_SUBJECT, isWelcomeOptIn, isWelcomeTemplate, safeBookingLink, welcomeTemplateProblem } from '@/lib/agreements/welcome';
 import {
   AGREEMENT_LIMITS,
   CC_LIMITS,
@@ -47,9 +47,19 @@ export function signerFormOf(t: AgreementTemplate, values: Record<string, string
  * switch (`welcome`, default on); every other template never has it, so it can never send one.
  */
 export function metaOf(t: AgreementTemplate, values: Record<string, string>, welcome?: boolean): TemplateMeta {
-  const m: TemplateMeta = { name: t.name, action: t.action, countersign: t.countersign, signerForm: signerFormOf(t, values) };
-  if (isWelcomeTemplate(t.id) && t.action === 'sign') m.welcome = welcome !== false;
+  // Custom proposals v2: signable (default) or view-only, chosen per document.
+  const own = (t as TemplateHooks).actionFor;
+  const { action, countersign } = typeof own === 'function' ? own(values) : { action: t.action, countersign: t.countersign };
+  const m: TemplateMeta = { name: t.name, action, countersign, signerForm: signerFormOf(t, values) };
+  // Contracts: on unless switched off. Signable proposals: OFF unless the owner ticked the box for this send.
+  if (isWelcomeTemplate(t.id) && action === 'sign') m.welcome = isWelcomeOptIn(t.id) ? welcome === true : welcome !== false;
   return m;
+}
+
+/** The owner's welcome-email choice from a request body: true / false, or undefined (= the template's default). */
+export function welcomeChoice(body: Record<string, unknown>, current?: boolean): boolean | undefined {
+  if (!('welcomeEmail' in body)) return current;
+  return body.welcomeEmail === false ? false : body.welcomeEmail === true ? true : undefined;
 }
 
 /** What the owner console needs to know about a template (no render function). */
@@ -402,6 +412,7 @@ export type TemplateHooks = AgreementTemplate & {
   cleanValues?: (raw: Record<string, unknown>) => Record<string, string>;
   valueProblems?: (values: Record<string, string>) => string | null;
   watchLabels?: (values: Record<string, string>) => (string | null)[];
+  actionFor?: (values: Record<string, string>) => { action: AgreementTemplate['action']; countersign: boolean };
 };
 
 export function fieldProblems(t: AgreementTemplate, values: Record<string, string>): string | null {

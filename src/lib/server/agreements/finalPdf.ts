@@ -29,6 +29,7 @@ export function ansi(s: string): string {
 }
 
 const A4: [number, number] = [595.28, 841.89];
+export type PageSize = [number, number];
 const M = 50;
 const INK = rgb(0.07, 0.09, 0.15);
 const MUTED = rgb(0.38, 0.4, 0.45);
@@ -49,22 +50,23 @@ class Writer {
     private f: Fonts,
     private header: string,
     private envelopeId: string,
+    public size: PageSize = A4,
   ) {
     this.newPage();
   }
   newPage() {
-    this.page = this.doc.addPage(A4);
-    this.y = A4[1] - M;
+    this.page = this.doc.addPage(this.size);
+    this.y = this.size[1] - M;
     this.page.drawText(ansi(this.header), { x: M, y: this.y, size: 9, font: this.f.b, color: MUTED });
     this.page.drawText(ansi(`Envelope ${this.envelopeId}`), {
-      x: A4[0] - M - this.f.r.widthOfTextAtSize(`Envelope ${this.envelopeId}`, 8),
+      x: this.size[0] - M - this.f.r.widthOfTextAtSize(`Envelope ${this.envelopeId}`, 8),
       y: this.y,
       size: 8,
       font: this.f.r,
       color: MUTED,
     });
     this.y -= 14;
-    this.page.drawLine({ start: { x: M, y: this.y }, end: { x: A4[0] - M, y: this.y }, thickness: 0.5, color: LINE });
+    this.page.drawLine({ start: { x: M, y: this.y }, end: { x: this.size[0] - M, y: this.y }, thickness: 0.5, color: LINE });
     this.y -= 22;
   }
   ensure(h: number) {
@@ -99,7 +101,7 @@ class Writer {
     const size = opts.size ?? 10;
     const font = opts.mono ? this.f.mono : opts.bold ? this.f.b : this.f.r;
     const x = opts.x ?? M;
-    const width = opts.width ?? A4[0] - M - x;
+    const width = opts.width ?? this.size[0] - M - x;
     const lh = size * 1.35;
     for (const line of this.wrap(text, font, size, width)) {
       this.ensure(lh);
@@ -113,7 +115,7 @@ class Writer {
     const lw = opts.labelWidth ?? 130;
     const size = 10;
     const font = opts.mono ? this.f.mono : this.f.r;
-    const lines = this.wrap(value || '-', font, opts.mono ? 8.5 : size, A4[0] - M * 2 - lw);
+    const lines = this.wrap(value || '-', font, opts.mono ? 8.5 : size, this.size[0] - M * 2 - lw);
     const lh = size * 1.35;
     // Long labels (e.g. a signer-form question) wrap inside their column instead of running into the value.
     const labelLines = this.wrap(label, this.f.b, size, lw - 10);
@@ -130,7 +132,7 @@ class Writer {
   rule(gap = 10) {
     this.ensure(gap * 2);
     this.y -= gap / 2;
-    this.page.drawLine({ start: { x: M, y: this.y }, end: { x: A4[0] - M, y: this.y }, thickness: 0.5, color: LINE });
+    this.page.drawLine({ start: { x: M, y: this.y }, end: { x: this.size[0] - M, y: this.y }, thickness: 0.5, color: LINE });
     this.y -= gap;
   }
   image(img: PDFImage, maxW: number, maxH: number) {
@@ -190,11 +192,13 @@ export interface FinalInputs {
   ownerSignature: Uint8Array | null;
   /** When the document is completed (also the last timeline row). */
   completedAt: string;
+  /** v2 custom proposals ("Mode B"): the signatures overlay for the Acceptance page (the original's last page). */
+  stamp?: { overlay: Uint8Array; pageIndex: number } | null;
 }
 
-async function drawExecution(doc: PDFDocument, f: Fonts, x: FinalInputs) {
+async function drawExecution(doc: PDFDocument, f: Fonts, x: FinalInputs, size: PageSize) {
   const e = x.envelope;
-  const w = new Writer(doc, f, 'EXECUTION PAGE', e.id);
+  const w = new Writer(doc, f, 'EXECUTION PAGE', e.id, size);
   w.text('Execution page', { size: 18, bold: true, gap: 6 });
   w.text(e.title, { size: 12, bold: true, gap: 10 });
   w.row('Envelope ID', e.id, { mono: true });
@@ -247,9 +251,9 @@ const EVENT_LABEL: Partial<Record<AgreementEvent['type'], string>> = {
   countersigned: 'Countersigned by the provider',
 };
 
-async function drawCertificate(doc: PDFDocument, f: Fonts, x: FinalInputs) {
+async function drawCertificate(doc: PDFDocument, f: Fonts, x: FinalInputs, size: PageSize, stampedPage: number | null) {
   const e = x.envelope;
-  const w = new Writer(doc, f, 'CERTIFICATE OF COMPLETION', e.id);
+  const w = new Writer(doc, f, 'CERTIFICATE OF COMPLETION', e.id, size);
   w.text('Certificate of Completion', { size: 18, bold: true, gap: 6 });
   w.text(e.title, { size: 12, bold: true, gap: 10 });
   w.row('Envelope ID', e.id, { mono: true });
@@ -263,6 +267,7 @@ async function drawCertificate(doc: PDFDocument, f: Fonts, x: FinalInputs) {
 
   w.text('Event timeline (times in Asia/Manila)', { size: 12, bold: true, gap: 8 });
   const cols = [M, M + 135, M + 290, M + 385];
+  const right = w.size[0] - M;
   const head = ['Time', 'Event', 'IP address', 'Device'];
   w.ensure(16);
   head.forEach((h, i) => w.page.drawText(h, { x: cols[i], y: w.y - 9, size: 9, font: f.b, color: MUTED }));
@@ -274,7 +279,7 @@ async function drawCertificate(doc: PDFDocument, f: Fonts, x: FinalInputs) {
   for (const r of rows) {
     w.ensure(14);
     r.forEach((cell, i) => {
-      const width = (cols[i + 1] ?? A4[0] - M) - cols[i] - 6;
+      const width = (cols[i + 1] ?? right) - cols[i] - 6;
       let t = ansi(cell);
       while (t.length > 1 && f.r.widthOfTextAtSize(t, 8.5) > width) t = t.slice(0, -1);
       w.page.drawText(t, { x: cols[i], y: w.y - 8.5, size: 8.5, font: f.r, color: INK });
@@ -288,17 +293,40 @@ async function drawCertificate(doc: PDFDocument, f: Fonts, x: FinalInputs) {
       'so any later change to this file can be detected.',
     { size: 9, color: MUTED, gap: 4 },
   );
+  if (stampedPage) {
+    w.text(`The signatures above were also placed on the Acceptance page (page ${stampedPage}) of this final PDF. The fingerprint of the original refers to the document as sent, before those signatures were added.`, { size: 9, color: MUTED, gap: 4 });
+  }
   w.text('Electronic signatures under the Philippine E-Commerce Act (RA 8792). IP addresses and emails are kept only as evidence of this contract (Data Privacy Act).', {
     size: 9,
     color: MUTED,
   });
 }
 
-export async function buildFinalPdf(original: Uint8Array, x: FinalInputs): Promise<{ final: Uint8Array; certificate: Uint8Array; pageCount: number }> {
+/** The original's page size, read from its first page (A4 when unreadable). */
+function sizeOf(doc: PDFDocument): PageSize {
+  try {
+    const { width, height } = doc.getPage(0).getSize();
+    return width > 100 && height > 100 ? [width, height] : A4;
+  } catch {
+    return A4;
+  }
+}
+
+export async function buildFinalPdf(original: Uint8Array, x: FinalInputs): Promise<{ final: Uint8Array; certificate: Uint8Array; pageCount: number; stamped: boolean }> {
   const doc = await PDFDocument.load(original, { updateMetadata: false });
+  const size = sizeOf(doc);
   const f = await fonts(doc);
-  await drawExecution(doc, f, x);
-  await drawCertificate(doc, f, x);
+  // Mode B: the signatures on the Acceptance page (the final PDF only; the original stays as sent).
+  let stampedPage: number | null = null;
+  if (x.stamp && x.stamp.pageIndex >= 0 && x.stamp.pageIndex < doc.getPageCount()) {
+    const [overlay] = await doc.embedPdf(x.stamp.overlay, [0]);
+    const page = doc.getPage(x.stamp.pageIndex);
+    const { width, height } = page.getSize();
+    page.drawPage(overlay, { x: 0, y: 0, width, height });
+    stampedPage = x.stamp.pageIndex + 1;
+  }
+  await drawExecution(doc, f, x, size);
+  await drawCertificate(doc, f, x, size, stampedPage);
   doc.setTitle(ansi(x.envelope.title));
   doc.setProducer('Appointmentlyy Agreements');
   doc.setModificationDate(new Date(x.completedAt));
@@ -306,11 +334,11 @@ export async function buildFinalPdf(original: Uint8Array, x: FinalInputs): Promi
 
   const cdoc = await PDFDocument.create();
   const cf = await fonts(cdoc);
-  await drawCertificate(cdoc, cf, x);
+  await drawCertificate(cdoc, cf, x, size, stampedPage);
   cdoc.setTitle(ansi(`Certificate of Completion: ${x.envelope.title}`));
   cdoc.setProducer('Appointmentlyy Agreements');
   const certificate = await cdoc.save();
-  return { final, certificate, pageCount: doc.getPageCount() };
+  return { final, certificate, pageCount: doc.getPageCount(), stamped: stampedPage !== null };
 }
 
 export async function pdfPageCount(bytes: Uint8Array): Promise<number> {

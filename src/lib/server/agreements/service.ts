@@ -40,6 +40,7 @@ import type { AgreementTemplate } from '@/lib/agreements/templates/types';
 import { pdfOutlinePages } from '@/lib/server/clientProjects/pdfText';
 import { ccMail, completedMail, inviteMail, otpMail, ownerNoticeMail, sendAgreementMail } from '@/lib/server/agreements/mail';
 import { buildFinalPdf, pdfPageCount } from '@/lib/server/agreements/finalPdf';
+import { buildAcceptanceStamp } from '@/lib/server/agreements/acceptanceStamp';
 import { EMAIL_RE } from '@/lib/roles';
 import { billingFor, isStatementTemplate, nextStatementNumber, numberField, stampPaid } from '@/lib/server/agreements/billing';
 import { balanceOf, fmtMoney, type BillingInfo } from '@/lib/agreements/envelope';
@@ -220,7 +221,7 @@ export async function sendEnvelope(
       status: 'sent',
       title: t.title(values).slice(0, AGREEMENT_LIMITS.titleMax) || e.title,
       // The owner's welcome-email switch, set on the draft, is kept when the setup is frozen.
-      templateMeta: { ...metaOf(t, values, e.templateMeta?.welcome !== false), ...(watchedPages ? { watchedPages } : {}) },
+      templateMeta: { ...metaOf(t, values, e.templateMeta?.welcome), ...(watchedPages ? { watchedPages } : {}) },
       fieldValues: values,
       ...(billing ? { billing } : {}),
       originalSha256: sha256,
@@ -621,7 +622,9 @@ export async function completeEnvelope(e: Envelope, meta: RequestMeta): Promise<
   ]);
   const completedAt = nowIso();
   const meta0 = e.templateMeta!;
-  const { final, certificate } = await buildFinalPdf(original.bytes, {
+  // v2 custom proposals: the signatures are also stamped on the Acceptance page (null = Execution page only).
+  const stamp = await buildAcceptanceStamp(e, original.bytes, signerSig?.bytes ?? null, ownerSig?.bytes ?? null, completedAt);
+  const { final, certificate, stamped } = await buildFinalPdf(original.bytes, {
     envelope: e,
     signerForm: meta0.signerForm,
     action: meta0.action,
@@ -630,12 +633,13 @@ export async function completeEnvelope(e: Envelope, meta: RequestMeta): Promise<
     signerSignature: meta0.action === 'sign' && signerSig ? signerSig.bytes : null,
     ownerSignature: meta0.countersign && ownerSig ? ownerSig.bytes : null,
     completedAt,
+    stamp,
   });
   const { sha256: finalSha256 } = await store().putFile(e.id, 'final', 'application/pdf', final);
   await store().putFile(e.id, 'certificate', 'application/pdf', certificate);
   const updated = await store().updateEnvelope(e.id, { status: 'completed', completedAt, finalSha256, lastActivityAt: completedAt }, ['signed']);
   if (!updated) throw new AgreementError('This document was already completed.', 409);
-  await store().addEvent({ envelopeId: e.id, type: 'completed', at: completedAt, data: { finalSha256 } });
+  await store().addEvent({ envelopeId: e.id, type: 'completed', at: completedAt, data: { finalSha256, ...(stamped ? { acceptanceStamped: true } : {}) } });
 
   // Email both parties. The signer's link becomes their download page.
   const { settings } = await loadSettings();
