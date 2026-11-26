@@ -38,6 +38,21 @@ interface Party {
   caption: string;
 }
 
+/** Break anywhere: a long name without spaces must not run past its box. */
+const anywhere = (word: string) => Array.from(word);
+
+/**
+ * One line of stamped text, CLIPPED to its box: the signer types their own name and title, so nothing they type
+ * can be drawn outside it (into the other party's card or over the date line), whatever its length or characters.
+ */
+function Line({ x, y, w, h, style, children }: { x: number; y: number; w: number; h: number; style: Record<string, unknown>; children: string }) {
+  return (
+    <View style={{ position: 'absolute', left: x, top: y, width: w, height: h, overflow: 'hidden' }}>
+      <Text hyphenationCallback={anywhere} style={{ width: w, maxLines: 1, textOverflow: 'ellipsis', ...style }}>{children}</Text>
+    </View>
+  );
+}
+
 function Column({ col, p }: { col: AcceptanceColumn; p: Party }) {
   const signedAs = norm(p.typedName) && norm(p.typedName) !== norm(p.printed) ? ellipsis(`Signed as ${p.typedName}${p.typedTitle ? `, ${p.typedTitle}` : ''}`, 60) : '';
   return (
@@ -49,11 +64,11 @@ function Column({ col, p }: { col: AcceptanceColumn; p: Party }) {
           style={{ position: 'absolute', left: col.sigImage.x, top: col.sigImage.y, width: col.sigImage.w, height: col.sigImage.h, objectFit: 'contain', objectPosition: 'left bottom' }}
         />
       ) : (
-        <Text style={{ position: 'absolute', left: col.sigImage.x, top: col.sigLineY - 30, width: col.sigBox.w, fontFamily: SCRIPT_FONT_FAMILY, fontSize: 22, lineHeight: 1.2, color: INK900 }}>{p.typedName}</Text>
+        <Line x={col.sigImage.x} y={col.sigLineY - 30} w={col.sigBox.w} h={30} style={{ fontFamily: SCRIPT_FONT_FAMILY, fontSize: 22, lineHeight: 1.2, color: INK900 }}>{ellipsis(p.typedName, 40)}</Line>
       )}
-      <Text style={{ position: 'absolute', left: col.captionRight.x, top: col.captionRight.y, width: col.captionRight.w, textAlign: 'right', fontFamily: FONT_FAMILY, fontSize: 9, lineHeight: 1.33, color: INK500 }}>{p.caption}</Text>
-      {signedAs ? <Text style={{ position: 'absolute', left: col.signedAs.x, top: col.signedAs.y, width: col.signedAs.w, fontFamily: FONT_FAMILY, fontSize: 9, lineHeight: 1.33, color: INK600 }}>{signedAs}</Text> : null}
-      <Text style={{ position: 'absolute', left: col.dateBox.x, top: col.dateBox.y + 6, width: col.dateBox.w, fontFamily: FONT_FAMILY, fontSize: 9.75, lineHeight: 1.2, color: INK900, ...TNUM }}>{`${fmtManila(p.signedAt)} (Asia/Manila)`}</Text>
+      <Line x={col.captionRight.x} y={col.captionRight.y} w={col.captionRight.w} h={col.captionRight.h} style={{ textAlign: 'right', fontFamily: FONT_FAMILY, fontSize: 9, lineHeight: 1.33, color: INK500 }}>{p.caption}</Line>
+      {signedAs ? <Line x={col.signedAs.x} y={col.signedAs.y} w={col.signedAs.w} h={col.signedAs.h} style={{ fontFamily: FONT_FAMILY, fontSize: 9, lineHeight: 1.33, color: INK600 }}>{signedAs}</Line> : null}
+      <Line x={col.dateBox.x} y={col.dateBox.y + 6} w={col.dateBox.w} h={col.dateBox.h - 6} style={{ fontFamily: FONT_FAMILY, fontSize: 9.75, lineHeight: 1.2, color: INK900, ...TNUM }}>{`${fmtManila(p.signedAt)} (Asia/Manila)`}</Line>
     </>
   );
 }
