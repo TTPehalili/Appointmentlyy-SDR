@@ -9,4 +9,5 @@ import './uatCertificate';
 import './deliveryReport';
 import './billingStatement';
 import './customProposal';
+import './customProposalV2';
 export * from './index';
