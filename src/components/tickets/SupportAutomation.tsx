@@ -87,7 +87,29 @@ export function SupportSummaryLine({ ticket }: { ticket: TroubleTicket }) {
 
 // ------------------------------------------------------------------ AI triage (staff)
 
-export function TriagePanel({ ticket, onUseDraft, onOpenTicket }: { ticket: TroubleTicket; onUseDraft: (text: string) => void; onOpenTicket: (id: string) => void }) {
+/** "Run AI triage again" for a ticket whose triage failed (platform staff; the server refuses anyone else). */
+function RetriageButton({ ticketId, onTicket }: { ticketId: string; onTicket?: (t: TroubleTicket) => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    const r = await call(`/api/tickets/${encodeURIComponent(ticketId)}/triage`, 'POST', {});
+    setBusy(false);
+    if (!r.ok) setError(errOf(r.data, 'That did not work. Please try again.'));
+    else if (r.data.ticket) onTicket?.(r.data.ticket as TroubleTicket);
+  };
+  return (
+    <div className="space-y-1">
+      <Button size="sm" variant="secondary" icon={<RefreshCw />} loading={busy} onClick={run} data-testid="triage-retry">
+        Run AI triage again
+      </Button>
+      {error && <InlineError message={error} />}
+    </div>
+  );
+}
+
+export function TriagePanel({ ticket, onUseDraft, onOpenTicket, onTicket }: { ticket: TroubleTicket; onUseDraft: (text: string) => void; onOpenTicket: (id: string) => void; onTicket?: (t: TroubleTicket) => void }) {
   const a = ticket.automation;
   if (!a || a.triageState === 'none') return null;
   const tr = a.triage;
@@ -120,6 +142,7 @@ export function TriagePanel({ ticket, onUseDraft, onOpenTicket }: { ticket: Trou
           {a.triageState === 'skipped' ? 'Not triaged by AI' : 'AI triage failed'}: {tr.reason}. A person handles this ticket.
         </p>
       )}
+      {a.triageState === 'failed' && <RetriageButton key={ticket.id} ticketId={ticket.id} onTicket={onTicket} />}
       {ai?.summary && <p className="text-body text-fg">{ai.summary}</p>}
       {tr?.duplicateOf && (
         <p className="text-small text-fg-secondary flex flex-wrap items-center gap-1" data-testid="triage-duplicate">

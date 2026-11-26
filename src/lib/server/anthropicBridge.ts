@@ -23,7 +23,8 @@ type GeminiRequest = {
   generation_config?: { max_output_tokens?: number; response_mime_type?: string; response_schema?: unknown };
 };
 
-type Reply = { status: number; body: string };
+/** stopReason: Claude's stop_reason (end_turn, max_tokens, ...), for diagnostics; the bridge's callers only read body. */
+type Reply = { status: number; body: string; stopReason?: string | null };
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
@@ -128,6 +129,7 @@ async function askClaude(client: Anthropic, bodyText: string): Promise<Reply | n
     console.info(`[ai-bridge] answered by ${msg.model} in ${Date.now() - started}ms`);
     return {
       status: 200,
+      stopReason: msg.stop_reason ?? null,
       body: JSON.stringify({
         candidates: [{ content: { role: 'model', parts: [{ text }] }, finishReason: msg.stop_reason === 'max_tokens' ? 'MAX_TOKENS' : 'STOP', index: 0 }],
         usageMetadata: { promptTokenCount: msg.usage.input_tokens, candidatesTokenCount: msg.usage.output_tokens },
@@ -194,7 +196,7 @@ export function installAnthropicBridge(): void {
  * translation, model, effort and fallbacks as the bridge (askClaude), with a client of its own, so the
  * bridge's client and timeout for every other caller are untouched. It works whenever
  * ANTHROPIC_API_KEY is set; AI_PROVIDER does not have to be "anthropic". Resolves to the reply text
- * (JSON when `json` is set), or null when Claude is not configured or could not answer.
+ * (JSON when `json` is set) and Claude's stop reason, or null when Claude is not configured or could not answer.
  */
 export async function askClaudeDirect(input: {
   system: string;
@@ -205,7 +207,7 @@ export async function askClaudeDirect(input: {
   timeoutMs: number;
   /** Optional files sent before the text (base64): a PDF becomes a Claude document block, an image an image block. */
   attachments?: { mimeType: 'application/pdf' | 'image/png' | 'image/jpeg'; data: string }[];
-}): Promise<{ text: string; model: string } | null> {
+}): Promise<{ text: string; model: string; stopReason: string | null } | null> {
   const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) return null;
   const client = new Anthropic({ apiKey, maxRetries: 0, timeout: input.timeoutMs });
@@ -219,7 +221,9 @@ export async function askClaudeDirect(input: {
   try {
     const data = JSON.parse(reply.body) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; modelVersion?: string };
     const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
-    return text ? { text, model: data.modelVersion || process.env.ANTHROPIC_MODEL || DEFAULT_MODEL } : null;
+    const stopReason = reply.stopReason ?? null;
+    // An empty reply cut off at the token limit (thinking used the budget) still goes back, so the caller can retry.
+    return text || stopReason === 'max_tokens' ? { text, model: data.modelVersion || process.env.ANTHROPIC_MODEL || DEFAULT_MODEL, stopReason } : null;
   } catch {
     return null;
   }

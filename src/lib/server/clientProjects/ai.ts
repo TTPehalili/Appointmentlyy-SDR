@@ -16,6 +16,7 @@
  */
 import { generateJson } from '@/lib/server/leadData/aiFilters';
 import { askClaudeDirect } from '@/lib/server/anthropicBridge';
+import { parseJsonReply, replyShape } from '@/lib/server/jsonReply';
 import { isLocalTestServer } from '@/lib/server/agreements/mail';
 import { getClientProjectStore } from '@/lib/server/clientProjectStore';
 import { PdfUnsafeError, extractPdfText } from '@/lib/server/clientProjects/pdfText';
@@ -76,21 +77,34 @@ export interface AskInput {
   tag: string;
 }
 
+/** A reply cut off at the token limit is asked again once with at least this budget (the bridge adds 2048 for thinking: 8192 in all). */
+const TRUNCATION_RETRY_TOKENS = 6144;
+
 /**
  * One JSON-only model call: Claude first when configured, then the Gemini path. Whatever comes back is
- * only ever parsed here; every caller still rebuilds and validates it (validateProposal) before use.
+ * only ever parsed here (leniently: parseJsonReply); every caller still rebuilds and validates it (validateProposal,
+ * validateTriage) before use. A Claude reply cut off at max_tokens is asked again once with a larger budget. The logs
+ * describe an unusable reply by its shape only (stop reason, length, first character), never by its text.
  */
 export async function askModel(input: AskInput): Promise<Record<string, unknown> | null> {
   if (aiProvider() === 'claude') {
-    const reply = await askClaudeDirect({ system: input.system, user: input.user, json: true, schema: input.schema, maxOutputTokens: input.maxOutputTokens, timeoutMs: input.timeoutMs });
+    const ask = (maxOutputTokens: number) => askClaudeDirect({ system: input.system, user: input.user, json: true, schema: input.schema, maxOutputTokens, timeoutMs: input.timeoutMs });
+    let reply = await ask(input.maxOutputTokens);
     if (reply) {
-      try {
-        const parsed: unknown = JSON.parse(reply.text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-        console.warn(`[${input.tag}] Claude replied with JSON that is not an object.`);
-      } catch {
-        console.warn(`[${input.tag}] Claude replied with text that is not JSON.`);
+      let got = parseJsonReply(reply.text);
+      if (!got.value && reply.stopReason === 'max_tokens') {
+        console.warn(`[${input.tag}] Claude reply was cut off at the token limit (${replyShape(reply.text, reply.stopReason)}); asking once more with a larger budget.`);
+        const again = await ask(Math.max(input.maxOutputTokens * 2, TRUNCATION_RETRY_TOKENS));
+        if (again) {
+          reply = again;
+          got = parseJsonReply(again.text);
+        }
       }
+      if (got.value) {
+        if (got.how !== 'direct') console.info(`[${input.tag}] Claude reply read leniently (${got.how}; ${replyShape(reply.text, reply.stopReason)}).`);
+        return got.value;
+      }
+      console.warn(`[${input.tag}] Claude replied with ${got.why === 'not an object' ? 'JSON that is not an object' : 'text that is not JSON'} (${replyShape(reply.text, reply.stopReason)}).`);
       // Unusable JSON goes back to the caller as a reply to validate (and retry), not to the other provider.
       return { __invalid: true };
     }

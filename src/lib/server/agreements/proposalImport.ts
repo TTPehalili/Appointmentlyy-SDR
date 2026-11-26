@@ -20,6 +20,7 @@
  */
 import { PDFDocument } from 'pdf-lib';
 import { askClaudeDirect } from '@/lib/server/anthropicBridge';
+import { parseJsonReply } from '@/lib/server/jsonReply';
 import { generateJson } from '@/lib/server/leadData/aiFilters';
 import { aiProvider, type AiProvider } from '@/lib/server/clientProjects/ai';
 import { PdfUnsafeError, extractPdfText, type PdfPage } from '@/lib/server/clientProjects/pdfText';
@@ -205,14 +206,7 @@ export async function askImportModel(input: Ask): Promise<Record<string, unknown
       timeoutMs: IMPORT_TIMEOUT_MS,
       ...(data ? { attachments: [{ mimeType: 'application/pdf' as const, data }] } : {}),
     });
-    if (reply) {
-      try {
-        const parsed: unknown = JSON.parse(reply.text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
-        return isObj(parsed) ? parsed : 'invalid';
-      } catch {
-        return 'invalid';
-      }
-    }
+    if (reply) return parseJsonReply(reply.text).value ?? 'invalid';
   }
   if (!(process.env.GOOGLE_API_KEY || '').trim()) return null;
   return generateJson({

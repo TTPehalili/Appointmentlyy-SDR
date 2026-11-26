@@ -778,6 +778,7 @@ export default function TicketDeskHub({ perspective }: { perspective?: 'admin' |
                         setIsInternalNote(false);
                       }}
                       onOpenTicket={(id) => setSelectedTicketId(id)}
+                      onTicket={(nt) => setTickets((prev) => prev.map((t) => (t.id === nt.id ? nt : t)))}
                     />
                     <FixPanel
                       key={selectedTicket.id}

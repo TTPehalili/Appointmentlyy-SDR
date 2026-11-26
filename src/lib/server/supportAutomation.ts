@@ -244,6 +244,15 @@ export async function runTriage(id: string): Promise<void> {
         } else reason = res.reason || 'the AI did not answer';
       }
     }
+    // The AI was asked but its answer was unusable (not JSON, failed the checks, no answer): back to 'pending' with the
+    // attempt counted, so the next check asks again (and reserves another AI call). Failed only when the tries are used up.
+    const attempts = t.automation?.triageAttempts ?? MAX_TRIAGE_ATTEMPTS;
+    if (!ai && model && t.source !== 'billing' && attempts < MAX_TRIAGE_ATTEMPTS) {
+      await store.automate(id, { triageState: 'pending' }, { triageState: 'running', triageAttempts: attempts }, [
+        note(`AI triage try ${attempts} of ${MAX_TRIAGE_ATTEMPTS} was not usable (${reason}); trying again on the next check.`),
+      ]);
+      return;
+    }
     const duplicateOf = t.source === 'billing' ? null : await findDuplicate(t).catch(() => null);
     const severity = ai ? maxSeverity(ai.severity, baseline) : baseline;
     const priority = severity !== baseline ? priorityForSeverity(severity, t.priority) : undefined;
@@ -261,7 +270,7 @@ export async function runTriage(id: string): Promise<void> {
         ),
       );
     } else {
-      notes.push(note(`AI triage ${state === 'skipped' ? 'skipped' : 'failed'}: ${reason}. A person will handle this ticket.${due ? ` ${slaLine(severity, due)} (from the reporter's urgency).` : ''}`));
+      notes.push(note(`AI triage ${state === 'skipped' ? 'skipped' : attempts > 1 ? `failed after ${attempts} tries` : 'failed'}: ${reason}. A person will handle this ticket.${due ? ` ${slaLine(severity, due)} (from the reporter's urgency).` : ''}`));
     }
     if (duplicateOf) notes.push(note(`Looks like the same problem as ${duplicateOf.id} (${duplicateOf.tenantName}: "${duplicateOf.subject}"), similarity ${pct(Math.min(1, duplicateOf.score))}.`));
     const saved = await store.automate(id, { triageState: state, triage, severity, slaDueAt: due, ...(priority ? { priority } : {}) }, { triageState: 'running' }, notes);
@@ -270,6 +279,26 @@ export async function runTriage(id: string): Promise<void> {
     else if (ai.type === 'bug') await workingOnIt(saved, eff);
   } catch (err) {
     storageProblem(err, `triage ${id}`);
+  }
+}
+
+/**
+ * Staff: "Run AI triage again" on a ticket whose triage failed. Back to 'pending' with the tries starting over, in one
+ * conditional update (only from 'failed', so a double click or a second server changes nothing). The caller then runs
+ * runTriage, which claims it as usual. Null when the ticket is not in 'failed'.
+ */
+export async function requestRetriage(id: string, by: string): Promise<TroubleTicket | null> {
+  return getSupportTicketStore().automate(id, { triageState: 'pending', triageAttempts: 0 }, { triageState: 'failed' }, [note(`${by.slice(0, 120)} asked for AI triage again.`)]);
+}
+
+/**
+ * Triage now, including the one retry of an unusable answer. For "Run AI triage again": that ticket may be older than
+ * the sweep's 24-hour window (triage_stuck), so its retry cannot wait for the sweep. Claims stay conditional.
+ */
+export async function runTriageNow(id: string): Promise<void> {
+  for (let i = 0; i < MAX_TRIAGE_ATTEMPTS; i++) {
+    await runTriage(id);
+    if ((await getSupportTicketStore().get(id).catch(() => null))?.automation?.triageState !== 'pending') return;
   }
 }
 
@@ -580,7 +609,8 @@ async function retryStuckTriage(): Promise<number> {
   const cutoff = new Date(Date.now() - TRIAGE_RETRY_AFTER_MS).toISOString();
   const stale = new Date(Date.now() - TRIAGE_STALE_MS).toISOString();
   const stuck = (await getSupportTicketStore().listForAutomation('triage_stuck', iso(), 20)).filter((t) =>
-    t.automation?.triageState === 'pending' ? t.createdAt < cutoff : !!t.automation?.triageClaimedAt && t.automation.triageClaimedAt < stale,
+    // A ticket put back after an unusable answer (attempts > 0) is retried on the next check; a never-claimed one after the cutoff.
+    t.automation?.triageState === 'pending' ? t.automation.triageAttempts > 0 || t.createdAt < cutoff : !!t.automation?.triageClaimedAt && t.automation.triageClaimedAt < stale,
   );
   for (const t of stuck.slice(0, 5)) await runTriage(t.id);
   return Math.min(stuck.length, 5);
