@@ -1252,7 +1252,6 @@ export function emptyDocV2(profile: ProposalProfile = DEFAULT_PROFILE, opts: { b
 
 /** One-way: a v1 document rebuilt as v2 (text, tables and prices carried over; the owner reviews it). */
 export function upgradeV1(d: ProposalDocV1, profile: ProposalProfile = DEFAULT_PROFILE): ProposalDocV2 {
-  const [byName, ...byRest] = (d.cover.preparedBy || '').split(/,\s*/);
   const sections = d.sections.map((s) => {
     const blocks: unknown[] = s.blocks.map((b) => ({ ...b }));
     if (s.kind === 'pricing' && s.rows.length) {
@@ -1282,7 +1281,8 @@ export function upgradeV1(d: ProposalDocV1, profile: ProposalProfile = DEFAULT_P
       clientCompany: d.cover.clientCompany,
       stats: [],
       preparedFor: { name: d.cover.contactName, title: d.cover.contactTitle, url: '' },
-      preparedBy: byName ? { name: byName, title: byRest.join(', '), credential: profile.credential, url: profile.url } : { name: profile.name, title: profile.title, credential: profile.credential, url: profile.url },
+      // The sign-off always comes from the Proposal sign-off settings, as on new v2 drafts (PV2-L3).
+      preparedBy: { name: profile.name, title: profile.title, credential: profile.credential, url: profile.url },
     },
     coverChecks: Object.fromEntries(
       Object.entries(d.coverChecks).map(([k, v]) => [k === 'subtitle' ? 'lead' : k === 'contactName' || k === 'contactTitle' ? 'preparedFor' : k, v]),
