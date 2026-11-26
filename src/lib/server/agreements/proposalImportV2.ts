@@ -411,7 +411,8 @@ export function checkChunkV2(c: ChunkDocV2, src: SourceV2, scanned: number[], ch
     const k: Checker = { src, fromScan };
     if (fromScan) s.check = mark(s.check, 'Read from a scanned page: compare the wording with your PDF.');
     const sv = s as unknown as Record<string, string>;
-    for (const [key, role, label] of [['eyebrow', 'heading', 'Eyebrow'], ['heading', 'heading', 'Heading'], ['lead', 'body', 'Lead']] as const) {
+    // Every section text the reply can set is checked (the continued note is printed on each continued page).
+    for (const [key, role, label] of [['eyebrow', 'heading', 'Eyebrow'], ['heading', 'heading', 'Heading'], ['lead', 'body', 'Lead'], ['continuedNote', 'display', 'Continued note']] as const) {
       for (const n of checkValue(() => sv[key], (v) => (sv[key] = v), role, label, k)) s.check = mark(s.check, n);
     }
     for (const comp of s.blocks) {
@@ -453,6 +454,10 @@ export function checkChunkV2(c: ChunkDocV2, src: SourceV2, scanned: number[], ch
     for (const n of checkValue(() => st.value, (v) => (st.value = v), 'display', 'Stat value', k)) coverNote('stats', n);
     for (const n of checkValue(() => st.label, (v) => (st.label = v), 'display', 'Stat label', k)) coverNote('stats', n);
   });
+  // The Acceptance page title is display text (the binding page: what it names must be in the PDF).
+  if (c.doc.acceptance.title.trim()) {
+    for (const n of checkValue(() => c.doc.acceptance.title, (v) => (c.doc.acceptance.title = v), 'heading', 'Acceptance title', k)) c.doc.acceptance.check = mark(c.doc.acceptance.check, n);
+  }
   // The acceptance line is fixed text.
   if (c.acceptanceSet && c.doc.acceptance.lead.trim()) {
     for (const n of checkValue(() => c.doc.acceptance.lead, (v) => (c.doc.acceptance.lead = v), 'fixed', 'Acceptance line', k)) c.doc.acceptance.check = mark(c.doc.acceptance.check, n);
