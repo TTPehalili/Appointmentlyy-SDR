@@ -18,7 +18,8 @@ import {
   addSystemInvoice,
   WISE_PAYMENT_LINK,
 } from '@/lib/icpQuotaStore';
-import MinimalistInvoiceCard from './MinimalistInvoiceCard';
+import MinimalistInvoiceCard, { type MinimalistInvoiceCardProps } from './MinimalistInvoiceCard';
+import InvoicePrintCopy from './InvoicePrintCopy';
 import { Badge, Button, Dialog, IconButton, buttonClasses } from '@/components/ui';
 
 export interface QuotaTopUpModalProps {
@@ -133,7 +134,34 @@ export default function QuotaTopUpModal({
     }
   };
 
+  // The finished invoice: the card on screen and the print copy share these props.
+  const generatedDocument: MinimalistInvoiceCardProps | null = generatedInvoice
+    ? {
+        invoiceNumber: generatedInvoice.invoiceNumber,
+        issueDate: generatedInvoice.issueDate,
+        tenantName,
+        clientContactName,
+        clientEmail: recipientEmail,
+        totalAmountUsd: selectedPack.priceUsd,
+        ticketId: generatedInvoice.ticketId,
+        lineItems: [
+          {
+            description: `ICP Data Cloud Quota Tap-Up — +${selectedPack.records.toLocaleString()} Verified Records`,
+            subtext:
+              'Additional verified B2B decision-maker records credited upon confirmation',
+            amountUsd: selectedPack.priceUsd,
+          },
+        ],
+        footerNote: `On-demand ICP credit top-up. Logged under Support Ticket ${
+          generatedInvoice.ticketId || 'Desk'
+        }.`,
+      }
+    : null;
+
   return (
+    <>
+    {/* What "Print or save as PDF" prints: only while the modal is open on the finished invoice. */}
+    {isOpen && generatedDocument && <InvoicePrintCopy {...generatedDocument} />}
     <Dialog
       open={isOpen}
       onClose={onClose}
@@ -377,26 +405,7 @@ export default function QuotaTopUpModal({
               </div>
 
               {/* Official Minimalist Invoice Document */}
-              <MinimalistInvoiceCard
-                invoiceNumber={generatedInvoice.invoiceNumber}
-                issueDate={generatedInvoice.issueDate}
-                tenantName={tenantName}
-                clientContactName={clientContactName}
-                clientEmail={recipientEmail}
-                totalAmountUsd={selectedPack.priceUsd}
-                ticketId={generatedInvoice.ticketId}
-                lineItems={[
-                  {
-                    description: `ICP Data Cloud Quota Tap-Up — +${selectedPack.records.toLocaleString()} Verified Records`,
-                    subtext:
-                      'Additional verified B2B decision-maker records credited upon confirmation',
-                    amountUsd: selectedPack.priceUsd,
-                  },
-                ]}
-                footerNote={`On-demand ICP credit top-up. Logged under Support Ticket ${
-                  generatedInvoice.ticketId || 'Desk'
-                }.`}
-              />
+              {generatedDocument && <MinimalistInvoiceCard {...generatedDocument} />}
 
               <div className="flex items-center justify-between pt-2">
                 <Button
@@ -421,5 +430,6 @@ export default function QuotaTopUpModal({
         </div>
       </div>
     </Dialog>
+    </>
   );
 }

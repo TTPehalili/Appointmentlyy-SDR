@@ -728,3 +728,34 @@
     display: block !important;
   }
 }
+
+/* Invoice print copy (InvoicePrintCopy, rendered into <body> by Admin > Billing): while it is active, print shows
+   that document only, light theme (dark tokens are screen only), dark logo header kept, rows never split.
+   data-print-active is removed when the page is hidden by <Activity> (cacheComponents), so other pages print as usual. */
+.invoice-print-root {
+  display: none;
+}
+@media print {
+  body:has(> .invoice-print-root[data-print-active]) > :not(.invoice-print-root[data-print-active]) {
+    display: none !important;
+  }
+  .invoice-print-root[data-print-active] {
+    display: block !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice-print-root > * {
+    box-shadow: none;
+  }
+  /* The invoice reference is a copy button on screen: print the number, not the button or its icon. */
+  .invoice-print-root button {
+    display: inline !important;
+  }
+  .invoice-print-root button svg {
+    display: none !important;
+  }
+  .invoice-print-root tr,
+  .invoice-print-root > div > div > div:not(:has(table)) {
+    break-inside: avoid;
+  }
+}

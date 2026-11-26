@@ -40,7 +40,8 @@ import {
   isValidInvoiceEmail,
   type InvoiceTextBlocks,
 } from '@/lib/invoiceText';
-import MinimalistInvoiceCard from '@/components/icp/MinimalistInvoiceCard';
+import MinimalistInvoiceCard, { type MinimalistInvoiceCardProps } from '@/components/icp/MinimalistInvoiceCard';
+import InvoicePrintCopy from '@/components/icp/InvoicePrintCopy';
 import InvoiceTextAi from '@/components/admin/InvoiceTextAi';
 import { isDemoWorkspace } from '@/lib/demoMode';
 
@@ -383,6 +384,38 @@ export default function BillingInvoiceManager() {
   const handleMarkPaidAndCredit = (invId: string) => {
     markInvoicePaidAndProvision(invId);
     setInvoices(getStoredInvoices());
+  };
+
+  // One set of props per document, shared by the on-screen card and the print copy, so they cannot drift apart.
+  const liveDocument: MinimalistInvoiceCardProps = {
+    invoiceNumber,
+    issueDate,
+    tenantName,
+    clientContactName,
+    clientEmail,
+    totalAmountUsd,
+    lineItems,
+    footerNote: invoiceNote,
+    refundPolicy,
+    paymentInstructions,
+    inquiriesEmail,
+  };
+  const savedDocument = (inv: SystemInvoice): MinimalistInvoiceCardProps => {
+    const text = invoiceTextOf(inv);
+    return {
+      invoiceNumber: inv.invoiceNumber,
+      issueDate: inv.issueDate,
+      tenantName: inv.tenantName,
+      clientContactName: inv.clientContactName,
+      clientEmail: inv.clientEmail,
+      totalAmountUsd: inv.totalAmountUsd,
+      lineItems: inv.lineItems,
+      ticketId: inv.ticketId,
+      footerNote: text.note,
+      refundPolicy: text.refundPolicy,
+      paymentInstructions: text.paymentInstructions,
+      inquiriesEmail: text.inquiriesEmail,
+    };
   };
 
   const presetClass = (active: boolean) =>
@@ -805,21 +838,12 @@ export default function BillingInvoiceManager() {
             </span>
           </div>
 
-          <MinimalistInvoiceCard
-            invoiceNumber={invoiceNumber}
-            issueDate={issueDate}
-            tenantName={tenantName}
-            clientContactName={clientContactName}
-            clientEmail={clientEmail}
-            totalAmountUsd={totalAmountUsd}
-            lineItems={lineItems}
-            footerNote={invoiceNote}
-            refundPolicy={refundPolicy}
-            paymentInstructions={paymentInstructions}
-            inquiriesEmail={inquiriesEmail}
-          />
+          <MinimalistInvoiceCard {...liveDocument} />
         </div>
       </div>
+
+      {/* What Print / PDF (and Ctrl+P) prints: the saved invoice open in View, otherwise the live document. */}
+      <InvoicePrintCopy {...(selectedPreviewInvoice ? savedDocument(selectedPreviewInvoice) : liveDocument)} />
 
       {/* 3. SYSTEM INVOICE LEDGER & 1-CLICK WISE PAYMENT APPROVAL */}
       <Card className="overflow-hidden">
@@ -922,20 +946,7 @@ export default function BillingInvoiceManager() {
                 Close preview
               </Button>
             </div>
-            <MinimalistInvoiceCard
-              invoiceNumber={selectedPreviewInvoice.invoiceNumber}
-              issueDate={selectedPreviewInvoice.issueDate}
-              tenantName={selectedPreviewInvoice.tenantName}
-              clientContactName={selectedPreviewInvoice.clientContactName}
-              clientEmail={selectedPreviewInvoice.clientEmail}
-              totalAmountUsd={selectedPreviewInvoice.totalAmountUsd}
-              lineItems={selectedPreviewInvoice.lineItems}
-              ticketId={selectedPreviewInvoice.ticketId}
-              footerNote={invoiceTextOf(selectedPreviewInvoice).note}
-              refundPolicy={invoiceTextOf(selectedPreviewInvoice).refundPolicy}
-              paymentInstructions={invoiceTextOf(selectedPreviewInvoice).paymentInstructions}
-              inquiriesEmail={invoiceTextOf(selectedPreviewInvoice).inquiriesEmail}
-            />
+            <MinimalistInvoiceCard {...savedDocument(selectedPreviewInvoice)} />
           </div>
         )}
       </Dialog>
