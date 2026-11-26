@@ -23,8 +23,10 @@
 --   working_email_at / auto_answer_at: set once when that email went out (same once-only claim)
 --   fix_*:           "Fix ready" with the release commit, the resolution reply, and the send state
 --                    (fix_ready -> sending -> sent; "sending" is claimed with one conditional UPDATE)
--- support_settings: one row (id = 1): AI triage on/off, auto emails on/off, daily AI cap (null = server default)
--- support_ai_calls: one row per support AI call, for the durable daily cap (kept small; old rows may be deleted)
+-- support_settings: one row (id = 1): AI triage on/off, auto emails on/off, daily AI cap and per-workspace daily AI cap
+--                    (null = the server default: SUPPORT_AI_DAILY_CAP / SUPPORT_AI_TENANT_DAILY_CAP)
+-- support_ai_calls: one row per support AI call, with the workspace whose ticket caused it (null for calls staff start),
+--                    for the durable daily caps (kept small; rows older than a few days may be deleted)
 
 alter table public.support_tickets add column if not exists triage_state text not null default 'none';
 alter table public.support_tickets alter column triage_state set default 'pending';
@@ -82,6 +84,7 @@ create table if not exists public.support_settings (
   ai_triage    boolean not null default true,
   auto_emails  boolean not null default true,
   ai_daily_cap integer check (ai_daily_cap is null or ai_daily_cap between 0 and 100000),
+  ai_tenant_daily_cap integer check (ai_tenant_daily_cap is null or ai_tenant_daily_cap between 0 and 100000),
   updated_by   text not null default '' check (char_length(updated_by) <= 254),
   updated_at   timestamptz not null default now()
 );
@@ -90,9 +93,14 @@ create table if not exists public.support_ai_calls (
   id         uuid primary key default gen_random_uuid(),
   kind       text not null check (char_length(kind) between 1 and 40),
   ticket_id  text references public.support_tickets(id) on update cascade on delete set null,
+  tenant_code text check (tenant_code is null or char_length(tenant_code) between 1 and 100),
   created_at timestamptz not null default now()
 );
+-- Safe on a database where an earlier draft of this table was created without these columns.
+alter table public.support_settings add column if not exists ai_tenant_daily_cap integer check (ai_tenant_daily_cap is null or ai_tenant_daily_cap between 0 and 100000);
+alter table public.support_ai_calls add column if not exists tenant_code text check (tenant_code is null or char_length(tenant_code) between 1 and 100);
 create index if not exists support_ai_calls_created_idx on public.support_ai_calls (created_at);
+create index if not exists support_ai_calls_tenant_created_idx on public.support_ai_calls (tenant_code, created_at);
 
 alter table public.support_settings enable row level security;
 alter table public.support_ai_calls enable row level security;

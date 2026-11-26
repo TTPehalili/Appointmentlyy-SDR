@@ -9,7 +9,8 @@ import { normalizeSha } from '@/lib/supportAutomation';
 /**
  * Platform › Support automation panel (Appointmentlyy staff only; anyone else gets "not found").
  *   GET                                   -> switches, AI use today, deployed commit, Fix ready tickets, last check
- *   PATCH { aiTriage?, autoEmails?, aiDailyCap? (number | null) }  -> the platform switches (the server's env "off" still wins)
+ *   PATCH { aiTriage?, autoEmails?, aiDailyCap?, aiTenantDailyCap? (number | null) }  -> the platform switches and caps
+ *                                         (the server's env "off" still wins; null cap = the server default)
  *   POST  { action: 'check' }             -> run the SLA / release / stuck-triage checks now
  *   POST  { action: 'send', sha? }        -> "Send resolved replies now": every Fix ready ticket (or those linked to sha)
  */
@@ -37,7 +38,7 @@ export async function PATCH(req: NextRequest) {
   if (s.error) return s.error;
   const body = await readJsonObject(req, 4 * 1024);
   if (!body || body === 'too_large') return fail(400, 'That change could not be read.');
-  const patch: { aiTriage?: boolean; autoEmails?: boolean; aiDailyCap?: number | null } = {};
+  const patch: { aiTriage?: boolean; autoEmails?: boolean; aiDailyCap?: number | null; aiTenantDailyCap?: number | null } = {};
   if (body.aiTriage !== undefined) {
     if (typeof body.aiTriage !== 'boolean') return fail(400, 'aiTriage must be true or false.');
     patch.aiTriage = body.aiTriage;
@@ -50,6 +51,11 @@ export async function PATCH(req: NextRequest) {
     const n = body.aiDailyCap;
     if (n !== null && !(typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 100_000)) return fail(400, 'The daily AI limit must be a whole number from 0 to 100000 (or empty for the default).');
     patch.aiDailyCap = n as number | null;
+  }
+  if (body.aiTenantDailyCap !== undefined) {
+    const n = body.aiTenantDailyCap;
+    if (n !== null && !(typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 100_000)) return fail(400, 'The per-workspace daily AI limit must be a whole number from 0 to 100000 (or empty for the default).');
+    patch.aiTenantDailyCap = n as number | null;
   }
   try {
     await getSupportTicketStore().saveSettings(patch, s.session!.email);

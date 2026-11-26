@@ -18,7 +18,7 @@
  * email and AI action leaves a note on the ticket (internal notes for staff, plain updates for the reporter).
  *
  * Kill switches: SUPPORT_AI_TRIAGE=off and SUPPORT_AUTO_EMAILS=off (server), and the same two switches plus the daily
- * AI cap in Platform › Support (support_settings). Either "off" wins. No key, a failed call, a reply that fails the
+ * AI caps (global, and per workspace) in Platform › Support (support_settings). Either "off" wins. No key, a failed call, a reply that fails the
  * checks or the cap: the ticket is kept, support@ is still alerted (step 1), and a person handles it.
  */
 import {
@@ -27,11 +27,12 @@ import {
   type NewMessageInput,
   type SupportSettings,
 } from '@/lib/server/supportTickets';
-import { askResolutionDraft, askTriage, contextFileHints, looksLikeSteering, resolutionTemplate } from '@/lib/server/supportAi';
+import { answerLooksRisky, askResolutionDraft, askTriage, contextFileHints, groundingScore, looksLikeSteering, resolutionTemplate } from '@/lib/server/supportAi';
 import { aiProvider } from '@/lib/server/clientProjects/ai';
 import { sendCustomerAutoAnswer, sendCustomerNeedsMoreTime, sendCustomerResolution, sendCustomerWorkingOnIt, type MailResult } from '@/lib/ticketEmailer';
 import { helpArticleTitle } from '@/lib/helpContent';
 import { areaLabel } from '@/lib/supportReport';
+import { PLATFORM_TENANT_CODE } from '@/lib/roles';
 import {
   SEVERITY_LABEL,
   SLA_WORDS,
@@ -56,17 +57,32 @@ const isOff = (v: string | undefined) => /^(0|off|false|no|disabled?)$/i.test((v
 export const DEFAULT_AI_DAILY_CAP = 150;
 /** How-to answers go out on their own only at or above this confidence (both the type and the answer). */
 export const AUTO_ANSWER_MIN_CONFIDENCE = 0.8;
+/** ...and only when this share of its words comes from the cited Help articles, and it is this short. */
+export const AUTO_ANSWER_MIN_GROUNDING = 0.6;
+export const AUTO_ANSWER_MAX_CHARS = 900;
 const MAX_TRIAGE_ATTEMPTS = 2;
 const TRIAGE_STALE_MS = 10 * 60_000;
 /** A ticket the after() call did not pick up is retried by the sweep after this long. */
 const TRIAGE_RETRY_AFTER_MS = 2 * 60_000;
 
+/** A whole number from an env value, or the default. */
+function envInt(v: string | undefined, dflt: number): number {
+  const t = (v || '').trim();
+  const n = Number(t);
+  return t && Number.isInteger(n) && n >= 0 ? n : dflt;
+}
+/**
+ * Per-workspace daily sub-cap: one workspace (or one Rep filing in a loop) cannot use up the global cap and leave
+ * every other client without AI triage. The platform's own workspace (APPOINTMENTLYY) counts against the global cap only.
+ */
+export const DEFAULT_AI_TENANT_DAILY_CAP = 25;
+
 export function envSwitches() {
-  const n = Number((process.env.SUPPORT_AI_DAILY_CAP || '').trim());
   return {
     aiTriage: !isOff(process.env.SUPPORT_AI_TRIAGE),
     autoEmails: !isOff(process.env.SUPPORT_AUTO_EMAILS),
-    cap: (process.env.SUPPORT_AI_DAILY_CAP || '').trim() && Number.isInteger(n) && n >= 0 ? n : DEFAULT_AI_DAILY_CAP,
+    cap: envInt(process.env.SUPPORT_AI_DAILY_CAP, DEFAULT_AI_DAILY_CAP),
+    tenantCap: envInt(process.env.SUPPORT_AI_TENANT_DAILY_CAP, DEFAULT_AI_TENANT_DAILY_CAP),
   };
 }
 
@@ -74,23 +90,29 @@ export interface Effective {
   aiTriage: boolean;
   autoEmails: boolean;
   cap: number;
+  tenantCap: number;
   settings: SupportSettings;
   env: ReturnType<typeof envSwitches>;
 }
 export async function effective(): Promise<Effective> {
   const env = envSwitches();
   const settings = await getSupportTicketStore().getSettings();
-  return { aiTriage: env.aiTriage && settings.aiTriage, autoEmails: env.autoEmails && settings.autoEmails, cap: settings.aiDailyCap ?? env.cap, settings, env };
+  return { aiTriage: env.aiTriage && settings.aiTriage, autoEmails: env.autoEmails && settings.autoEmails, cap: settings.aiDailyCap ?? env.cap, tenantCap: settings.aiTenantDailyCap ?? env.tenantCap, settings, env };
 }
 
 const dayStartIso = (now = new Date()) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 
-/** Reserve one support AI call, or the plain reason it may not happen. */
-async function reserveAi(kind: string, ticketId: string | null, eff: Effective): Promise<string | null> {
+/**
+ * Reserve one support AI call, or the plain reason it may not happen. `tenantCode` is the workspace whose ticket
+ * caused the call (it counts against that workspace's sub-cap); null for calls staff start themselves (drafts).
+ */
+async function reserveAi(kind: string, ticketId: string | null, tenantCode: string | null, eff: Effective): Promise<string | null> {
   if (!eff.aiTriage) return eff.env.aiTriage ? 'support AI is turned off in Platform › Support' : 'support AI is turned off on this server (SUPPORT_AI_TRIAGE)';
   if (aiProvider() === 'off') return 'no platform AI key is configured on this server';
-  const r = await getSupportTicketStore().reserveAiCall(kind, ticketId, eff.cap, dayStartIso());
-  return r.ok ? null : `the daily limit of ${eff.cap} support AI calls is reached`;
+  const tenantCap = tenantCode && tenantCode !== PLATFORM_TENANT_CODE ? eff.tenantCap : null;
+  const r = await getSupportTicketStore().reserveAiCall(kind, ticketId, tenantCode, { global: eff.cap, tenant: tenantCap }, dayStartIso());
+  if (r.ok) return null;
+  return r.refused === 'tenant' ? `this workspace reached its daily limit of ${tenantCap} support AI calls` : `the daily limit of ${eff.cap} support AI calls is reached`;
 }
 
 // ------------------------------------------------------------------ timeline entries
@@ -211,7 +233,7 @@ export async function runTriage(id: string): Promise<void> {
     let changed = false;
     if (t.source === 'billing') reason = 'a lead-quota top-up request created by the app (no AI needed)';
     else {
-      const refused = await reserveAi('triage', id, eff);
+      const refused = await reserveAi('triage', id, t.tenantCode, eff);
       if (refused) reason = refused;
       else {
         const res = await askTriage(t);
@@ -262,6 +284,11 @@ export function autoAnswerBlock(t: TroubleTicket, ai: AiTriage, eff: Pick<Effect
   if (conf < AUTO_ANSWER_MIN_CONFIDENCE) return `confidence ${pct(conf)} is below ${pct(AUTO_ANSWER_MIN_CONFIDENCE)}`;
   if (customerTextChanged) return 'the AI answer contained a link or address (removed), so a person should check it';
   if (looksLikeSteering(t)) return 'the report contains text aimed at the AI';
+  // The model's confidence is the model's word; these checks are not (a steered model writes its own text).
+  if (h.answer.length > AUTO_ANSWER_MAX_CHARS) return 'the answer is longer than a Help center answer should be';
+  if (answerLooksRisky(h.answer, h.citations)) return 'the answer mentions accounts, roles, verification or payment';
+  const g = groundingScore(h.answer, h.citations);
+  if (g < AUTO_ANSWER_MIN_GROUNDING) return `only ${pct(g)} of the answer comes from the cited Help articles`;
   if (t.status !== 'open') return 'the ticket is no longer open';
   if (!eff.autoEmails) return 'automatic emails are turned off';
   return null;
@@ -403,13 +430,17 @@ export interface FixInput {
   draft: boolean;
   /** Optional plain notes for the AI draft ("what was fixed"). */
   notes?: string;
+  /** Re-arm a ticket whose resolution reply already went out (staff, ticket by ticket, only). */
+  allowResend?: boolean;
 }
+/** A send claimed this long ago with no outcome (the server died mid-send) may be marked again by a person. */
+const FIX_SENDING_STALE_MS = 10 * 60_000;
 export type FixResult = { ok: true; ticket: TroubleTicket; drafted: 'ai' | 'template' | 'given' } | { ok: false; status: number; error: string };
 
 /** A resolution reply draft (AI, or the template when AI is off / refused / failed). Records the AI call. */
 export async function draftResolution(t: TroubleTicket, notesText = ''): Promise<{ reply: string; by: 'ai' | 'template'; reason?: string }> {
   const eff = await effective();
-  const refused = await reserveAi('resolution', t.id, eff);
+  const refused = await reserveAi('resolution', t.id, null, eff);
   if (refused) return { reply: resolutionTemplate(t), by: 'template', reason: refused };
   const r = await askResolutionDraft(t, notesText || t.automation?.triage?.ai?.summary || '');
   await getSupportTicketStore().addMessage(t.id, note(r ? `AI drafted a resolution reply (${r.model}); not sent.` : 'AI could not draft a resolution reply; the template was used.'), null);
@@ -420,7 +451,10 @@ export async function markFixReady(id: string, input: FixInput): Promise<FixResu
   const store = getSupportTicketStore();
   const t = await store.get(id);
   if (!t?.automation) return { ok: false, status: 404, error: 'Ticket not found' };
-  if (t.automation.fix.state === 'sending') return { ok: false, status: 409, error: 'The resolution reply for this ticket is being sent right now.' };
+  const f = t.automation.fix;
+  const stale = !!f.claimedAt && Date.parse(f.claimedAt) < Date.now() - FIX_SENDING_STALE_MS;
+  if (f.state === 'sending' && !stale) return { ok: false, status: 409, error: 'The resolution reply for this ticket is being sent right now.' };
+  if (f.state === 'sent' && !input.allowResend) return { ok: false, status: 409, error: 'The resolution reply for this ticket was already sent. Re-send it from the ticket itself.' };
   let reply = input.reply.trim();
   let drafted: 'ai' | 'template' | 'given' = 'given';
   if (!reply) {
@@ -431,7 +465,8 @@ export async function markFixReady(id: string, input: FixInput): Promise<FixResu
   const saved = await store.automate(
     id,
     { fixState: 'fix_ready', fixSha: input.sha, fixReply: reply.slice(0, 4000), fixMarkedBy: input.by.slice(0, 254), fixMarkedAt: iso(), fixClaimedAt: null, fixSentAt: null },
-    {},
+    // The state read above still holds (a racing send or re-link cannot be overwritten).
+    { fixState: f.state, ...(f.state === 'sending' ? { fixClaimedBefore: new Date(Date.now() - FIX_SENDING_STALE_MS).toISOString() } : {}) },
     [
       note(
         `Marked Fix ready by ${input.by}${input.sha ? ` for release ${input.sha.slice(0, 12)}` : ' (no release linked: send it by hand)'}${drafted === 'ai' ? '; reply drafted by AI' : drafted === 'template' ? '; reply from the template' : ''}. The resolution reply goes out when that release is live.`,
@@ -487,7 +522,7 @@ async function deliverResolution(t: TroubleTicket, how: string, auto: boolean): 
     return 'failed';
   }
   // No answer from the mail service: it may or may not have gone out, so it is NOT retried automatically.
-  await store.addMessage(t.id, note(`${how}: no answer from the mail service; the resolution email to ${to} may not have gone out. Check, then mark Fix ready again to resend.`), null);
+  await store.addMessage(t.id, note(`${how}: no answer from the mail service; the resolution email to ${to} may not have gone out. Check; after 10 minutes it can be marked Fix ready again to resend.`), null);
   return 'failed';
 }
 
@@ -612,7 +647,17 @@ export async function automationStatus() {
     uptimeMs: uptimeMs(),
     healthyAfterMs: releaseHealthyMs(),
     worker: { enabled: supportWorkerEnabled(), started: s.started, everyMs: sweepEveryMs(), last: s.last },
-    ai: { provider: aiProvider(), on: eff.aiTriage, cap: eff.cap, usedToday: await store.aiCallsSince(dayStartIso()) },
+    ai: {
+      provider: aiProvider(),
+      on: eff.aiTriage,
+      cap: eff.cap,
+      tenantCap: eff.tenantCap,
+      usedToday: await store.aiCallsSince(dayStartIso()),
+      byTenant: Object.entries(await store.aiCallsByTenant(dayStartIso()))
+        .map(([tenantCode, used]) => ({ tenantCode, used, exempt: tenantCode === PLATFORM_TENANT_CODE }))
+        .sort((a, b) => b.used - a.used)
+        .slice(0, 12),
+    },
     emails: { on: eff.autoEmails },
     env: eff.env,
     settings: eff.settings,

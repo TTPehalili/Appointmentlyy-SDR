@@ -29,10 +29,18 @@ function clean(v: unknown, max: number, multiline = false): string {
   return s.replace(/[ \t]{2,}/g, ' ').trim().slice(0, max);
 }
 const EMAIL_IN_TEXT = /[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}/gi;
-/** Customer-facing AI text: no links, no email addresses (a manipulated model must not plant either). */
+/** Any bare domain with any TLD (noLinks only knows a short TLD list: evil.me, bit.ly, t.me ... got through). */
+const BARE_DOMAIN = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b(?:\/[^\s<>"')\]]*)?/gi;
+const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b(?::\d+)?(?:\/[^\s<>"')\]]*)?/g;
+/** Phone-like runs (a planted "call +1 415 555 0100" is phishing too). */
+const PHONE = /\+?\d[\d ().-]{7,}\d/g;
+/** Customer-facing AI text: no links, domains, IPs, phone numbers or email addresses (a manipulated model must not plant any). */
 export function customerSafe(s: string): { text: string; changed: boolean } {
   const out = noLinks(s)
     .replace(EMAIL_IN_TEXT, '[address removed]')
+    .replace(IPV4, '[link removed]')
+    .replace(BARE_DOMAIN, '[link removed]')
+    .replace(PHONE, '[number removed]')
     // Repository paths are internal detail, never for a customer.
     .replace(/\b(?:src|supabase|node_modules)\/[^\s,;)]+/g, '[internal detail removed]');
   return { text: out, changed: out !== s };
@@ -49,6 +57,33 @@ const FILE_RE = /^src\/[A-Za-z0-9_\-/().[\]]+\.(?:tsx?|css|sql|mjs)$/;
 const STEERING = /\b(ignore|disregard|forget|override)\b[^.\n]{0,60}\b(instruction|prompt|rule|above|previous|prior|system)|\bsystem prompt\b|\byou are now\b|\bdeveloper mode\b|\bjailbreak|\b(send|email|forward|export|leak)\b[^.\n]{0,40}\b(all|every|other)\b[^.\n]{0,30}\b(tickets?|users?|customers?|emails?|data|workspaces?)\b|<\/?(system|assistant|instructions?)>/i;
 export const looksLikeSteering = (t: Pick<TroubleTicket, 'subject' | 'description' | 'tried'>): boolean =>
   STEERING.test(`${t.subject}\n${t.description}\n${t.tried || ''}`);
+
+/**
+ * Words a Help center how-to answer never needs, and a planted "support notice" always does (role changes, credentials,
+ * verification, money). An automatic answer containing any of them waits for a person.
+ */
+const RISKY_ANSWER = /\b(passwords?|passcodes?|otp|verif(?:y|ied|ication)|re-?verify|locked|suspend(?:ed)?|security (?:notice|alert|check)|urgent(?:ly)?|immediately|payments?|bank|wire|gift ?cards?|crypto|promote|make (?:me|him|her|them|\w+) (?:an? )?(?:admin|owner|manager)|grant|credentials?|api keys?)\b/gi;
+/** A risky phrase in the answer that the cited Help articles do not use themselves (quoting the Help center is fine). */
+export function answerLooksRisky(answer: string, citations: string[]): boolean {
+  const cited = new Set(citations);
+  const source = helpArticles().filter((a) => cited.has(a.id)).map((a) => `${a.title}\n${a.text}`).join('\n');
+  const used = new Set([...source.matchAll(RISKY_ANSWER)].map((m) => m[0].toLowerCase()));
+  return [...answer.matchAll(RISKY_ANSWER)].some((m) => !used.has(m[0].toLowerCase()));
+}
+
+const GROUND_STOP = new Set('this that with from your have will then than them they what when where which into onto there here also just only each other some more most very click open page button using used want need make sure'.split(' '));
+const groundWords = (s: string) => (s.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []).filter((w) => !GROUND_STOP.has(w));
+/**
+ * Share (0..1) of the answer's content words that appear in the cited Help center articles. A model steered by the
+ * ticket writes its own text; a grounded answer reuses the articles' words. Deterministic, never from the AI.
+ */
+export function groundingScore(answer: string, citations: string[]): number {
+  const cited = new Set(citations);
+  const vocab = new Set(groundWords(helpArticles().filter((a) => cited.has(a.id)).map((a) => `${a.title}\n${a.text}`).join('\n')));
+  const ws = groundWords(answer);
+  if (!ws.length || !vocab.size) return 0;
+  return ws.filter((w) => vocab.has(w) || vocab.has(w.replace(/s$/, '')) || vocab.has(`${w}s`)).length / ws.length;
+}
 
 // ------------------------------------------------------------------ output check
 

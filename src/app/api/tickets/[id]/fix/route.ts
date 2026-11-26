@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
           sha = normalizeSha(body.sha);
           if (!sha) return fail(400, 'The release must be a git commit id (7 to 40 letters a-f and digits).');
         }
-        const r = await markFixReady(id, { sha, reply: cleanText(body.reply, SUPPORT_LIMITS.reply), by, draft: body.draft === true, notes: cleanText(body.notes, 1500) });
+        const r = await markFixReady(id, { sha, reply: cleanText(body.reply, SUPPORT_LIMITS.reply), by, draft: body.draft === true, notes: cleanText(body.notes, 1500), allowResend: body.resend === true });
         if (!r.ok) return fail(r.status, r.error);
         return ok({ ticket: r.ticket, drafted: r.drafted });
       }

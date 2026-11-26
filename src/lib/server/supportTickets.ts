@@ -75,6 +75,8 @@ export interface AutomationCond {
   isNull?: ('slaBreachAt' | 'workingEmailAt' | 'autoAnswerAt')[];
   fixState?: FixState;
   fixSha?: string | null;
+  /** fix_claimed_at is before this time (a stale "sending" claim). */
+  fixClaimedBefore?: string;
   statusIn?: TicketStatus[];
   slaDueBefore?: string;
 }
@@ -86,10 +88,19 @@ export interface SupportSettings {
   autoEmails: boolean;
   /** Support AI calls per UTC day; null = the server default (SUPPORT_AI_DAILY_CAP or 150). */
   aiDailyCap: number | null;
+  /** Support AI calls per workspace per UTC day (the platform's own workspace is exempt); null = server default. */
+  aiTenantDailyCap: number | null;
   updatedBy: string;
   updatedAt: string | null;
 }
-export const DEFAULT_SETTINGS: SupportSettings = { aiTriage: true, autoEmails: true, aiDailyCap: null, updatedBy: '', updatedAt: null };
+export const DEFAULT_SETTINGS: SupportSettings = { aiTriage: true, autoEmails: true, aiDailyCap: null, aiTenantDailyCap: null, updatedBy: '', updatedAt: null };
+
+/** The caps for one support AI call: the global one always; the workspace one unless null (exempt). */
+export interface AiCallCaps {
+  global: number;
+  tenant: number | null;
+}
+export type AiReservation = { ok: true; used: number; tenantUsed: number } | { ok: false; used: number; tenantUsed: number; refused: 'global' | 'tenant' };
 
 export function automationView(a: AutoFields): TicketAutomation {
   return {
@@ -114,6 +125,7 @@ function condHolds(a: AutoFields, status: TicketStatus, c: AutomationCond): bool
   for (const k of c.isNull ?? []) if (a[k] !== null) return false;
   if (c.fixState !== undefined && a.fixState !== c.fixState) return false;
   if (c.fixSha !== undefined && a.fixSha !== c.fixSha) return false;
+  if (c.fixClaimedBefore !== undefined && !(a.fixClaimedAt && a.fixClaimedAt < c.fixClaimedBefore)) return false;
   if (c.statusIn && !c.statusIn.includes(status)) return false;
   if (c.slaDueBefore !== undefined && !(a.slaDueAt && a.slaDueAt < c.slaDueBefore)) return false;
   return true;
@@ -251,14 +263,16 @@ export interface SupportTicketStore {
   /** Tickets an automation step may need to look at (bounded). */
   listForAutomation(kind: AutomationListKind, nowIso: string, limit: number): Promise<TroubleTicket[]>;
   getSettings(): Promise<SupportSettings>;
-  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string): Promise<SupportSettings>;
+  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap' | 'aiTenantDailyCap'>>, by: string): Promise<SupportSettings>;
   /**
-   * Durable daily cap on support AI calls: records the call, then counts today's calls (this one included). If that
-   * passes `cap` the record is taken back and the call must not happen. Racing callers may all be refused near the
-   * cap, but together they can never pass it.
+   * Durable daily caps on support AI calls: records the call (with its workspace), then counts today's calls, all and
+   * the workspace's (this one included). If either passes its cap the record is taken back and the call must not
+   * happen. Racing callers may all be refused near a cap, but together they can never pass it.
    */
-  reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string): Promise<{ ok: boolean; used: number }>;
+  reserveAiCall(kind: string, ticketId: string | null, tenantCode: string | null, caps: AiCallCaps, dayStartIso: string): Promise<AiReservation>;
   aiCallsSince(sinceIso: string): Promise<number>;
+  /** Today's support AI calls per workspace (only those recorded with one). */
+  aiCallsByTenant(sinceIso: string): Promise<Record<string, number>>;
 }
 
 // ------------------------------------------------------------------ ids
@@ -301,7 +315,7 @@ interface FileData {
 }
 interface FileExtra {
   settings: SupportSettings;
-  aiCalls: { id: string; kind: string; ticketId: string | null; createdAt: string }[];
+  aiCalls: { id: string; kind: string; ticketId: string | null; tenantCode?: string | null; createdAt: string }[];
 }
 
 const LOCK_STALE_MS = 15_000;
@@ -435,7 +449,7 @@ class FileSupportTicketStore implements SupportTicketStore {
   async getSettings() {
     return this.readExtra().settings;
   }
-  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string) {
+  saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap' | 'aiTenantDailyCap'>>, by: string) {
     return this.serial(() => {
       const x = this.readExtra();
       x.settings = { ...x.settings, ...patch, updatedBy: by, updatedAt: nowIso() };
@@ -443,18 +457,26 @@ class FileSupportTicketStore implements SupportTicketStore {
       return x.settings;
     });
   }
-  reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string) {
-    return this.serial(() => {
+  reserveAiCall(kind: string, ticketId: string | null, tenantCode: string | null, caps: AiCallCaps, dayStartIso: string) {
+    return this.serial((): AiReservation => {
       const x = this.readExtra();
       // Keep two days of records (enough for "today"); older ones are only history.
       const keepFrom = new Date(Date.parse(dayStartIso) - DAY_MS).toISOString();
       x.aiCalls = x.aiCalls.filter((c) => c.createdAt >= keepFrom);
-      const used = x.aiCalls.filter((c) => c.createdAt >= dayStartIso).length;
-      if (used + 1 > cap) return { ok: false, used };
-      x.aiCalls.push({ id: crypto.randomUUID(), kind, ticketId, createdAt: nowIso() });
+      const today = x.aiCalls.filter((c) => c.createdAt >= dayStartIso);
+      const used = today.length;
+      const tenantUsed = tenantCode ? today.filter((c) => c.tenantCode === tenantCode).length : 0;
+      if (used + 1 > caps.global) return { ok: false, used, tenantUsed, refused: 'global' };
+      if (caps.tenant !== null && tenantUsed + 1 > caps.tenant) return { ok: false, used, tenantUsed, refused: 'tenant' };
+      x.aiCalls.push({ id: crypto.randomUUID(), kind, ticketId, tenantCode, createdAt: nowIso() });
       this.writeJson(this.extraFile, x);
-      return { ok: true, used: used + 1 };
+      return { ok: true, used: used + 1, tenantUsed: tenantCode ? tenantUsed + 1 : 0 };
     });
+  }
+  async aiCallsByTenant(sinceIso: string) {
+    const out: Record<string, number> = {};
+    for (const c of this.readExtra().aiCalls) if (c.createdAt >= sinceIso && c.tenantCode) out[c.tenantCode] = (out[c.tenantCode] ?? 0) + 1;
+    return out;
   }
   async aiCallsSince(sinceIso: string) {
     return this.readExtra().aiCalls.filter((c) => c.createdAt >= sinceIso).length;
@@ -938,6 +960,7 @@ class SupabaseSupportTicketStore implements SupportTicketStore {
     for (const k of cond.isNull ?? []) q = q.is(AUTO_COLUMN[k], null);
     if (cond.fixState !== undefined) q = q.eq('fix_state', cond.fixState);
     if (cond.fixSha !== undefined) q = cond.fixSha === null ? q.is('fix_release_sha', null) : q.eq('fix_release_sha', cond.fixSha);
+    if (cond.fixClaimedBefore !== undefined) q = q.lt('fix_claimed_at', cond.fixClaimedBefore);
     if (cond.statusIn) q = q.in('status', cond.statusIn);
     if (cond.slaDueBefore !== undefined) q = q.lt('sla_due_at', cond.slaDueBefore);
     const rows = this.check(await q.select('id')) as Row[];
@@ -960,34 +983,56 @@ class SupabaseSupportTicketStore implements SupportTicketStore {
   async getSettings(): Promise<SupportSettings> {
     const r = this.check(await this.db.from(T_SETTINGS).select('*').eq('id', 1).maybeSingle()) as Row | null;
     if (!r) return { ...DEFAULT_SETTINGS };
-    const cap = r.ai_daily_cap === null || r.ai_daily_cap === undefined ? null : Number(r.ai_daily_cap);
+    const capOf = (v: unknown) => {
+      const n = v === null || v === undefined ? null : Number(v);
+      return n !== null && Number.isInteger(n) && n >= 0 ? n : null;
+    };
     return {
       aiTriage: r.ai_triage !== false,
       autoEmails: r.auto_emails !== false,
-      aiDailyCap: cap !== null && Number.isInteger(cap) && cap >= 0 ? cap : null,
+      aiDailyCap: capOf(r.ai_daily_cap),
+      aiTenantDailyCap: capOf(r.ai_tenant_daily_cap),
       updatedBy: String(r.updated_by ?? ''),
       updatedAt: isoOrNull(r.updated_at),
     };
   }
-  async saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap'>>, by: string) {
+  async saveSettings(patch: Partial<Pick<SupportSettings, 'aiTriage' | 'autoEmails' | 'aiDailyCap' | 'aiTenantDailyCap'>>, by: string) {
     const cur = await this.getSettings();
     const next = { ...cur, ...patch };
     this.check(
       await this.db
         .from(T_SETTINGS)
-        .upsert({ id: 1, ai_triage: next.aiTriage, auto_emails: next.autoEmails, ai_daily_cap: next.aiDailyCap, updated_by: by.slice(0, 254), updated_at: nowIso() }, { onConflict: 'id' }),
+        .upsert({ id: 1, ai_triage: next.aiTriage, auto_emails: next.autoEmails, ai_daily_cap: next.aiDailyCap, ai_tenant_daily_cap: next.aiTenantDailyCap, updated_by: by.slice(0, 254), updated_at: nowIso() }, { onConflict: 'id' }),
     );
     return this.getSettings();
   }
-  async reserveAiCall(kind: string, ticketId: string | null, cap: number, dayStartIso: string) {
-    if (cap <= 0) return { ok: false, used: await this.aiCallsSince(dayStartIso) };
-    const r = this.check(await this.db.from(T_AI_CALLS).insert({ kind: kind.slice(0, 40), ticket_id: ticketId }).select('id').single()) as Row;
+  private async tenantCallsSince(tenantCode: string, sinceIso: string) {
+    const { count, error } = await this.db.from(T_AI_CALLS).select('id', { count: 'exact', head: true }).eq('tenant_code', tenantCode).gte('created_at', sinceIso);
+    if (error) this.check({ data: null, error });
+    return count ?? 0;
+  }
+  async reserveAiCall(kind: string, ticketId: string | null, tenantCode: string | null, caps: AiCallCaps, dayStartIso: string): Promise<AiReservation> {
+    if (caps.global <= 0) return { ok: false, used: await this.aiCallsSince(dayStartIso), tenantUsed: 0, refused: 'global' };
+    if (caps.tenant !== null && caps.tenant <= 0) return { ok: false, used: await this.aiCallsSince(dayStartIso), tenantUsed: 0, refused: 'tenant' };
+    const r = this.check(await this.db.from(T_AI_CALLS).insert({ kind: kind.slice(0, 40), ticket_id: ticketId, tenant_code: tenantCode }).select('id').single()) as Row;
+    // Counted after the insert, with this row included: racing callers on any server cannot pass a cap together.
     const used = await this.aiCallsSince(dayStartIso);
-    if (used > cap) {
+    const tenantUsed = tenantCode ? await this.tenantCallsSince(tenantCode, dayStartIso) : 0;
+    const refused = used > caps.global ? 'global' : caps.tenant !== null && tenantUsed > caps.tenant ? 'tenant' : null;
+    if (refused) {
       await this.db.from(T_AI_CALLS).delete().eq('id', String(r.id));
-      return { ok: false, used: used - 1 };
+      return { ok: false, used: used - 1, tenantUsed: tenantCode ? tenantUsed - 1 : 0, refused };
     }
-    return { ok: true, used };
+    return { ok: true, used, tenantUsed };
+  }
+  async aiCallsByTenant(sinceIso: string) {
+    const rows = this.check(await this.db.from(T_AI_CALLS).select('tenant_code').gte('created_at', sinceIso).not('tenant_code', 'is', null).limit(5000)) as Row[];
+    const out: Record<string, number> = {};
+    for (const row of rows) {
+      const k = String(row.tenant_code);
+      out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
   }
   async aiCallsSince(sinceIso: string) {
     const { count, error } = await this.db.from(T_AI_CALLS).select('id', { count: 'exact', head: true }).gte('created_at', sinceIso);

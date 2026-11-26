@@ -215,7 +215,7 @@ export function FixPanel({ ticket, onTicket }: { ticket: TroubleTicket; onTicket
     }
   };
   const save = async () => {
-    const d = await act('save', { sha: sha.trim() || null, reply });
+    const d = await act('save', { sha: sha.trim() || null, reply, resend: state === 'sent' });
     if (d) {
       setEditing(false);
       setInfo('Saved. The reply goes out once that release is live.');
@@ -309,10 +309,10 @@ interface Status {
   uptimeMs: number;
   healthyAfterMs: number;
   worker: { enabled: boolean; started: boolean; everyMs: number; last: { at: string; slaUpdates: number; triageRetried: number; release: { sent: number; reason?: string } | null; error?: string } | null };
-  ai: { provider: string; on: boolean; cap: number; usedToday: number };
+  ai: { provider: string; on: boolean; cap: number; tenantCap: number; usedToday: number; byTenant: { tenantCode: string; used: number; exempt: boolean }[] };
   emails: { on: boolean };
-  env: { aiTriage: boolean; autoEmails: boolean; cap: number };
-  settings: { aiTriage: boolean; autoEmails: boolean; aiDailyCap: number | null; updatedBy: string; updatedAt: string | null };
+  env: { aiTriage: boolean; autoEmails: boolean; cap: number; tenantCap: number };
+  settings: { aiTriage: boolean; autoEmails: boolean; aiDailyCap: number | null; aiTenantDailyCap: number | null; updatedBy: string; updatedAt: string | null };
   fixReady: { id: string; subject: string; tenantName: string; sha: string | null; live: boolean }[];
 }
 
@@ -323,6 +323,7 @@ export function AutomationBar({ onChanged, version }: { onChanged: () => void; v
   const [busy, setBusy] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState(false);
   const [cap, setCap] = React.useState('');
+  const [tenantCap, setTenantCap] = React.useState('');
   const [confirmSend, setConfirmSend] = React.useState(false);
   const [note, setNote] = React.useState<string | null>(null);
   const apply = React.useCallback((r: { ok: boolean; data: Record<string, unknown> }) => {
@@ -406,7 +407,7 @@ export function AutomationBar({ onChanged, version }: { onChanged: () => void; v
           <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={busy === 'check'} onClick={() => void post('check')}>
             Run checks
           </Button>
-          <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => { setOpen((o) => !o); setCap(s?.settings.aiDailyCap === null || s?.settings.aiDailyCap === undefined ? '' : String(s.settings.aiDailyCap)); }}>
+          <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => { setOpen((o) => !o); setCap(s?.settings.aiDailyCap === null || s?.settings.aiDailyCap === undefined ? '' : String(s.settings.aiDailyCap)); setTenantCap(s?.settings.aiTenantDailyCap === null || s?.settings.aiTenantDailyCap === undefined ? '' : String(s.settings.aiTenantDailyCap)); }}>
             Settings
           </Button>
         </div>
@@ -438,6 +439,30 @@ export function AutomationBar({ onChanged, version }: { onChanged: () => void; v
               </Button>
             </div>
           </div>
+          <div className="space-y-1">
+            <span className="block text-body-strong text-fg">AI calls per workspace per day</span>
+            <div className="flex items-center gap-2">
+              <Input value={tenantCap} onChange={(e) => setTenantCap(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} placeholder={`${s.env.tenantCap} (default)`} inputMode="numeric" aria-label="AI calls per workspace per day" className="w-28" />
+              <Button size="sm" variant="secondary" disabled={busy === 'patch'} onClick={() => void patch({ aiTenantDailyCap: tenantCap === '' ? null : Number(tenantCap) })}>
+                Save
+              </Button>
+            </div>
+            <span className="block text-caption text-fg-tertiary">The Appointmentlyy workspace counts against the daily total only.</span>
+          </div>
+          {s.ai.byTenant.length > 0 && (
+            <div className="sm:col-span-2" data-testid="automation-tenant-usage">
+              <div className="text-caption text-fg-tertiary">AI calls today by workspace</div>
+              <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                {s.ai.byTenant.map((u) => (
+                  <li key={u.tenantCode} className="flex items-center gap-1.5">
+                    <span className="font-mono text-caption">{u.tenantCode}</span>
+                    <span className="tabular-nums text-fg">{u.used}{u.exempt ? '' : `/${s.ai.tenantCap}`}</span>
+                    {!u.exempt && u.used >= s.ai.tenantCap && <Badge tone="warning">limit reached</Badge>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {s.fixReady.length > 0 && (
             <div className="sm:col-span-3">
               <div className="text-caption text-fg-tertiary">Fix ready</div>

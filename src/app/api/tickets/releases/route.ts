@@ -1,12 +1,13 @@
 import crypto from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { getServerSession } from '@/lib/server/session';
-import { rateLimit } from '@/lib/authToken';
+import { getAppBaseUrl, rateLimit } from '@/lib/authToken';
 import { getSupportTicketStore, normalizeTicketId } from '@/lib/server/supportTickets';
 import { cleanText, fail, ok, readJsonObject, storageFail } from '@/lib/server/supportTicketsHttp';
 import { deployedSha, markFixReady } from '@/lib/server/supportAutomation';
 import { normalizeSha, shaMatches } from '@/lib/supportAutomation';
 import { SUPPORT_LIMITS } from '@/lib/supportReport';
+import { customerSafe } from '@/lib/server/supportAi';
 
 /**
  * Release linking for publishing (support step 2). Links tickets to the release commit that fixes them, so their
@@ -32,14 +33,24 @@ function tokenOk(req: NextRequest): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
+/** A browser request from another site (the session path is cookie-authenticated; SameSite=Lax alone is not enough). */
+function crossSite(req: NextRequest): boolean {
+  const site = req.headers.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') return true;
+  const origin = req.headers.get('origin');
+  return !!origin && origin !== req.nextUrl.origin && origin !== getAppBaseUrl();
+}
+
 async function caller(req: NextRequest): Promise<{ by: string } | { error: Response }> {
   const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'local';
-  if (!rateLimit(`support-releases:${ip}`, 30, 60_000)) return { error: fail(429, 'Too many requests. Wait a minute.') };
+  // The per-IP key is spoofable (X-Forwarded-For, AUDIT M-2): one global bucket too, so rotating the header gains nothing.
+  if (!rateLimit('support-releases:all', 120, 60_000) || !rateLimit(`support-releases:${ip}`, 30, 60_000)) return { error: fail(429, 'Too many requests. Wait a minute.') };
   if (req.headers.get('authorization')) {
     if (tokenOk(req)) return { by: 'release script' };
     console.warn('[support-auto] releases: rejected a bearer token');
     return { error: fail(401, 'Not authorised.') };
   }
+  if (crossSite(req)) return { error: fail(403, 'Not allowed from another site.') };
   const session = await getServerSession(req);
   if (!session) return { error: fail(401, 'Please sign in again.') };
   if (!session.isPlatformAdmin) return { error: fail(404, 'Not found') };
@@ -59,6 +70,10 @@ export async function POST(req: NextRequest) {
     const o = x && typeof x === 'object' ? (x as Record<string, unknown>) : { id: x };
     return { id: normalizeTicketId(o.id), raw: String(o.id ?? '').slice(0, 40), reply: cleanText(o.reply, SUPPORT_LIMITS.reply) };
   });
+  // Replies set here reach customers by themselves once the release is live: plain words only (no links, domains,
+  // phone numbers or addresses). Anything richer is written by a person on the ticket itself (/api/tickets/[id]/fix).
+  const unsafe = items.find((it) => it.reply && customerSafe(it.reply).changed);
+  if (unsafe) return fail(400, `The reply for ${unsafe.raw || 'a ticket'} contains a link, address or phone number. Write it on the ticket instead.`);
   const notes = cleanText(body.notes, 1500);
   const results: { id: string; ok: boolean; error?: string; drafted?: string }[] = [];
   try {
