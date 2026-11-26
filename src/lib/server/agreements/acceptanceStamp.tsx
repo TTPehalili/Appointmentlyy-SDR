@@ -12,7 +12,7 @@ import { Document, Image, Page, Text, View, renderToBuffer } from '@react-pdf/re
 import { PDFDocument } from 'pdf-lib';
 import { FONT_FAMILY, SCRIPT_FONT_FAMILY, registerAgreementFonts } from '@/lib/agreements/templates/pdf/fonts';
 import { fmtManila, type Envelope } from '@/lib/agreements/envelope';
-import { CUSTOM_PROPOSAL_V2_ID, docOfValuesV2, stripMarkers } from '@/lib/agreements/customProposalV2';
+import { CUSTOM_PROPOSAL_V2_ID, docOfValuesV2, ownerShortTitle, stripMarkers } from '@/lib/agreements/customProposalV2';
 import { acceptanceGeometry, pageSizeOf, type AcceptanceColumn } from '@/lib/agreements/proposalV2Geometry';
 
 const INK900 = '#1C1917';
@@ -102,10 +102,14 @@ export async function buildAcceptanceStamp(
       png: signerPng,
       caption: 'Verified by one-time code',
     };
+    // Owner decision: on a v2 proposal the owner's card shows the Proposal sign-off printed on the page (name and
+    // title from the document's "prepared by"), never a "Signed as" line. The legal identity recorded at countersign
+    // (settings ownerName / ownerTitle) stays on the Execution page and the Certificate, the audit trail.
+    const ownerPrinted = stripMarkers(doc.cover.preparedBy.name).trim() || e.ownerSignature.name;
     const owner: Party = {
-      printed: stripMarkers(doc.cover.preparedBy.name),
-      typedName: e.ownerSignature.name,
-      typedTitle: e.ownerSignature.title,
+      printed: ownerPrinted,
+      typedName: ownerPrinted,
+      typedTitle: ownerShortTitle({ ...doc.cover.preparedBy, proofStats: [] }),
       signedAt: e.ownerSignature.signedAt,
       png: ownerPng,
       caption: 'Countersigned',
