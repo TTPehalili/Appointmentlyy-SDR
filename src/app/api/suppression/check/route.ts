@@ -37,7 +37,10 @@ export async function POST(req: NextRequest) {
     const phoneGiven = typeof o.phone === 'string' && o.phone.trim() !== '';
     const emailGiven = typeof o.email === 'string' && o.email.trim() !== '';
     const phoneKeys = phoneGiven ? phoneLookupKeys(o.phone) : [];
-    const email = emailGiven ? normalizeEmail(o.email) : null;
+    // Same rule as the send guard (sendRecipients): only a plain ASCII address can be checked; a look-alike is unreadable.
+    const norm = emailGiven ? normalizeEmail(o.email) : null;
+    // eslint-disable-next-line no-control-regex
+    const email = norm && /^[\x21-\x7e]+$/.test(norm) ? norm : null;
     return { phoneGiven, emailGiven, phoneKeys, email };
   });
   const phones = [...new Set(items.flatMap((i) => i.phoneKeys))];
