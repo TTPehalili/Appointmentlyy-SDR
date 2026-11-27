@@ -99,16 +99,41 @@ export function phoneMatchKey(raw: unknown): string | null {
   return digits.length >= PHONE_TAIL ? digits.slice(-PHONE_TAIL) : digits;
 }
 
+const digitsKey = (digits: string): string | null =>
+  digits.length < 7 ? null : digits.length >= PHONE_TAIL ? digits.slice(-PHONE_TAIL) : digits;
+
+/**
+ * Every key a lookup (a dial, a Dialer badge) must check for this number. Lenient on purpose, so a number that is
+ * not "clean" can never skip the check: "415-555-0161 (mobile)", "+1 415 555 0161 cell" or "... x 12 (desk)" are
+ * still found. Besides the strict key (phoneMatchKey), it uses all the digits in the text and the digits before an
+ * extension marker. Stored keys are unchanged (only phoneMatchKey writes them). Empty: no number in it at all.
+ */
+export function phoneLookupKeys(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  const s = raw.replace(CONTROL_RE, ' ').slice(0, 100);
+  const out = new Set<string>();
+  const strict = phoneMatchKey(s);
+  if (strict) out.add(strict);
+  for (const part of [s, s.split(/;ext=|ext|extension|x|#|,/i)[0]]) {
+    const k = digitsKey(part.replace(/\D/g, ''));
+    if (k) out.add(k);
+  }
+  return [...out];
+}
+
 const EMAIL_RE = /^[^\s@<>"(),;:]+@[^\s@<>"(),;:]+\.[^\s@<>"(),;:]{2,}$/;
+// Invisible characters that would make two spellings of one address differ (zero-width space/joiners, BOM, word joiner).
+const INVISIBLE_RE = /[­᠎​-‏⁠-⁤﻿]/g;
 
 /** The lower-case address, or null when it is not an email address. */
 export function normalizeEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  let s = raw.replace(CONTROL_RE, ' ').trim();
+  let s = raw.replace(INVISIBLE_RE, '').replace(CONTROL_RE, ' ').trim();
   if (!s || s.length > 320) return null;
   const angle = s.match(/<([^<>]+)>\s*$/);
   if (angle) s = angle[1];
-  s = s.replace(/^mailto:/i, '').trim().toLowerCase();
+  // "a@x.com." (fully qualified domain) is delivered to a@x.com: compare without the trailing dot.
+  s = s.replace(/^mailto:/i, '').trim().toLowerCase().replace(/\.+$/, '');
   if (s.length > 254 || !EMAIL_RE.test(s)) return null;
   return s;
 }
@@ -125,14 +150,14 @@ export function matchSuppression<T extends Pick<SuppressionListItem, 'kind' | 'm
   phone: unknown,
   email: unknown,
 ): { phone: T | null; email: T | null } {
-  const pk = phoneMatchKey(phone);
+  const pks = phoneLookupKeys(phone);
   const ek = normalizeEmail(email);
   let p: T | null = null;
   let e: T | null = null;
   for (const x of list) {
-    if (!p && pk && x.kind === 'phone' && x.matchKey === pk) p = x;
+    if (!p && pks.length && x.kind === 'phone' && pks.includes(x.matchKey)) p = x;
     if (!e && ek && x.kind === 'email' && x.matchKey === ek) e = x;
-    if ((p || !pk) && (e || !ek)) break;
+    if ((p || !pks.length) && (e || !ek)) break;
   }
   return { phone: p, email: e };
 }
@@ -214,6 +239,30 @@ export function recipientEmails(to: unknown): string[] {
     }
   }
   return out;
+}
+
+/**
+ * For the send guards: every recipient in `to`, or invalid when any of it cannot be checked (so it is not sent).
+ * Fails closed: a non-string entry, more than 50 entries, or a part that holds an "@" but is not a plain ASCII address
+ * ('"julia"@x.com', homoglyphs, full-width letters) makes the whole send invalid, instead of being skipped by the
+ * check and still reaching the provider. Parts without any "@" (the halves of '"Doe, J" <a@x.com>') carry no address.
+ */
+export function sendRecipients(to: unknown): { ok: true; emails: string[] } | { ok: false } {
+  if (to === undefined || to === null || to === '') return { ok: true, emails: [] };
+  const raw = Array.isArray(to) ? to : [to];
+  if (raw.length > 50) return { ok: false };
+  const out: string[] = [];
+  for (const r of raw) {
+    if (typeof r !== 'string') return { ok: false };
+    for (const part of r.split(/[,;]/)) {
+      if (!part.includes('@')) continue;
+      const e = normalizeEmail(part);
+      // eslint-disable-next-line no-control-regex
+      if (!e || !/^[\x21-\x7e]+$/.test(e)) return { ok: false };
+      if (!out.includes(e)) out.push(e);
+    }
+  }
+  return { ok: true, emails: out };
 }
 
 export const toListItem = (e: SuppressionEntry): SuppressionListItem => ({

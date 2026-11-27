@@ -41,7 +41,7 @@ import {
 } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
-import { normalizeEmail, phoneMatchKey } from '@/lib/suppression';
+import { normalizeEmail, phoneLookupKeys } from '@/lib/suppression';
 import { useSuppression } from '@/lib/suppressionClient';
 import { 
   ContactRecord, 
@@ -99,9 +99,8 @@ export default function GlobalContactsManager() {
   }, [suppression.entries]);
   const isSuppressedContact = (c: { phone?: string; email?: string }) => {
     if (suppressedKeys.phones.size === 0 && suppressedKeys.emails.size === 0) return false;
-    const pk = phoneMatchKey(c.phone);
     const ek = normalizeEmail(c.email);
-    return (!!pk && suppressedKeys.phones.has(pk)) || (!!ek && suppressedKeys.emails.has(ek));
+    return phoneLookupKeys(c.phone).some((k) => suppressedKeys.phones.has(k)) || (!!ek && suppressedKeys.emails.has(ek));
   };
   const adminClearance = isRoleAdmin(role);
   const canReassign = canUserReassignLeads(role);

@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
         if (resendRes.ok) {
           externalDispatchResult = await resendRes.json();
         } else {
-          console.warn('[RESEND DISPATCH WARNING] Non-200 response from Resend:', await resendRes.text());
+          // Status and error name only: the provider's message can quote the recipient address.
+          const errName = await resendRes.json().then((j: { name?: unknown }) => String(j?.name || '').replace(/[^\w.-]/g, '').slice(0, 60), () => '');
+          console.warn(`[RESEND DISPATCH WARNING] Non-200 response from Resend: ${resendRes.status}${errName ? ` ${errName}` : ''}`);
         }
       } catch (e: any) {
         console.error('[RESEND API ERROR]', e.message);

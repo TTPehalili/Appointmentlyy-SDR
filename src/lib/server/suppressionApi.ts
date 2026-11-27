@@ -19,8 +19,8 @@ import {
   type NewSuppression,
 } from '@/lib/server/suppressionStore';
 import {
-  phoneMatchKey,
-  recipientEmails,
+  phoneLookupKeys,
+  sendRecipients,
   toListItem,
   validateSuppressionInput,
   type SuppressionEntry,
@@ -159,6 +159,8 @@ export async function checkSuppression(tenantCode: string, keys: { phones: strin
 
 export const EMAIL_SUPPRESSED_MESSAGE =
   "This contact is on your workspace's Do Not Contact list, so nothing was sent.";
+const EMAIL_RECIPIENT_INVALID_MESSAGE =
+  'One of the recipient addresses is not a valid email address (plain letters, numbers and @ only), so nothing was sent.';
 const EMAIL_CHECK_FAILED_MESSAGE =
   'The Do Not Contact list could not be checked just now, so nothing was sent. Please try again.';
 
@@ -176,8 +178,10 @@ export async function refuseSuppressedEmail(req: NextRequest, via: string): Prom
   } catch {
     return null; // the route answers the malformed body
   }
-  const emails = recipientEmails((payload as { to?: unknown } | null)?.to);
-  const r = await checkSuppression(session.tenantCode, { phones: [], emails });
+  // Fail closed: a recipient the check cannot read is not sent (it would otherwise skip the check and still go out).
+  const rcpt = sendRecipients((payload as { to?: unknown } | null)?.to);
+  if (!rcpt.ok) return fail(400, EMAIL_RECIPIENT_INVALID_MESSAGE, { code: 'RECIPIENT_INVALID', field: 'to' });
+  const r = await checkSuppression(session.tenantCode, { phones: [], emails: rcpt.emails });
   if (r.state === 'suppressed') {
     console.info(`[SUPPRESSION] email skipped tenant=${session.tenantCode} via=${via} refs=${r.hits.map((h) => logRef(session.tenantCode, h.matchKey)).join(',')}`);
     return fail(409, EMAIL_SUPPRESSED_MESSAGE, { code: 'SUPPRESSED', suppressed: true });
@@ -188,13 +192,21 @@ export async function refuseSuppressedEmail(req: NextRequest, via: string): Prom
 
 export const DIAL_SUPPRESSED_MESSAGE = "This number is on your workspace's Do Not Call list. It was not dialed.";
 
-/** For the dial relay: why this number may not be dialed now (status + message), or null when it may. */
-export async function refuseSuppressedDial(session: ServerSession, phone: unknown): Promise<{ status: number; message: string } | null> {
-  const key = phoneMatchKey(phone);
-  if (!key) return null; // the relay rejects an invalid number itself
-  const r = await checkSuppression(session.tenantCode, { phones: [key], emails: [] });
+/**
+ * For the dial relay: why this number may not be dialed now (status + message), or null when it may.
+ * `dialed` is what the relay will really send (country code + number): it is checked too, so a number written in a
+ * form the strict parser does not read ("415-555-0161 (mobile)") can never skip the check. No number at all: 400.
+ */
+export async function refuseSuppressedDial(
+  session: ServerSession,
+  phone: unknown,
+  dialed?: string,
+): Promise<{ status: number; message: string } | null> {
+  const keys = [...new Set([...phoneLookupKeys(phone), ...phoneLookupKeys(dialed)])];
+  if (!keys.length) return { status: 400, message: 'This phone number is not valid for dialing.' };
+  const r = await checkSuppression(session.tenantCode, { phones: keys, emails: [] });
   if (r.state === 'suppressed') {
-    console.info(`[SUPPRESSION] dial refused tenant=${session.tenantCode} ref=${logRef(session.tenantCode, key)}`);
+    console.info(`[SUPPRESSION] dial refused tenant=${session.tenantCode} refs=${r.hits.map((h) => logRef(session.tenantCode, h.matchKey)).join(',')}`);
     return { status: 409, message: DIAL_SUPPRESSED_MESSAGE };
   }
   if (r.state === 'error') return { status: 503, message: 'The Do Not Call list could not be checked just now, so the number was not dialed. Please try again.' };

@@ -168,11 +168,21 @@ const fromRow = (r: Row): SuppressionEntry => ({
 
 class SupabaseSuppressionStore implements SuppressionStore {
   readonly backend = 'supabase' as const;
+  /**
+   * Set once any query has worked in this process: from then on the table exists, so a later "missing table" answer
+   * (a stale PostgREST schema cache, a renamed column) is an error that blocks sends and dials, never "not set up"
+   * (which lets them go ahead). SUPPRESSION_REQUIRED=1 makes that true from the start (set it once the migration ran).
+   */
+  private seen = process.env.SUPPRESSION_REQUIRED === '1';
   constructor(private db: SupabaseClient) {}
   /** Database errors never reach the caller as text: a missing table is "not set up", anything else a plain error. */
   private fail(error: { code?: string; message: string }): never {
-    if (error.code && MISSING_TABLE.has(error.code)) throw new SuppressionUnavailableError('suppression table missing');
+    if (error.code && MISSING_TABLE.has(error.code) && !this.seen) throw new SuppressionUnavailableError('suppression table missing');
     throw new Error(`[suppressionStore] ${error.code || 'error'}`);
+  }
+  private okd<T>(v: T): T {
+    this.seen = true;
+    return v;
   }
   private async activeMatch(tenantCode: string, kind: SuppressionKind, matchKey: string): Promise<SuppressionEntry | null> {
     const { data, error } = await this.db
@@ -185,7 +195,7 @@ class SupabaseSuppressionStore implements SuppressionStore {
       .limit(1)
       .maybeSingle();
     if (error) this.fail(error);
-    return data ? fromRow(data as Row) : null;
+    return this.okd(data ? fromRow(data as Row) : null);
   }
   async add(tenantCode: string, items: NewSuppression[]) {
     const added: SuppressionEntry[] = [];
@@ -242,7 +252,7 @@ class SupabaseSuppressionStore implements SuppressionStore {
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) this.fail(error);
-    return ((data ?? []) as Row[]).map(fromRow);
+    return this.okd(((data ?? []) as Row[]).map(fromRow));
   }
   async findActive(tenantCode: string, keys: { phones: string[]; emails: string[] }) {
     const out: SuppressionEntry[] = [];
@@ -257,6 +267,7 @@ class SupabaseSuppressionStore implements SuppressionStore {
         .is('removed_at', null);
       if (error) this.fail(error);
       out.push(...((data ?? []) as Row[]).map(fromRow));
+      this.seen = true;
     }
     return out;
   }
@@ -270,7 +281,7 @@ class SupabaseSuppressionStore implements SuppressionStore {
       .select();
     if (error) this.fail(error);
     const rows = (data ?? []) as Row[];
-    return rows.length ? fromRow(rows[0]) : null;
+    return this.okd(rows.length ? fromRow(rows[0]) : null);
   }
 }
 
