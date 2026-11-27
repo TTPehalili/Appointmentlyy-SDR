@@ -37,6 +37,20 @@ export interface SuppressionStore {
   findActive(tenantCode: string, keys: { phones: string[]; emails: string[] }): Promise<SuppressionEntry[]>;
   /** Mark one active entry removed (kept for the audit trail). */
   remove(tenantCode: string, id: string, by: { email: string; name: string }, note: string): Promise<SuppressionEntry | null>;
+  /** How many entries this person added since `sinceIso` (removed ones included), for the daily add cap. */
+  countAddedSince(tenantCode: string, createdByEmail: string, sinceIso: string): Promise<number>;
+  /**
+   * Mark removed every ACTIVE entry this person added between `fromIso` and `toIso` (inclusive), each with who removed
+   * it, when and the note (the same audit as a single removal). Returns the removed entries.
+   */
+  removeAddedBy(
+    tenantCode: string,
+    createdByEmail: string,
+    fromIso: string,
+    toIso: string,
+    by: { email: string; name: string },
+    note: string,
+  ): Promise<SuppressionEntry[]>;
 }
 
 /** The table does not exist yet (migration not run) or the store is otherwise not set up. */
@@ -137,6 +151,27 @@ class FileSuppressionStore implements SuppressionStore {
       e.removedByName = by.name;
       e.removalNote = note;
       return { ...e };
+    });
+  }
+  async countAddedSince(tenantCode: string, createdByEmail: string, sinceIso: string) {
+    await this.queue;
+    const who = createdByEmail.trim().toLowerCase();
+    return this.read().filter((x) => x.tenantCode === tenantCode && x.createdByEmail === who && x.createdAt >= sinceIso).length;
+  }
+  removeAddedBy(tenantCode: string, createdByEmail: string, fromIso: string, toIso: string, by: { email: string; name: string }, note: string) {
+    const who = createdByEmail.trim().toLowerCase();
+    return this.mutate((d) => {
+      const at = nowIso();
+      const out: SuppressionEntry[] = [];
+      for (const e of d) {
+        if (e.tenantCode !== tenantCode || e.removedAt || e.createdByEmail !== who || e.createdAt < fromIso || e.createdAt > toIso) continue;
+        e.removedAt = at;
+        e.removedByEmail = by.email.trim().toLowerCase();
+        e.removedByName = by.name;
+        e.removalNote = note;
+        out.push({ ...e });
+      }
+      return out;
     });
   }
 }
@@ -284,6 +319,29 @@ class SupabaseSuppressionStore implements SuppressionStore {
     if (error) this.fail(error);
     const rows = (data ?? []) as Row[];
     return this.okd(rows.length ? fromRow(rows[0]) : null);
+  }
+  async countAddedSince(tenantCode: string, createdByEmail: string, sinceIso: string) {
+    const { count, error } = await this.db
+      .from(TABLE)
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_code', tenantCode)
+      .eq('created_by_email', createdByEmail.trim().toLowerCase())
+      .gte('created_at', sinceIso);
+    if (error) this.fail(error);
+    return this.okd(count ?? 0);
+  }
+  async removeAddedBy(tenantCode: string, createdByEmail: string, fromIso: string, toIso: string, by: { email: string; name: string }, note: string) {
+    const { data, error } = await this.db
+      .from(TABLE)
+      .update({ removed_at: nowIso(), removed_by_email: by.email.trim().toLowerCase(), removed_by_name: by.name, removal_note: note })
+      .eq('tenant_code', tenantCode)
+      .eq('created_by_email', createdByEmail.trim().toLowerCase())
+      .gte('created_at', fromIso)
+      .lte('created_at', toIso)
+      .is('removed_at', null)
+      .select();
+    if (error) this.fail(error);
+    return this.okd(((data ?? []) as Row[]).map(fromRow));
   }
 }
 

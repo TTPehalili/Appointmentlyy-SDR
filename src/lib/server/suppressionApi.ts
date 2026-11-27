@@ -96,6 +96,14 @@ export function suppressionStorageFail(err: unknown, where: string): NextRespons
   return fail(503, SUPPRESSION_ERROR_MESSAGE, { code: 'SUPPRESSION_ERROR' });
 }
 
+/** Entries a Rep may add in any 24 hours (DNC-M1). */
+export const DAILY_ADD_CAP = 300;
+const DAILY_CAP_MESSAGE =
+  `You have added ${DAILY_ADD_CAP} contacts to the Do Not Contact list in the last 24 hours, the most a rep can add in a day. Nothing more was added. Please ask a supervisor or admin to add the rest.`;
+
+/** Below Supervisor (Rep, Account Executive; a VA is a Rep) is capped; Supervisors and above and platform staff are not. */
+export const isAddCapped = (s: ServerSession) => !hasRank(s, 'Supervisor');
+
 /**
  * POST /api/suppression and POST /api/cadence/dnc: add a phone and/or email to the signed-in person's workspace list.
  * Any member may add (a rep marking a lead "Do not call"). Workspace and author come from the session only.
@@ -118,6 +126,16 @@ export async function handleAddSuppression(
   if (v.value.phone) items.push({ kind: 'phone', value: v.value.phone.value, matchKey: v.value.phone.matchKey, reason: v.value.reason, note: v.value.note, source: v.value.source, ...by });
   if (v.value.email) items.push({ kind: 'email', value: v.value.email, matchKey: v.value.email, reason: v.value.reason, note: v.value.note, source: v.value.source, ...by });
   try {
+    // Reps (and VAs, who are Reps) may add at most DAILY_ADD_CAP entries in any 24 hours, so one account cannot block
+    // a workspace's whole lead list. Supervisors and above (and platform staff) are not capped. Durable count.
+    if (isAddCapped(session)) {
+      const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const count = await getSuppressionStore().countAddedSince(session.tenantCode, session.email, since);
+      if (count + items.length > DAILY_ADD_CAP) {
+        console.info(`[SUPPRESSION] daily add cap reached tenant=${session.tenantCode} by=${logRef(session.tenantCode, session.email)}`);
+        return fail(429, DAILY_CAP_MESSAGE, { code: 'SUPPRESSION_DAILY_CAP' });
+      }
+    }
     const { added, already } = await getSuppressionStore().add(session.tenantCode, items);
     for (const e of added) {
       console.info(`[SUPPRESSION] added tenant=${session.tenantCode} kind=${e.kind} reason=${e.reason} source=${e.source} ref=${logRef(session.tenantCode, e.matchKey)} by=${logRef(session.tenantCode, session.email)}`);

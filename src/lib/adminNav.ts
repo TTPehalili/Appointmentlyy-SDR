@@ -23,7 +23,7 @@ export interface AdminNavGroup {
  * Admin settings shell (redesign spec 3.4). Every management tool lives here, at most
  * two clicks away: Admin, then the section.
  * DESIGN-NOTE: sections without an existing tool (General, Teams, Pipeline stages,
- * Buyer personas, Cadences, Import/export, DNC) are left out until they exist, rather
+ * Buyer personas, Cadences, Import/export) are left out until they exist, rather
  * than shipping empty pages.
  */
 export const ADMIN_NAV: AdminNavGroup[] = [
@@ -51,6 +51,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { id: 'lead-credits', label: 'Lead credits & quota', href: '/admin/lead-credits', permission: 'admin', keywords: 'icp quota top up credits records stage master engine key' },
       { id: 'leads', label: 'Leads & cadences', href: '/admin/leads', permission: 'admin', controlSection: 'leads', keywords: 'leads cadence crm csv' },
       { id: 'campaign-leads', label: 'Campaign leads', href: '/admin/campaigns/enterprise-outbound/leads', permission: 'admin', keywords: 'campaign batch assign' },
+      { id: 'do-not-contact', label: 'Do Not Contact', href: '/admin/do-not-contact', permission: 'adminOrg', keywords: 'dnc do not call suppression opt out unsubscribe compliance tcpa' },
     ],
   },
   {

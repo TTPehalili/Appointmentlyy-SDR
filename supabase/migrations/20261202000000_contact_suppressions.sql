@@ -44,6 +44,10 @@ create unique index if not exists contact_suppressions_active_uidx
 -- The workspace's list, newest first.
 create index if not exists contact_suppressions_list_idx
   on public.contact_suppressions (tenant_code, created_at desc) where removed_at is null;
+-- Who added what, when: the Reps' daily add cap (a person's entries in the last 24 hours) and an Admin's
+-- "undo the entries <person> added between <from> and <to>".
+create index if not exists contact_suppressions_author_idx
+  on public.contact_suppressions (tenant_code, created_by_email, created_at desc);
 
 alter table public.contact_suppressions enable row level security;
 
