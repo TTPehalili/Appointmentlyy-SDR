@@ -256,18 +256,20 @@ class SupabaseSuppressionStore implements SuppressionStore {
   }
   async findActive(tenantCode: string, keys: { phones: string[]; emails: string[] }) {
     const out: SuppressionEntry[] = [];
-    for (const [kind, list] of [['phone', keys.phones], ['email', keys.emails]] as const) {
-      if (!list.length) continue;
-      const { data, error } = await this.db
-        .from(TABLE)
-        .select('*')
-        .eq('tenant_code', tenantCode)
-        .eq('kind', kind)
-        .in('match_key', list.slice(0, 50))
-        .is('removed_at', null);
-      if (error) this.fail(error);
-      out.push(...((data ?? []) as Row[]).map(fromRow));
-      this.seen = true;
+    for (const [kind, all] of [['phone', [...new Set(keys.phones)]], ['email', [...new Set(keys.emails)]]] as const) {
+      // In chunks of 50 keys (URL length): every key is looked up, none is dropped.
+      for (let i = 0; i < all.length; i += 50) {
+        const { data, error } = await this.db
+          .from(TABLE)
+          .select('*')
+          .eq('tenant_code', tenantCode)
+          .eq('kind', kind)
+          .in('match_key', all.slice(i, i + 50))
+          .is('removed_at', null);
+        if (error) this.fail(error);
+        out.push(...((data ?? []) as Row[]).map(fromRow));
+        this.seen = true;
+      }
     }
     return out;
   }

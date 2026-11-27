@@ -41,8 +41,7 @@ import {
 } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
-import { normalizeEmail, phoneLookupKeys } from '@/lib/suppression';
-import { useSuppression } from '@/lib/suppressionClient';
+import { useSuppressionBatch } from '@/lib/suppressionClient';
 import { 
   ContactRecord, 
   IcpFolder,
@@ -89,19 +88,6 @@ function coldEmailHref(c: Pick<ContactRecord, 'email' | 'name' | 'company' | 'ti
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
-  // Workspace Do Not Contact list (server): a badge on contacts whose phone or email is on it.
-  const suppression = useSuppression(session.tenantCode ? `${session.tenantCode}|${(session.email || '').toLowerCase()}` : null);
-  const suppressedKeys = useMemo(() => {
-    const phones = new Set<string>();
-    const emails = new Set<string>();
-    for (const e of suppression.entries) (e.kind === 'phone' ? phones : emails).add(e.matchKey);
-    return { phones, emails };
-  }, [suppression.entries]);
-  const isSuppressedContact = (c: { phone?: string; email?: string }) => {
-    if (suppressedKeys.phones.size === 0 && suppressedKeys.emails.size === 0) return false;
-    const ek = normalizeEmail(c.email);
-    return phoneLookupKeys(c.phone).some((k) => suppressedKeys.phones.has(k)) || (!!ek && suppressedKeys.emails.has(ek));
-  };
   const adminClearance = isRoleAdmin(role);
   const canReassign = canUserReassignLeads(role);
   const canExportCsv = canUserExportCsv(role);
@@ -431,6 +417,15 @@ export default function GlobalContactsManager() {
     const start = (safeCurrentPage - 1) * PAGE_SIZE;
     return filteredContacts.slice(start, start + PAGE_SIZE);
   }, [filteredContacts, safeCurrentPage]);
+
+  // Workspace Do Not Contact list: a badge on the rows on screen whose phone or email is on it (one server check for
+  // the page; the browser never receives the list itself).
+  const suppressedRows = useSuppressionBatch(!!session.tenantCode, paginatedContacts);
+  const suppressedIds = useMemo(
+    () => new Set([...suppressedRows].map((i) => paginatedContacts[i]?.id).filter(Boolean)),
+    [suppressedRows, paginatedContacts]
+  );
+  const isSuppressedContact = (c: { id?: string }) => !!c.id && suppressedIds.has(c.id);
 
   // Copy helper
   const copyText = (txt: string, key: string) => {

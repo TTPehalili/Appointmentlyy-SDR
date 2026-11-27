@@ -118,14 +118,13 @@ import { companySize } from '@/lib/companySize';
 import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
 import {
   SUPPRESSION_REASON_LABEL,
-  matchSuppression,
   normalizeEmail,
   normalizePhone,
   reasonSuppressesEmail,
   suppressionReasonForOutcome,
   type SuppressionReason,
 } from '@/lib/suppression';
-import { addSuppression, refreshSuppression, removeSuppression, useSuppression } from '@/lib/suppressionClient';
+import { addSuppression, guardExternalOpen, isHit, openExternal, removeSuppression, useLeadSuppression } from '@/lib/suppressionClient';
 
 const DEMO_CALL_MODE_KEY = 'appy_demo_call_mode';
 
@@ -365,23 +364,22 @@ export default function BorisCallingCockpit({
   const [leadLinkedinUrl, setLeadLinkedinUrl] = useState<string>(activeLead.linkedinUrl || '');
   const [emailSavedToast, setEmailSavedToast] = useState<boolean>(false);
 
-  // Workspace Do Not Contact list (kept on the server; never used by practice calls). A lead whose phone or email is
-  // on it can't be called or emailed from here, and the server refuses the dial / send as well.
-  const suppressionKey = !practiceMode && session.tenantCode ? `${session.tenantCode}|${(session.email || '').toLowerCase()}` : null;
-  const suppression = useSuppression(suppressionKey);
-  const dncMatch = suppressionKey ? matchSuppression(suppression.entries, phone, directEmail) : { phone: null, email: null };
+  // Workspace Do Not Contact list (kept on the server; never used by practice calls). The lead on screen is checked
+  // with the server (never the whole list); a lead whose phone or email is on it can't be called or emailed from
+  // here, and the server refuses the dial / send / tel: open as well.
+  const suppressionOn = !practiceMode && !!session.tenantCode;
+  const suppression = useLeadSuppression(suppressionOn, phone || '', directEmail || '');
+  const dncMatch = { phone: isHit(suppression.phone) ? suppression.phone : null, email: isHit(suppression.email) ? suppression.email : null };
   const phoneBlocked = !!dncMatch.phone;
   const emailBlocked = !!dncMatch.email;
+  // A tel: call being checked with the server (one check per click).
+  const [telChecking, setTelChecking] = useState<boolean>(false);
   // Result of the last "add to Do Not Contact" (shown under the call bar until the next lead).
   const [dncNotice, setDncNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [dncRemoveOpen, setDncRemoveOpen] = useState<boolean>(false);
   const [dncRemoveNote, setDncRemoveNote] = useState<string>('');
   const [dncRemoveBusy, setDncRemoveBusy] = useState<boolean>(false);
   const [dncRemoveError, setDncRemoveError] = useState<string | null>(null);
-  // A teammate may have marked this lead in another browser: re-check when the lead changes (throttled).
-  useEffect(() => {
-    if (suppressionKey) void refreshSuppression(suppressionKey);
-  }, [activeLead.id, suppressionKey]);
 
   // Calling & Disposition State
   const [isCallingActive, setIsCallingActive] = useState<boolean>(false);
@@ -1172,7 +1170,7 @@ export default function BorisCallingCockpit({
   // A do-not-call / opt-out outcome: put this lead's phone (and email, except for a wrong number) on the workspace's
   // Do Not Contact list on the server. The result is shown as it is: never "added" unless the server saved it.
   const markDoNotContact = async (reason: SuppressionReason) => {
-    if (!suppressionKey) return;
+    if (!suppressionOn) return;
     const leadPhone = (phone || activeLead.phone || '').trim();
     const leadEmail = (directEmail || activeLead.email || '').trim();
     const usePhone = normalizePhone(leadPhone) ? leadPhone : '';
@@ -1181,7 +1179,8 @@ export default function BorisCallingCockpit({
       setDncNotice({ ok: false, text: 'This lead has no valid phone number or email, so nothing was added to the Do Not Contact list.' });
       return;
     }
-    const r = await addSuppression(suppressionKey, { phone: usePhone || undefined, email: useEmail || undefined, reason, source: 'dialer' });
+    const r = await addSuppression({ phone: usePhone || undefined, email: useEmail || undefined, reason, source: 'dialer' });
+    suppression.refresh();
     setDncNotice(
       r.ok
         ? { ok: true, text: `${usePhone && useEmail ? 'Phone and email' : usePhone ? 'Phone number' : 'Email'} added to your workspace's Do Not Contact list. Calls${useEmail ? ' and emails' : ''} to this contact are now blocked for everyone in the workspace.` }
@@ -1190,7 +1189,7 @@ export default function BorisCallingCockpit({
   };
 
   const handleRemoveFromDnc = async () => {
-    if (!suppressionKey || dncRemoveBusy) return;
+    if (!suppressionOn || dncRemoveBusy) return;
     const ids = [dncMatch.phone?.id, dncMatch.email?.id].filter((x): x is string => !!x);
     if (ids.length === 0) {
       setDncRemoveOpen(false);
@@ -1198,7 +1197,8 @@ export default function BorisCallingCockpit({
     }
     setDncRemoveBusy(true);
     setDncRemoveError(null);
-    const r = await removeSuppression(suppressionKey, ids, dncRemoveNote.trim());
+    const r = await removeSuppression(ids, dncRemoveNote.trim());
+    suppression.refresh();
     setDncRemoveBusy(false);
     if (r.ok) {
       setDncRemoveOpen(false);
@@ -2047,11 +2047,28 @@ export default function BorisCallingCockpit({
                 ) : (
                 <a
                   href={phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : '#'}
-                  onClick={() => {
+                  data-testid="call-tel"
+                  aria-busy={telChecking || undefined}
+                  onClick={async (e) => {
+                    // The phone app opens only after the server confirms this number is not on the workspace's Do Not
+                    // Call list (one check per click; fails closed with a message).
+                    e.preventDefault();
                     if (!phone) {
                       alert('No phone number entered for this prospect.');
                       return;
                     }
+                    if (telChecking) return;
+                    const href = `tel:${phone.replace(/[^\d+]/g, '')}`;
+                    setTelChecking(true);
+                    const g = await guardExternalOpen({ phone });
+                    setTelChecking(false);
+                    if (!g.ok) {
+                      setDncNotice({ ok: false, text: g.message });
+                      if (g.blocked) suppression.refresh();
+                      return;
+                    }
+                    setDncNotice(null);
+                    openExternal(href);
                     setIsCallingActive(true);
                   }}
                   className="focus-ring inline-flex h-10 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md bg-action-brand px-3.5 text-body font-medium text-action-brand-fg transition-colors duration-150 hover:bg-action-brand-hover"
@@ -2200,6 +2217,12 @@ export default function BorisCallingCockpit({
               <p data-testid="dnc-unavailable" className="flex items-center gap-1.5 text-caption text-warning-fg" title={suppression.message || undefined}>
                 <ShieldAlert className="size-3.5 shrink-0" aria-hidden />
                 Do Not Contact list not set up on this server yet: calls and emails are not checked against it.
+              </p>
+            )}
+            {!practiceMode && suppression.status === 'error' && (
+              <p data-testid="dnc-check-failed" className="flex items-center gap-1.5 text-caption text-warning-fg" title={suppression.message || undefined}>
+                <ShieldAlert className="size-3.5 shrink-0" aria-hidden />
+                Could not check this lead against the Do Not Contact list. Calls and emails are checked again when you start them.
               </p>
             )}
 

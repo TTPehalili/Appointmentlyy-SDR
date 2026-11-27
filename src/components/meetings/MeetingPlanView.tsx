@@ -13,6 +13,46 @@ import type { OnePagerBrand } from '@/lib/onePagerRender';
 import { displayHost, formatMeetingAt, formatUpdated, meetingPlansApi, sameEmail, toHref } from './meetingPlanClient';
 import { MeetingStatusBadge } from './meetingUi';
 import ActionPlanPanel from './ActionPlanPanel';
+import { guardExternalOpen, openExternal } from '@/lib/suppressionClient';
+
+/**
+ * The lead's address as a mailto: link that opens only after the server confirms the address is not on the
+ * workspace's Do Not Contact list (one check per click; fails closed with a message next to the link).
+ */
+function GuardedMailto({ email, className }: { email: string; className: string }) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <a
+        href={`mailto:${email}`}
+        className={className}
+        data-testid="meeting-plan-mailto"
+        aria-busy={busy || undefined}
+        onClick={async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          const g = await guardExternalOpen({ email });
+          setBusy(false);
+          if (!g.ok) {
+            setError(g.message);
+            return;
+          }
+          setError(null);
+          openExternal(`mailto:${email}`);
+        }}
+      >
+        {email}
+      </a>
+      {error && (
+        <span role="alert" data-testid="meeting-plan-mailto-error" className="text-small text-danger-fg">
+          {error}
+        </span>
+      )}
+    </span>
+  );
+}
 import OnePagerPanel from './OnePagerPanel';
 
 const POLL_MS = 4000;
@@ -271,11 +311,7 @@ function PlanHeader({
                 {plan.lead.name.split(' ')[0] || 'Profile'}
               </a>
             )}
-            {plan.lead.email && (
-              <a href={`mailto:${plan.lead.email}`} className={cn(linkCls, 'font-mono')}>
-                {plan.lead.email}
-              </a>
-            )}
+            {plan.lead.email && <GuardedMailto email={plan.lead.email} className={cn(linkCls, 'font-mono')} />}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
