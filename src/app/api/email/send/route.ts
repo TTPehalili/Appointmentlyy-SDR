@@ -8,6 +8,7 @@ import { onePagerFileName } from '@/lib/onePagerRender';
 import { isMeetingPlanId } from '@/lib/server/meetingPlanStore';
 import { brandFor, loadVisiblePlan, renderPlanPdf } from '@/lib/server/meetingPlanApi';
 import { refuseSuppressedEmail } from '@/lib/server/suppressionApi';
+import { RESEND_UNREACHABLE_MESSAGE, describeResendFailure, readResendFailure, resendRefusedMessage } from '@/lib/server/resendFailure';
 
 type ResendAttachment = { filename: string; content: string };
 
@@ -128,24 +129,18 @@ export async function POST(req: NextRequest) {
       if (resendRes.ok) {
         liveSendResult = await resendRes.json();
       } else {
-        let errMessage = 'Resend API rejected the email';
-        try {
-          const errJson = await resendRes.json();
-          errMessage = errJson.message || errMessage;
-        } catch {
-          const errText = await resendRes.text();
-          if (errText) errMessage = errText;
-        }
-        console.error('[RESEND DISPATCH ERROR]', errMessage);
+        // Status and error name only, in the log and the answer: the provider's text can quote the recipient.
+        const failure = await readResendFailure(resendRes);
+        console.error(`[RESEND DISPATCH ERROR] ${describeResendFailure(failure)}`);
         return NextResponse.json(
-          { error: errMessage },
+          { error: resendRefusedMessage(failure), code: 'PROVIDER_REJECTED' },
           { status: resendRes.status || 400 }
         );
       }
     } catch (err: any) {
-      console.error('[RESEND API ERROR]', err.message);
+      console.error('[RESEND API ERROR]', err?.name || 'Error');
       return NextResponse.json(
-        { error: err.message || 'Resend network error' },
+        { error: RESEND_UNREACHABLE_MESSAGE, code: 'PROVIDER_UNREACHABLE' },
         { status: 500 }
       );
     }

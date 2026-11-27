@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordDelegatedSend, requireSendingSession, senderFor } from '@/lib/server/sendingPolicy';
 import { getResendApiKey } from '@/lib/resendConfig';
 import { refuseSuppressedEmail } from '@/lib/server/suppressionApi';
+import { RESEND_UNREACHABLE_MESSAGE, describeResendFailure, readResendFailure, resendRefusedMessage } from '@/lib/server/resendFailure';
 
 export async function POST(req: NextRequest) {
   // A recipient on the workspace's Do Not Contact list is never emailed (checked at send time, every workspace).
@@ -48,12 +49,19 @@ export async function POST(req: NextRequest) {
         if (resendRes.ok) {
           externalDispatchResult = await resendRes.json();
         } else {
-          // Status and error name only: the provider's message can quote the recipient address.
-          const errName = await resendRes.json().then((j: { name?: unknown }) => String(j?.name || '').replace(/[^\w.-]/g, '').slice(0, 60), () => '');
-          console.warn(`[RESEND DISPATCH WARNING] Non-200 response from Resend: ${resendRes.status}${errName ? ` ${errName}` : ''}`);
+          // A real failure (never a made-up message id). Status and error name only: the provider's message can
+          // quote the recipient address.
+          const failure = await readResendFailure(resendRes);
+          console.warn(`[RESEND DISPATCH WARNING] Non-200 response from Resend: ${describeResendFailure(failure)}`);
+          const message = resendRefusedMessage(failure);
+          return NextResponse.json({ status: 'error', code: 'PROVIDER_REJECTED', error: message, message }, { status: 502 });
         }
       } catch (e: any) {
-        console.error('[RESEND API ERROR]', e.message);
+        console.error('[RESEND API ERROR]', e?.name || 'Error');
+        return NextResponse.json(
+          { status: 'error', code: 'PROVIDER_UNREACHABLE', error: RESEND_UNREACHABLE_MESSAGE, message: RESEND_UNREACHABLE_MESSAGE },
+          { status: 502 }
+        );
       }
     }
 
