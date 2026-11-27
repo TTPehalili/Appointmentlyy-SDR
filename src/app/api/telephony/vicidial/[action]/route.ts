@@ -14,6 +14,7 @@ import {
 import { getServerSession, hasRank } from '@/lib/server/session';
 import { getTelephonyAgentStore } from '@/lib/server/telephonyAgentStore';
 import { ownAgentUser, resolveAgentUser, telephonyAllowed } from '@/lib/server/telephonyAccess';
+import { refuseSuppressedDial } from '@/lib/server/suppressionApi';
 
 /**
  * Relay between the Dialer and VICIdial. Credentials stay on the server. Every call needs a live
@@ -97,6 +98,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       case 'dial': {
         const split = splitPhone(body.phone || '');
         if (!split) return json({ ok: false, configured: true, message: 'This phone number is not valid for dialing.' }, 400);
+        // Never dial a number on the workspace's Do Not Call list (checked here, on the server, at dial time).
+        const refused = await refuseSuppressedDial(session, body.phone);
+        if (refused) return json({ ok: false, configured: true, suppressed: refused.status === 409, message: refused.message }, refused.status);
         const params: Record<string, string> = {
           value: split.number, phone_code: split.phoneCode, search: 'YES', preview: 'NO', focus: 'YES',
         };

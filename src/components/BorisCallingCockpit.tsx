@@ -116,6 +116,16 @@ import {
 } from '@/components/cockpit/CallbackTasks';
 import { companySize } from '@/lib/companySize';
 import { normalizeLinkedinProfileUrl } from '@/lib/leadData/linkedin';
+import {
+  SUPPRESSION_REASON_LABEL,
+  matchSuppression,
+  normalizeEmail,
+  normalizePhone,
+  reasonSuppressesEmail,
+  suppressionReasonForOutcome,
+  type SuppressionReason,
+} from '@/lib/suppression';
+import { addSuppression, refreshSuppression, removeSuppression, useSuppression } from '@/lib/suppressionClient';
 
 const DEMO_CALL_MODE_KEY = 'appy_demo_call_mode';
 
@@ -354,6 +364,24 @@ export default function BorisCallingCockpit({
   const [leadWebsite, setLeadWebsite] = useState<string>(activeLead.website || '');
   const [leadLinkedinUrl, setLeadLinkedinUrl] = useState<string>(activeLead.linkedinUrl || '');
   const [emailSavedToast, setEmailSavedToast] = useState<boolean>(false);
+
+  // Workspace Do Not Contact list (kept on the server; never used by practice calls). A lead whose phone or email is
+  // on it can't be called or emailed from here, and the server refuses the dial / send as well.
+  const suppressionKey = !practiceMode && session.tenantCode ? `${session.tenantCode}|${(session.email || '').toLowerCase()}` : null;
+  const suppression = useSuppression(suppressionKey);
+  const dncMatch = suppressionKey ? matchSuppression(suppression.entries, phone, directEmail) : { phone: null, email: null };
+  const phoneBlocked = !!dncMatch.phone;
+  const emailBlocked = !!dncMatch.email;
+  // Result of the last "add to Do Not Contact" (shown under the call bar until the next lead).
+  const [dncNotice, setDncNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [dncRemoveOpen, setDncRemoveOpen] = useState<boolean>(false);
+  const [dncRemoveNote, setDncRemoveNote] = useState<string>('');
+  const [dncRemoveBusy, setDncRemoveBusy] = useState<boolean>(false);
+  const [dncRemoveError, setDncRemoveError] = useState<string | null>(null);
+  // A teammate may have marked this lead in another browser: re-check when the lead changes (throttled).
+  useEffect(() => {
+    if (suppressionKey) void refreshSuppression(suppressionKey);
+  }, [activeLead.id, suppressionKey]);
 
   // Calling & Disposition State
   const [isCallingActive, setIsCallingActive] = useState<boolean>(false);
@@ -668,6 +696,7 @@ export default function BorisCallingCockpit({
     setCurrentStep(1);
     setSelectedRebuttalId(null);
     setIsCallingActive(false);
+    setDncNotice(null);
 
     // Reset Telemetry for New Lead
     setTelemetry(INITIAL_TELEMETRY_STATE);
@@ -1140,6 +1169,46 @@ export default function BorisCallingCockpit({
       linkedinUrl: leadLinkedinUrl,
     });
 
+  // A do-not-call / opt-out outcome: put this lead's phone (and email, except for a wrong number) on the workspace's
+  // Do Not Contact list on the server. The result is shown as it is: never "added" unless the server saved it.
+  const markDoNotContact = async (reason: SuppressionReason) => {
+    if (!suppressionKey) return;
+    const leadPhone = (phone || activeLead.phone || '').trim();
+    const leadEmail = (directEmail || activeLead.email || '').trim();
+    const usePhone = normalizePhone(leadPhone) ? leadPhone : '';
+    const useEmail = reasonSuppressesEmail(reason) && normalizeEmail(leadEmail) ? leadEmail : '';
+    if (!usePhone && !useEmail) {
+      setDncNotice({ ok: false, text: 'This lead has no valid phone number or email, so nothing was added to the Do Not Contact list.' });
+      return;
+    }
+    const r = await addSuppression(suppressionKey, { phone: usePhone || undefined, email: useEmail || undefined, reason, source: 'dialer' });
+    setDncNotice(
+      r.ok
+        ? { ok: true, text: `${usePhone && useEmail ? 'Phone and email' : usePhone ? 'Phone number' : 'Email'} added to your workspace's Do Not Contact list. Calls${useEmail ? ' and emails' : ''} to this contact are now blocked for everyone in the workspace.` }
+        : { ok: false, text: `Not added to the Do Not Contact list: ${r.message}` }
+    );
+  };
+
+  const handleRemoveFromDnc = async () => {
+    if (!suppressionKey || dncRemoveBusy) return;
+    const ids = [dncMatch.phone?.id, dncMatch.email?.id].filter((x): x is string => !!x);
+    if (ids.length === 0) {
+      setDncRemoveOpen(false);
+      return;
+    }
+    setDncRemoveBusy(true);
+    setDncRemoveError(null);
+    const r = await removeSuppression(suppressionKey, ids, dncRemoveNote.trim());
+    setDncRemoveBusy(false);
+    if (r.ok) {
+      setDncRemoveOpen(false);
+      setDncRemoveNote('');
+      setDncNotice({ ok: true, text: 'Removed from the Do Not Contact list. Your note was saved with the removal.' });
+    } else {
+      setDncRemoveError(r.message);
+    }
+  };
+
   // Handle Call Outcome / Disposition Selection
   const handleSelectDisposition = (
     dispName: string,
@@ -1203,6 +1272,10 @@ export default function BorisCallingCockpit({
     if (updated) {
       setLeadsQueue(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
     }
+
+    // Do-not-call / opt-out outcomes also put the contact on the workspace's Do Not Contact list.
+    const dncReason = suppressionReasonForOutcome(outcomeDef);
+    if (dncReason) void markDoNotContact(dncReason);
 
     // Integrations (webhooks / CRM): the outcome, plus only the rep's own words as the summary (never
     // unsaved notes). The auto-built CRM summary is a fixed template, not facts from this call, so it is
@@ -1421,6 +1494,11 @@ export default function BorisCallingCockpit({
     // Already sent (or sending): never dispatch the same follow-up twice.
     if (isSendingQuickEmail || quickEmailSuccess) return;
     if (quickEmailGaps.length > 0) return;
+    if (emailBlocked) {
+      // The server refuses it too; say so before trying.
+      alert("This contact is on your workspace's Do Not Contact list, so the email was not sent.");
+      return;
+    }
     if (!directEmail || !directEmail.includes('@')) {
       alert('Please enter a valid recipient email address.');
       return;
@@ -1882,8 +1960,24 @@ export default function BorisCallingCockpit({
                 data-testid="call-controls"
                 className="grid w-full max-w-[30rem] grid-cols-[minmax(0,1fr)_8rem] items-center gap-2"
               >
-                {/* INLINE CLICK-TO-CALL (the one crimson action on this screen) */}
-                {viaVicidial ? (
+                {/* INLINE CLICK-TO-CALL (the one crimson action on this screen). A number on the workspace's Do Not
+                    Contact list gets a disabled "Do not call" button in the same slot (same size, nothing moves). */}
+                {phoneBlocked && !callActive ? (
+                  <button
+                    type="button"
+                    disabled
+                    data-testid="call-blocked"
+                    aria-label="Do not call: this number is on your workspace's Do Not Contact list"
+                    title="This number is on your workspace's Do Not Contact list"
+                    className="inline-flex h-10 w-full min-w-0 cursor-not-allowed items-center gap-2 rounded-md border border-danger-fg/40 bg-danger-bg px-3.5 text-body font-medium text-danger-fg"
+                  >
+                    <ShieldAlert className="size-4 shrink-0" />
+                    <span className="w-[7.5rem] shrink-0 whitespace-nowrap text-left">Do not call</span>
+                    <span className="min-w-0 flex-1 truncate border-l border-danger-fg/30 pl-2 text-left font-mono text-small line-through" title={phone || undefined}>
+                      {phone || 'No phone'}
+                    </span>
+                  </button>
+                ) : viaVicidial ? (
                   <button
                     type="button"
                     disabled={callActive}
@@ -2017,10 +2111,12 @@ export default function BorisCallingCockpit({
                     {emailSavedToast && <Check className="size-4 text-success-fg" />}
                   </span>
                   <IconButton
-                    label="Email prospect"
+                    label={emailBlocked ? 'Email blocked: on your Do Not Contact list' : 'Email prospect'}
                     size="sm"
                     onClick={handleOpenQuickEmail}
-                    title="Send follow-up invite or deck"
+                    disabled={emailBlocked}
+                    data-testid="email-prospect"
+                    title={emailBlocked ? "This email is on your workspace's Do Not Contact list" : 'Send follow-up invite or deck'}
                     className="size-7"
                   >
                     <Send />
@@ -2052,6 +2148,60 @@ export default function BorisCallingCockpit({
               </div>
 
             </div>
+
+            {/* DO NOT CONTACT: below the call controls, so the Call / email / Next positions never move */}
+            {!practiceMode && (phoneBlocked || emailBlocked) && (() => {
+              const entry = dncMatch.phone ?? dncMatch.email!;
+              const what = phoneBlocked && emailBlocked ? 'Calls and emails' : phoneBlocked ? 'Calls' : 'Emails';
+              return (
+                <div
+                  data-testid="dnc-banner"
+                  role="status"
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-danger-fg/30 bg-danger-bg px-3 py-2 text-small text-danger-fg"
+                >
+                  <span data-testid="dnc-badge" className="shrink-0">
+                    <Badge tone="danger" className="border border-danger-fg/40 font-medium">
+                      <ShieldAlert className="size-3" aria-hidden />
+                      {phoneBlocked && emailBlocked ? 'Do not contact' : phoneBlocked ? 'Do not call' : 'Do not email'}
+                    </Badge>
+                  </span>
+                  <span className="min-w-0 grow basis-56">
+                    {what} to this contact are blocked: {SUPPRESSION_REASON_LABEL[entry.reason] ?? 'On the list'}
+                    {entry.createdByName ? `, added by ${entry.createdByName}` : ''}
+                    {entry.createdAt ? ` on ${new Date(entry.createdAt).toLocaleDateString()}` : ''}.
+                  </span>
+                  {suppression.canRemove && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-testid="dnc-remove-open"
+                      onClick={() => {
+                        setDncRemoveNote('');
+                        setDncRemoveError(null);
+                        setDncRemoveOpen(true);
+                      }}
+                    >
+                      Remove from list
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
+            {!practiceMode && dncNotice && (
+              <p
+                data-testid="dnc-notice"
+                role={dncNotice.ok ? 'status' : 'alert'}
+                className={`text-small ${dncNotice.ok ? 'text-success-fg' : 'text-danger-fg'}`}
+              >
+                {dncNotice.text}
+              </p>
+            )}
+            {!practiceMode && suppression.status === 'unavailable' && (
+              <p data-testid="dnc-unavailable" className="flex items-center gap-1.5 text-caption text-warning-fg" title={suppression.message || undefined}>
+                <ShieldAlert className="size-3.5 shrink-0" aria-hidden />
+                Do Not Contact list not set up on this server yet: calls and emails are not checked against it.
+              </p>
+            )}
 
             {/* DEMO WORKSPACE: an AI prospect answers the simulated call and talks through the script */}
             {simulatedCall && isCallingActive && demoCallPhase === 'connected' && (
@@ -3130,6 +3280,44 @@ export default function BorisCallingCockpit({
         repName={repName}
         roster={callbackRoster}
       />
+
+      {/* REMOVE FROM DO NOT CONTACT (Admins only; the server checks again and keeps the note as the audit trail) */}
+      <Dialog
+        open={dncRemoveOpen}
+        onClose={() => setDncRemoveOpen(false)}
+        title="Remove from the Do Not Contact list?"
+        description="Only do this if the contact has asked to be contacted again, or the entry was a mistake. Everyone in your workspace will be able to call and email this contact again."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDncRemoveOpen(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              data-testid="dnc-remove-confirm"
+              loading={dncRemoveBusy}
+              disabled={dncRemoveNote.trim().length < 3}
+              onClick={handleRemoveFromDnc}
+            >
+              Remove
+            </Button>
+          </>
+        }
+      >
+        <label className="block space-y-1.5">
+          <span className="text-small font-medium text-fg">Why may this contact be contacted again? (required)</span>
+          <textarea
+            data-testid="dnc-remove-note"
+            value={dncRemoveNote}
+            maxLength={300}
+            onChange={(e) => setDncRemoveNote(e.target.value)}
+            rows={3}
+            className="focus-ring w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-body text-fg placeholder:text-fg-disabled"
+            placeholder="e.g. Prospect emailed asking us to call back about the pilot."
+          />
+        </label>
+        {dncRemoveError && (
+          <p role="alert" className="mt-2 text-small text-danger-fg">{dncRemoveError}</p>
+        )}
+      </Dialog>
 
       {/* ========================================================================= */}
       {/* CALENDLY EMBED MODAL                                                      */}

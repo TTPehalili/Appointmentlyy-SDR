@@ -41,6 +41,8 @@ import {
 } from '@/components/ui';
 import LinkedinIcon from '@/components/icons/LinkedinIcon';
 import { useSession, isRoleAdmin, canUserReassignLeads, canUserAccessIcpBuilder } from '@/lib/session';
+import { normalizeEmail, phoneMatchKey } from '@/lib/suppression';
+import { useSuppression } from '@/lib/suppressionClient';
 import { 
   ContactRecord, 
   IcpFolder,
@@ -87,6 +89,20 @@ function coldEmailHref(c: Pick<ContactRecord, 'email' | 'name' | 'company' | 'ti
 
 export default function GlobalContactsManager() {
   const { session, role, isAdmin, canAccessIcp, tenantName, repName } = useSession();
+  // Workspace Do Not Contact list (server): a badge on contacts whose phone or email is on it.
+  const suppression = useSuppression(session.tenantCode ? `${session.tenantCode}|${(session.email || '').toLowerCase()}` : null);
+  const suppressedKeys = useMemo(() => {
+    const phones = new Set<string>();
+    const emails = new Set<string>();
+    for (const e of suppression.entries) (e.kind === 'phone' ? phones : emails).add(e.matchKey);
+    return { phones, emails };
+  }, [suppression.entries]);
+  const isSuppressedContact = (c: { phone?: string; email?: string }) => {
+    if (suppressedKeys.phones.size === 0 && suppressedKeys.emails.size === 0) return false;
+    const pk = phoneMatchKey(c.phone);
+    const ek = normalizeEmail(c.email);
+    return (!!pk && suppressedKeys.phones.has(pk)) || (!!ek && suppressedKeys.emails.has(ek));
+  };
   const adminClearance = isRoleAdmin(role);
   const canReassign = canUserReassignLeads(role);
   const canExportCsv = canUserExportCsv(role);
@@ -887,8 +903,13 @@ export default function GlobalContactsManager() {
                                 <span className="text-body-strong text-fg block truncate">
                                   {c.name}
                                 </span>
-                                <span className="text-small text-fg-tertiary truncate block">
-                                  {c.title}
+                                <span className="flex min-w-0 items-center gap-1.5 text-small text-fg-tertiary">
+                                  {isSuppressedContact(c) && (
+                                    <span data-testid="contacts-dnc-badge" className="shrink-0" title="On your workspace's Do Not Contact list">
+                                      <Badge tone="danger">Do not contact</Badge>
+                                    </span>
+                                  )}
+                                  <span className="min-w-0 truncate">{c.title}</span>
                                 </span>
                               </div>
                             </div>

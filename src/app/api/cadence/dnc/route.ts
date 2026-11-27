@@ -1,33 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireApiSession } from '@/lib/server/apiSession';
+import { type NextRequest } from 'next/server';
+import { handleAddSuppression } from '@/lib/server/suppressionApi';
 
+/**
+ * POST /api/cadence/dnc  { phone?, email?, note? }
+ * Older name for "add to the Do Not Contact list" with the reason "do not call" (POST /api/suppression is the main
+ * route). The entry is really saved in the signed-in person's workspace list; a failure says so (never a fake
+ * success). No phone number, email or lead id is written to the logs.
+ */
 export async function POST(req: NextRequest) {
-  const auth = await requireApiSession(req);
-  if (auth instanceof NextResponse) return auth;
-  try {
-    const body = await req.json();
-    const { lead_id, phone, reason } = body;
-    // Who did it comes from the session, never the body.
-    const rep_name = auth.name || auth.email;
-
-    const quarantineAuditId = `dnc_audit_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    console.warn(`[GLOBAL DNC QUARANTINE] Number ${phone} for lead ${lead_id} permanently quarantined by ${rep_name || 'SDR'}. Audit: ${quarantineAuditId}`);
-
-    return NextResponse.json({
-      status: 'quarantined',
-      audit_record_id: quarantineAuditId,
-      lead_id: lead_id || 'lead_001',
-      phone: phone || '',
-      reason: reason || 'Prospect requested Do Not Call',
-      active_drip_emails_cancelled: true,
-      quarantined_at: new Date().toISOString()
-    });
-  } catch (error: any) {
-    console.error('[DNC QUARANTINE ERROR]', error);
-    return NextResponse.json(
-      { status: 'error', message: error.message || 'Error processing DNC quarantine' },
-      { status: 500 }
-    );
-  }
+  return handleAddSuppression(req, { scope: 'suppression-add', forced: { reason: 'do_not_call', source: 'api' } });
 }

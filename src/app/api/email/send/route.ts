@@ -7,6 +7,7 @@ import { getServerSession } from '@/lib/server/session';
 import { onePagerFileName } from '@/lib/onePagerRender';
 import { isMeetingPlanId } from '@/lib/server/meetingPlanStore';
 import { brandFor, loadVisiblePlan, renderPlanPdf } from '@/lib/server/meetingPlanApi';
+import { refuseSuppressedEmail } from '@/lib/server/suppressionApi';
 
 type ResendAttachment = { filename: string; content: string };
 
@@ -33,6 +34,9 @@ async function meetingPlanAttachment(req: NextRequest, meetingPlanId: unknown): 
 }
 
 export async function POST(req: NextRequest) {
+  // A recipient on the workspace's Do Not Contact list is never emailed (checked first, in every workspace).
+  const suppressed = await refuseSuppressedEmail(req, 'email/send');
+  if (suppressed) return suppressed;
   // Safety switch: client workspaces can't send until their own mailbox is connected.
   const gate = await requireSendingSession(req);
   if ('blocked' in gate) return gate.blocked;

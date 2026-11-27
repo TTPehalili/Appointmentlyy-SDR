@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordDelegatedSend, requireSendingSession, senderFor } from '@/lib/server/sendingPolicy';
 import { getResendApiKey } from '@/lib/resendConfig';
+import { refuseSuppressedEmail } from '@/lib/server/suppressionApi';
 
 export async function POST(req: NextRequest) {
+  // A recipient on the workspace's Do Not Contact list is never emailed (checked at send time, every workspace).
+  const suppressed = await refuseSuppressedEmail(req, 'cadence/send-email');
+  if (suppressed) return suppressed;
   // Safety switch: client workspaces can't send until their own mailbox is connected.
   const gate = await requireSendingSession(req);
   if ('blocked' in gate) return gate.blocked;
@@ -53,7 +57,8 @@ export async function POST(req: NextRequest) {
 
     const messageId = externalDispatchResult?.id || `resend_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    console.log(`[CADENCE EMAIL DISPATCH] Day ${cadence_day || 1} Touch #${touch_number || 1} sent to ${to}. Subject: "${subject}". MsgID: ${messageId}`);
+    // No recipient address or subject in the logs (personal data).
+    console.log(`[CADENCE EMAIL DISPATCH] Day ${Number(cadence_day) || 1} Touch #${Number(touch_number) || 1} sent. MsgID: ${messageId}`);
 
     return NextResponse.json({
       status: 'success',
