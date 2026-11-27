@@ -202,15 +202,23 @@ export function matchSuppression<T extends Pick<SuppressionListItem, 'kind' | 'm
  * Which call outcomes put the lead on the list, and why. Outcomes whose automation is "TCPA DNC Quarantine"
  * (dnc_quarantine) or whose name/code says do-not-call / opt-out / unsubscribe do; "Wrong number" outcomes with the
  * DNC automation suppress only the number (the email may still be right). Every other outcome: null (unchanged).
- * "Not interested" is not a request to stop contact, so it never suppresses.
+ * "Not interested" is not a request to stop contact, so it never suppresses. By name: "Opt out", "Opt-out", "Opted
+ * out", "Unsubscribe(d)", "DNC", "Do not call", "Don't call", "Do not contact" suppress; a timing request ("Do not call
+ * back today", "Callback - don't call before 3pm", "call later / after / until / tomorrow") does not.
  */
+const OPT_OUT_RE = /\bopt(?:ed|s|ing)?[\s_-]*out\b|\bunsubscrib/;
+const DO_NOT_CALL_RE = /\bdnc\b|\b(?:do[\s_-]*not|don'?t|dont)[\s_-]*(?:call|contact)\b/;
+const TIMING_RE = /call[\s_-]*back|callback|\b(?:before|after|until|till|today|tonight|tomorrow|later|next[\s_-]*week|this[\s_-]*week)\b/;
+
 export function suppressionReasonForOutcome(outcome: { name?: string; code?: string; actionTrigger?: string } | null | undefined): SuppressionReason | null {
   if (!outcome) return null;
-  const text = `${outcome.name || ''} ${outcome.code || ''}`.toLowerCase();
+  const text = `${outcome.name || ''} ${outcome.code || ''}`.toLowerCase().replace(/[‘’]/g, "'");
   const dncAutomation = outcome.actionTrigger === 'dnc_quarantine';
   if (/wrong[\s_-]*number|invalid[\s_-]*(number|extension)/.test(text)) return dncAutomation ? 'wrong_number' : null;
-  if (dncAutomation || /\bdnc\b|do[\s_-]*not[\s_-]*(call|contact)/.test(text)) return 'do_not_call';
-  if (/opt[\s_-]*out|unsubscribe/.test(text)) return 'opt_out';
+  // The admin's automation decides for the outcomes it is set on (every default outcome mapping is unchanged).
+  if (dncAutomation) return 'do_not_call';
+  if (DO_NOT_CALL_RE.test(text) && !TIMING_RE.test(text)) return 'do_not_call';
+  if (OPT_OUT_RE.test(text)) return 'opt_out';
   return null;
 }
 
