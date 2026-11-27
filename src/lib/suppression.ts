@@ -7,10 +7,18 @@
  *
  * Matching
  * - Email: trimmed and lower-cased ("Name <a@b.co>" becomes "a@b.co"). Exact match.
- * - Phone: stored as E.164 ("+14155550142") when the number carries its country code ("+" or "00"), otherwise as the
- *   digits typed (national format, e.g. "0412345678"). Two numbers match when their last 9 digits are the same, so
- *   "+61 412 345 678" matches "0412 345 678" and "+1 (415) 555-0142" matches "415-555-0142". A number shorter than
- *   9 digits only matches itself. The rare false match errs on the side of not calling.
+ * - Phone: the number is read from the start of the field up to the first letter, "/", "#", ";" or "," (so
+ *   "+1 415 555 0178 cell", "415-555-0177 (mobile)" or "Mobile: +1 415 ..." are read as the number they hold). It is
+ *   stored as E.164 ("+14155550142") when it carries its country code ("+" or "00"), otherwise as the digits typed
+ *   (national format, e.g. "0412345678").
+ *   The match key (phoneMatchKey): for a national number the trunk 0 is dropped first ("0412 345 678" -> 412345678,
+ *   "09 123 4567" -> 91234567); a national number of 8 digits or fewer is its own key, a longer one its last 9 digits.
+ *   An E.164 number of 11+ digits is keyed by its last 9 digits; one of 10 digits or fewer (a 2-digit country code and
+ *   an 8-digit number: New Zealand landlines, Singapore, ...) by its last 8. Lookups (phoneLookupKeys) produce every
+ *   key the stored side can have (9- and 8-digit tails, with and without a trunk 0), so "+61 412 345 678" matches
+ *   "0412 345 678", "+1 (415) 555-0142" matches "415-555-0142", "+64 9 123 4567" matches "09 123 4567" and
+ *   "+65 6123 4567" matches "6123 4567". US numbers keep their 9-digit keys, so two US numbers never match on 8 digits.
+ *   The rare false match errs on the side of not calling.
  */
 
 export type SuppressionKind = 'phone' | 'email';
@@ -71,15 +79,26 @@ const PHONE_TAIL = 9;
 
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 
+/**
+ * The number part of a phone field: a leading label ("Mobile:", "tel:") is skipped, and the number ends at the first
+ * letter, "/", "#", ";" or "," ("415-555-0177 (mobile)", "+1 415 555 0178 cell", "415 555 0179 / main",
+ * "+1 415 555 0142 ext. 12"). Used by every add path, so what is stored is what the dial guard reads.
+ */
+export function extractPhone(raw: string): string {
+  const s = raw.replace(CONTROL_RE, ' ').replace(/[  -​‑ ]/g, ' ').slice(0, 100);
+  const start = s.search(/[+\d(]/);
+  if (start < 0) return '';
+  const rest = s.slice(start);
+  const end = rest.search(/[A-Za-z/#;,]/);
+  return (end < 0 ? rest : rest.slice(0, end)).replace(/[\s(\-.]+$/, '').trim();
+}
+
 /** A phone number in its stored form, or null when it is not a phone number. */
 export function normalizePhone(raw: unknown): { value: string; e164: boolean } | null {
   if (typeof raw !== 'string') return null;
-  let s = raw.replace(CONTROL_RE, ' ').trim();
+  const s = extractPhone(raw);
   if (!s || s.length > 40) return null;
-  s = s.replace(/^tel:/i, '').trim();
-  // A trailing extension is not part of the number ("x12", "ext. 12", "#12", ";ext=12").
-  s = s.replace(/\s*(?:;ext=|ext\.?|extension|x|#)\s*\d{1,6}\s*$/i, '').trim();
-  if (!/^[+\d\s().\-/]+$/.test(s)) return null;
+  if (!/^[+\d\s().\-]+$/.test(s)) return null;
   const international = /^(?:\+|00)/.test(s);
   let digits = s.replace(/\D/g, '');
   if (s.startsWith('00')) digits = digits.slice(2);
@@ -91,22 +110,42 @@ export function normalizePhone(raw: unknown): { value: string; e164: boolean } |
   return { value: digits, e164: false };
 }
 
-/** The key two phone numbers are compared by (see the header). */
+/** Short E.164 numbers (a 2-digit country code and an 8-digit number) are keyed by their last 8 digits. */
+const SHORT_E164 = 10;
+const SHORT_TAIL = 8;
+
+/** The stored key for a normalized number (see the header). */
+function keyOf(digits: string, e164: boolean): string | null {
+  if (e164) return digits.length <= SHORT_E164 ? digits.slice(-SHORT_TAIL) : digits.slice(-PHONE_TAIL);
+  const nsn = digits.replace(/^0(?=[1-9])/, ''); // the national trunk prefix
+  if (nsn.length < 7) return null;
+  return nsn.length <= SHORT_TAIL ? nsn : nsn.slice(-PHONE_TAIL);
+}
+
+/** The key two phone numbers are compared by (see the header). This is what is stored. */
 export function phoneMatchKey(raw: unknown): string | null {
   const n = normalizePhone(raw);
   if (!n) return null;
-  const digits = n.value.replace(/\D/g, '');
-  return digits.length >= PHONE_TAIL ? digits.slice(-PHONE_TAIL) : digits;
+  return keyOf(n.value.replace(/\D/g, ''), n.e164);
 }
 
-const digitsKey = (digits: string): string | null =>
-  digits.length < 7 ? null : digits.length >= PHONE_TAIL ? digits.slice(-PHONE_TAIL) : digits;
+/** Every key the stored side can have for a run of digits: 9- and 8-digit tails, with and without a trunk 0 / 00. */
+function addDigitKeys(d: string, out: Set<string>) {
+  const variants = [d];
+  if (/^00/.test(d)) variants.push(d.slice(2));
+  else if (/^0[1-9]/.test(d)) variants.push(d.slice(1));
+  for (const v of variants) {
+    if (v.length < 7) continue;
+    out.add(v.length >= PHONE_TAIL ? v.slice(-PHONE_TAIL) : v);
+    if (v.length >= SHORT_TAIL) out.add(v.slice(-SHORT_TAIL));
+  }
+}
 
 /**
- * Every key a lookup (a dial, a Dialer badge) must check for this number. Lenient on purpose, so a number that is
- * not "clean" can never skip the check: "415-555-0161 (mobile)", "+1 415 555 0161 cell" or "... x 12 (desk)" are
- * still found. Besides the strict key (phoneMatchKey), it uses all the digits in the text and the digits before an
- * extension marker. Stored keys are unchanged (only phoneMatchKey writes them). Empty: no number in it at all.
+ * Every key a lookup (a dial, a Dialer badge, a check) must try for this number. Lenient on purpose, so a number that
+ * is not "clean" can never skip the check: "415-555-0161 (mobile)", "+1 415 555 0161 cell" or "... x 12 (desk)" are
+ * still found. Uses the strict key (phoneMatchKey), all the digits in the text, and the digits of the number part
+ * (extractPhone), each as every key the stored side could have. Empty: no number in it at all.
  */
 export function phoneLookupKeys(raw: unknown): string[] {
   if (typeof raw !== 'string') return [];
@@ -114,10 +153,7 @@ export function phoneLookupKeys(raw: unknown): string[] {
   const out = new Set<string>();
   const strict = phoneMatchKey(s);
   if (strict) out.add(strict);
-  for (const part of [s, s.split(/;ext=|ext|extension|x|#|,/i)[0]]) {
-    const k = digitsKey(part.replace(/\D/g, ''));
-    if (k) out.add(k);
-  }
+  for (const part of [s, extractPhone(s), s.split(/;ext=|ext|extension|x|#|,/i)[0]]) addDigitKeys(part.replace(/\D/g, ''), out);
   return [...out];
 }
 

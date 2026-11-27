@@ -1173,19 +1173,34 @@ export default function BorisCallingCockpit({
     if (!suppressionOn) return;
     const leadPhone = (phone || activeLead.phone || '').trim();
     const leadEmail = (directEmail || activeLead.email || '').trim();
+    // The number is read from the field the same way the server and the dial guard read it ("+1 415 555 0178 cell").
     const usePhone = normalizePhone(leadPhone) ? leadPhone : '';
     const useEmail = reasonSuppressesEmail(reason) && normalizeEmail(leadEmail) ? leadEmail : '';
+    const unreadable = `The phone number "${leadPhone.slice(0, 40)}" could not be read, so calls are NOT blocked: correct the number and pick the outcome again.`;
     if (!usePhone && !useEmail) {
-      setDncNotice({ ok: false, text: 'This lead has no valid phone number or email, so nothing was added to the Do Not Contact list.' });
+      setDncNotice({ ok: false, text: leadPhone ? `Nothing was added to the Do Not Contact list. ${unreadable}` : 'This lead has no valid phone number or email, so nothing was added to the Do Not Contact list.' });
       return;
     }
     const r = await addSuppression({ phone: usePhone || undefined, email: useEmail || undefined, reason, source: 'dialer' });
     suppression.refresh();
-    setDncNotice(
-      r.ok
-        ? { ok: true, text: `${usePhone && useEmail ? 'Phone and email' : usePhone ? 'Phone number' : 'Email'} added to your workspace's Do Not Contact list. Calls${useEmail ? ' and emails' : ''} to this contact are now blocked for everyone in the workspace.` }
-        : { ok: false, text: `Not added to the Do Not Contact list: ${r.message}` }
-    );
+    if (!r.ok) {
+      setDncNotice({ ok: false, text: `Not added to the Do Not Contact list: ${r.message}` });
+      return;
+    }
+    // Only what the server saved is reported: calls are never said to be blocked without a phone entry.
+    const { phone: phoneSaved, email: emailSaved } = r.saved;
+    if (!phoneSaved && !emailSaved) {
+      setDncNotice({ ok: false, text: 'The server did not confirm any entry, so nothing is blocked. Please try again.' });
+      return;
+    }
+    const what = phoneSaved && emailSaved ? 'Phone and email' : phoneSaved ? 'Phone number' : 'Email';
+    const blocked = phoneSaved && emailSaved ? 'Calls and emails' : phoneSaved ? 'Calls' : 'Emails';
+    const phoneProblem = !phoneSaved && !!leadPhone;
+    const tail = phoneProblem ? ` ${usePhone ? 'The phone number was not saved, so calls are NOT blocked.' : unreadable}` : !phoneSaved ? ' This lead has no phone number on file.' : '';
+    setDncNotice({
+      ok: !phoneProblem,
+      text: `${what} added to your workspace's Do Not Contact list. ${blocked} to this contact are now blocked for everyone in the workspace.${tail}`,
+    });
   };
 
   const handleRemoveFromDnc = async () => {
@@ -1972,8 +1987,9 @@ export default function BorisCallingCockpit({
                     className="inline-flex h-10 w-full min-w-0 cursor-not-allowed items-center gap-2 rounded-md border border-danger-fg/40 bg-danger-bg px-3.5 text-body font-medium text-danger-fg"
                   >
                     <ShieldAlert className="size-4 shrink-0" />
-                    <span className="w-[7.5rem] shrink-0 whitespace-nowrap text-left">Do not call</span>
-                    <span className="min-w-0 flex-1 truncate border-l border-danger-fg/30 pl-2 text-left font-mono text-small line-through" title={phone || undefined}>
+                    <span className="shrink-0 whitespace-nowrap text-left sm:w-[7.5rem]">Do not call</span>
+                    {/* The struck-through number only where there is room for it; on a phone the label alone shows. */}
+                    <span data-testid="call-blocked-number" className="hidden min-w-0 flex-1 truncate border-l border-danger-fg/30 pl-2 text-left font-mono text-small line-through sm:block" title={phone || undefined}>
                       {phone || 'No phone'}
                     </span>
                   </button>

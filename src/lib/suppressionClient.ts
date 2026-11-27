@@ -157,10 +157,14 @@ export function useSuppressionBatch(enabled: boolean, contacts: { phone?: string
 
 type Result = { ok: true; message: string } | { ok: false; message: string; unavailable?: boolean };
 
-/** Put a lead's phone and/or email on the workspace list. Never reports success unless the server saved it. */
+/**
+ * Put a lead's phone and/or email on the workspace list. Never reports success unless the server saved it, and says
+ * exactly which channels are now on the list (`saved`, from the entries the server added or already had), so the
+ * caller never claims calls are blocked when no phone entry exists.
+ */
 export async function addSuppression(
   input: { phone?: string; email?: string; reason: SuppressionReason; source: SuppressionSource; note?: string },
-): Promise<Result> {
+): Promise<{ ok: true; saved: { phone: boolean; email: boolean } } | { ok: false; message: string; unavailable?: boolean }> {
   try {
     const res = await fetch('/api/suppression', {
       method: 'POST',
@@ -170,7 +174,8 @@ export async function addSuppression(
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.success) {
       listChanged();
-      return { ok: true, message: "Added to your workspace's Do Not Contact list." };
+      const entries: { kind?: string }[] = [...(Array.isArray(data.added) ? data.added : []), ...(Array.isArray(data.already) ? data.already : [])];
+      return { ok: true, saved: { phone: entries.some((e) => e.kind === 'phone'), email: entries.some((e) => e.kind === 'email') } };
     }
     return { ok: false, message: data.error || `Could not save (${res.status}).`, unavailable: data.code === 'SUPPRESSION_UNAVAILABLE' };
   } catch {
